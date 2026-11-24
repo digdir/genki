@@ -171,10 +171,7 @@ export const storedLayout = (start: BlocksStart): AssistantLayout => {
   return normalised({ ...start.layout, zones: placed });
 };
 
-/**
- * The layout a draft shows: the one it stores, or the start template when it has none.
- * Nothing when the builder cannot edit the stored layout without losing something.
- */
+/** The stored layout or the start template; nothing when editing would lose part of it. */
 export const shownLayoutOf = (definition: Record<string, unknown>): AssistantLayout | undefined => {
   const start = draftStart(draftLayoutOf(definition));
   if (start === 'foreign') return undefined;

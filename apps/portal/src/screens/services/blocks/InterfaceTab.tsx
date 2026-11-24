@@ -55,10 +55,7 @@ export const InterfaceTab = ({
   narrow: boolean;
   /** Writes a layout into the draft; without it the builder changes nothing that is kept. */
   onLayout?: ((layout: AssistantLayout) => void) | undefined;
-  /**
-   * Only Maler and Designelementer, as in the new Oppsett: Tekster wait for a later step, and
-   * the layout as JSON is under Avansert.
-   */
+  /** Only Maler and Designelementer, as in the new Oppsett. */
   simple?: boolean;
   /** The preview on its own, larger. */
   fullscreen: boolean;

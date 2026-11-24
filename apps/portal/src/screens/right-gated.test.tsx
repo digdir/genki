@@ -112,10 +112,12 @@ describe('buttons the person has no right for', () => {
     expect(calls.filter((c) => !c.startsWith('GET'))).toEqual([]);
   });
 
-  it('opening a new service without manage-services explains it up front instead of the builder', async () => {
-    await renderAs('#/services/new', useOnly);
+  it('opening a new service without manage-services explains it up front and saves no draft', async () => {
+    const calls = await renderAs('#/services/new', useOnly);
     expect(await screen.findByRole('heading', { name: 'Du kan ikke lage tjenester' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Lag med KI|Start/ })).toBeNull();
+    expect(window.location.hash).toBe('#/services/new');
+    expect(calls.filter((c) => !c.startsWith('GET'))).toEqual([]);
   });
 
   it('the builder is read-only without manage-services', async () => {

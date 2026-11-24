@@ -47,10 +47,7 @@ const order: ServiceSection[] = [
   'advanced',
 ];
 
-/**
- * The new Oppsett (one long form, the builder assistant beside it, and the Avansert tab) is for
- * services not published yet. Return true here to give it to every service.
- */
+/** The new Oppsett is for services not published yet; return true to give it to every service. */
 export const usesNewSetup = ({ isNew }: { isNew: boolean }) => isNew;
 
 const forNew: ServiceSection[] = [

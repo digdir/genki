@@ -170,20 +170,6 @@ a.ds-button {
   border-radius: var(--ds-border-radius-lg);
 }
 
-.new-service {
-  width: 100%;
-  max-width: 1180px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 36px;
-}
-
-.new-service-lead {
-  margin: 0;
-  max-width: 640px;
-}
-
 .builder {
   display: flex;
   flex-direction: column;
@@ -282,11 +268,6 @@ a.ds-button {
   max-width: 880px;
   margin: 0 auto;
   padding: 20px 20px 64px;
-}
-
-.publish-dialog {
-  max-width: 640px;
-  width: calc(100vw - 32px);
 }
 
 .assistant {

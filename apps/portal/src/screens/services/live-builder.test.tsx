@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../App';
 import { mockAnsattporten } from '../../auth';
@@ -292,6 +293,46 @@ describe('the live builder', () => {
     expect(within(published).getByText(/^Lagres i testutgaven med en gang\./)).toBeTruthy();
   });
 
+  it('checks the definition again when the risk level is fixed on the first publish page, and then publishes', async () => {
+    const riskError = 'a service that decides about people needs the high risk class';
+    const { calls, fetch } = recorded((body) =>
+      (body as { definition: { spec: { riskClass?: string } } }).definition.spec.riskClass ===
+      'high'
+        ? undefined
+        : new Response(
+            JSON.stringify({
+              title: 'Invalid definition',
+              status: 422,
+              errors: [{ path: 'spec.riskClass', message: riskError }],
+            }),
+            { status: 422, headers: { 'content-type': 'application/problem+json' } },
+          ),
+    );
+    await startBuilder(fetch);
+    const page = await toFirstPublish();
+    expect(await within(page).findByText(new RegExp(riskError))).toBeTruthy();
+
+    fireEvent.click(within(page).getByRole('button', { name: 'Velg et annet nivå' }));
+    fireEvent.click(within(page).getByRole('radio', { name: /^Høy/ }));
+    fireEvent.click(
+      (
+        await within(page).findAllByRole('button', { name: 'Bekreft risikonivå' })
+      )[0] as HTMLElement,
+    );
+    fireEvent.change(within(page).getByLabelText('Hva er endret, og hvorfor?'), {
+      target: { value: 'Første versjon av tjenesten' },
+    });
+    await waitFor(() => expect(within(page).queryByText(leftHeading)).toBeNull(), {
+      timeout: 3000,
+    });
+    fireEvent.click(within(page).getByRole('button', { name: 'Publiser' }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/api/definitions'))).toBe(
+        true,
+      ),
+    );
+  });
+
   it('drops the risk confirmation when the risk level changes', async () => {
     const { fetch } = recorded();
     await startBuilder(fetch);
@@ -462,6 +503,42 @@ describe('the live builder and the server draft', () => {
     expect(draftWrites(calls, 'DELETE')[0]?.body).toEqual({ revision: 2 });
   });
 
+  it('publishes a service in use from the publish page, saves a new edition and returns to Oppsett', async () => {
+    const { calls } = await openService('#/services/rapportassistenten/setup/instructions');
+    await screen.findByLabelText('Instruksjoner til tjenesten');
+    fireEvent.change(instructions(), { target: { value: 'Svar kort.' } });
+    await waitFor(() => expect(draftWrites(calls, 'PUT').length).toBeGreaterThan(0));
+
+    const page = await publishPage('Kortere svar til brukerne');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await publishOnPage(page);
+
+    await waitFor(() => expect(window.location.hash).toBe('#/services/rapportassistenten/setup'));
+    const published = calls.filter(
+      (c) => c.method === 'POST' && c.url.endsWith('/api/definitions'),
+    );
+    expect(published).toHaveLength(1);
+    expect(published[0]?.body).toMatchObject({
+      definition: { spec: { strategy: { config: { instructions: 'Svar kort.' } } } },
+    });
+  });
+
+  it('publishes nothing when the person cancels on the publish page of a service in use', async () => {
+    const { calls } = await openService('#/services/rapportassistenten/setup/instructions');
+    await screen.findByLabelText('Instruksjoner til tjenesten');
+    fireEvent.change(instructions(), { target: { value: 'Svar kort.' } });
+    await waitFor(() => expect(draftWrites(calls, 'PUT').length).toBeGreaterThan(0));
+
+    const page = await publishPage('Kortere svar til brukerne');
+    fireEvent.click(within(page).getByRole('link', { name: 'Avbryt' }));
+
+    await waitFor(() => expect(window.location.hash).toBe('#/services/rapportassistenten/setup'));
+    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/api/definitions'))).toBe(
+      false,
+    );
+    expect(draftWrites(calls, 'DELETE')).toEqual([]);
+  });
+
   it('saves edits to the server draft with the revision it last saw', async () => {
     const { calls } = await openService('#/services/rapportassistenten/setup/instructions');
     await screen.findByLabelText('Instruksjoner til tjenesten');
@@ -555,6 +632,16 @@ describe('the live builder and the server draft', () => {
     await within(header).findByText(/^Det brukerne har nå/);
     expect(within(header).queryByRole('button', { name: 'Publiser' })).toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('opens no publish page for the in use view, even at the address of the publish page', async () => {
+    const header = await openWith(
+      olderInUse(),
+      '#/services/rapportassistenten/setup/publish?edition=in-use',
+    );
+    await within(header).findByText(/^Det brukerne har nå/);
+    expect(screen.queryByRole('heading', { level: 1, name: /^Publiser / })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Publiser' })).toBeNull();
   });
 
   it('offers no Byggeassistent in the in use view, which cannot be changed', async () => {
@@ -961,6 +1048,70 @@ describe('a new service saved as a draft on the server', () => {
     expect(nameIn(first)).toBe('');
     expect(window.location.hash).toBe(`#/services/${idOf(first)}/setup`);
     expect(screen.getByText(/^Lagres i testutgaven med en gang\./)).toBeTruthy();
+  });
+
+  it('saves one draft, not two, when React runs the start twice in StrictMode', async () => {
+    const { calls, fetch } = quiet();
+    const auth = mockAnsattporten({ name: 'Ingrid Berg', organisations: exampleOrganisations });
+    await auth.login();
+    window.location.hash = '#/services/new';
+    render(
+      <StrictMode>
+        <App auth={auth} fetch={fetch} live />
+      </StrictMode>,
+    );
+    await screen.findByRole('heading', { level: 2, name: 'Grunnleggende' });
+
+    const puts = draftWrites(calls, 'PUT');
+    expect(puts).toHaveLength(1);
+    expect(window.location.hash).toBe(`#/services/${idOf(puts[0])}/setup`);
+  });
+
+  it('saves no draft in the organisation the person switches to while a new service is being saved', async () => {
+    const { calls, fetch: base } = quiet();
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (init?.method === 'PUT' && url.includes('/tenants/999888777/') && draftPath.test(url)) {
+        calls.push({ url, method: 'PUT', body: undefined });
+        return new Promise<Response>(() => undefined);
+      }
+      if (url.includes('/tenants/999777666/definitions/template'))
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      return base(input, init);
+    };
+    const auth = mockAnsattporten({ name: 'Ingrid Berg', organisations: exampleOrganisations });
+    await auth.login();
+    window.location.hash = '#/services/new';
+    render(<App auth={auth} fetch={fetch} live />);
+    await waitFor(() => expect(draftWrites(calls, 'PUT')).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Brukermeny for Ingrid Berg, Testetaten' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Prøvekommunen/ }));
+    await waitFor(() => expect(window.location.hash).toBe('#/overview?org=999777666'));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(draftWrites(calls, 'PUT').filter((c) => c.url.includes('/tenants/999777666/'))).toEqual(
+      [],
+    );
+  });
+
+  it('saves the draft again on Prøv igjen after the first save failed, and opens its Oppsett', async () => {
+    let refused = 0;
+    const { calls, fetch } = quiet((method, url) =>
+      method === 'PUT' && draftPath.test(url) && refused++ === 0
+        ? new Response(JSON.stringify({ title: 'Feil' }), { status: 500 })
+        : undefined,
+    );
+    const auth = mockAnsattporten({ name: 'Ingrid Berg', organisations: exampleOrganisations });
+    await auth.login();
+    window.location.hash = '#/services/new';
+    render(<App auth={auth} fetch={fetch} live />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Prøv igjen' }));
+    await screen.findByRole('heading', { level: 2, name: 'Grunnleggende' });
+    const puts = draftWrites(calls, 'PUT');
+    expect(puts).toHaveLength(2);
+    expect(window.location.hash).toBe(`#/services/${idOf(puts[1])}/setup`);
   });
 
   it('saves nothing more while nothing has changed, and saves the first change the person makes', async () => {

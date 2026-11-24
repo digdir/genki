@@ -5,7 +5,6 @@ import type { ReactNode } from 'react';
 import { createApiClient } from '../../api';
 import { RightsProvider } from '../../Shell';
 import { LiveChanges } from '../changes/LiveChanges';
-import { LiveNewService } from '../services/LiveNewService';
 import { LiveTransfer } from '../settings/LiveTransfer';
 import { DefinitionEditor } from './DefinitionEditor';
 import { TestRun } from './TestRun';
@@ -293,80 +292,6 @@ describe('a test run that fails', () => {
       await screen.findByRole('heading', { name: 'Vi fikk ikke svar fra modellen' }),
     ).toBeTruthy();
     expect(screen.getByText(/Det er ikke noe galt med oppsettet/)).toBeTruthy();
-  });
-});
-
-describe('creating a service in live mode', () => {
-  it('preselects the model the platform picks for new services, not the first in the list', async () => {
-    window.location.hash = '#/services/new';
-    const { api } = platform({
-      'GET /models': () => ({
-        data: [
-          { id: 'foundry-claude/claude-fable-5', residency: 'eu', capabilities: [] },
-          { id: 'foundry-openai/gpt-4o-mini', residency: 'eu', capabilities: [] },
-        ],
-      }),
-      [`GET /tenants/${tenant}/definitions/template`]: () => ({
-        definition: {
-          spec: { model: { primary: 'foundry-openai/gpt-4o-mini', residency: 'eu' } },
-        },
-      }),
-    });
-    render(<LiveNewService api={api} tenant={tenant} />);
-
-    await waitFor(() =>
-      expect((screen.getByLabelText('Modell') as HTMLSelectElement).value).toBe(
-        'foundry-openai/gpt-4o-mini',
-      ),
-    );
-  });
-
-  it('publishes a real definition from the form and opens the new service', async () => {
-    window.location.hash = '#/services/new';
-    const { api, calls } = platform({
-      'GET /models': () => ({
-        data: [{ id: 'foundry-openai/gpt-4o', residency: 'global', capabilities: [] }],
-      }),
-      'POST /definitions/validate': () => ({ valid: true }),
-      'POST /definitions': () => ({ ...published(1), id: 'svarbrev' }),
-    });
-    render(<LiveNewService api={api} tenant={tenant} />);
-
-    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Svarbrev' } });
-    fireEvent.change(screen.getByLabelText('Formål'), { target: { value: 'Utkast til svarbrev' } });
-    fireEvent.change(screen.getByLabelText('Instruksjoner til modellen'), {
-      target: { value: 'Skriv høflig.' },
-    });
-    await screen.findByRole('option', { name: /gpt-4o/ });
-    fireEvent.click(screen.getByRole('button', { name: 'Opprett og publiser' }));
-
-    await waitFor(() => expect(window.location.hash).toBe('#/services/svarbrev'));
-    const publish = calls.find((c) => c.method === 'POST' && c.path === '/definitions');
-    expect(publish?.body).toMatchObject({
-      definition: {
-        metadata: { tenant, id: 'svarbrev', name: 'Svarbrev' },
-        spec: {
-          purpose: 'Utkast til svarbrev',
-          strategy: { id: 'single-call', config: { instructions: 'Skriv høflig.' } },
-          model: { primary: 'foundry-openai/gpt-4o', residency: 'global' },
-        },
-      },
-    });
-    expect(decodeURIComponent(publish?.headers.get('change-reason') ?? '')).toBe('Ny tjeneste');
-  });
-
-  it('refuses to publish without a name, purpose and instructions', async () => {
-    const { api, calls } = platform({
-      'GET /models': () => ({
-        data: [{ id: 'foundry-openai/gpt-4o', residency: 'global', capabilities: [] }],
-      }),
-    });
-    render(<LiveNewService api={api} tenant={tenant} />);
-    await screen.findByRole('option', { name: /gpt-4o/ });
-    fireEvent.click(screen.getByRole('button', { name: 'Opprett og publiser' }));
-
-    expect(await screen.findByText('Gi tjenesten et navn.')).toBeTruthy();
-    expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
 });
 

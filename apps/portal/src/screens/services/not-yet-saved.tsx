@@ -27,19 +27,16 @@ const empty: Kept = { pages: [], documents: [], wish: '' };
 
 /** What was entered for this service in this page session, kept across area switches. */
 const useKept = (service: string) => {
-  const [value, setValue] = useState<Kept>(() => kept.get(service) ?? empty);
-  // Web pages, documents and the wish are shown by different parts of one form, so each change
-  // starts from what is kept, not from this part's own copy, or one part would undo another.
-  const update = (change: (current: Kept) => Kept) =>
-    setValue(() => {
-      const next = change(kept.get(service) ?? empty);
-      kept.set(service, next);
-      return next;
-    });
-  return [value, update] as const;
+  const [, rerender] = useState(0);
+  // Read and change what is kept, so one part of the form never undoes another.
+  const update = (change: (current: Kept) => Kept) => {
+    kept.set(service, change(kept.get(service) ?? empty));
+    rerender((n) => n + 1);
+  };
+  return [kept.get(service) ?? empty, update] as const;
 };
 
-/** Forgets everything kept, for tests. */
+/** Forgets everything kept; on logout and in tests. */
 export const forgetNotYetSaved = () => kept.clear();
 
 /** An https address, checked with the URL parser rather than a pattern. */

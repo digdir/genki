@@ -24,7 +24,6 @@ import { ServiceLoading } from './service/ServiceLoading';
 import { productionEnvironment } from '../api/environments';
 import { availableSections, editionOf, editionView, locate, servicePath } from './service/sections';
 import { Builder, newDraftId, newServiceInit, type BuilderInit } from './services/Builder';
-import { LiveNewService } from './services/LiveNewService';
 import { ServiceList, type ListedService } from './services/ServiceList';
 import { startKeys } from './services/SetupTab';
 import './services.css';
@@ -150,8 +149,7 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
   );
 };
 
-// Whether a service is published is known only once it has loaded, so its address may name a
-// section of either kind until then. BuilderScreen settles it.
+// Until the service loads, its address may name a section of either kind.
 const eitherKind = [
   ...new Set([...availableSections({ isNew: false }), ...availableSections({ isNew: true })]),
 ];
@@ -385,12 +383,21 @@ const StartDraft = ({ api, tenant }: Pick<ScreenProps, 'api' | 'tenant'>) => {
   const reason = t('services.draftSavedReason');
   // One draft per visit and tenant: React may run the effect twice in development.
   const started = useRef<{ tenant: string; id: Promise<string> }>(undefined);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [state, retry] = useAsync(() => {
     if (started.current?.tenant !== tenant)
       started.current = {
         tenant,
         id: (async () => {
           const template = await api.definitionTemplate(tenant, 'Service');
+          // Switching organisation leaves this screen; save nothing for the one switched to.
+          if (!mounted.current) throw new Error('left Ny tjeneste');
           const id = newDraftId();
           const { definition } = newServiceInit('answers', '', '', true, template);
           const stamped = forTenant(definition, { tenant, id: 'ny-tjeneste', version: 1 });
@@ -444,8 +451,6 @@ const ServiceScreens = (props: ScreenProps) => {
       </div>
     );
   if (building) {
-    if (id === 'new' && props.live && route.query.get('skjema') === '1')
-      return <LiveNewService api={props.api} tenant={props.tenant} />;
     if (props.live) return <StartDraft api={props.api} tenant={props.tenant} />;
     return (
       <Builder

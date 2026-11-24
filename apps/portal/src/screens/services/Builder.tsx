@@ -1247,6 +1247,8 @@ export const Builder = ({
     uses: UnmaskedInputUse[];
     messages: Record<string, string>;
   }>({ uses: [], messages: {} });
+  const checkedRef = useRef<Record<string, unknown>>(undefined);
+  const [recheck, setRecheck] = useState(0);
   useEffect(() => {
     if (!publish) {
       setCheck(undefined);
@@ -1254,6 +1256,7 @@ export const Builder = ({
       return;
     }
     let active = true;
+    checkedRef.current = definitionRef.current;
     setCheck({ status: 'checking' });
     api
       .completeDefinition(definitionRef.current)
@@ -1281,7 +1284,13 @@ export const Builder = ({
     return () => {
       active = false;
     };
-  }, [publish]);
+  }, [publish, recheck]);
+  // Risk and guards can be fixed on the publish page, so a change there is checked again.
+  useEffect(() => {
+    if (!publish || definition === checkedRef.current) return;
+    const timer = setTimeout(() => setRecheck((n) => n + 1), 400);
+    return () => clearTimeout(timer);
+  }, [publish, definition]);
   const validationErrors = check?.status === 'done' ? check.errors : [];
   const unmaskedUses = [
     ...(check?.status === 'done' ? check.unmasked : []),
@@ -1703,7 +1712,8 @@ export const Builder = ({
     setPublish(publishPage ? 'prod' : null);
     if (publishPage) void saveDraft();
   }, [draftBar, publishPage]);
-  const firstPublishPage = !draftBar && canPublish && section === 'setup' && detail === 'publish';
+  const firstPublishPage =
+    !draftBar && !showsInUse && canPublish && section === 'setup' && detail === 'publish';
   useEffect(() => {
     if (draftBar) return;
     if (!firstPublishPage) {

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
@@ -143,6 +143,28 @@ const kaPlatform: typeof fetch = async (input, init) => {
       environments: [{ name: 'prod', version: 1, followsPublishes: true, previousVersion: null }],
     });
   return emptyPlatform(input, init);
+};
+
+/** The empty platform with service drafts kept, which answers 404 for a service never published. */
+const withDrafts = (): typeof fetch => {
+  const drafts = new Map<string, { definition: unknown; files: unknown; revision: number }>();
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  return async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const path = url.replace(/^(\/api)+/, '').split('?')[0] ?? '';
+    const draft = /^\/tenants\/[^/]+\/services\/([^/]+)\/draft$/.exec(path)?.[1];
+    if (draft && init?.method === 'PUT') {
+      const body = JSON.parse(String(init.body)) as { definition: unknown; files: unknown };
+      const saved = { ...body, revision: (drafts.get(draft)?.revision ?? 0) + 1 };
+      drafts.set(draft, saved);
+      return json(saved);
+    }
+    if (draft) return json(drafts.get(draft) ?? null);
+    const published = /^\/tenants\/[^/]+\/definitions\/services\/([^/]+)$/.exec(path)?.[1];
+    if (published && drafts.has(published)) return json({ status: 404, title: 'Not found' }, 404);
+    return emptyPlatform(input, init);
+  };
 };
 
 const renderLive = async (path: string, fetch: typeof globalThis.fetch = emptyPlatform) => {
@@ -354,14 +376,14 @@ describe('live mode shows only platform data', () => {
   });
 
   it('live mode opens the builder with the assistant', async () => {
-    await renderLive('#/services/new');
+    await renderLive('#/services/new', withDrafts());
 
-    await screen.findByRole('heading', { name: 'Lag med KI' });
-    fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
+    await screen.findByRole('heading', { level: 2, name: 'Grunnleggende' });
+    const panel = screen.getByRole('complementary', { name: 'Byggeassistent' });
+    fireEvent.change(within(panel).getByLabelText('Skriv til assistenten'), {
       target: { value: 'Svar på spørsmål om permisjon' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Start med byggeassistenten' }));
-    const panel = await screen.findByRole('complementary', { name: 'Byggeassistent' });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Send' }));
     expect(await within(panel).findByText('Svar på spørsmål om permisjon')).toBeTruthy();
     expect(
       await within(panel.querySelector('.assistant-log') as HTMLElement).findByText(
@@ -371,15 +393,15 @@ describe('live mode shows only platform data', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/Da setter jeg opp/)).toBeNull();
-    expect(screen.getByRole('button', { name: /^Formål og målgruppe/ })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Formål og målgruppe' })).toBeTruthy();
   });
 
-  it('keeps the plain form for creating a service', async () => {
-    await renderLive('#/services/new');
+  it('sends a published service away from an Avansert address, which only services not published yet have', async () => {
+    await renderLive('#/services/kunnskapsassistenten/advanced/yaml', kaPlatform);
 
-    fireEvent.click(await screen.findByRole('link', { name: 'Bruk skjemaet' }));
-    expect(await screen.findByRole('textbox', { name: 'Navn' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Opprett og publiser' })).toBeTruthy();
+    await waitFor(() => expect(window.location.hash).toBe('#/services/kunnskapsassistenten'));
+    expect(await screen.findByRole('heading', { level: 2, name: 'I bruk' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Oppsettet som YAML' })).toBeNull();
   });
 
   it('lists Kunnskapsassistenten from the platform definitions', async () => {
@@ -402,13 +424,6 @@ describe('live mode shows only platform data', () => {
     expect((await screen.findAllByText(/gpt-4o-2m-tps/)).length).toBeGreaterThan(0);
     expect(await screen.findByText(/digdir\/kudos/)).toBeTruthy();
     expect(screen.queryByText(/Qwen|Borealis/)).toBeNull();
-  });
-
-  it('offers no example templates in Ny tjeneste', async () => {
-    await renderLive('#/services/new');
-
-    await screen.findByRole('heading', { name: 'Lag med KI' });
-    expect(screen.queryByRole('button', { name: /Som Kunnskapsassistenten/ })).toBeNull();
   });
 });
 

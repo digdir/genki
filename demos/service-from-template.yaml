@@ -6,7 +6,7 @@ start: https://portal.genki-test.digdir.cloud/#/services/smoke/setup
 signedIn: true
 ready: Formål og målgruppe
 steps:
-  - say: Slik lager en virksomhet en ny KI-tjeneste i GenKI. Ny tjeneste åpner rett i Oppsett, det samme oppsettet som en publisert tjeneste har.
+  - say: Slik lager en virksomhet en ny KI-tjeneste i GenKI. Ny tjeneste åpner rett i Oppsett.
     hold: 1
   - say: Bare navn og formål må fylles ut. Resten har trygge standardvalg for modell, språk og vern, som dere kan endre senere.
     do:

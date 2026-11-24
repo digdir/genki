@@ -23,7 +23,7 @@ import './first-publish.css';
 export interface Left {
   key: string;
   text: string;
-  /** An address in the portal, or the id of a part of this page. */
+  /** An address in the portal; a part of this page uses `on`. */
   href?: string;
   on?: 'risk' | 'guards';
 }
@@ -37,10 +37,7 @@ export const ConfirmedTag = ({ confirmed }: { confirmed: boolean }) => {
   );
 };
 
-/**
- * The first publish of a new service, as its own page: what is left, the edition, and the risk
- * level and safety rules as the last step. Publiser is never locked; pressing it says what is left.
- */
+/** The first publish of a new service as a page; Publiser is never locked and says what is left. */
 export const FirstPublish = ({
   title,
   intro,

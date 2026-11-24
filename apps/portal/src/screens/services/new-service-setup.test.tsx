@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../../App';
 import { mockAnsattporten } from '../../auth';
@@ -31,7 +32,9 @@ interface Call {
 
 const draftChecks = /\/services\/utkast-[0-9a-f]{8}\/draft\/checks$/;
 
-const openNew = async (problems: { path: string; message: string }[] = []) => {
+let lastFetch: typeof globalThis.fetch = globalThis.fetch;
+
+const openNew = async (problems: { path: string; message: string }[] = [], strict = false) => {
   const calls: Call[] = [];
   const base = mockFetch([], logTimelines, undefined, exampleDatasets);
   const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -45,7 +48,9 @@ const openNew = async (problems: { path: string; message: string }[] = []) => {
   const auth = mockAnsattporten({ name: 'Ingrid Berg', organisations: exampleOrganisations });
   await auth.login();
   window.location.hash = '#/services/new';
-  render(<App auth={auth} fetch={fetch} live />);
+  lastFetch = fetch;
+  const app = <App auth={auth} fetch={fetch} live />;
+  render(strict ? <StrictMode>{app}</StrictMode> : app);
   await screen.findByRole('heading', { level: 2, name: 'Grunnleggende' });
   return calls;
 };
@@ -134,6 +139,82 @@ describe('Oppsett of a new service', () => {
       }),
     ).toBeTruthy();
     expect(wishField().value).toBe('Et kort svar med henvisning til loven');
+  });
+
+  it('adds a document once and removes only that one when React runs updates twice in StrictMode', async () => {
+    await openNew([], true);
+    const documents = within(area('Kunnskap')).getByRole('group', { name: 'Egne dokumenter' });
+    const upload = (name: string) =>
+      fireEvent.change(within(documents).getByLabelText('Egne dokumenter'), {
+        target: { files: [new File(['rutine'], name)] },
+      });
+    upload('permisjonsrutine.pdf');
+    upload('ferierutine.pdf');
+    const chosen = () =>
+      within(screen.getByRole('list', { name: 'Valgte dokumenter' })).getAllByRole('button');
+    expect(chosen().map((b) => b.getAttribute('aria-label') ?? b.textContent)).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fjern dokumentet permisjonsrutine.pdf' }));
+    expect(screen.getByRole('button', { name: 'Fjern dokumentet ferierutine.pdf' })).toBeTruthy();
+    expect(chosen()).toHaveLength(1);
+  });
+
+  it('never sends web pages, documents or the wished result to the API, also not to the builder assistant or the publish check', async () => {
+    const calls = await openNew();
+    addPage('https://www.nav.no/arbeid');
+    const documents = within(area('Kunnskap')).getByRole('group', { name: 'Egne dokumenter' });
+    fireEvent.change(within(documents).getByLabelText('Egne dokumenter'), {
+      target: { files: [new File(['rutine'], 'permisjonsrutine.pdf')] },
+    });
+    fireEvent.change(wishField(), { target: { value: 'Et kort svar med lovhenvisning' } });
+    const panel = screen.getByRole('complementary', { name: 'Byggeassistent' });
+    fireEvent.change(within(panel).getByLabelText('Skriv til assistenten'), {
+      target: { value: 'Lag en tjeneste om permisjon' },
+    });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith('/assistant/turns'))).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/definitions/validate'))).toBe(true),
+    );
+
+    const sent = calls.map((c) => JSON.stringify(c.body ?? '')).join();
+    expect(sent).toContain('Lag en tjeneste om permisjon');
+    expect(sent).not.toMatch(/nav\.no|permisjonsrutine|lovhenvisning/);
+  });
+
+  it('forgets the web pages and the wished result when the person logs out', async () => {
+    await openNew();
+    const setupHref = window.location.hash;
+    addPage('https://www.nav.no/arbeid');
+    fireEvent.change(wishField(), { target: { value: 'Et kort svar med lovhenvisning' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Brukermeny for Ingrid Berg/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Logg ut' }));
+    expect((await screen.findAllByRole('button', { name: 'Logg inn' })).length).toBeGreaterThan(0);
+    cleanup();
+    const auth = mockAnsattporten({ name: 'Ingrid Berg', organisations: exampleOrganisations });
+    await auth.login();
+    window.location.hash = setupHref;
+    render(<App auth={auth} fetch={lastFetch} live />);
+    await screen.findByRole('heading', { level: 2, name: 'Grunnleggende' });
+
+    expect(screen.queryByRole('list', { name: 'Valgte nettsider' })).toBeNull();
+    expect(wishField().value).toBe('');
+  });
+
+  it('keeps what was entered for one organisation away from another with the same draft address', async () => {
+    await openNew();
+    const setupHref = window.location.hash;
+    addPage('https://www.nav.no/arbeid');
+
+    fireEvent.click(screen.getByRole('button', { name: /^Brukermeny for Ingrid Berg/ }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Prøvekommunen/ }));
+    await waitFor(() => expect(window.location.hash).toBe('#/overview?org=999777666'));
+    go(setupHref);
+    await screen.findByRole('heading', { level: 2, name: 'Grunnleggende' });
+
+    expect(screen.queryByRole('list', { name: 'Valgte nettsider' })).toBeNull();
   });
 
   it('refuses a web page that is not an https address and says what to write', async () => {

@@ -464,6 +464,8 @@ describe('publishing', () => {
     });
     fireEvent.click(publish);
     expect(await screen.findByText('Utgave 8 er publisert.')).toBeTruthy();
+    expect(window.location.hash).toBe('#/services/rapportassistenten/setup');
+    expect(screen.queryByRole('dialog')).toBeNull();
     const call = calls.find((c) => c.method === 'POST' && c.url.endsWith('/definitions'));
     expect(decodeURIComponent(call?.headers.get('change-reason') ?? '')).toBe(
       'Bekreftet risikonivå før lansering',
@@ -474,6 +476,30 @@ describe('publishing', () => {
     expect(definition.spec?.riskConfirmation).toBeTruthy();
     go('#/services/rapportassistenten/versions');
     expect(await screen.findByText('Bekreftet risikonivå før lansering')).toBeTruthy();
+  });
+
+  it('publishes nothing and returns to Oppsett when the person cancels on the publish page', async () => {
+    const { calls, fetch } = recording();
+    await openBuilder('#/services/rapportassistenten/setup', 'Rapportassistenten', fetch);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Publiser' })[0] as HTMLElement);
+    await publishPage('Rapportassistenten');
+    fireEvent.change(screen.getByLabelText('Hva er endret, og hvorfor?'), {
+      target: { value: 'Prøver publisering' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Avbryt' }));
+    await waitFor(() => expect(window.location.hash).toBe('#/services/rapportassistenten/setup'));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('heading', { level: 1, name: 'Publiser Rapportassistenten' }),
+      ).toBeNull(),
+    );
+    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/definitions'))).toBe(false);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Publiser' })[0] as HTMLElement);
+    await publishPage('Rapportassistenten');
+    expect((screen.getByLabelText('Hva er endret, og hvorfor?') as HTMLTextAreaElement).value).toBe(
+      '',
+    );
   });
 
   it('publishes to test without changing the live version', async () => {

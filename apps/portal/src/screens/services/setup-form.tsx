@@ -49,10 +49,7 @@ const keepWidth = (n: number) => {
 
 const clamp = (n: number) => Math.min(chatWidth.max, Math.max(chatWidth.min, Math.round(n)));
 
-/**
- * The new Oppsett: every area in one form, with the builder assistant on the left. The line
- * between them can be dragged, or moved with the arrow keys, to make the chat wider.
- */
+/** The new Oppsett: every area in one form, the builder assistant left of a movable line. */
 export const SetupForm = ({
   facts,
   area,
