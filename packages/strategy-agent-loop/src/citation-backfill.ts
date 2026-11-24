@@ -1,6 +1,7 @@
 import { normaliseCitationMarkers, untrustedData } from '@genai/port-model';
 import {
   detectInsufficientContext,
+  locateSentences,
   numberByDocument,
   numberByExcerpt,
   parseCitations,
@@ -128,14 +129,22 @@ const citeDraft = async (
   candidates: Chunk[],
 ): Promise<string | undefined> => {
   const { workspace } = env;
-  const { context, index, chunks } =
-    env.citeBy === 'excerpt' ? numberByExcerpt(candidates) : numberByDocument(candidates);
+  const {
+    context,
+    index: numbered,
+    chunks,
+  } = env.citeBy === 'excerpt' ? numberByExcerpt(candidates) : numberByDocument(candidates);
   const written = await env.synthesize(
     env.systemPrompt + skillsSection([...workspace.loadedSkills.values()]),
-    citeDraftPrompt(context, untrustedData('draft-answer', draft)),
+    citeDraftPrompt(context, untrustedData('draft-answer', draft), env.citeBy === 'excerpt'),
   );
   if (written === undefined) return undefined;
-  const text = stripSourceLists(normaliseCitationMarkers(written, (n) => index.has(n)));
+  const located = locateSentences(
+    stripSourceLists(normaliseCitationMarkers(written, (n) => numbered.has(n))),
+    numbered,
+    chunks,
+  );
+  const { text, index } = located;
   if (
     !validateCitations(text, index).grounded ||
     insufficientContextResponse(text) ||
@@ -143,6 +152,8 @@ const citeDraft = async (
   )
     return undefined;
   workspace.citationIndex = index;
+  workspace.citationQuotes = located.quotes;
+  workspace.sentenceIds = { located: located.located, missed: located.missed };
   workspace.sourceOrder = chunks;
   workspace.citations = parseCitations(text, index);
   for (const c of chunks) if (!workspace.chunks.has(c.chunkId)) workspace.chunks.set(c.chunkId, c);

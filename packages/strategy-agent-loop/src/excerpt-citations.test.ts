@@ -52,7 +52,7 @@ describe('citing excerpts, not documents', () => {
     const out = await answerFrom('Sykefraværet var 5,1 prosent [1]. Turnover var 8 prosent [2].');
 
     expect(synthPrompts(out)[0]).toContain(
-      '[1] <untrusted_data kind="source" id="d1" title="Rapport 1">\nSykefraværet var 5,1 prosent.\n</untrusted_data>\n\n[2] <untrusted_data kind="source" id="d1" title="Rapport 1">\nTurnover var 8 prosent.\n</untrusted_data>\n\n[3] <untrusted_data kind="source" id="d3" title="Rapport 3">\nBudsjettet var 120 millioner.\n</untrusted_data>',
+      '[1] <untrusted_data kind="source" id="d1" title="Rapport 1">\n⟨1⟩ Sykefraværet var 5,1 prosent.\n</untrusted_data>\n\n[2] <untrusted_data kind="source" id="d1" title="Rapport 1">\n⟨1⟩ Turnover var 8 prosent.\n</untrusted_data>\n\n[3] <untrusted_data kind="source" id="d3" title="Rapport 3">\n⟨1⟩ Budsjettet var 120 millioner.\n</untrusted_data>',
     );
     expect(synthPrompts(out)[0]).toContain('Cite the excerpt, not the document as a whole');
     expect(out.text).toBe('Sykefraværet var 5,1 prosent [1]. Turnover var 8 prosent [2].');
@@ -121,7 +121,7 @@ describe('citing excerpts, not documents', () => {
     });
 
     expect(synthPrompts(out).at(-1)).toContain(
-      '[1] <untrusted_data kind="source" id="d1" title="Rapport 1">\nTurnover var 8 prosent.\n</untrusted_data>',
+      '[1] <untrusted_data kind="source" id="d1" title="Rapport 1">\n⟨1⟩ Turnover var 8 prosent.\n</untrusted_data>',
     );
     expect(out.text).toBe('Turnover var 8 prosent [1].');
     expect(out.meta).toEqual({
@@ -147,7 +147,7 @@ describe('citing excerpts, not documents', () => {
     ]);
 
     expect(numbered.context).toBe(
-      '[1] <untrusted_data kind="source" id="d1" title="Rapport 1">\na\n</untrusted_data>\n\n[2] <untrusted_data kind="source" id="d1" title="Rapport 2">\nb\n</untrusted_data>\n\n[3] <untrusted_data kind="source" id="d3" title="Rapport 3">\nc\n</untrusted_data>',
+      '[1] <untrusted_data kind="source" id="d1" title="Rapport 1">\n⟨1⟩ a\n</untrusted_data>\n\n[2] <untrusted_data kind="source" id="d1" title="Rapport 2">\n⟨1⟩ b\n</untrusted_data>\n\n[3] <untrusted_data kind="source" id="d3" title="Rapport 3">\n⟨1⟩ c\n</untrusted_data>',
     );
     expect([...numbered.index]).toEqual([
       [1, 'c1'],
