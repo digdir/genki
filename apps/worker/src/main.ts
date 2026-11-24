@@ -34,6 +34,7 @@ import {
   tracesContent,
   tracingEgress,
   withBlockSettings,
+  organisationNameFrom,
 } from '@genai/composition';
 import {
   defaultHeavyThreshold,
@@ -704,6 +705,7 @@ const usedTokens = async (tenant: string, since: string) =>
     : 0;
 const runtime = await createRuntime({
   platformTenant,
+  ...(db ? { organisationName: organisationNameFrom(db.tenants) } : {}),
   federatedTokens,
   catalogs: {
     models: catalogs.models.catalog,

@@ -262,6 +262,7 @@ export class Workspace {
   citationValidation: CitationValidation | undefined;
   noToolCallRetries = 0;
   sourceFactsRead = false;
+  serviceFactsRead = false;
   lastSearchWindow: SearchWindow | undefined;
 
   constructor(readonly limits: BudgetLimits) {}

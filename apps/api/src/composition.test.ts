@@ -271,6 +271,8 @@ const modelReply = (body: Record<string, unknown>) => {
       return toolTurns === 0
         ? tool('state-organisation', { action: 'under', unit: '932384469' })
         : text('Dette er virksomhetene.');
+    if (offered.includes('service_facts'))
+      return toolTurns === 0 ? tool('service_facts', {}) : text('Jeg er versjon to.');
     if (offered.includes('source_facts'))
       return toolTurns === 0 ? tool('source_facts', { newest: 3 }) : text('Kudos har dette.');
     if (toolTurns === 0) return tool('search', { queries: ['tildelingsbrev Digdir 2025'] });
@@ -582,6 +584,41 @@ describe('the composed platform', () => {
       .flatMap((r) => (r.body.messages as Message[] | undefined) ?? [])
       .find((m) => m.role === 'tool');
     expect(facts?.content).toContain('"source": "Kudos"');
+  });
+
+  it('tells the agent the version a run uses and when it was published, through service-facts@1', async () => {
+    const { platform, app, model } = await boot(undefined, {
+      definitions: (plugins) =>
+        new InMemoryDefinitionStore(plugins, () => new Date('2026-10-06T22:30:00Z')),
+    });
+    const service = yaml('services/kunnskapsassistenten.yaml') as {
+      metadata: Record<string, unknown>;
+      spec: Record<string, unknown>;
+    };
+    const definition = {
+      ...service,
+      metadata: { ...service.metadata, id: 'ka-service-facts' },
+      spec: { ...service.spec, tools: ['service-facts@1'] },
+    };
+    for (const reason of ['first', 'second'])
+      expect((await platform.definitions.publish(definition, 'kari@digdir.no', reason)).ok).toBe(
+        true,
+      );
+
+    const res = await mcp(app, 'tools/call', {
+      name: 'ka-service-facts__default',
+      arguments: { query: 'Hvilken versjon er du?' },
+    });
+
+    expect(((await res.json()) as { result: { isError: boolean } }).result.isError).toBe(false);
+    const facts = model.seen
+      .flatMap((r) => (r.body.messages as Message[] | undefined) ?? [])
+      .find((m) => m.role === 'tool')?.content;
+    expect(facts).toContain('"version": 2');
+    expect(facts).toContain('"published": "2026-10-07"');
+    expect(facts).toContain('"environment": "prod"');
+    expect(facts).toContain('"name": "GPT-5.6 Terra"');
+    expect(facts).not.toMatch(/kari@digdir\.no|"second"|foundry/);
   });
 
   it('validates a service definition that grants state-organisation@1 and refuses an unknown version', async () => {
