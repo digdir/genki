@@ -271,9 +271,9 @@ export const exhaustionDefaults: Record<AnswerLanguage, string> = {
 };
 
 export const modelRefusals: Record<AnswerLanguage, string> = {
-  nb: 'Modellen avviste forespørselen, så jeg kan ikke svare på dette spørsmålet.',
-  nn: 'Modellen avviste førespurnaden, så eg kan ikkje svare på dette spørsmålet.',
-  en: 'The model refused the request, so I cannot answer this question.',
+  nb: 'Modellen avviste forespørselen, så her er det ikke noe svar.',
+  nn: 'Modellen avviste førespurnaden, så her er det ikkje noko svar.',
+  en: 'The model refused the request, so there is no answer here.',
 };
 
 export const honestMisses: Record<AnswerLanguage, string> = {

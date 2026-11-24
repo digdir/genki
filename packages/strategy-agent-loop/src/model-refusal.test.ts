@@ -79,6 +79,65 @@ describe('a model refusal', () => {
     expect(out.meta?.noAnswer).toBeUndefined();
   });
 
+  it('answers a refusal in nynorsk', async () => {
+    const out = await run({
+      question: 'Kva seier tildelingsbrevet til Digdir for 2025?',
+      scripts: { primary: { loop: [() => refused()] } },
+    });
+
+    expect(out.text).toBe(modelRefusals.nn);
+  });
+
+  it('treats a refused draft as a refusal, without another round or fallback call', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result('', [call('generate_response', { query: 'x' })]),
+            () => result('Svar.'),
+          ],
+          read: [() => readSignal('gap-remaining')],
+          synth: [() => refused('reasoning_extraction')],
+        },
+      },
+    });
+
+    expect(out.notices).toContainEqual(
+      expect.objectContaining({ stage: 'model-refused', category: 'reasoning_extraction' }),
+    );
+    expect(out.loops).toHaveLength(3);
+    expect(out.seen.map((s) => s.kind)).not.toContain('final');
+    expect(out.text).toBe(modelRefusals.nb);
+  });
+
+  it('treats a refused fallback call as a refusal', async () => {
+    const out = await run({
+      scripts: { primary: { loop: [() => result('')], final: refused('general_harms') } },
+    });
+
+    expect(out.notices).toContainEqual(
+      expect.objectContaining({ stage: 'model-refused', category: 'general_harms' }),
+    );
+    expect(out.text).toBe(modelRefusals.nb);
+  });
+
+  it('does not treat a filtered turn that still calls tools as a refusal', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => ({ ...refused(), toolCalls: [call('search', { queries: ['x'] })] }),
+            () => result('Svar.'),
+          ],
+        },
+      },
+    });
+
+    expect(out.notices.map((n) => n.stage)).not.toContain('model-refused');
+  });
+
   it('keeps a usable earlier draft when a later turn is refused', async () => {
     const out = await run({
       scripts: {

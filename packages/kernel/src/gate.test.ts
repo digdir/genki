@@ -558,6 +558,29 @@ describe('the gate outside a run', () => {
     expect(outside.audit).toHaveLength(1);
   });
 
+  it('passes how a call ended to the outside meter', async () => {
+    const ends: unknown[] = [];
+    const gate = createGate({
+      outside: {
+        audit: async () => undefined,
+        meter: async (_ctx, _usage, _model, end) => {
+          ends.push(end);
+        },
+      },
+    });
+    const noRun = contextFor({}, [], []);
+    Reflect.deleteProperty(noRun, 'audit');
+    await gate.call(
+      noRun,
+      targetFor({}, 'model', 'chat', 'admitted'),
+      { ...laneChat, end: () => ({ finishReason: 'content_filter', refusalCategory: 'cyber' }) },
+      { messages: ['hei'] },
+      async () => ({ content: '' }),
+    );
+
+    expect(ends).toEqual([{ finishReason: 'content_filter', refusalCategory: 'cyber' }]);
+  });
+
   it("hands adapters a fetch that applies the endpoint's egress guard on every request", async () => {
     const reached: string[] = [];
     let allowed = false;

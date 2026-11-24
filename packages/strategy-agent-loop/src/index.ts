@@ -139,6 +139,23 @@ export const modelRoles = z.looseObject({
   judge: z.string().min(1).optional(),
 });
 
+interface Refusal {
+  category?: string;
+}
+
+/** A blank answer the provider filtered: the model refused, and asking again gets the same. */
+const refusalOf = (result: ChatResult): Refusal | undefined =>
+  result.finishReason === 'content_filter' && result.toolCalls.length === 0 && blank(result.content)
+    ? result.stopDetail?.category
+      ? { category: result.stopDetail.category }
+      : {}
+    : undefined;
+
+const refusedNotice = (refusal: Refusal, iteration: number): Emitted => ({
+  type: 'kernel.notice',
+  data: { stage: 'model-refused', iteration, ...refusal },
+});
+
 export const sessionFor = (
   ctx: InvocationContext,
   model: AgentLoopRuntimeConfig['model'],
@@ -643,8 +660,8 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           : '') +
         `\n\n${untrustedDataNote(config.languages)}`,
       search: searchSettings,
-      synthesize: (system, user) =>
-        synthesisSession.text(
+      synthesize: async (system, user) => {
+        const written = await synthesisSession.chat(
           {
             purpose: 'answer',
             messages: [
@@ -658,7 +675,10 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             onStream();
             push(text);
           },
-        ),
+        );
+        refusal ??= refusalOf(written);
+        return written.content;
+      },
       ...(settings.generationPrompt ? { generationPrompt: settings.generationPrompt } : {}),
       ...(settings.citeBy ? { citeBy: settings.citeBy } : {}),
     });
@@ -668,7 +688,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     let fallbackMessages: ChatMessage[] = initialMessages;
     let phase: 'default' | 'finalize' = 'default';
     let finalized = false;
-    let refused = false;
+    let refusal: Refusal | undefined;
     let iteration = 0;
     let lastIteration = 0;
     let readNudges = 0;
@@ -725,17 +745,9 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       };
 
       // A refusal is not asked again: the same messages get the same refusal.
-      if (
-        turn.finishReason === 'content_filter' &&
-        turn.toolCalls.length === 0 &&
-        blank(turn.content)
-      ) {
-        const category = turn.stopDetail?.category;
-        yield {
-          type: 'kernel.notice',
-          data: { stage: 'model-refused', iteration, ...(category ? { category } : {}) },
-        };
-        refused = true;
+      refusal ??= refusalOf(turn);
+      if (refusal) {
+        yield refusedNotice(refusal, iteration);
         break;
       }
 
@@ -884,6 +896,10 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         type: 'kernel.notice',
         data: { event: 'agent/turn-completed', iteration, 'tool-calls': toolCalls },
       };
+      if (refusal) {
+        yield refusedNotice(refusal, iteration);
+        break;
+      }
 
       const spent = judgesOff();
       if (!ablated.has('read-signal-eval') && !spent) {
@@ -1092,7 +1108,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       const cited = Boolean(stored && workspace.citationValidation?.grounded);
       const usable = stored && (cited || !workspace.lastGenerateInsufficient) ? stored : undefined;
       if (usable) answer = usable;
-      else if (refused) {
+      else if (refusal) {
         answer = modelRefusals[language];
         yield { type: 'kernel.part.delta', data: { text: answer } };
       } else {
@@ -1103,7 +1119,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         const gaps = answerTurnGaps(latestGaps(workspace));
         try {
           const fallback = yield* withDeltas((push) =>
-            session.text(
+            session.chat(
               {
                 purpose: 'answer',
                 messages: [
@@ -1116,7 +1132,12 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
               push,
             ),
           );
-          answer = blank(fallback) ? exhaustionDefaults[language] : fallback;
+          refusal = refusalOf(fallback);
+          if (refusal) {
+            yield refusedNotice(refusal, iteration);
+            answer = modelRefusals[language];
+            yield { type: 'kernel.part.delta', data: { text: answer } };
+          } else answer = blank(fallback.content) ? exhaustionDefaults[language] : fallback.content;
         } catch (error) {
           if (!stored || ctx.signal.aborted) throw error;
           answer = stored;
@@ -1144,7 +1165,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     if (
       !clarification &&
       answer !== undefined &&
-      !(refused && answer === modelRefusals[language])
+      !(refusal && answer === modelRefusals[language])
     ) {
       const settlement = settleCitations(answer, workspace);
       let settled: string | undefined;
@@ -1200,7 +1221,6 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     // Only a plain miss in the sources gets the service's own words.
     if (
       foundNothing &&
-      !refused &&
       settings.noAnswerText &&
       answer !== settings.noAnswerText &&
       answer !== exhaustionDefaults[language] &&

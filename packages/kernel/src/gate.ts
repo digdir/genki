@@ -160,7 +160,7 @@ export type GateChunk<Res> = { kind: 'delta'; text: string } | { kind: 'done'; r
 
 export interface OutsideRun {
   audit(ctx: PortContext, record: GateRecord): Promise<void>;
-  meter(ctx: PortContext, usage: Usage, model: Ref): Promise<void>;
+  meter(ctx: PortContext, usage: Usage, model: Ref, end?: CallEnd): Promise<void>;
 }
 
 /** Why the call's tenant may spend no more tokens now, or undefined when it may. */
@@ -570,8 +570,9 @@ export const createGate = (options: GateOptions = {}): Gate => {
     let outcome: GateRecord['outcome'] = refused ? 'refused' : 'ok';
     try {
       if (usage) {
-        await ctx.meter(usage, target.model, payload.end?.(answer.result));
-        await outside(ctx)?.meter(ctx, usage, target.model);
+        const end = payload.end?.(answer.result);
+        await ctx.meter(usage, target.model, end);
+        await outside(ctx)?.meter(ctx, usage, target.model, end);
       }
       if (refused) {
         const message = `the answer was refused: ${refused}`;

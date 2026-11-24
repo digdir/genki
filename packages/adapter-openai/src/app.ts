@@ -1477,7 +1477,8 @@ export class AnswerTracker {
     } else if (
       data.stage === 'answer-discarded' ||
       data.stage === 'exhausted' ||
-      data.stage === 'recovered-empty'
+      data.stage === 'recovered-empty' ||
+      data.stage === 'model-refused'
     ) {
       this.retract();
       this.channel = 'answer';

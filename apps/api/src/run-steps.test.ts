@@ -582,6 +582,17 @@ describe('the run mapper', () => {
       expect(mapper.steps.map((s) => s.title)).not.toContain('Tomt svar');
     });
 
+    it('shows a model refusal without a category', () => {
+      seq = 0;
+      const mapper = new RunMapper();
+      mapper.push(notice(100, { stage: 'model-refused', iteration: 0 }));
+
+      expect(mapper.steps[0]).toMatchObject({
+        title: 'Modellen avviste',
+        summary: 'Modellen avviste forespørselen',
+      });
+    });
+
     it('upserts the same step id while it runs and when it finishes', () => {
       const mapper = new RunMapper();
       const changes = agentRun()

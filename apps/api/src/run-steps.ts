@@ -1475,8 +1475,11 @@ export class RunMapper {
     if (host) {
       if (tokens !== undefined) host.tokens = (host.tokens ?? 0) + tokens;
       host.model = model;
+      // The step shows how its latest call ended.
       if (finishReason) host.finishReason = finishReason;
+      else delete host.finishReason;
       if (refusalCategory) host.refusalCategory = refusalCategory;
+      else delete host.refusalCategory;
       host.blocks = [...host.blocks.filter((b) => !b.usage), kv(host)];
       if (host === this.turn) {
         host.summary = tokenText;
