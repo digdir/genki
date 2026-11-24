@@ -95,3 +95,30 @@ describe('calls outside a run', () => {
     expect(await read(log, outsideRunTask(tenant, at))).toEqual([]);
   });
 });
+
+describe('usage outside a run', () => {
+  it('keeps how a model call ended on its usage event', async () => {
+    const log = new InMemoryEventLog();
+    const ctx = {
+      tenant,
+      task: 'search',
+      principal: { kind: 'service', id: 'search', tenant },
+      signal: new AbortController().signal,
+      meter: async () => undefined,
+    } as unknown as PortContext;
+
+    await outsideRun(log, () => at).meter(
+      ctx,
+      { inputTokens: 3 },
+      { kind: 'model', id: 'claude' },
+      { finishReason: 'content_filter', refusalCategory: 'cyber' },
+    );
+
+    const events: Event[] = [];
+    for await (const e of log.read(outsideRunTask(tenant, at), 0, () => false)) events.push(e);
+    expect(events[0]?.data).toMatchObject({
+      finishReason: 'content_filter',
+      refusalCategory: 'cyber',
+    });
+  });
+});

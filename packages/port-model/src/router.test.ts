@@ -397,11 +397,34 @@ describe('model router', () => {
       {
         usage: { inputTokens: 3, outputTokens: 2, requests: 1 },
         model: { kind: 'model', id: 'a/small' },
+        end: { finishReason: 'stop' },
       },
       {
         usage: { inputTokens: 3, outputTokens: 2, requests: 1 },
         model: { kind: 'model', id: 'a/small' },
+        end: { finishReason: 'stop' },
       },
+    ]);
+  });
+
+  it('meters a call with its finish reason and the category of a refusal', async () => {
+    const a = recording('proto-a', async () => ({
+      ...answer(''),
+      finishReason: 'content_filter' as const,
+      stopDetail: { category: 'reasoning_extraction' },
+    }));
+    const router = new ModelRouter({
+      catalog,
+      adapters: [a.adapter, recording('proto-b').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+    });
+    const { ctx, metered } = testContext();
+
+    await open(router, 'a/small', ctx).chat({ messages: [] });
+
+    expect(metered.map((m) => m.end)).toEqual([
+      { finishReason: 'content_filter', refusalCategory: 'reasoning_extraction' },
     ]);
   });
 

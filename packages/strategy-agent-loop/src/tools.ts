@@ -43,7 +43,8 @@ import {
   type Workspace,
 } from './workspace.js';
 
-export type Synthesize = (systemPrompt: string, userPrompt: string) => Promise<string>;
+/** Writes a draft; undefined when the model refused to write one. */
+export type Synthesize = (systemPrompt: string, userPrompt: string) => Promise<string | undefined>;
 
 export interface SearchSettings {
   titleOverlapWeight: number;
@@ -981,19 +982,18 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
   } = env.citeBy === 'excerpt' ? numberByExcerpt(docs) : numberByDocument(docs);
   let text: string;
   try {
-    text = stripSourceLists(
-      normaliseCitationMarkers(
-        await env.synthesize(
-          env.systemPrompt + skillsSection([...workspace.loadedSkills.values()]),
-          generationPromptFor(
-            env.generationPrompt ?? defaultGenerationPrompt,
-            context,
-            args.data.query,
-            env.citeBy,
-          ),
-        ),
+    const written = await env.synthesize(
+      env.systemPrompt + skillsSection([...workspace.loadedSkills.values()]),
+      generationPromptFor(
+        env.generationPrompt ?? defaultGenerationPrompt,
+        context,
+        args.data.query,
+        env.citeBy,
       ),
     );
+    // A refused draft leaves the earlier draft and its citations as they were.
+    if (written === undefined) return { content: 'The model refused to write this draft.' };
+    text = stripSourceLists(normaliseCitationMarkers(written));
   } catch (error) {
     if (env.signal.aborted) throw error;
     return {

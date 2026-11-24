@@ -518,6 +518,107 @@ describe('the run mapper', () => {
       });
     });
 
+    it('shows the finish reason on a model step', () => {
+      seq = 0;
+      const mapper = new RunMapper();
+      [
+        notice(100, { event: 'agent/iteration-started', iteration: 0, 'max-iterations': 4 }),
+        at(
+          400,
+          'kernel.usage',
+          {
+            usage: { inputTokens: 500, outputTokens: 20 },
+            port: 'model',
+            model: { kind: 'model', id: 'gpt-test' },
+            finishReason: 'length',
+          },
+          'audit',
+        ),
+      ].forEach((e) => mapper.push(e));
+
+      const [round] = mapper.steps;
+      expect(round).toMatchObject({ type: 'model', finishReason: 'length' });
+      expect(round?.refusalCategory).toBeUndefined();
+      expect(round?.blocks.find((b) => b.kind === 'kv')?.rows).toContainEqual([
+        'Stopp',
+        'kuttet ved maks lengde',
+      ]);
+    });
+
+    it('shows a model refusal with its category', () => {
+      seq = 0;
+      const mapper = new RunMapper();
+      [
+        notice(100, { event: 'agent/iteration-started', iteration: 0, 'max-iterations': 4 }),
+        at(
+          400,
+          'kernel.usage',
+          {
+            usage: { inputTokens: 4923, outputTokens: 0 },
+            port: 'model',
+            model: { kind: 'model', id: 'claude-opus-5-5' },
+            finishReason: 'content_filter',
+            refusalCategory: 'reasoning_extraction',
+          },
+          'audit',
+        ),
+        notice(410, { stage: 'model-refused', iteration: 0, category: 'reasoning_extraction' }),
+      ].forEach((e) => mapper.push(e));
+
+      const [round, refused] = mapper.steps;
+      expect(round).toMatchObject({
+        finishReason: 'content_filter',
+        refusalCategory: 'reasoning_extraction',
+      });
+      expect(round?.blocks.find((b) => b.kind === 'kv')?.rows).toContainEqual([
+        'Stopp',
+        'avvist (reasoning_extraction)',
+      ]);
+      expect(refused).toMatchObject({
+        title: 'Modellen avviste',
+        summary: 'Modellen avviste forespørselen (reasoning_extraction)',
+        warning: true,
+      });
+      expect(mapper.steps.map((s) => s.title)).not.toContain('Tomt svar');
+    });
+
+    it('shows a model refusal without a category', () => {
+      seq = 0;
+      const mapper = new RunMapper();
+      mapper.push(notice(100, { stage: 'model-refused', iteration: 0 }));
+
+      expect(mapper.steps[0]).toMatchObject({
+        title: 'Modellen avviste',
+        summary: 'Modellen avviste forespørselen',
+      });
+    });
+
+    it("takes the finish reason and category from the model step's latest call", () => {
+      seq = 0;
+      const mapper = new RunMapper();
+      const usageEnded = (ms: number, end: Record<string, string>) =>
+        at(
+          ms,
+          'kernel.usage',
+          {
+            usage: { inputTokens: 10, outputTokens: 0 },
+            port: 'model',
+            model: { kind: 'model', id: 'claude-opus-5-5' },
+            ...end,
+          },
+          'audit',
+        );
+      [
+        notice(100, { stage: 'tool', tool: 'generate_response', iteration: 0 }),
+        usageEnded(200, { finishReason: 'content_filter', refusalCategory: 'cyber' }),
+        usageEnded(300, { finishReason: 'stop' }),
+      ].forEach((e) => mapper.push(e));
+
+      const step = mapper.steps.find((s) => s.title === 'Skrev svaret');
+      expect(step?.finishReason).toBe('stop');
+      expect(step?.refusalCategory).toBeUndefined();
+    });
+
     it('upserts the same step id while it runs and when it finishes', () => {
       const mapper = new RunMapper();
       const changes = agentRun()

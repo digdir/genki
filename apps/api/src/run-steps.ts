@@ -30,6 +30,10 @@ export interface TimelineStep {
   depth?: number;
   tokens?: number;
   model?: string;
+  /** Why the model call stopped, as the provider said: stop, length, tool_calls, content_filter or other. */
+  finishReason?: string;
+  /** The provider's category for a refusal, such as reasoning_extraction. */
+  refusalCategory?: string;
   iteration?: number;
   warning?: true;
   reads?: StepRead[];
@@ -144,6 +148,28 @@ const decimal = (n: number) =>
 const plain = t as unknown as (key: ApiKey) => string;
 
 const round = (seconds: number) => Math.max(0, Math.round(seconds * 100) / 100);
+
+const stopKeys: Record<
+  string,
+  | 'steps.stop_stop'
+  | 'steps.stop_tool_calls'
+  | 'steps.stop_length'
+  | 'steps.stop_content_filter'
+  | 'steps.stop_other'
+> = {
+  stop: 'steps.stop_stop',
+  tool_calls: 'steps.stop_tool_calls',
+  length: 'steps.stop_length',
+  content_filter: 'steps.stop_content_filter',
+  other: 'steps.stop_other',
+};
+
+/** A finish reason in plain words, with the provider's category after a refusal. */
+const stopText = (reason: string, category: string | undefined) => {
+  const key = stopKeys[reason];
+  const text = key ? t(key) : reason;
+  return category ? t('steps.stopWithCategory', { reason: text, category }) : text;
+};
 
 const counted = (
   key: 'steps.hits' | 'steps.searches' | 'steps.chunks' | 'steps.documents' | 'steps.sources',
@@ -711,6 +737,7 @@ export class RunMapper {
     if (stage === 'citations') return this.citations(e, ts, prev, data);
     if (stage === 'answer-discarded') return this.discarded(e, ts, data);
     if (stage === 'exhausted' || stage === 'recovered-empty') return this.exhausted(e, ts, data);
+    if (stage === 'model-refused') return this.refused(e, ts, data);
     if (kind === 'decision') return this.decision(e, ts, data);
     if (kind === 'documents')
       return void this.add(
@@ -1297,6 +1324,24 @@ export class RunMapper {
     });
   }
 
+  private refused(e: Event, ts: number, data: Data) {
+    const category = str(data.category);
+    const text = category ? t('steps.refusedWithCategory', { category }) : t('steps.refused');
+    this.warn(text);
+    this.channel = 'answer';
+    this.add({
+      id: `e${e.seq}`,
+      type: 'note',
+      title: t('steps.refusedTitle'),
+      summary: text,
+      at: this.offset(ts),
+      state: 'partial',
+      warning: true,
+      blocks: [],
+      ...this.rawOf(data),
+    });
+  }
+
   private exhausted(e: Event, ts: number, data: Data) {
     const exhausted = data.stage === 'exhausted';
     const text = exhausted
@@ -1379,6 +1424,8 @@ export class RunMapper {
     const output = num(usage.outputTokens) ?? 0;
     const cached = num(usage.cachedInputTokens) ?? 0;
     const model = str(record(data.model).id) ?? str(record(data.ref).id) ?? t('steps.unknownModel');
+    const finishReason = str(data.finishReason);
+    const refusalCategory = str(data.refusalCategory);
     this.inputTokens += input;
     this.outputTokens += output;
     this.cachedInputTokens += cached;
@@ -1419,12 +1466,20 @@ export class RunMapper {
               ...(cached ? [[t('steps.cached'), nbCount(cached)] as [string, string]] : []),
             ]
           : []),
+        ...(finishReason
+          ? [[t('steps.stopReason'), stopText(finishReason, refusalCategory)] as [string, string]]
+          : []),
       ],
       usage: true,
     });
     if (host) {
       if (tokens !== undefined) host.tokens = (host.tokens ?? 0) + tokens;
       host.model = model;
+      // The step shows how its latest call ended.
+      if (finishReason) host.finishReason = finishReason;
+      else delete host.finishReason;
+      if (refusalCategory) host.refusalCategory = refusalCategory;
+      else delete host.refusalCategory;
       host.blocks = [...host.blocks.filter((b) => !b.usage), kv(host)];
       if (host === this.turn) {
         host.summary = tokenText;
@@ -1439,6 +1494,8 @@ export class RunMapper {
       summary: tokenText,
       ...(tokens === undefined ? {} : { tokens }),
       model,
+      ...(finishReason ? { finishReason } : {}),
+      ...(refusalCategory ? { refusalCategory } : {}),
       blocks: [],
       ...(this.usageShown ? this.rawOf(data) : {}),
     });

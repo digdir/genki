@@ -270,6 +270,12 @@ export const exhaustionDefaults: Record<AnswerLanguage, string> = {
   en: 'Could not determine an answer within the limits for this question.',
 };
 
+export const modelRefusals: Record<AnswerLanguage, string> = {
+  nb: 'Modellen avviste forespørselen, så her er det ikke noe svar.',
+  nn: 'Modellen avviste førespurnaden, så her er det ikkje noko svar.',
+  en: 'The model refused the request, so there is no answer here.',
+};
+
 export const honestMisses: Record<AnswerLanguage, string> = {
   nb: 'Jeg fant ikke informasjon i kunnskapsbasen som svarer på dette spørsmålet.',
   nn: 'Eg fann ikkje informasjon i kunnskapsbasen som svarar på dette spørsmålet.',

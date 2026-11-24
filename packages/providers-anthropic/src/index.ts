@@ -4,6 +4,7 @@ import type {
   ContentBlockParam,
   MessageCreateParamsBase,
   MessageParam,
+  RefusalStopDetails,
   StopReason,
   ToolResultBlockParam,
 } from '@anthropic-ai/sdk/resources/messages/messages';
@@ -39,6 +40,9 @@ const finishReasons: Partial<Record<StopReason, FinishReason>> = {
   tool_use: 'tool_calls',
   refusal: 'content_filter',
 };
+
+const stopDetailOf = (details: RefusalStopDetails | null | undefined) =>
+  details?.category ? { stopDetail: { category: details.category } } : {};
 
 const parseArguments = (raw: string): unknown => {
   try {
@@ -238,6 +242,7 @@ export const anthropicMessages: ModelAdapter<ModelOptions> = {
           return {
             ...fromContent(message.content),
             finishReason: (message.stop_reason && finishReasons[message.stop_reason]) || 'other',
+            ...stopDetailOf(message.stop_details),
             usage: {
               inputTokens: inputTokens(message.usage),
               outputTokens: message.usage.output_tokens,
@@ -256,6 +261,7 @@ export const anthropicMessages: ModelAdapter<ModelOptions> = {
         const blocks = new Map<number, StreamBlock>();
         let served = model.deployment;
         let finish: FinishReason = 'other';
+        let stopDetail: ReturnType<typeof stopDetailOf> = {};
         const usage: ChatResult['usage'] = { inputTokens: 0, outputTokens: 0, requests: 1 };
         const dropped: TunableParameter[] = [];
         try {
@@ -293,6 +299,7 @@ export const anthropicMessages: ModelAdapter<ModelOptions> = {
             } else if (event.type === 'message_delta') {
               if (event.delta.stop_reason)
                 finish = finishReasons[event.delta.stop_reason] ?? 'other';
+              stopDetail = stopDetailOf(event.delta.stop_details);
               usage.outputTokens = event.usage.output_tokens;
             }
           }
@@ -311,6 +318,7 @@ export const anthropicMessages: ModelAdapter<ModelOptions> = {
             content: ordered.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join(''),
             toolCalls,
             finishReason: finish,
+            ...stopDetail,
             usage,
             servedModel: served,
             ...(dropped.length ? { droppedParameters: dropped } : {}),

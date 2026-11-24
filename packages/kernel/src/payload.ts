@@ -358,6 +358,7 @@ export const chatShape = (continuations: readonly Shape[] = []): OperationShape 
       content: text,
       toolCalls: array(toolCall),
       finishReason: oneOf('stop', 'length', 'tool_calls', 'content_filter', 'other'),
+      stopDetail: optional(object({ category: optional(plain()) })),
       usage,
       servedModel: plain(),
       ...continuation,
