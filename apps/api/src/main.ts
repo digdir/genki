@@ -581,7 +581,6 @@ const platform = await createPlatform({
     : {}),
   ...(db ? { databasePing: () => db.pool.query('select 1') } : {}),
   ...(enhetsregisteret ? { organizationRegistry: { url: enhetsregisteret } } : {}),
-  searchOnlyClusters: [process.env.TYPESENSE_URL],
   ...(process.env.INGEST_FOLDER_ROOT ? { ingestFolderRoot: process.env.INGEST_FOLDER_ROOT } : {}),
   ...(process.env.INGEST_WORKING_DIRECTORY
     ? { ingestWorkingDirectory: process.env.INGEST_WORKING_DIRECTORY }

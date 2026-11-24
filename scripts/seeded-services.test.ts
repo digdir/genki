@@ -43,3 +43,40 @@ describe('seeded services', () => {
     expect(naming).toEqual([]);
   });
 });
+
+interface SeedCatalog {
+  endpoints: Record<string, { engine: string }>;
+  datasets: { id: string; endpoint: string; options?: Record<string, unknown> }[];
+}
+
+const knowledgeSeed = () =>
+  parseAllDocuments(
+    readFileSync(join(root, 'apps/api/config/local/knowledge.yaml'), 'utf8'),
+  )[0]?.toJS() as SeedCatalog;
+
+describe('seeded knowledge catalog', () => {
+  it('no seeded dataset names a Typesense endpoint', () => {
+    const seed = knowledgeSeed();
+    const typesense = Object.entries(seed.endpoints)
+      .filter(([, endpoint]) => endpoint.engine === 'typesense')
+      .map(([id]) => id);
+
+    expect(typesense).toEqual([]);
+    expect(
+      seed.datasets.filter((d) => typesense.includes(d.endpoint) || d.options?.collections),
+    ).toEqual([]);
+  });
+
+  it('the seeded Kudos and public-docs are on kunnskapsserveren', () => {
+    const seed = knowledgeSeed();
+
+    expect(
+      seed.datasets
+        .filter((d) => ['digdir/kudos', 'digdir/public-docs'].includes(d.id))
+        .map((d) => [d.id, d.endpoint]),
+    ).toEqual([
+      ['digdir/kudos', 'kunnskapsserveren'],
+      ['digdir/public-docs', 'kunnskapsserveren'],
+    ]);
+  });
+});

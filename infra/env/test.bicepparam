@@ -47,7 +47,6 @@ param keyVaultSecretNames = concat(
     'altinn-subscription-key'
     'foundry-openai-key'
     'foundry-claude-key'
-    'typesense-key'
     'langfuse-public-key'
     'langfuse-secret-key'
   ],
@@ -61,7 +60,6 @@ var langfuseContent = readEnvironmentVariable('LANGFUSE_INSTANCE_RECEIVES_CONTEN
 param appEnv = {
   FOUNDRY_OPENAI_BASE_URL: readEnvironmentVariable('FOUNDRY_OPENAI_BASE_URL', '')
   FOUNDRY_CLAUDE_BASE_URL: readEnvironmentVariable('FOUNDRY_CLAUDE_BASE_URL', '')
-  TYPESENSE_URL: readEnvironmentVariable('TYPESENSE_URL', '')
   LANGFUSE_BASE_URL: 'https://langfuse.digdir.cloud'
   // True unless the variable is set: operators confirmed ADR 0011's conditions.
   LANGFUSE_INSTANCE_RECEIVES_CONTENT: empty(langfuseContent) ? 'true' : langfuseContent

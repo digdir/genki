@@ -10,6 +10,7 @@ import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
 import { resolveCatalog } from './catalogs.js';
 import { createPlatform } from './composition.js';
+import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
 
 const tenant = '991825827';
 const config = join(import.meta.dirname, '..', 'config', 'local');
@@ -165,7 +166,7 @@ const boot = async () => {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
     TYPESENSE_URL: search.url,
   };
-  const knowledge = yaml('knowledge.yaml');
+  const knowledge = seedOnTypesense(yaml('knowledge.yaml'));
   const kari = {
     kind: 'employee',
     issuer: 'test',

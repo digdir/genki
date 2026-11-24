@@ -24,6 +24,7 @@ import {
   exhaustionNudge,
   readEvaluatorSystemPrompt,
 } from '@genai/strategy-agent-loop';
+import { createPool } from '@genai/providers-postgres';
 import { resolveCatalog } from './catalogs.js';
 import { Hono } from 'hono';
 import { createAdmin } from './admin.js';
@@ -38,6 +39,7 @@ import {
 import { withoutUnknownVariantModels } from './seed-variants.js';
 import { kernelTaskReader, toTimeline } from './timeline.js';
 import { policyKind } from './building-blocks.js';
+import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -46,6 +48,7 @@ afterEach(async () => {
 
 const config = join(import.meta.dirname, '..', 'config', 'local');
 const yaml = (file: string) => parseYaml(readFileSync(join(config, file), 'utf8')) as unknown;
+const kudosOnTypesense = () => seedOnTypesense(yaml('knowledge.yaml'));
 
 type Schema = {
   type?: string;
@@ -349,26 +352,44 @@ const boot = async (
     log?: InMemoryEventLog;
     configEntries?: InMemoryConfigEntryStore;
     definitions?: Parameters<typeof createPlatform>[0]['definitions'];
+    /** Boots on the shipped seed with no Typesense setting or secret at all. */
+    seedOnly?: boolean;
   } = {},
 ) => {
   const model = await fakeHttp(modelReply);
   const search = await fakeHttp(typesenseReply);
   servers.push(model, search);
-  const env = {
+  const env: Record<string, string> = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
-    TYPESENSE_URL: search.url,
+    ...(extra.seedOnly ? {} : { TYPESENSE_URL: search.url }),
   };
   const platform = await createPlatform({
     catalogs: {
       models: resolveCatalog(extra.models ?? yaml('models.yaml'), 'models', env).catalog,
-      knowledge: resolveCatalog(extra.knowledge ?? yaml('knowledge.yaml'), 'datasets', env).catalog,
+      knowledge: resolveCatalog(
+        extra.knowledge ?? (extra.seedOnly ? yaml('knowledge.yaml') : kudosOnTypesense()),
+        'datasets',
+        env,
+      ).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     ...(extra.settings ? { settings: extra.settings } : {}),
     ...(extra.prices ? { prices: extra.prices } : {}),
     ...(extra.log ? { log: extra.log } : {}),
     ...(extra.configEntries ? { configurables: { store: extra.configEntries } } : {}),
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
+    secrets: envSecrets(
+      extra.seedOnly
+        ? { FOUNDRY_OPENAI_KEY: 'm' }
+        : { FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' },
+    ),
+    // A knowledge server as the API has outside tests; nothing here searches it, so it never connects.
+    ...(extra.seedOnly
+      ? {
+          knowledgeServer: {
+            reader: createPool({ connectionString: 'postgres://127.0.0.1:1/none' }),
+          },
+        }
+      : {}),
     definitions: extra.definitions ?? ((plugins) => new InMemoryDefinitionStore(plugins)),
     policy: access?.policy ?? { decide: async () => ({ allow: true }) },
     authenticate:
@@ -716,7 +737,7 @@ describe('the composed platform', () => {
   });
 
   it('offers owner_orgnr filter values only when a dataset of the calling service declares the field', async () => {
-    const knowledge = yaml('knowledge.yaml') as {
+    const knowledge = kudosOnTypesense() as {
       datasets: { id: string; filters: Record<string, string> }[];
     };
     const declaring = {
@@ -1678,7 +1699,7 @@ describe('a draft test run', () => {
 
 describe('settings and datasets at run time', () => {
   const twoDatasets = () => {
-    const catalog = structuredClone(yaml('knowledge.yaml')) as {
+    const catalog = structuredClone(kudosOnTypesense()) as {
       datasets: {
         id: string;
         aliases?: string[];
@@ -2207,8 +2228,8 @@ describe('a service without a reranker', () => {
     return (await res.json()) as { result: { isError: boolean } };
   };
 
-  it('the API starts and seeds its services and catalog without reranker settings', async () => {
-    const { platform } = await boot();
+  it('the API starts and seeds its services and catalog without Typesense or ColBERT settings', async () => {
+    const { platform } = await boot(undefined, { seedOnly: true });
     const admin = createAdmin({
       store: platform.definitions,
       plugins: platform.plugins,

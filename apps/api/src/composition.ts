@@ -583,7 +583,6 @@ export interface PlatformInput {
   embeddingAdapters?: EmbeddingAdapter[];
   /** Rerank engines for rerankers without an API; none is built in (ADR 0048). */
   rerankAdapters?: RerankAdapter[];
-  searchOnlyClusters?: (string | undefined)[];
   ingestFolderRoot?: string;
   ingestWorkingDirectory?: string;
   ingestParquetMaxBytes?: number;
@@ -1461,7 +1460,6 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.knowledgeEngines ? { knowledgeEngines: input.knowledgeEngines } : {}),
     ...(input.embeddingAdapters ? { embeddingAdapters: input.embeddingAdapters } : {}),
     ...(input.rerankAdapters ? { rerankAdapters: input.rerankAdapters } : {}),
-    ...(input.searchOnlyClusters ? { searchOnlyClusters: input.searchOnlyClusters } : {}),
     ...(input.configurables?.catalogPolicy
       ? { catalogPolicy: input.configurables.catalogPolicy }
       : {}),

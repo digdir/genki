@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
@@ -386,38 +386,6 @@ describe('typesense probe', () => {
       message: expect.stringContaining('unreachable'),
     });
   });
-});
-
-const envFile = join(import.meta.dirname, '..', '..', '..', '.env.local');
-if (existsSync(envFile)) process.loadEnvFile(envFile);
-const live = process.env.TYPESENSE_URL && process.env.TYPESENSE_KEY;
-
-describe.skipIf(!live)('live Typesense (search only)', () => {
-  it('finds phrases for a KA question and reads the chunks behind them', async () => {
-    const port = new KnowledgeRouter({
-      catalog: {
-        ...example,
-        endpoints: {
-          'kudos-typesense': {
-            ...example.endpoints['kudos-typesense'],
-            baseURL: process.env.TYPESENSE_URL,
-          },
-        },
-      },
-      adapters: [typesense],
-      secrets: envSecrets(),
-    }).open({ kind: 'dataset', id: 'digdir/kudos' }, context());
-
-    const result = await port.search({
-      query: 'tildelingsbrev Digdir 2025',
-      profile: 'phrase',
-      limit: 5,
-    });
-    const chunks = await port.fetch(result.hits.map((h) => h.id));
-
-    expect(result.hits.length).toBeGreaterThan(0);
-    expect(chunks[0]?.text.length).toBeGreaterThan(0);
-  }, 30_000);
 });
 
 describe('enrichment collections', () => {

@@ -346,7 +346,6 @@ export interface RuntimeInput {
   /** Rerank engines for rerankers without an API; none is built in (ADR 0048). */
   rerankAdapters?: RerankAdapter[];
   processorRecords?: ProcessorRecordCheck;
-  searchOnlyClusters?: (string | undefined)[];
   catalogPolicy?: CatalogPolicy;
   prices?: Record<string, unknown>;
   ruleSeed?: { id: string; spec: unknown; mandatory?: boolean }[];
@@ -600,9 +599,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     ...(input.knowledgeEngines ?? []).map((e) => e.adapter),
   ];
   const writerAdapters: IndexWriterAdapter[] = [
-    typesenseIndexWriter({
-      sharedClusterUrls: [process.env.TYPESENSE_URL, ...(input.searchOnlyClusters ?? [])],
-    }) as IndexWriterAdapter,
+    typesenseIndexWriter() as IndexWriterAdapter,
     pgvector.writer as IndexWriterAdapter,
     ...(input.knowledgeEngines ?? []).map((e) => e.writer),
   ];

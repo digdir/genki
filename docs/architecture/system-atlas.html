@@ -3401,27 +3401,6 @@
             replaces: [],
             edges: [
               {
-                to: 'kernel',
-                label: 'Kernel SPI: tasks, events, principals, capabilities',
-                kind: 'call',
-                target: 'call',
-                witness: { file: 'apps/parity/src/cli.ts', imports: '@genai/kernel' },
-              },
-              {
-                to: 'port-knowledge',
-                label: 'Search and fetch through the knowledge port',
-                kind: 'call',
-                target: 'call',
-                witness: { file: 'apps/parity/src/cli.ts', imports: '@genai/port-knowledge' },
-              },
-              {
-                to: 'providers-typesense',
-                label: 'Typesense adapter for live runs',
-                kind: 'call',
-                target: 'call',
-                witness: { file: 'apps/parity/src/cli.ts', imports: '@genai/providers-typesense' },
-              },
-              {
                 to: 'headless-rag',
                 label: 'Records the reference behaviour',
                 kind: 'http',
@@ -6643,36 +6622,6 @@
                 kind: 'call',
                 target: 'call',
                 witness: { file: 'packages/eval/src/evaluators.ts', imports: '@genai/port-model' },
-              },
-              {
-                to: 'port-knowledge',
-                label: 'Search and fetch through the knowledge port',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/eval/src/scripts/kudos-live.ts',
-                  imports: '@genai/port-knowledge',
-                },
-              },
-              {
-                to: 'providers-typesense',
-                label: 'Typesense adapter for live runs',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/eval/src/scripts/kudos-live.ts',
-                  imports: '@genai/providers-typesense',
-                },
-              },
-              {
-                to: 'ingest',
-                label: 'Kudos client and the earlier-ids check for the id map script',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/eval/src/scripts/kudos-earlier-ids.ts',
-                  imports: '@genai/ingest',
-                },
               },
             ],
             keywords: 'eval evaluation judge gate test set score feedback',
@@ -10413,7 +10362,7 @@
             packages: ['@genai/providers-typesense'],
             summary: 'Knowledge adapter for Typesense that refuses anything but search.',
             description:
-              'Searches and fetches documents with a timeout and asserts the client is search-only, because the shared cluster serves production.',
+              'Searches and fetches documents with a timeout and asserts the client is search-only.',
             responsibilities: ['Search and fetch', 'Search-only guard'],
             files: [
               'packages/providers-typesense/src/index.ts',
@@ -10453,16 +10402,6 @@
                   imports: '@genai/port-knowledge',
                 },
               },
-              {
-                to: 'typesense-cluster',
-                label: 'multi_search and document fetch',
-                kind: 'http',
-                target: 'http',
-                witness: {
-                  file: 'packages/providers-typesense/src/client.ts',
-                  contains: 'await fetch(url',
-                },
-              },
             ],
             keywords: 'typesense search provider',
             schemas: [],
@@ -10471,20 +10410,15 @@
             id: 'providers-typesense-writer',
             plane: 'providers',
             name: 'Typesense writer',
-            note: 'Generations · refuses shared',
+            note: 'Generations',
             icon: 'database',
             color: '#8fa8b3',
             status: 'Provider',
             packages: ['@genai/providers-typesense-writer'],
-            summary:
-              'Writes ingest output to Typesense in generations, and refuses the shared cluster.',
+            summary: 'Writes ingest output to Typesense in generations.',
             description:
-              'Creates collections, upserts documents and swaps generations. It throws SharedClusterRefused against the shared production cluster; writing there needs a separate key and a decision.',
-            responsibilities: [
-              'Collection generations',
-              'Upsert and delete',
-              'Refuse the shared cluster',
-            ],
+              "Creates collections, upserts documents and swaps generations, with the Typesense endpoint's own key, which must be allowed to write.",
+            responsibilities: ['Collection generations', 'Upsert and delete'],
             files: [
               'packages/providers-typesense-writer/src/writer.ts',
               'packages/providers-typesense-writer/src/adapter.ts',
@@ -10521,16 +10455,6 @@
                 witness: {
                   file: 'packages/providers-typesense-writer/src/writer.ts',
                   imports: '@genai/kernel',
-                },
-              },
-              {
-                to: 'typesense-cluster',
-                label: 'Collection and document writes (own cluster only)',
-                kind: 'http',
-                target: 'http',
-                witness: {
-                  file: 'packages/providers-typesense-writer/src/writer.ts',
-                  contains: '/documents/import',
                 },
               },
             ],
@@ -11479,28 +11403,6 @@
             replaces: [],
             edges: [],
             keywords: 'azure-foundry azure ai foundry external',
-            schemas: [],
-          },
-          {
-            id: 'typesense-cluster',
-            plane: 'external',
-            name: 'Typesense',
-            note: 'Shared search cluster',
-            icon: 'search',
-            color: '#607b88',
-            status: 'External',
-            external: true,
-            summary:
-              'The existing Typesense instance headless-rag also uses. The platform only searches it.',
-            description:
-              'The existing Typesense instance headless-rag also uses. The platform only searches it.',
-            responsibilities: [],
-            files: [],
-            input: '',
-            output: '',
-            replaces: [],
-            edges: [],
-            keywords: 'typesense-cluster typesense external',
             schemas: [],
           },
           {

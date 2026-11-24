@@ -23,6 +23,7 @@ import { platformScope } from './config-store.js';
 import { localeMiddleware } from './i18n/index.js';
 import type { TaskIndex } from './extensions.js';
 import type { PlaygroundOptions, PlaygroundRunResponse } from './playground.js';
+import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -121,7 +122,9 @@ const service = (id: string, instructions: string) => ({
 const knowledgeWith = (
   datasets: (list: Record<string, unknown>[]) => Record<string, unknown>[],
 ) => {
-  const catalog = yaml('knowledge.yaml') as { datasets: Record<string, unknown>[] };
+  const catalog = seedOnTypesense(yaml('knowledge.yaml')) as {
+    datasets: Record<string, unknown>[];
+  };
   return { ...catalog, datasets: datasets(catalog.datasets) };
 };
 

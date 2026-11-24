@@ -26,7 +26,7 @@ param deployInfrastructure bool = true
 @description('A hash of the compiled template and this environment\'s settings (deploy.yml, infra.yml), kept in the outputs to tell whether the infrastructure changed since.')
 param infraFingerprint string = ''
 
-@description('Plain settings for the api and worker, e.g. FOUNDRY_OPENAI_BASE_URL, TYPESENSE_URL.')
+@description('Plain settings for the api and worker, e.g. FOUNDRY_OPENAI_BASE_URL, LANGFUSE_BASE_URL.')
 param appEnv object = {}
 
 @description('The platform tier the apps run as (GENAI_ENV, and the console\'s environment label), apart from the resource names: only test turns on the test-tier exceptions.')

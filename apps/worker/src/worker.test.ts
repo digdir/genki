@@ -20,6 +20,7 @@ import {
 import { envSecrets, InMemoryEventLog, InMemoryStateStore, InMemoryTaskStore } from '@genai/kernel';
 import { InMemoryBlobStore, observable } from '@genai/port-blob';
 import { fakeHttp, type FakeReply, type FakeServer } from '@genai/port-model/testing';
+import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
 import { createWorker, ownTenantOnly } from './worker.js';
 
 const root = join(import.meta.dirname, '..', '..', '..');
@@ -148,23 +149,30 @@ const setup = async (
   blocked?: Parameters<typeof createWorker>[0]['blocked'],
   lockdown = false,
   modelQuota?: RuntimeInput['modelQuota'],
+  kudosOnTypesense = false,
 ) => {
   const upstream = await fakeHttp(reply);
   servers.push(upstream);
-  const env = {
-    FOUNDRY_OPENAI_BASE_URL: `${upstream.url}/v1`,
-    TYPESENSE_URL: upstream.url,
-  };
+  const env = { FOUNDRY_OPENAI_BASE_URL: `${upstream.url}/v1` };
+  const seed = config('knowledge.yaml');
+  const knowledge = resolveCatalog(
+    kudosOnTypesense ? seedOnTypesense(seed, upstream.url) : seed,
+    'datasets',
+    env,
+  );
   const blob = observable(new InMemoryBlobStore());
   const tasks = new InMemoryTaskStore();
   const runtime = await createRuntime({
     platformTenant: tenant,
     catalogs: {
       models: resolveCatalog(config('models.yaml'), 'models', env).catalog,
-      knowledge: resolveCatalog(config('knowledge.yaml'), 'datasets', env).catalog,
+      knowledge: knowledge.catalog,
       rerank: resolveCatalog(config('rerank.yaml'), 'rerankers', env).catalog,
     },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
+    secrets: envSecrets({
+      FOUNDRY_OPENAI_KEY: 'm',
+      ...(kudosOnTypesense ? { TYPESENSE_KEY: 't' } : {}),
+    }),
     vault: new TenantSecretVault(),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: ownTenantOnly(),
@@ -192,15 +200,22 @@ const setup = async (
     ...(blocked ? { blocked } : {}),
     locked: lockdown,
   });
-  return { worker, runtime, blob, runs, tasks, upstream, publish };
+  return { worker, runtime, blob, runs, tasks, upstream, publish, knowledge };
 };
 
 const drop = (blob: ReturnType<typeof observable>, path: string, text: string) =>
   blob.put({ tenant, path }, new TextEncoder().encode(text), 'text/plain');
 
 describe('worker', () => {
-  it('the worker starts on a seed catalogue that holds no reranker', async () => {
-    const { runtime } = await setup();
+  it('the worker starts and seeds its catalog without Typesense or ColBERT settings', async () => {
+    const { runtime, knowledge } = await setup();
+
+    expect(knowledge.skipped).toEqual([]);
+    expect(
+      runtime.catalog
+        .skipped()
+        .filter((e) => e.kind === 'dataset' || e.kind === 'knowledge-endpoint'),
+    ).toEqual([]);
 
     expect([...(runtime.plugins.rerankers ?? [])]).toEqual([]);
     const seed = config('models.yaml') as { models: { id: string; apis?: { rerank?: string } }[] };
@@ -405,7 +420,13 @@ describe('worker', () => {
   });
 
   it('runs an agent-loop service with its datasets and reranker instead of skipping it, metering usage on the task', async () => {
-    const { worker, runtime, blob, runs, tasks, publish } = await setup();
+    const { worker, runtime, blob, runs, tasks, publish } = await setup(
+      undefined,
+      undefined,
+      false,
+      undefined,
+      true,
+    );
     await publish(kunnskapsassistent(), {
       'prompts/ka-system.nb.md': readFileSync(
         join(root, 'packages', 'definitions', 'examples', 'prompts', 'ka-system.nb.md'),

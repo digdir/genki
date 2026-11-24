@@ -600,7 +600,8 @@ export const apirefArea = {
     'sm-estimate.p.to': 'Søkemotoren du vil bytte til',
     'sm-estimate.p.method': 'copy eller reingest',
     'sm-estimate.e0.title': '409 Krever egen skrivenøkkel',
-    'sm-estimate.e0.text': 'Plattformen skriver ikke til den delte Typesense-klyngen.',
+    'sm-estimate.e0.text':
+      'Et bytte til et Typesense-endepunkt krever en egen skrivenøkkel, som plattformen ikke har.',
     'sm-start.summary': 'Start et bytte av søkemotor',
     'sm-start.desc':
       'Fyller den nye søkemotoren ved siden av den gamle og sammenligner dem på testsettet. Tjenestene bruker den gamle til du tar den nye i bruk. GET på samme sti lister byttene.',

@@ -226,7 +226,7 @@ Plain settings come from the GitHub environment's variables (Settings → Enviro
 | `ALTINN_PEOPLE_MASKINPORTEN_CLIENT_ID`, `ALTINN_PEOPLE_MASKINPORTEN_SCOPE` | Test only, optional. The people list's own Maskinporten client, which then needs `altinn-people-maskinporten-key` in Key Vault, and its scope. Unset, the list uses the decision point's client and `altinn:accessmanagement/enduser:connections:toothers.read`                                                                                                                       |
 | `ALTINN_RESOURCE`                                                          | Test only. The Altinn resource whose rights count in genki                                                                                                                                                                                                                                                                                                                            |
 | `PLATFORM_TENANT`                                                          | Test only. The organisation that plays Digdir, for test organisations. Empty means Digdir                                                                                                                                                                                                                                                                                             |
-| `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`, `TYPESENSE_URL`      | Models and search                                                                                                                                                                                                                                                                                                                                                                     |
+| `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`                       | Models                                                                                                                                                                                                                                                                                                                                                                                |
 | `LANGFUSE_BASE_URL`, `LANGFUSE_INSTANCE_RECEIVES_CONTENT`                  | Digdir's Langfuse, offered in the portal's Langfuse connection form; `true` once it may receive text (ADR 0011). Unset: the form asks only for an agency's own Langfuse. Test sets the URL in `test.bicepparam`, and the content flag is `true` there unless the variable is set                                                                                                      |
 | `TRACES_ENDPOINT`, `TRACES_RESIDENCY`                                      | Test only. Where genki sends its own traces (`https://<host>/api/public/otel`) and where that store is (`norway`, `eu` or `global`). Needs the two Langfuse keys in Key Vault                                                                                                                                                                                                         |
 | `CUSTOM_DOMAINS_STAGE`                                                     | `none`, `hostnames` or `certificates`; see Host names below                                                                                                                                                                                                                                                                                                                           |
@@ -269,13 +269,14 @@ Secrets live only in Key Vault. Each name in `keyVaultSecretNames` becomes an en
 | `altinn-subscription-key`        | `ALTINN_SUBSCRIPTION_KEY`                                                                                                            |
 | `foundry-openai-key`             | `FOUNDRY_OPENAI_KEY`                                                                                                                 |
 | `foundry-claude-key`             | `FOUNDRY_CLAUDE_KEY`                                                                                                                 |
-| `typesense-key`                  | `TYPESENSE_KEY` (search only)                                                                                                        |
 | `langfuse-public-key`            | `LANGFUSE_PUBLIC_KEY` (test)                                                                                                         |
 | `langfuse-secret-key`            | `LANGFUSE_SECRET_KEY` (test)                                                                                                         |
 | `access-person-key-secret`       | `ACCESS_PERSON_KEY_SECRET` (test, once `ALTINN_PEOPLE_URL` is set)                                                                   |
 | `altinn-people-maskinporten-key` | `ALTINN_PEOPLE_MASKINPORTEN_KEY` (test, once `ALTINN_PEOPLE_URL` and `ALTINN_PEOPLE_MASKINPORTEN_CLIENT_ID` are set)                 |
 
 `docling-api-key` is not in `keyVaultSecretNames`: the template gives it only to the worker (`DOCLING_API_KEY`) and the Docling server (`DOCLING_SERVE_API_KEY`), see [Docling server](#docling-server). Create it like the others.
+
+`typesense-key` is not in `keyVaultSecretNames` either: the template still gives it to the API with no env var until the API's revision from before #690 is gone. Until then every environment's vault needs it, prod included.
 
 Create every secret in Key Vault before the first deploy, or remove its name from the parameter file. A name listed without a secret behind it stops the revision from starting. `CONTENT_MASTER_KEY` is 32 random bytes, base64: `openssl rand -base64 32`. To rotate it, follow [ADR 0070](../docs/adr/0070-versioned-content-master-keys.md#rotation-procedure): the new key is one more name in `keyVaultSecretNames` and `CONTENT_MASTER_KEY_ACTIVE` in `appEnv`, with no template change.
 
@@ -569,24 +570,24 @@ Geo-redundant backup can only be chosen when Azure creates the server. Prod gets
 3. **Entra group** `genai-prod-pg-admins`, with the people who may administer prod's Postgres.
 4. **GitHub environment `prod`** with required reviewers, and these variables:
 
-   | Variable                                                              | Value                                                                                                           |
-   | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-   | `AZURE_CLIENT_ID`, `DEPLOY_PRINCIPAL_ID`                              | Client id and service principal object id of the prod deploy identity                                           |
-   | `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`                            | Same as test                                                                                                    |
-   | `AZURE_RESOURCE_GROUP`                                                | `rg-genki-prod-weu`                                                                                             |
-   | `PG_ADMIN_GROUP_OBJECT_ID`, `PG_ADMIN_GROUP_NAME`                     | The group from step 3                                                                                           |
-   | `ACR_NAME`                                                            | Set after the first infra run (output `registryName`)                                                           |
-   | `ANSATTPORTEN_ISSUER`                                                 | `https://ansattporten.no`                                                                                       |
-   | `PORTAL_CLIENT_ID`, `WORKSPACE_CLIENT_ID`, `CONSOLE_CLIENT_ID`        | The production Ansattporten clients                                                                             |
-   | `CONSOLE_TOKEN_ENDPOINT`                                              | Production Ansattporten's token endpoint                                                                        |
-   | `ALTINN_PDP_URL`                                                      | Altinn production's decision point, under `https://platform.altinn.no`                                          |
-   | `ALTINN_PDP_MASKINPORTEN_CLIENT_ID`                                   | The production Maskinporten client                                                                              |
-   | `MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`                       | `https://maskinporten.no/`, `https://maskinporten.no/token`                                                     |
-   | `OPERATOR_SUBJECTS`                                                   | The prod operators as `https://ansattporten.no\|<sub>` pairs. Personal data: only here, never in the repository |
-   | `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`, `TYPESENSE_URL` | Models and search for prod                                                                                      |
-   | `CUSTOM_DOMAINS_STAGE`                                                | `none`, then `hostnames`, then `certificates`                                                                   |
-   | `KNOWLEDGE_SERVER_STAGE`                                              | `none` while test's value is a repository variable, otherwise unset; later `server`, then `apps`                |
-   | `PROD_READY`                                                          | `true` once everything above is in place; until then `deploy-prod` is skipped                                   |
+   | Variable                                                       | Value                                                                                                           |
+   | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+   | `AZURE_CLIENT_ID`, `DEPLOY_PRINCIPAL_ID`                       | Client id and service principal object id of the prod deploy identity                                           |
+   | `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`                     | Same as test                                                                                                    |
+   | `AZURE_RESOURCE_GROUP`                                         | `rg-genki-prod-weu`                                                                                             |
+   | `PG_ADMIN_GROUP_OBJECT_ID`, `PG_ADMIN_GROUP_NAME`              | The group from step 3                                                                                           |
+   | `ACR_NAME`                                                     | Set after the first infra run (output `registryName`)                                                           |
+   | `ANSATTPORTEN_ISSUER`                                          | `https://ansattporten.no`                                                                                       |
+   | `PORTAL_CLIENT_ID`, `WORKSPACE_CLIENT_ID`, `CONSOLE_CLIENT_ID` | The production Ansattporten clients                                                                             |
+   | `CONSOLE_TOKEN_ENDPOINT`                                       | Production Ansattporten's token endpoint                                                                        |
+   | `ALTINN_PDP_URL`                                               | Altinn production's decision point, under `https://platform.altinn.no`                                          |
+   | `ALTINN_PDP_MASKINPORTEN_CLIENT_ID`                            | The production Maskinporten client                                                                              |
+   | `MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`                | `https://maskinporten.no/`, `https://maskinporten.no/token`                                                     |
+   | `OPERATOR_SUBJECTS`                                            | The prod operators as `https://ansattporten.no\|<sub>` pairs. Personal data: only here, never in the repository |
+   | `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`           | Models for prod                                                                                                 |
+   | `CUSTOM_DOMAINS_STAGE`                                         | `none`, then `hostnames`, then `certificates`                                                                   |
+   | `KNOWLEDGE_SERVER_STAGE`                                       | `none` while test's value is a repository variable, otherwise unset; later `server`, then `apps`                |
+   | `PROD_READY`                                                   | `true` once everything above is in place; until then `deploy-prod` is skipped                                   |
 
    `PLATFORM_TENANT` and `ALTINN_RESOURCE` stay unset; prod fixes both.
 

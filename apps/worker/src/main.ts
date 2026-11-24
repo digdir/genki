@@ -768,7 +768,6 @@ const runtime = await createRuntime({
         discoveredModels: new PostgresDiscoveredModels<DiscoveryListing>(db.runtimePool),
       }
     : {}),
-  searchOnlyClusters: [process.env.TYPESENSE_URL],
   modelDiscovery: modelDiscoveryFromEnv(process.env),
   onWarning: (message) => log('warning', { message }),
   logger: log,

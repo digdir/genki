@@ -234,7 +234,6 @@ const boot = async (
     knowledgeEngines: [localEngine],
     knowledgeServer: { reader: pool },
     embeddingAdapters: [fakeEmbeddingAdapter()],
-    searchOnlyClusters: [typesenseUrl],
     documentConverter: {
       convert: async () =>
         onePage('# Tildelingsbrev\n\nDepartementet tildeler midler til skyplattformen.'),
