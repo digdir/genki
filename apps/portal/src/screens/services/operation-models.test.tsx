@@ -120,15 +120,15 @@ describe('model per operation in the service setup', () => {
 const api = () => createApiClient({ baseUrl: '', fetch: mockFetch(), token: () => 'kari' });
 
 describe('testing a step that calls an operation', () => {
-  it('runs the published version with a note before it, and shows the image as a preview card', async () => {
+  it('runs the published edition with a note before it, and shows the image as a preview card', async () => {
     URL.createObjectURL ??= () => 'blob:figur';
     URL.revokeObjectURL ??= () => undefined;
     render(<PublishedTest api={api()} model="figur__default" version={3} />);
-    expect(screen.getByText(/så denne testen kjører den publiserte versjonen v3/)).toBeTruthy();
+    expect(screen.getByText(/så denne prøven kjører den publiserte utgaven v3/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Spørsmål eller tekst'), {
       target: { value: 'Lag en figur av saksgangen' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Kjør test mot v3' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør prøve mot v3' }));
     const card = await screen.findByRole('img', { name: 'Bilde fra steget figur' });
     expect(card.getAttribute('src')).toMatch(/^blob:/);
     expect(screen.getByText(/image\/png · 70 byte · fra steget figur/)).toBeTruthy();
@@ -147,14 +147,14 @@ describe('testing a step that calls an operation', () => {
     fireEvent.change(screen.getByLabelText('Spørsmål eller tekst'), {
       target: { value: 'Lag en figur' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Kjør test mot v3' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør prøve mot v3' }));
     expect(await screen.findByText(/the service failed/)).toBeTruthy();
     expect(screen.queryByText(/\[object Object\]/)).toBeNull();
   });
 
   it('says to publish first when the service has no published version', () => {
     render(<PublishedTest api={api()} model="figur__default" version={undefined} />);
-    expect(screen.getByText(/Publiser tjenesten for å teste dem\./)).toBeTruthy();
+    expect(screen.getByText(/Publiser tjenesten for å prøve dem\./)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Kjør test/ })).toBeNull();
   });
 });

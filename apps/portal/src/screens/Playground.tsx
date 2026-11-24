@@ -17,7 +17,8 @@ import { needsRight, useRights } from '../Shell';
 import { PageLoading } from '../states';
 import { BlocksFullscreen, BlocksStep, useBlocksState } from './services/blocks/BlocksStep';
 import { storedLayout } from './services/blocks/layoutStore';
-import { handOver, handoverDraftId, serviceFromPlayground } from './services/handover';
+import { newDraftId } from './services/draft-id';
+import { handOver, serviceFromPlayground } from './services/handover';
 import './playground.css';
 
 type View = 'frontend' | 'backend';
@@ -55,7 +56,7 @@ const ServicePlayground = ({
   );
 };
 
-/** Frontend tries an interface, Backend its content; `#/playground?service=<id>` opens Backend. */
+/** Frontend tries a design, Backend its content; `?service=<id>` opens Backend. */
 export const Playground = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
   const t = useT();
   const narrow = useNarrow();
@@ -75,7 +76,7 @@ export const Playground = ({ api, tenant, tenantName, route, live }: ScreenProps
   const run = useMemo(() => ({ api, tenant }), [api, tenant]);
   const address = t('playground.frontendAddress');
 
-  // Backend starts once it is opened and then stays, so what is tried there outlives a tab switch.
+  // Backend stays mounted once opened, so a tab switch keeps what was tried.
   const [backendOpened, setBackendOpened] = useState(view === 'backend');
   useEffect(() => {
     if (view === 'backend') setBackendOpened(true);
@@ -96,9 +97,11 @@ export const Playground = ({ api, tenant, tenantName, route, live }: ScreenProps
     setMaking('busy');
     try {
       const template = await api.definitionTemplate(tenant, 'Service');
+      const id = newDraftId();
       const made = serviceFromPlayground({
         template,
         tenant,
+        draft: id,
         name: t('playground.newServiceName'),
         layout: storedLayout({
           layout: blocks.layout,
@@ -106,7 +109,6 @@ export const Playground = ({ api, tenant, tenantName, route, live }: ScreenProps
         }),
         tried: tried.current?.key === triedFor ? tried.current.tried : undefined,
       });
-      const id = handoverDraftId();
       await api.quality.saveDraft(
         tenant,
         id,

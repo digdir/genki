@@ -17,7 +17,7 @@ const itemKeys: Record<HandoverItem, PlainKey> = {
   conversation: 'playground.handoverConversation',
 };
 
-/** Says once what the playground carried over; closing it or leaving Oppsett forgets it. */
+/** Says once what the playground carried over; closing or leaving forgets it. */
 export const HandoverNotice = ({ draft }: { draft: string }) => {
   const t = useT();
   const [handover, setHandover] = useState(() => handoverFor(draft));

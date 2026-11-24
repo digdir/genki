@@ -59,7 +59,7 @@ export interface KnowledgeReadOptions<D> {
   timeoutMs: number;
   profilesOf(dataset: DatasetConfig<D>): [string, Profile][];
   rrfK(dataset: DatasetConfig<D>): number;
-  /** Plans and runs a batch of searches; the engine shares this with `connection: platform`. */
+  /** Plans and runs a batch of searches: the engine's, which embeds each query once. */
   searchBatch(
     dataset: DatasetConfig<D>,
     requests: SearchRequest[],

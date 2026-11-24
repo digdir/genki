@@ -109,6 +109,7 @@ interface StubOptions {
   capabilities?: KnowledgeCapability[];
   refuse?: (request: SearchRequest) => boolean;
   fail?: (request: SearchRequest) => string | undefined;
+  down?: Error;
 }
 
 const knowledgeStub = (script: Script, options: StubOptions = {}) => {
@@ -154,6 +155,7 @@ const knowledgeStub = (script: Script, options: StubOptions = {}) => {
       profiles: () => options.profiles ?? ['phrase', 'metadata', 'content', 'doc-title'],
       search: async (_d, requests) => {
         batches.push(requests);
+        if (options.down) throw options.down;
         if (requests.some((r) => options.refuse?.(r)))
           throw new KnowledgeError('unsupported', 'engine cannot run this search');
         return requests.map((r) => {
@@ -237,18 +239,18 @@ const rerankStub = (
   const port = new RerankRouter({
     catalog: {
       endpoints: {
-        colbert: {
+        omrangering: {
           engine: 'stub',
           baseURL: 'https://rerank.example',
           auth: { kind: 'api-key', secret: 'secret://env/k' },
         },
       },
-      rerankers: [{ id: 'colbert', endpoint: 'colbert', residency: 'norway', onFailure }],
+      rerankers: [{ id: 'omrangering', endpoint: 'omrangering', residency: 'norway', onFailure }],
     },
     adapters: [adapter],
     secrets: envSecrets({ K: 'k' }),
     onWarning: (m) => warnings.push(m),
-  }).open({ kind: 'dataset', id: 'colbert' }, ctx);
+  }).open({ kind: 'dataset', id: 'omrangering' }, ctx);
   return { port, requests, warnings };
 };
 
@@ -671,8 +673,22 @@ describe('retrieval pipeline', () => {
       expect(result.chunks.map((c) => c.id)).toEqual(['c1', 'c4']);
       expect(result.chunks[0]?.snippet).toBe('Digdir hadde 326 årsverk i 2022.');
     }
-    expect(unconfigured.trace.expansion.rerank.status).toBe('unconfigured');
     expect(empty.trace.expansion.rerank.status).toBe('empty');
+  });
+
+  it('a service without a reranker runs retrieval with rerank off', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile === 'content' ? ['c1', 'c4'] : r.profile === 'phrase' ? ['c4'] : [];
+    for (const rerank of [{ enabled: true }, { enabled: true, perStrategy: true }]) {
+      const result = await retrieve({
+        knowledge: knowledgeStub(script).port,
+        queries: ['årsverk'],
+        config: { autoFilter: { enabled: false }, rerank },
+      });
+
+      expect(result.trace.expansion.rerank.status).toBe('off');
+      expect(result.chunks.every((c) => c.rerankScore === undefined)).toBe(true);
+    }
   });
 
   it('adds a doc-title strategy that fans out to the first chunks of the best documents', async () => {
@@ -787,6 +803,24 @@ describe('retrieval pipeline', () => {
         'doc-title search: the query is too long',
       ]);
       expect(result.chunks.map((c) => c.id)).toEqual(['c4']);
+    });
+
+    it('keeps the detected organisations when every strategy search fails', async () => {
+      const k = knowledgeStub(numericScript, {
+        down: new Error('timeout exceeded when trying to connect'),
+      });
+
+      const search = retrieve({
+        knowledge: k.port,
+        queries: numericQueries,
+        facetCache: new FacetCache(),
+        detectionUse: 'hint',
+      });
+
+      await expect(search).rejects.toThrow('timeout exceeded when trying to connect');
+      await expect(search).rejects.toMatchObject({
+        detections: expect.arrayContaining([expect.objectContaining({ field: 'orgs_short' })]),
+      });
     });
 
     it('searches the first dataset profile with a notice when no configured profile exists', async () => {

@@ -105,12 +105,12 @@ export const usageArea = {
     lead: 'Tokens og beregnet kostnad for tjenestene til {tenant}. Kostnaden er et anslag. Endelig beløp står på fakturaen fra Digdir.',
     export: 'Eksporter',
     allProjects: 'Alle tjenester og prosjekter',
-    environment: 'Miljø',
-    allEnvironments: 'Alle miljøer',
+    environment: 'Testutgave eller i bruk',
+    allEnvironments: 'Alle',
     environmentScope:
-      'Viser bare bruken fra kjøringene i miljøet {environment}. Kvoten gjelder hele {tenant}.',
-    emptyEnvironmentTitle: 'Ingen forbruk i miljøet ennå',
-    emptyEnvironmentText: 'Forbruket vises her når en tjeneste har kjørt i miljøet.',
+      'Viser bare bruken fra kjøringene i {environment}. Kvoten gjelder hele {tenant}.',
+    emptyEnvironmentTitle: 'Ingen forbruk i utgaven ennå',
+    emptyEnvironmentText: 'Forbruket vises her når en tjeneste har kjørt i utgaven du har valgt.',
     projectScope:
       'Viser bare bruken fra kjøringene i prosjektet {project}. Kvoten gjelder hele {tenant}.',
     loading: 'Henter bruken',

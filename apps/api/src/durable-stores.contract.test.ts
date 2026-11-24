@@ -669,11 +669,11 @@ describe.each([['memory'], ['postgres']])('%s durable stores', (name) => {
     [
       'engine-switch',
       'kudos:1',
-      { dataset: `${ORG_A}/kudos`, from: 'ka-typesense', to: 'platform-pg', state: 'ready' },
+      { dataset: `${ORG_A}/kudos`, from: 'ka-typesense', to: 'knowledge-pg', state: 'ready' },
       {
         dataset: `${ORG_A}/kudos`,
         from: 'ka-typesense',
-        to: 'platform-pg',
+        to: 'knowledge-pg',
         state: 'active',
         previous: { endpoint: 'ka-typesense', keptUntil: '2026-10-21T10:00:00.000Z' },
       },

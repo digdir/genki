@@ -436,7 +436,7 @@ describe('export and import', () => {
       const v = validateDefinition(example(file), {
         ...withoutSettings(plugins),
         retrieval: z.unknown(),
-        rerankers: new Set(['colbert']),
+        rerankers: new Set(['omrangering']),
         strategies: new Map([
           ...plugins.strategies,
           [strategyKey('agent-loop', 1), z.unknown()],

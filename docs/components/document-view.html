@@ -157,8 +157,12 @@
                 an http or https address, or a path on the host's site, is shown. Without it the
                 view is the excerpts as before, with no line about a file. In an assistant,
                 <code>@genai/ui-assembly</code> fills it from the host's
-                <code>documentFile</code> while the block's option «Vis hele dokumentet (beta)»
-                (<code>file</code>, on by default) is on.
+                <code>documentFile</code> while the block's option «PDF-visning (beta)»
+                (<code>file</code>, on by default) is on. The file itself is drawn by
+                <code>PdfView</code> (<code>url</code>, <code>title</code>), a block of its own that
+                frames the PDF, or links to it on a small screen or where the browser has no viewer.
+                <code>createGenkiApi</code>'s <code>documentFile</code> finds it through
+                <code>GET /api/datasets/{id}/documents/{doc}/file</code> (ADR 0066).
               </li>
               <li>
                 <code>opensFrom</code>: where the reader opens a document in this host, so the hint
@@ -287,7 +291,7 @@
                 </tr>
                 <tr>
                   <td><code>--genai-document-view-border-radius</code></td>
-                  <td><code>--ds-border-radius-lg</code></td>
+                  <td><code>--ds-border-radius-xl</code></td>
                   <td>the document's corners</td>
                 </tr>
                 <tr>
@@ -317,7 +321,7 @@
                 </tr>
                 <tr>
                   <td><code>--genai-document-view-file-border-radius</code></td>
-                  <td><code>--ds-border-radius-md</code></td>
+                  <td><code>--ds-border-radius-xl</code></td>
                   <td>the PDF's corners (beta)</td>
                 </tr>
                 <tr>
@@ -507,7 +511,7 @@
                 </tr>
                 <tr>
                   <td><code>--genai-document-view-passage-border-radius</code></td>
-                  <td><code>--ds-border-radius-lg</code></td>
+                  <td><code>--ds-border-radius-xl</code></td>
                   <td>each excerpt's corners</td>
                 </tr>
                 <tr>

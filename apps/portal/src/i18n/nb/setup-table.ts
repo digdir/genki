@@ -15,7 +15,7 @@ export const tableOutput = defineNamespace({
   columns: 'Kolonner',
   kindsHelp:
     '«Fra dokumentet» er et sitat fra kilden. «Vurdering» er en KI-vurdering og vises alltid merket. Hver celle får kilde.',
-  empty: 'Ingen kolonner her. Tabellen får kolonnene fra tabellsteget i stegflyten.',
+  empty: 'Ingen kolonner her. Tabellen får kolonnene fra tabellsteget i arbeidsflyten.',
   columnN: 'kolonne {n}',
   moveUpLabel: 'Flytt {name} opp',
   moveUp: 'Flytt opp',

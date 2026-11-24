@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { call, readSignal, result, retrieval, run, toolMessages } from './harness.test-utils.js';
+import {
+  call,
+  chunk,
+  readSignal,
+  result,
+  retrieval,
+  run,
+  toolMessages,
+} from './harness.test-utils.js';
 
 const filtered = {
   'retrieve-filter-by': {
@@ -140,7 +148,7 @@ describe('what the search detected in the query', () => {
     const out = await run({ retrieval: detected(), scripts: searchOnce });
 
     expect(toolMessages(out.loops[1])[0]).toContain(
-      'Hint, no filter applied: The query names "Datatilsynet"; orgs_long can filter on it. The query names the years "2023", "2024"; title can filter on them. Add filter_by only if the question asks for nothing else; a question about an organisation also needs other organisations\' documents.',
+      'Hint, no filter applied: The query names "Datatilsynet"; orgs_long can filter on it. The query names the years "2023", "2024"; title can filter on them. Use filter_by when the question is only about these; search without it when the question also needs other documents.',
     );
   });
 
@@ -178,6 +186,15 @@ describe('what the search detected in the query', () => {
     const out = await run({ retrieval: boosted, scripts: searchOnce });
 
     expect(toolMessages(out.loops[1])[0]).not.toContain('Hint');
+  });
+
+  it('a retrieval notice carries the pages of a chunk that runs over two pages', async () => {
+    const store = new Map([[`c1`, chunk(1, { page: 25, pageEnd: 26 })]]);
+
+    const out = await run({ retrieval: retrieval({}, store).impl, scripts: searchOnce });
+
+    const notice = out.notices.find((n) => n.kind === 'retrieval');
+    expect(notice?.hits).toEqual([expect.objectContaining({ id: 'c1', page: 25, pageEnd: 26 })]);
   });
 
   it('records what the search detected in the retrieval notice', async () => {

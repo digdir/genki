@@ -531,6 +531,21 @@ describe('promoting and rolling back', () => {
     );
   });
 
+  it('refuses to promote when the source no longer runs the version the caller expects', async () => {
+    const { call, publish, environments, addTest, versionRun } = await boot();
+    await publish('Første.');
+    await addTest();
+    await publish('Andre.');
+    await publish('Tredje.');
+
+    const moved = await call(`${environments}/prod/promote`, { body: { version: 2 }, reason });
+    const current = await call(`${environments}/prod/promote`, { body: { version: 3 }, reason });
+
+    expect(moved.status).toBe(409);
+    expect(current.status).toBe(200);
+    expect(await versionRun()).toMatchObject({ version: '3', environment: 'prod' });
+  });
+
   it('rolls prod back to the version it ran before, without publishing', async () => {
     const { platform, call, publish, environments, addTest, versionRun } = await boot();
     await publish('Første.');

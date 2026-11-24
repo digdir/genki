@@ -68,6 +68,20 @@ export interface WorkerJobs {
 type FailureLog = WorkerJobServers<unknown>['log'];
 
 /**
+ * A knowledge job's error with a code and, when one helps, a detail made of fixed text and codes,
+ * never a file name, path or text from a file: the failed-job log names both (issue 951).
+ */
+export class KnowledgeJobFailed extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly detail?: string,
+  ) {
+    super(message);
+  }
+}
+
+/**
  * An error by its name and code, such as SQLSTATE 22021 or ENOENT, never its message: a message can
  * hold a file path or a URL, and logs name a document only by its record's number (ADR 0042).
  */
@@ -76,6 +90,8 @@ const errorKind = (error: unknown) => {
   return {
     error: error instanceof Error ? error.name : typeof error,
     ...(typeof code === 'string' || typeof code === 'number' ? { code: String(code) } : {}),
+    // Only genki's own detail: a library's, such as node-postgres's, can quote a row.
+    ...(error instanceof KnowledgeJobFailed && error.detail ? { detail: error.detail } : {}),
   };
 };
 
@@ -323,11 +339,11 @@ export const admittedConversion = <T extends JobData & { run: string }>(
   handler: (
     job: KnowledgeJob<T> & { sender?: IngestionExecution; running: IngestionExecution[] },
   ) => Promise<void>,
-  deps: AdmissionDeps & { waiting(data: T): Promise<string[]> },
+  deps: AdmissionDeps & { waiting(job: Job<T>): Promise<string[]> },
 ): QueueWork<T> =>
   queueWork(queue, async (job) => {
     const now = deps.now?.() ?? new Date();
-    const ids = [...new Set([job.data.run, ...(await deps.waiting(job.data))])];
+    const ids = [...new Set([job.data.run, ...(await deps.waiting(job))])];
     const runs = (await Promise.all(ids.map((id) => deps.records.find(id)))).filter(
       (r): r is IngestionExecution => r !== undefined,
     );

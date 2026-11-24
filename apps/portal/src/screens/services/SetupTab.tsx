@@ -90,7 +90,14 @@ import {
   type AnswerLanguage,
 } from '../../data/service-languages';
 import { kindName } from '../../data/step-operations';
-import { defaultInstructionsOf, strategyFor, takesOf } from '../../data/strategies';
+import {
+  defaultInstructionsOf,
+  promptSectionEditsOf,
+  strategyFor,
+  takesOf,
+  withPromptSection,
+  type PromptSection,
+} from '../../data/strategies';
 import { useAsync, type AsyncState } from '../../hooks';
 import type { CatalogModel } from '../../api/models';
 import { ModelPicker } from '../../components/ModelPicker';
@@ -252,11 +259,9 @@ const pairLabel = (t: T, table: Record<string, [PlainKey, PlainKey]>, id: string
 
 const riskLabel = (t: T, id: string) => pairLabel(t, riskKeys, id);
 
-const rerankerNames: Record<string, string> = { colbert: 'ColBERT' };
-
 export const rerankerOf = (spec: ServiceSpec) => {
   const id = spec.knowledge?.reranker;
-  return typeof id === 'string' && id ? (rerankerNames[id] ?? id) : undefined;
+  return typeof id === 'string' && id ? id : undefined;
 };
 
 export const defaultInstructions = (t: T, spec: ServiceSpec) => {
@@ -269,18 +274,85 @@ export const defaultInstructions = (t: T, spec: ServiceSpec) => {
     : undefined;
 };
 
+const PromptSections = ({
+  sections,
+  edits,
+  onEdit,
+}: {
+  sections: PromptSection[];
+  edits: Record<string, string>;
+  onEdit?: ((id: string, text: string | undefined) => void) | undefined;
+}) => {
+  const t = useT();
+  return (
+    <div className="stack-xs">
+      <p className="meta">{t('setup.promptSectionsHelp')}</p>
+      {sections.map((section) => {
+        const edited = edits[section.id];
+        const id = `felt-instr-del-${section.id}`;
+        return (
+          <Field key={section.id}>
+            <Label htmlFor={id}>
+              {section.title}
+              {edited === undefined ? '' : ` ${t('setup.promptSectionEdited')}`}
+            </Label>
+            <Field.Description>{section.reason}</Field.Description>
+            <Textarea
+              id={id}
+              rows={4}
+              className="instructions-editor"
+              readOnly={!onEdit}
+              value={edited ?? section.text}
+              onChange={(e) =>
+                onEdit?.(section.id, e.target.value === section.text ? undefined : e.target.value)
+              }
+            />
+            {edited !== undefined && onEdit ? (
+              <Button
+                variant="tertiary"
+                data-size="sm"
+                className="align-start"
+                onClick={() => onEdit(section.id, undefined)}
+              >
+                {t('setup.promptSectionReset', { section: section.title })}
+              </Button>
+            ) : null}
+          </Field>
+        );
+      })}
+      <p className="meta">{t('setup.promptSectionsOwnerSlot')}</p>
+    </div>
+  );
+};
+
 const BuiltInInstructions = ({
   strategy,
   own,
   onUse,
+  edits = {},
+  onEdit,
 }: {
   strategy: string | undefined;
   own: boolean;
   onUse?: ((text: string) => void) | undefined;
+  edits?: Record<string, string>;
+  onEdit?: ((id: string, text: string | undefined) => void) | undefined;
 }) => {
   const t = useT();
   const found = defaultInstructionsOf(strategy, t.locale);
   if (!found) return null;
+  if (found.sections.length)
+    return (
+      <Details data-size="sm" defaultOpen={Object.keys(edits).length > 0}>
+        <Details.Summary>{t('setup.promptSectionsShow')}</Details.Summary>
+        <Details.Content>
+          <div className="stack-xs">
+            <PromptSections sections={found.sections} edits={edits} onEdit={onEdit} />
+            {found.note ? <p className="meta">{found.note}</p> : null}
+          </div>
+        </Details.Content>
+      </Details>
+    );
   return (
     <Details data-size="sm">
       <Details.Summary>
@@ -1109,6 +1181,18 @@ export const SetupTab = ({
           onUse={
             readOnly ? undefined : (text) => patch((cur) => withSharedInstructions(cur.spec, text))
           }
+          edits={promptSectionEditsOf(s.strategy.config)}
+          onEdit={
+            readOnly
+              ? undefined
+              : (id, text) =>
+                  patch((cur) => ({
+                    strategy: {
+                      ...cur.spec.strategy,
+                      config: withPromptSection(cur.spec.strategy.config, id, text),
+                    },
+                  }))
+          }
         />
       )}
     </>
@@ -1175,7 +1259,11 @@ export const SetupTab = ({
           ) : (
             <>
               {defaultInstructions(t, s) ? (
-                <p className="meta">{t('setup.instructionsBuiltInHelp')}</p>
+                <p className="meta">
+                  {defaultInstructionsOf(s.strategy.id, t.locale)?.layered
+                    ? t('setup.instructionsLayeredHelp')
+                    : t('setup.instructionsBuiltInHelp')}
+                </p>
               ) : null}
               <Textarea
                 id="felt-instr"

@@ -31,6 +31,8 @@ responsibilities:
   - Prices per model, kind and unit; typed chat and decide calls carry the connection's processor
     record and production maturity (ADR 0048, #325)
   - Learning the capabilities of discovered models from the listing and from small synthetic calls
+  - Serving discovered models from the last good listing in a store every replica reads, keeping a
+    model a listing leaves out for a grace period, and reporting per connection what it found
   - Credential resolution
 files:
   - packages/port-model/src/port.ts
@@ -42,6 +44,7 @@ files:
   - packages/port-model/src/operation.ts
   - packages/port-model/src/instructions.ts
   - packages/port-model/src/capability-checks.ts
+  - packages/port-model/src/discovery.ts
 input: Generic chat request
 output: Completion, deltas, decision answers, usage
 replaces:

@@ -298,6 +298,28 @@ describe('the checked-in test sets', () => {
     expect(set.spec.cases.every((c) => c.needsReview)).toBe(true);
     expect(JSON.stringify(set)).not.toMatch(/\b\d{11}\b/);
   });
+  it('the Kudos draft keys every source by UUID, with its earlier id, except the listed ones', () => {
+    const set = parseTestSetYaml(readFileSync(join(dir, 'ka-kudos-draft.yaml'), 'utf8'));
+    const listed = new Set(
+      ((set.spec.provenance?.listedSources ?? []) as { case: string; document: string }[]).map(
+        (l) => `${l.case} ${l.document}`,
+      ),
+    );
+    const unkeyed = set.spec.cases.flatMap((c) =>
+      c.expected.sources.flatMap((s) =>
+        /^kudos:[0-9a-f-]{36}$/.test(s.document ?? '') &&
+        /^\d+$/.test(s.earlierDocument ?? '') &&
+        s.chunkId === undefined
+          ? []
+          : listed.has(`${c.id} ${s.document}`)
+            ? []
+            : [`${c.id} ${s.document}`],
+      ),
+    );
+
+    expect(unkeyed).toEqual([]);
+  });
+
   it('ties the Kudos draft to Kunnskapsassistenten, so the service quality tab lists it', () => {
     const set = parseTestSetYaml(readFileSync(join(dir, 'ka-kudos-draft.yaml'), 'utf8'));
 

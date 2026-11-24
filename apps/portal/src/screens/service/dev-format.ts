@@ -1,4 +1,6 @@
 import { intlLocale, type Format } from '@genai/i18n';
+import { productionEnvironment } from '../../api/environments';
+import type { T } from '../../i18n';
 
 const parts = (iso: string, f: Format, options: Intl.DateTimeFormatOptions) =>
   new Intl.DateTimeFormat(intlLocale(f.locale), { timeZone: 'Europe/Oslo', ...options }).format(
@@ -30,3 +32,6 @@ export const clockSeconds = (iso: string) =>
 export const shortWhen = (iso: string, f: Format) => `${shortDay(iso, f)} ${clock(iso, f)}`;
 
 export const sameDay = (iso: string, now: Date) => osloDay(new Date(iso)) === osloDay(now);
+
+export const placeName = (t: T, name: string) =>
+  name === productionEnvironment ? t('serviceEnvironments.inUseName') : name;

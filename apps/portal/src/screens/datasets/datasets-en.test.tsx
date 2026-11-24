@@ -30,13 +30,13 @@ describe('datasets in English', () => {
         />,
       ),
     );
-    expect(screen.getByRole('heading', { level: 1, name: 'Datasets' })).toBeTruthy();
-    expect(screen.getByText('2 datasets')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Document collections' })).toBeTruthy();
+    expect(screen.getByText('2 document collections')).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'Last ingestion started' })).toBeTruthy();
     expect(screen.getByText('Ready')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Needs attention (1)' })).toBeTruthy();
     expect(screen.getAllByText('Ingestion failed').length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: 'New dataset' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'New document collection' })).toBeTruthy();
   });
 
   it('explains the file picker in English', () => {

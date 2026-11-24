@@ -136,6 +136,14 @@ const nb = {
     label: 'Lansert',
     help: 'Datoen hver utrulling som finnes ble lansert, etter navnet på utrullingen.',
   },
+  'discovery.residency': {
+    label: 'Hvor data behandles',
+    help: 'Gjelder hver modell regelen finner. Uten verdi i hele verden. En operatør kan sette en modell for seg.',
+  },
+  'discovery.models': {
+    label: 'Innstillinger per modell',
+    help: 'Etter navnet på utrullingen: type (chat, embed, rerank eller en annen), og dimensjoner for en innbyggingsmodell.',
+  },
   operator: {
     label: 'Drives av',
     help: 'Hvem som kjører modellene for genki, og hvor.',
@@ -248,6 +256,14 @@ const en: Record<keyof typeof nb, LabelText> = {
   'discovery.releaseDates': {
     label: 'Released',
     help: 'The date each deployment it finds was released, by deployment name.',
+  },
+  'discovery.residency': {
+    label: 'Where data is processed',
+    help: 'For every model the rule finds. Without a value, anywhere in the world. An operator can still set one model apart.',
+  },
+  'discovery.models': {
+    label: 'Settings per model',
+    help: 'By deployment name: the kind (chat, embed, rerank or another), and the dimensions of an embedding model.',
   },
   operator: { label: 'Run by', help: 'Who runs the models for genki, and where.' },
   'operator.name': { label: 'Name' },

@@ -9,7 +9,7 @@ export const runs = {
   originBuilder: 'The builder (draft)',
   originTrial: 'Trial run in the builder (draft)',
   originPlayground: 'The playground (draft)',
-  originSkillTest: 'Skill test (draft)',
+  originSkillTest: 'Work instruction test (draft)',
   originAssistant: 'The builder assistant',
   failBudget: 'The run used up its budget.',
   failDeadline: 'The run took too long.',
@@ -33,9 +33,9 @@ export const runs = {
   warnOrgFacets:
     'The organisation filter was not used because the search engine cannot count values.',
   warnProfileMissing:
-    'The search "{search}" was skipped because the dataset lacks the search profile {profile}.',
+    'The search "{search}" was skipped because the document collection lacks the search profile {profile}.',
   warnNoProfile:
-    'The dataset has none of the search profiles the service asks for, so {profile} was searched.',
+    'The document collection has none of the search profiles the service asks for, so {profile} was searched.',
   warnDocTitles:
     'The search on document titles was skipped because the search engine does not support it.',
   warnAutoFilter:
@@ -62,7 +62,7 @@ export const runs = {
   batchCsvDocumentId: 'Document ID',
   batchCsvTitle: 'Title',
   batchCsvLink: 'Link',
-  batchCsvDataset: 'Dataset',
+  batchCsvDataset: 'Document collection',
   batchCsvStatus: 'Status',
   batchCsvAnswer: 'Answer',
   batchCsvTruncated: 'Truncated',

@@ -353,7 +353,7 @@ describe('opening a run', () => {
     ]);
     expect(screen.getByText('0,02 kr')).toBeTruthy();
     expect(
-      screen.getByRole('link', { name: 'Rapportassistenten, versjon 7' }).getAttribute('href'),
+      screen.getByRole('link', { name: 'Rapportassistenten, utgave 7' }).getAttribute('href'),
     ).toBe('#/services/rapportassistenten');
     expect(screen.getByRole('link', { name: 'Åpne tjenesten' }).getAttribute('href')).toBe(
       '#/services/rapportassistenten',
@@ -397,7 +397,7 @@ describe('opening a run', () => {
       });
     });
 
-    const summary = await screen.findByText('Teknisk');
+    const summary = await screen.findByText('Tekniske detaljer');
     const technical = summary.closest('details') as HTMLDetailsElement;
     expect(technical.open).toBe(false);
     expect(within(technical).getByText('t1')).toBeTruthy();

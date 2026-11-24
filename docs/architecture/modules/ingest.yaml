@@ -16,13 +16,14 @@ responsibilities:
   - 'Conversion and chunking: converters return pages, and chunks on the knowledge database name their file, pages and heading path, with ids from document, file, page and position (ADR 0042)'
   - Pages from a DoclingDocument (doclingPages, derivation docling-pages 1), with heading levels from section numbers
   - Parts from a DoclingDocument (doclingParts, derivation docling-parts 1) - every item with its regions and its span of the conversion's text, one row a page (ADR 0055); both derivations share one walk (docling-walk.ts)
-  - The Docling server's client (doclingConverter) - one request per file, its refusals by Docling's failure categories, and the DoclingDocument kept as native output (ADR 0042)
+  - The Docling server's client (doclingConverter) - one task per file on the async route, polled on one connection, found again or submitted again when lost, its refusals by Docling's failure categories, and the DoclingDocument kept as native output (ADR 0042)
   - Read stored conversions in index jobs instead of converting, and fetch one file of a record for a convert job (storedConverter, Listing.file)
   - Phrase extraction with a model
   - The pipeline spec and its sources, shared by the API and the worker
   - Knowledge listings: list a source without fetching what its listing can compare, and load one document from its record
   - Document records on the knowledge database: plan a run against a pipeline's records, write its changes, and index one document (ADR 0042)
   - Wait out a throttled embedding model in an index job, with one pause per model shared by the worker's jobs (throttledEmbedder)
+  - Chunk a file's stored conversion parts a page a chunk, with no furniture and each chunk's span of the conversion's text (partsUnitChunks, ADR 0055)
 files:
   - packages/ingest/src/throttled-embedder.ts
   - packages/ingest/src/pipeline.ts
@@ -38,6 +39,7 @@ files:
   - packages/ingest/src/docling-parts.ts
   - packages/ingest/src/docling-output.ts
   - packages/ingest/src/text-layer-parts.ts
+  - packages/ingest/src/parts-unit.ts
   - packages/ingest/src/docling-walk.ts
   - packages/ingest/src/docling.ts
 input: Source config

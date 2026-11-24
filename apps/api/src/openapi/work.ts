@@ -2179,7 +2179,10 @@ const diagnosticsRoutes: RouteConfig[] = [
         z.object({
           task: z.string(),
           service: z.string(),
-          displayLimit: z.number().int(),
+          displayLimit: z.number().int().openapi({
+            description:
+              'Documents per page of a search (search.displayLimit); displayed holds up to three hits of each document on the first page',
+          }),
           searches: z.array(
             z.object({ queries: z.array(z.string()), hits: z.array(Hit), displayed: z.array(Hit) }),
           ),

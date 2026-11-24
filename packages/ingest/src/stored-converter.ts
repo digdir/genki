@@ -60,10 +60,17 @@ export const storedConverter = (
           ? found.failure
           : 'conversion_failed',
       );
-    return {
-      pages: await filledPages(found, conversions, accepted),
-      converter: { name: found.converter, version: found.version, settings: found.settings },
-    };
+    const converter = { name: found.converter, version: found.version, settings: found.settings };
+    // A parts conversion is read as its parts (issue 635); a cut one is not filled (issue 749).
+    if (found.units) {
+      if (!found.id) throw new Error('a stored parts conversion has no number');
+      return {
+        pages: [],
+        converter,
+        parts: { conversion: found.id, derivation: found.derivation.name, units: found.units },
+      };
+    }
+    return { pages: await filledPages(found, conversions, accepted), converter };
   };
   return {
     ...(inner.extensions ? { extensions: inner.extensions } : {}),

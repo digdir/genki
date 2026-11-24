@@ -114,12 +114,12 @@ describe('the delivery workflows', () => {
 });
 
 describe('the weekly summary workflow', () => {
-  it('runs on Fridays at both UTC hours that can be 13:00 in Oslo, and by hand, never on a pull request', () => {
+  it('runs on Fridays at both UTC hours that can be 12:00 in Oslo, and by hand, never on a pull request', () => {
     expect(Object.keys(weekly.on).sort()).toEqual(['schedule', 'workflow_dispatch']);
-    expect(weekly.on.schedule).toEqual([{ cron: '0 11 * * 5' }, { cron: '0 12 * * 5' }]);
+    expect(weekly.on.schedule).toEqual([{ cron: '0 10 * * 5' }, { cron: '0 11 * * 5' }]);
   });
 
-  it('lets the script pick the schedule that is 13:00 in Oslo and posts only then', () => {
+  it('lets the script pick the schedule that is 12:00 in Oslo and posts only then', () => {
     const due = collect.steps.find((s) => s.id === 'due');
     expect(due?.env?.SCHEDULE).toBe('${{ github.event.schedule }}');
     expect(post.if).toBe("needs.collect.outputs.due == 'true'");

@@ -4,6 +4,7 @@ export const INTERFACE_MAX_BYTES = 256 * 1024;
 export const PROFILE_MAX_BYTES = 32 * 1024;
 export const PAGE_MAX_BYTES = 32 * 1024;
 export const PAGES_MAX_BYTES = 128 * 1024;
+export const ICON_MAX_LENGTH = 24 * 1024;
 
 /** The limits of `@genai/ui-blocks`' `profileLimits`, kept alike by a test in `@genai/strategy-builder`. */
 export const interfaceLimits = {
@@ -135,20 +136,23 @@ export const interfaceBlockId = z
   .string()
   .regex(/^[a-z][a-z0-9-]{0,63}$/, 'must be lowercase letters, digits and dashes');
 
-export const catalogueBlockIds: readonly string[] = [
-  'projects',
-  'threads',
-  'settings',
-  'chat',
-  'filter',
-  'approach',
-  'sources',
-  'document-view',
-  'notes',
-];
+const blockRefPattern = /^(\d{9})\/([a-z0-9][a-z0-9-]{0,62})@([1-9]\d{0,8})$/;
+
+/** A pinned Block definition: `<publisher>/<id>@<version>`, the publisher an organisation number. */
+export const blockRef = z
+  .string()
+  .regex(blockRefPattern, 'must be <organisation number>/<block id>@<version>');
+
+export const parseBlockRef = (ref: string) => {
+  const match = blockRefPattern.exec(ref);
+  return match?.[1] && match[2] && match[3]
+    ? { publisher: match[1], id: match[2], version: Number(match[3]) }
+    : undefined;
+};
 
 const placed = z.strictObject({
   block: interfaceBlockId,
+  ref: blockRef.optional(),
   settings: z
     .record(
       z.string().regex(/^[a-zA-Z][a-zA-Z0-9-]{0,63}$/, 'must be letters, digits and dashes'),
@@ -209,11 +213,21 @@ const page = z.strictObject({
   ),
 });
 
+const iconDataUrl = /^data:image\/(?:png|svg\+xml);base64,[A-Za-z0-9+/]+={0,2}$/;
+
+export const isIconDataUrl = (value: string) =>
+  value.length <= ICON_MAX_LENGTH && iconDataUrl.test(value);
+
 const reserved = new Set(['api', 'auth', 'assets', 'innstillinger', 'callback', 'theme']);
 
 export const serviceInterface = z
   .strictObject({
     layout: assistantLayout.optional(),
+    icon: z
+      .string()
+      .max(ICON_MAX_LENGTH)
+      .refine(isIconDataUrl, 'must be a base64 data: address of a PNG or SVG image')
+      .optional(),
     menu: z.array(menuItem).max(interfaceLimits.menuItems).optional(),
     pages: z
       .array(page)

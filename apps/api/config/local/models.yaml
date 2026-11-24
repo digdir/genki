@@ -19,10 +19,6 @@ endpoints:
         capabilities: [stream, tools, json-schema, reasoning]
         maker: Anthropic
         apis: { chat: anthropic/messages@1 }
-  colbert:
-    baseURL: ${COLBERT_API_URL}
-    auth: { kind: api-key, header: x-api-key, secret: secret://env/colbert-api-key }
-    families: { colbert: '' }
   local-model:
     baseURL: ${LOCAL_MODEL_URL}
     auth: { kind: bearer, secret: secret://env/local-model-key }
@@ -66,9 +62,3 @@ models:
     apis: { embed: openai/embeddings@1 }
     embed: { dimensions: 1536, maxBatch: 64 }
     options: { sendDimensions: true }
-  - id: colbert
-    endpoint: colbert
-    deployment: colbert
-    residency: norway
-    apis: { rerank: colbert/rerank@1 }
-    rerank: { onFailure: degrade }

@@ -57,7 +57,7 @@ const live = async (hash: string, { secretsFail = false, runsFail = false } = {}
 
 const row = async (name: string | RegExp) => screen.findByRole('button', { name });
 
-describe('Integrasjoner: brukerflater fra API-et', () => {
+describe('Integrasjoner: egne løsninger fra API-et', () => {
   it('lists registered frontends with client id, return address and service', async () => {
     await live('#/integrations?tab=frontends');
     fireEvent.click(await row(/Intranettet/));
@@ -71,7 +71,7 @@ describe('Integrasjoner: brukerflater fra API-et', () => {
 
   it('registers a frontend for a chosen service with a logged reason', async () => {
     const calls = await live('#/integrations?tab=frontends');
-    fireEvent.click(await screen.findByRole('button', { name: 'Registrer brukerflate' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Registrer egen løsning' }));
     const dialog = await screen.findByRole('dialog');
 
     fireEvent.change(within(dialog).getByLabelText('Navn'), { target: { value: 'Saksportalen' } });
@@ -105,13 +105,13 @@ describe('Integrasjoner: brukerflater fra API-et', () => {
     const calls = await live('#/integrations?tab=frontends');
     fireEvent.click(await row(/Intranettet/));
     fireEvent.click(screen.getByRole('button', { name: 'Fjern' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Fjern brukerflaten' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fjern den egne løsningen' }));
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
 
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Intranettet er lagt ned' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Fjern brukerflaten' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fjern den egne løsningen' }));
 
     expect(await screen.findByText('Intranettet er fjernet.')).toBeTruthy();
     expect(calls.find((c) => c.method === 'DELETE')?.url).toMatch(/\/clients\/intranettet$/);
@@ -276,13 +276,13 @@ describe('schedule names', () => {
   });
 });
 
-describe('Utviklerverktøy: oppfølging i menyen fra API-et', () => {
+describe('Integrasjoner: oppfølging i menyen fra API-et', () => {
   it('counts systems with tool changes waiting and failing triggers from the API', async () => {
     await live('#/developer/status');
-    const menu = await screen.findByRole('navigation', { name: 'Utviklerverktøy' });
+    const menu = await screen.findByRole('navigation', { name: 'Integrasjoner' });
     await waitFor(() =>
       expect(
-        within(menu).getByRole('link', { name: 'Systemer 1 trenger oppfølging' }),
+        within(menu).getByRole('link', { name: 'Koblinger 1 trenger oppfølging' }),
       ).toBeTruthy(),
     );
     expect(within(menu).getByRole('link', { name: 'Utløsere 1 trenger oppfølging' })).toBeTruthy();

@@ -1,3 +1,4 @@
+import { checkBlockFiles, isBlockFile } from './block-code.js';
 import type { Definition } from './schema.js';
 import type { ValidationError } from './validate.js';
 
@@ -29,7 +30,9 @@ export const checkPromptFiles = (definition: Definition, files: PromptFiles): Va
     referenced.add(file);
     if (!(file in files)) errors.push({ path, message: `missing prompt file ${file}` });
   }
+  if (definition.kind === 'Block') errors.push(...checkBlockFiles(definition.spec, files));
   for (const [name, content] of Object.entries(files)) {
+    if (definition.kind === 'Block' && isBlockFile(name)) continue;
     if (!promptPath.test(name) || name.includes('..'))
       errors.push({ path: `files.${name}`, message: 'a prompt file must be prompts/<name>.md' });
     else if (!referenced.has(name))

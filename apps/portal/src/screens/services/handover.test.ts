@@ -21,6 +21,7 @@ const make = (from: TriedHere | undefined) =>
   serviceFromPlayground({
     template: serviceTemplate('999888777'),
     tenant: '999888777',
+    draft: 'utkast-1a2b3c4d',
     name: 'Ny tjeneste fra prøveområdet',
     layout,
     tried: from,

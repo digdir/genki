@@ -240,6 +240,24 @@ describe('step flows over a set of documents', () => {
     expect(retrieval.listed).toEqual([{ ids: ['d-dfo'], limit: 10 }]);
   });
 
+  it("read-document's retrieval notice carries each hit's pages", async () => {
+    const paged = chunk('dfo-0', { document: 'd-dfo', page: 4, pageEnd: 5 });
+    const flow = steps('sider', [
+      { id: 'les', block: 'read-document@1', input: { document: 'd-dfo' } },
+    ]);
+
+    const out = await run({
+      flows: [flow],
+      entry: 'sider@1',
+      retrieval: documentRetrieval({ 'd-dfo': [paged] }),
+    });
+
+    const notice = notices(out.events).find((n) => n.kind === 'retrieval');
+    expect(notice?.hits).toEqual([
+      { id: 'dfo-0', document: 'd-dfo', position: 0, page: 4, pageEnd: 5 },
+    ]);
+  });
+
   it('reranks a document by the question and keeps the best chunks when asked', async () => {
     const retrieval = documentRetrieval();
     const flow = steps('beste', [

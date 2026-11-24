@@ -29,7 +29,7 @@ It provides:
 - **A headless API** that runs every service the same way, whether it is called as an OpenAI-compatible model, an MCP tool, an A2A agent or over REST
 - **Three web apps** on that API: the **portal**, where an organisation builds, tests and publishes services; the **workspace**, where employees use them; and the **console**, where Digdir runs the platform
 - **Definitions instead of code**: a service, variant, prompt, dataset or guardrail is versioned configuration, and every change is audited with who made it and why
-- **Datasets and ingestion** on Typesense, pgvector, Postgres, HTTP or MCP, with reranking
+- **Datasets and ingestion** on Typesense, pgvector, Postgres, HTTP or MCP, with a port for reranking and no reranker built in yet
 - **Quality checks**: test sets, judges and publishing gates, plus a parity harness that compares answers with [digdir-headless-rag](https://github.com/digdir/digdir-headless-rag)
 
 ## Quickstart
@@ -121,7 +121,7 @@ npm start
 This runs two steps, which you can also run on their own:
 
 1. `npm run setup` installs dependencies, starts Postgres (with pgvector) in Docker on `127.0.0.1:55432` and the knowledge server on `127.0.0.1:55433`, creates `.env.local` with a local database, generated keys and the local test model, and sets up the knowledge server. It is safe to run again: in an existing `.env.local` it only adds the knowledge settings that are absent, and names the other settings it lacks.
-2. `npm run dev:all` starts the API, portal, console and workspace in one terminal, with prefixed output. At startup the API runs database migrations and publishes the definitions in `apps/api/config/local`.
+2. `npm run dev:all` starts the API, the worker, portal, console and workspace in one terminal, with prefixed output. At startup the API runs database migrations and publishes the definitions in `apps/api/config/local`.
 
 </details>
 
@@ -191,11 +191,11 @@ See [Build on it](#build-on-it) for the other channels.
 
 The example services, such as Kunnskapsassistenten, Klarspråk and Nynorsk, need real models and search. Without those settings they are skipped and logged at startup, so **Lokal testchat** is the only service until you add them.
 
-| Works on a fresh clone, no secrets                           | Needs settings in `.env.local`                                  |
-| ------------------------------------------------------------ | --------------------------------------------------------------- |
-| Login with test persons, rights, portal, console, workspace  | Real models: `FOUNDRY_OPENAI_*`, `FOUNDRY_CLAUDE_*`             |
-| Postgres storage, migrations, API keys, conversations, audit | Kudos and public-docs search: `TYPESENSE_*`                     |
-| Lokal testchat, and your own services on the local model     | Reranking: `COLBERT_API_*`; Langfuse, Maskinporten, real Altinn |
+| Works on a fresh clone, no secrets                           | Needs settings in `.env.local`                      |
+| ------------------------------------------------------------ | --------------------------------------------------- |
+| Login with test persons, rights, portal, console, workspace  | Real models: `FOUNDRY_OPENAI_*`, `FOUNDRY_CLAUDE_*` |
+| Postgres storage, migrations, API keys, conversations, audit |                                                     |
+| Lokal testchat, and your own services on the local model     | Langfuse, Maskinporten, real Altinn                 |
 
 Every setting is listed in [`.env.example`](.env.example), with what happens when it is empty. Restart after you change `.env.local`.
 
@@ -311,7 +311,6 @@ spec:
     config: { budget: { searches: 4, reads: 6, readChars: 12000 }, temperature: 0.3 }
   knowledge:
     datasets: [{ dataset: digdir/kudos }]
-    reranker: colbert
   model: { primary: foundry-openai/gpt-5.6-terra, residency: global }
   exposure: { chat: true, mcp: true, openai: true, rest: true, a2a: true }
 ```
@@ -422,7 +421,7 @@ The test environment in Azure (`genki-test.digdir.cloud`) is deployed from `main
 | **Running**                | A test environment in Azure, deployed from `main` by hand. Production is not set up yet.                                                                                                                                                                                                                                                                                                                                        |
 | **Login and rights**       | The test environment uses Ansattporten TEST, Maskinporten and Altinn tt02, with each person's rights from the Altinn decision point. Locally they are mocked in development mode unless configured.                                                                                                                                                                                                                             |
 | **Replacing headless-rag** | Every capability of [digdir-headless-rag](https://github.com/digdir/digdir-headless-rag) is covered or a written difference in [ADR 0017](docs/adr/0017-parity-scope-and-intentional-divergences.md). On a draft test set nobody has reviewed yet, the judge score shows no significant difference (platform minus headless-rag: -0.03, 95% CI -0.09 to 0.03; [report](apps/parity/reports/rerun-citations/quality-report.md)). |
-| **Kudos search**           | Reads the shared index headless-rag keeps up to date. The platform only searches it.                                                                                                                                                                                                                                                                                                                                            |
+| **Kudos search**           | Runs on genki's knowledge database ([ADR 0042](docs/adr/0042-the-knowledge-database.md)); genki no longer reads the shared Typesense server.                                                                                                                                                                                                                                                                                    |
 | **Decisions**              | Each [ADR](docs/adr/) says whether it is built, and names what is missing if not.                                                                                                                                                                                                                                                                                                                                               |
 
 ---

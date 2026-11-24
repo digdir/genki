@@ -45,7 +45,8 @@ export const platformBlocks = {
   blockClassifyName: 'Classify',
   blockClassifyDescription: 'Picks exactly one category for a text.',
   blockRetrieveName: 'Search',
-  blockRetrieveDescription: "Plans searches and fetches text chunks from the service's datasets.",
+  blockRetrieveDescription:
+    "Plans searches and fetches text chunks from the service's document collections.",
   blockRerankName: 'Rank the results',
   blockRerankDescription: 'Ranks the text chunks and puts together the basis the model reads.',
   blockSynthesizeName: 'Write the answer from the basis',
@@ -69,7 +70,7 @@ export const platformBlocks = {
     'Lets the model search, read and answer by itself, as one step in the flow.',
   blockDocumentsName: 'Find documents',
   blockDocumentsDescription:
-    "Lists documents from the service's datasets by type, organisation, year or id. Writes no text.",
+    "Lists documents from the service's document collections by type, organisation, year or id. Writes no text.",
   blockReadDocumentName: 'Read one document',
   blockReadDocumentDescription:
     'Fetches the text chunks of one document, and can rank them by a question and keep the best.',
@@ -78,7 +79,7 @@ export const platformBlocks = {
     'Puts the results of a loop together into a table where each cell has its source. Can be downloaded as CSV.',
   blockToolName: 'Call a tool',
   blockToolDescription:
-    'Calls one tool from a registered tool source with values from the flow, and passes the result on to later steps.',
+    'Calls one tool from a registered connection with values from the flow, and passes the result on to later steps.',
   blockCallOperationName: 'Call an operation',
   blockCallOperationDescription:
     "Calls a reviewed kind of model operation on one of the service's models, with values from the flow. It runs under the service's guardrails and is masked, metered and audited.",

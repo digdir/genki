@@ -16,7 +16,6 @@ spec:
   knowledge:
     datasets:
       - dataset: digdir/kudos
-    reranker: colbert
     retrieval: { maxPerDocument: 10 }
   model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
   exposure: { mcp: true, openai: true, rest: true }

@@ -21,8 +21,8 @@ const store = () =>
     ['c3', chunk(3)],
   ]);
 
-const searchLine = (text: string, id: string) =>
-  text.split('\n').find((l) => l.includes(` chunk_id=${id} `)) ?? '';
+const searchLine = (text: string, document: string) =>
+  text.split('\n').find((l) => l.includes(` doc_num=${document} `)) ?? '';
 
 const readHeader = (text: string, id: string) =>
   text.split('\n').find((l) => l.startsWith(`--- chunk_id=${id} `)) ?? '';
@@ -43,14 +43,14 @@ const searchThenRead = (ids: string[]) =>
   });
 
 describe('telling same-title documents apart', () => {
-  it("a search result line names the document's publisher", async () => {
+  it("a search result's document line names the document's publisher", async () => {
     const out = await searchThenRead(['c1']);
 
     const text = toolMessages(out.loops[1])[0] ?? '';
-    expect(searchLine(text, 'c1')).toContain(`title="${budget}" publisher="Finansdepartementet"`);
-    expect(searchLine(text, 'c2')).toContain('publisher="Nærings- og fiskeridepartementet"');
-    expect(searchLine(text, 'c3')).not.toBe('');
-    expect(searchLine(text, 'c3')).not.toContain('publisher=');
+    expect(searchLine(text, 'd1')).toContain(`title="${budget}" publisher="Finansdepartementet"`);
+    expect(searchLine(text, 'd2')).toContain('publisher="Nærings- og fiskeridepartementet"');
+    expect(searchLine(text, 'd3')).not.toBe('');
+    expect(searchLine(text, 'd3')).not.toContain('publisher=');
   });
 
   it("a read result names the document's publisher", async () => {
@@ -96,14 +96,13 @@ describe('telling same-title documents apart', () => {
     }
   });
 
-  it("the search tool tells the agent to filter by organisation to get one organisation's document", async () => {
+  it('the search tool tells the agent that the publisher tells same-title documents apart', async () => {
     const out = await searchThenRead(['c1']);
 
     const search = out.loops[0]?.tools?.find((t) => t.name === 'search');
-    expect(JSON.stringify(search?.parameters)).toContain(
-      "When inspect_filters lists orgs_long, filter it with an organisation's name to get that organisation's own document, such as its Prop. 1 S or årsrapport. orgs_long also matches documents the organisation received, such as the tildelingsbrev its ministry sent it, whose publisher= is that ministry.",
+    expect(search?.description).toContain(
+      'publisher="…" names the organisation that published the document: documents with the same title are told apart by it.',
     );
-    expect(search?.description).toContain('publisher=');
   });
 
   it('the read tool tells the agent to say whose document it quotes', async () => {
@@ -157,7 +156,7 @@ describe('telling same-title documents apart', () => {
     });
 
     expect(toolMessages(out.loops[1])[0]).toContain(
-      'For one organisation\'s own document, such as its Prop. 1 S, filter orgs_long with "Finansdepartementet".',
+      'For an organisation\'s own documents, filter orgs_long with "Finansdepartementet".',
     );
   });
 

@@ -313,7 +313,7 @@ describe('searching a dataset directly', () => {
       errors: [
         {
           path: 'filters.owner_orgnr',
-          message: `Datasettet ${digdir}/filer har ikke feltet «owner_orgnr» som filter`,
+          message: `Dokumentsamlingen ${digdir}/filer har ikke feltet «owner_orgnr» som filter`,
         },
       ],
     });

@@ -59,6 +59,20 @@ describe('dev:all', () => {
     expect(apiEnv({ GENAI_DEV_MODE: 'false' })).toEqual({});
   });
 
+  it('starts the worker beside the API, so runs on the knowledge database have someone to work them', () => {
+    const worker = devProcesses({}).find((p) => p.name === 'worker');
+    expect(worker).toMatchObject({
+      port: 8081,
+      args: expect.arrayContaining(['dev', '--workspace', 'apps/worker']),
+      env: { GENAI_DEV_MODE: 'true' },
+    });
+    expect(
+      devProcesses({ GENAI_API_PORT: '8100', GENAI_WORKER_PORT: '8104' }).find(
+        (p) => p.name === 'worker',
+      ),
+    ).toMatchObject({ port: 8104, env: { WORKER_HEALTH_PORT: '8104' } });
+  });
+
   it('runs the API as the test tier in dev mode unless GENAI_ENV is set', () => {
     expect(apiEnv({})).toMatchObject({ GENAI_ENV: 'test' });
     expect(apiEnv({ GENAI_DEV_MODE: 'true' })).toMatchObject({ GENAI_ENV: 'test' });
@@ -95,6 +109,7 @@ describe('dev:all', () => {
 
     expect(processes.map((p) => [p.name, p.port])).toEqual([
       ['api', 8100],
+      ['worker', 8081],
       ['portal', 8101],
       ['console', 8102],
       ['workspace', 8103],

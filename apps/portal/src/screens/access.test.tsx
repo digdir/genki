@@ -62,7 +62,7 @@ describe('Tilgang: personer', () => {
       name: /Kari Nordmann/,
     });
     expect(kari.textContent).toContain(
-      'Bruke tjenestene, Lage og endre tjenester, Forvalte datasett, Se forbruk og kostnad',
+      'Bruke tjenestene, Lage og endre tjenester, Forvalte dokumentsamlinger, Se forbruk og kostnad',
     );
     expect(
       screen.getByText(/Rettighetene gis i Altinn\. Her kan dere i tillegg begrense/),

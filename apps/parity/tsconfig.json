@@ -6,16 +6,5 @@
     "types": ["node"]
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts"],
-  "references": [
-    {
-      "path": "../../packages/kernel"
-    },
-    {
-      "path": "../../packages/port-knowledge"
-    },
-    {
-      "path": "../../packages/providers-typesense"
-    }
-  ]
+  "exclude": ["src/**/*.test.ts"]
 }

@@ -35,22 +35,23 @@ None: the two texts are compared with each other. The page tests in `opb/` are t
 cd benchmarks/ingestion
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Python 3.9 or later
 
-.venv/bin/python fetch_lists.py   # KUDOS listing, our Typesense records, nb/nn dictionaries (~10 min)
+.venv/bin/python fetch_lists.py   # KUDOS listing and nb/nn dictionaries (~10 min)
 .venv/bin/python pair.py          # pair on sha256 and draw a new sample.json; results/pairing-summary.json
-.venv/bin/python fetch.py         # KUDOS text, our chunks and the PDF for each sampled document (~900 MB)
+.venv/bin/python fetch.py         # KUDOS text and the PDF for each sampled document (~900 MB)
 .venv/bin/python checks.py        # every check per page: results/pages.csv, docs.csv, record.json (~3 min)
 .venv/bin/python summarize.py     # results/summary.json, from results/ and sample.json alone
 .venv/bin/python -m unittest -v   # tests for the text heuristics
 ```
 
+Our side, `.data/ts-documents.jsonl` and `.data/ours/`, came from the shared Typesense server, which genki no longer configures (#690): a run needs a copy of them already on disk, and only these results hold what they were.
+
 To recheck the committed sample instead of drawing a new one, skip `pair.py` and run `fetch_lists.py dictionaries` instead of the full `fetch_lists.py`.
 
 ## Settings
 
-| Variable                         | Used by                      | Notes                                                                |
-| -------------------------------- | ---------------------------- | -------------------------------------------------------------------- |
-| `TYPESENSE_URL`, `TYPESENSE_KEY` | `fetch_lists.py`, `fetch.py` | The search key genki uses; read from the environment or `.env.local` |
-| `INGESTION_BENCHMARK_DATA`       | every script                 | Where downloads go; `.data/` by default                              |
+| Variable                   | Used by      | Notes                                   |
+| -------------------------- | ------------ | --------------------------------------- |
+| `INGESTION_BENCHMARK_DATA` | every script | Where downloads go; `.data/` by default |
 
 The KUDOS API needs no key. It allows 180 requests a minute and 50 documents a page, and `/documents/search` stops paging after 10,000 results, so the listing uses `/documents`.
 

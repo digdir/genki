@@ -55,8 +55,8 @@ describe('the input form editor in the service builder', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Legg til felt' }));
     fireEvent.change(screen.getByLabelText('Ledetekst'), { target: { value: 'Virksomhet' } });
     fireEvent.click(screen.getByLabelText('Virksomhet'));
-    fireEvent.click(screen.getByLabelText('Fra et datasett'));
-    fireEvent.change(screen.getByLabelText('Felt i datasettet'), {
+    fireEvent.click(screen.getByLabelText('Fra en dokumentsamling'));
+    fireEvent.change(screen.getByLabelText('Felt i dokumentsamlingen'), {
       target: { value: 'organisation' },
     });
 
@@ -259,7 +259,7 @@ describe('the ids of input form fields', () => {
     expect(screen.getByText('Skjemaet kan ikke publiseres før dette er rettet:')).toBeTruthy();
     expect(
       screen.getByRole('link', {
-        name: 'Stegflyten trenger input.aar, men ingen felt har id-en «aar».',
+        name: 'Arbeidsflyten trenger input.aar, men ingen felt har id-en «aar».',
       }),
     ).toBeTruthy();
     expect(screen.getByText('Fylles av feltet «Virksomheter»')).toBeTruthy();
@@ -350,11 +350,11 @@ describe('options from a dataset', () => {
       />,
     );
 
-    expect(await screen.findByText('Verdier i datasettet nå')).toBeTruthy();
+    expect(await screen.findByText('Verdier i dokumentsamlingen nå')).toBeTruthy();
     expect(screen.getByText('Digitaliseringsdirektoratet, 412 dokumenter')).toBeTruthy();
     expect(screen.getByText('… og 1 til')).toBeTruthy();
     expect(
-      [...(screen.getByLabelText('Felt i datasettet') as HTMLSelectElement).options].map(
+      [...(screen.getByLabelText('Felt i dokumentsamlingen') as HTMLSelectElement).options].map(
         (o) => o.value,
       ),
     ).toEqual(['orgs_long', 'type']);
@@ -373,12 +373,12 @@ describe('options from a dataset', () => {
 
     expect(
       await screen.findByText(
-        'Søkemotoren til datasettet kan ikke hente valg. Bruk faste valg, eller bytt søkemotor.',
+        'Søkemotoren til dokumentsamlingen kan ikke hente valg. Bruk faste valg, eller bytt søkemotor.',
       ),
     ).toBeTruthy();
     expect(
       screen.getByRole('link', {
-        name: '«Virksomhet»: søkemotoren til datasettet kan ikke hente valg.',
+        name: '«Virksomhet»: søkemotoren til dokumentsamlingen kan ikke hente valg.',
       }),
     ).toBeTruthy();
   });

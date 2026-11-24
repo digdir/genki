@@ -72,10 +72,10 @@ const section = async (name: string) =>
 const qualityNow = async () => {
   await waitFor(() =>
     expect(
-      screen.getByRole('region', { name: 'Kvalitet nå' }).getAttribute('aria-busy'),
+      screen.getByRole('region', { name: 'Testutgaven' }).getAttribute('aria-busy'),
     ).toBeNull(),
   );
-  return screen.getByRole('region', { name: 'Kvalitet nå' });
+  return screen.getByRole('region', { name: 'Testutgaven' });
 };
 
 beforeEach(() => {
@@ -112,13 +112,13 @@ describe('the Kvalitet page', () => {
     await section('Saker i siste kjøring');
     await waitFor(() =>
       expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
-        'Kvalitet nå',
-        'Sperrer før publisering',
+        'Testutgaven',
+        'Krav til kvalitet',
         'Testsett',
         'Saker i siste kjøring',
-        'Dommere',
-        'Sammenlign to versjoner',
-        'Kvalitet i drift',
+        'Automatiske vurderinger',
+        'Sammenligning',
+        'I bruk',
       ]),
     );
     expect(
@@ -133,14 +133,14 @@ describe('the Kvalitet page', () => {
     await open('', example);
     const now_ = await qualityNow();
     expect(within(now_).getAllByText(/^86\s%$/)[0]?.className).toBe('q-score');
-    expect(within(now_).getByText('36 av 42 saker bestått, versjon 7')).toBeTruthy();
-    expect(within(now_).getByText('Opp 5 poeng fra versjon 6')).toBeTruthy();
+    expect(within(now_).getByText('36 av 42 saker bestått, utgave 7')).toBeTruthy();
+    expect(within(now_).getByText('Opp 5 poeng fra utgave 6')).toBeTruthy();
     expect(within(now_).getByText('Testsettet Evalueringer, kjørt i dag 09:12')).toBeTruthy();
     expect(
       within(now_)
-        .getByRole('img', { name: /^Poeng per versjon: / })
+        .getByRole('img', { name: /^Poeng per utgave: / })
         .getAttribute('aria-label'),
-    ).toMatch(/versjon 1 71\s%.*versjon 7 86\s%$/);
+    ).toMatch(/utgave 1 71\s%.*utgave 7 86\s%$/);
   });
 
   it('opens the full test set editor with its cases from the test set card', async () => {
@@ -262,7 +262,7 @@ describe('testing the draft again', () => {
 describe('gates before publishing', () => {
   it('says the gates were checked against an older draft when the draft changed after the run', async () => {
     await open('', example);
-    const gates = await section('Sperrer før publisering');
+    const gates = await section('Krav til kvalitet');
     expect(
       await within(gates).findByText(
         'Publiser stopper hvis utkastet ikke klarer disse. Sjekket mot kjøringen av utkastet kl. 11:40; utkastet er endret etterpå.',
@@ -280,7 +280,7 @@ describe('gates before publishing', () => {
 
   it('says the gates were checked against this draft when nothing changed after the run', async () => {
     await open('', { runs: exampleQualityRunsFor('rapportassistenten', 7, 3, now), example: true });
-    const gates = await section('Sperrer før publisering');
+    const gates = await section('Krav til kvalitet');
     expect(
       await within(gates).findByText(
         'Publiser stopper hvis utkastet ikke klarer disse. Sjekket mot kjøringen av utkastet kl. 11:40.',
@@ -294,10 +294,10 @@ describe('the cases of the last run', () => {
     await open('', example);
     const cases = await section('Saker i siste kjøring');
     expect(
-      within(cases).getByText('Versjon 7, testsettet Evalueringer. Feilede først'),
+      within(cases).getByText('Utgave 7, testsettet Evalueringer. Feilede først'),
     ).toBeTruthy();
     const table = within(cases).getByRole('table');
-    expect(await within(table).findByRole('columnheader', { name: 'Versjon 6' })).toBeTruthy();
+    expect(await within(table).findByRole('columnheader', { name: 'Utgave 6' })).toBeTruthy();
     const rows = within(table).getAllByRole('row').slice(1);
     expect(rows).toHaveLength(8);
     expect(within(rows[0] as HTMLElement).getAllByText('Feilet').length).toBeGreaterThan(0);
@@ -332,7 +332,7 @@ describe('a test run that is going', () => {
     expect(within(run).getByText('17 av 42 saker ferdige')).toBeTruthy();
     expect(within(run).getByRole('progressbar', { name: 'Fremdrift' })).toBeTruthy();
     const fact = (name: string) => within(run).getByText(name).nextElementSibling?.textContent;
-    await waitFor(() => expect(fact('Versjon 7 på de samme')).toBe('14 av 17'));
+    await waitFor(() => expect(fact('Utgave 7 på de samme')).toBe('14 av 17'));
     expect(fact('Bestått så langt')).toBe('15 av 17');
     expect(fact('Kjører nå')).toBe('3 saker');
     expect(
@@ -342,7 +342,7 @@ describe('a test run that is going', () => {
     for (const chip of ['Alle 42', 'Ferdige 17', 'Kjører 3', 'Venter 22'])
       expect(await within(cases).findByRole('button', { name: chip })).toBeTruthy();
     expect(within(cases).getByText('1 til 8 av 42')).toBeTruthy();
-    const gates = await section('Sperrer før publisering');
+    const gates = await section('Krav til kvalitet');
     expect(await within(gates).findAllByText('Venter på kjøringen')).toHaveLength(3);
   });
 
@@ -396,7 +396,7 @@ describe('a test run that is going', () => {
 describe('judges and quality in use', () => {
   it('names each judge with what it checks, the cases it scored and the share passed, a Langfuse judge as a mean with its catalogue model name', async () => {
     await open('', example);
-    const judges = await section('Dommere');
+    const judges = await section('Automatiske vurderinger');
     const criteria = rowOf(judges, 'Kriterier');
     expect(
       await within(criteria).findByText('genki, kriterier@2 med GPT-4.1. 31 saker'),
@@ -414,7 +414,7 @@ describe('judges and quality in use', () => {
 
   it('shows quality in use as coming, with its preview bars hidden from screen readers', async () => {
     await open('', example);
-    const live = await section('Kvalitet i drift');
+    const live = await section('I bruk');
     expect(within(live).getByText('Kommer')).toBeTruthy();
     expect(live.querySelector('.q-ghost')?.getAttribute('aria-hidden')).toBe('true');
   });
@@ -591,7 +591,7 @@ describe('the Kvalitet page in English', () => {
   it('shows the sections and the feedback page in English', async () => {
     await open('', {}, {}, undefined, kari.organisations, ['en']);
     expect(await screen.findByRole('heading', { level: 2, name: 'Test sets' })).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: 'Judges' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Automatic evaluations' })).toBeTruthy();
     expect(screen.queryByText('Testsett')).toBeNull();
     cleanup();
 

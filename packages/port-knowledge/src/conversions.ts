@@ -54,8 +54,8 @@ export const doclingPartsDerivation: Derivation = { name: 'docling-parts', versi
 export const textLayerPartsDerivation: Derivation = { name: 'text-layer-parts', version: 1 };
 
 /**
- * The derivations stored as parts, a unit a row, beside the pages derivations (ADR 0055). Until a
- * pipeline asks for them (issue 635), storing one ends no wait: the waits are for pages.
+ * The derivations stored as parts, a unit a row, beside the pages derivations (ADR 0055). Storing
+ * one ends only the waits on parts, which a pipeline with a parts chunking makes (issue 635).
  */
 export const partsDerivations: readonly Derivation[] = [
   doclingPartsDerivation,
@@ -74,8 +74,19 @@ export const acceptedConverters: AcceptedConverter[] = [
   { converter: 'text-layer', derivation: textLayerDerivation, kept: false },
 ];
 
+/**
+ * The converters a pipeline with a parts chunking accepts, in order (issue 635): Docling's parts,
+ * kept, then a PDF's text layer's, replaced. A file with neither waits on a parts convert job.
+ */
+export const acceptedPartsConverters: AcceptedConverter[] = [
+  { converter: 'docling', derivation: doclingPartsDerivation, kept: true },
+  { converter: 'text-layer', derivation: textLayerPartsDerivation, kept: false },
+];
+
 export interface StoredConversion extends ConverterKey {
   sha256: string;
+  /** The conversion's number, which its units and chunks name; absent before it is stored. */
+  id?: string;
   derivation: Derivation;
   /** Empty for a parts derivation, whose text is in its units. */
   pages: string[];
@@ -107,8 +118,17 @@ export interface ConversionWaiter {
   tenant: string;
 }
 
-/** A file to convert, as the convert job's key names it. */
-export type ConversionTarget = ConverterKey & { sha256: string };
+/**
+ * A file to convert, as the convert job's key names it, and whether its records wait on its parts
+ * instead of its pages (issue 635).
+ */
+export type ConversionTarget = ConverterKey & { sha256: string; parts?: boolean };
+
+/** What a parts convert key adds to the pages key, which stays as it was before parts. */
+export const partsKeySuffix = ':parts';
+
+/** Whether a convert key is one records wait on a file's parts under. */
+export const isPartsKey = (key: string) => key.endsWith(partsKeySuffix);
 
 const canonical = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(canonical);
@@ -127,9 +147,15 @@ export const settingsHash = (settings: Readonly<Record<string, unknown>>) =>
     .update(JSON.stringify(canonical(settings)))
     .digest('hex');
 
-/** A convert job's key, and the lock its waits and its conversion take: file, converter, version, settings. */
+/**
+ * A convert job's key, and the lock its waits and its conversion take: file, converter, version,
+ * settings, and `:parts` when its records wait on the file's parts (issue 635). A pages key is the
+ * same as before parts, so jobs, waits and dead letters from before keep their keys.
+ */
 export const conversionKey = (target: ConversionTarget) =>
-  `${target.sha256}:${target.converter}:${target.version}:${settingsHash(target.settings)}`;
+  `${target.sha256}:${target.converter}:${target.version}:${settingsHash(target.settings)}${
+    target.parts ? partsKeySuffix : ''
+  }`;
 
 export interface StoredConversions {
   /**
@@ -153,7 +179,8 @@ export interface StoredConversions {
   ): Promise<{ name: string; sha256: string }[]>;
   /**
    * Makes a record wait on a file's conversion, under the transaction lock its conversion takes
-   * when it finishes. False when the conversion is already stored: then nothing waits. When the
+   * when it finishes. False when the conversion is already stored: then nothing waits. A wait on
+   * parts (`target.parts`) is over once any parts conversion of the file is stored. When the
    * record waits, `send` sends the convert job in the same transaction. Without a transaction,
    * one is opened.
    */
@@ -165,26 +192,31 @@ export interface StoredConversions {
   ): Promise<boolean>;
   /**
    * Stores a conversion under the same lock, with its units in the same transaction, replacing any
-   * stored before under the same key. A pages conversion ends every wait on its file and converter, and calls
-   * `send` in that transaction for each waiting record that waits on nothing else. A record whose
+   * stored before under the same key. A pages conversion ends the waits under its own key and under
+   * `jobKey`, the key its convert job was sent with, which names an earlier version or settings of
+   * the same converter when they changed while the job was queued (issue 945); a `jobKey` of another
+   * file or converter is refused. A parts conversion does the same with the parts keys, so storing
+   * parts ends only the waits on parts and storing pages only the waits on pages (issue 635); a
+   * `jobKey` of the other kind is refused. A parts `jobKey` may name another converter of the same
+   * file, as a text-layer job whose parts come from Docling's output in Blob. It calls `send` in that transaction for each waiting record that
+   * waits on nothing else. A record whose
    * index job could not be sent, since one is still queued or running (`send` answered null), keeps
-   * its wait and is answered as `busy`: the convert job is tried again. A record that still waits on
+   * its wait, under the key it had, and is answered as `busy`: the convert job is tried again. A record that still waits on
    * another file is answered as `held`: its wait on this file has ended, and that file's conversion
    * sends its index job. The conversion keeps its page count and its blank end (`blankEndOf`).
    */
   store(
     conversion: StoredConversion,
     send: (waiter: ConversionWaiter, transaction: RecordTransaction) => Promise<unknown>,
+    jobKey?: string,
   ): Promise<{ sent: ConversionWaiter[]; busy: ConversionWaiter[]; held: ConversionWaiter[] }>;
   /**
    * Ends a record's waits, inside the transaction that writes it, so a wait on a file the record no
    * longer holds, or on a conversion that ended as a dead letter, does not hold its index job back.
    */
   clear(transaction: RecordTransaction, dataset: string, record: string): Promise<void>;
-  /** The records waiting on a file's conversion, with their runs and organisations. */
-  waiting(
-    target: ConversionTarget,
-  ): Promise<{ run: string; tenant: string; dataset: string; record: string }[]>;
+  /** The records waiting under a convert key, with their runs and organisations. */
+  waiting(key: string): Promise<{ run: string; tenant: string; dataset: string; record: string }[]>;
   /** The convert keys a run's records wait on. */
   waitKeys(run: string): Promise<string[]>;
   /** The files a run's records wait on, each with when its first record began waiting. */

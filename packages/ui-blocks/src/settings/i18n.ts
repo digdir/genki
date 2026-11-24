@@ -35,6 +35,7 @@ export const nbSettings = defineNamespace({
   generalAppearance: 'utseende',
   generalTextSize: 'tekststørrelse',
   generalLanguageLead: 'språket i svarene',
+  generalServiceLanguageLead: 'språket i tjenesten',
   generalLengthLead: 'hvor lange svarene er',
   generalOpenWithLead: 'hvor du starter',
   generalAppearanceLead: 'hvordan tjenesten ser ut',
@@ -43,6 +44,8 @@ export const nbSettings = defineNamespace({
   generalNoticeTitle: 'Gjelder hele tjenesten.',
   generalNotice:
     'Disse valgene gjelder alle tråder og prosjekter. Prosjekter kan senere få egne instrukser som overstyrer dem. Endringer lagres med en gang.',
+  language: 'Språk',
+  languageDescription: 'Menyene, knappene og meldingene i tjenesten.',
   answerLanguage: 'Språk i svarene',
   answerLanguageDescription: 'Assistenten svarer på dette språket, uansett språk i kildene.',
   languageNb: 'Bokmål',
@@ -156,6 +159,7 @@ export const enSettings = {
   generalAppearance: 'appearance',
   generalTextSize: 'text size',
   generalLanguageLead: 'the language of the answers',
+  generalServiceLanguageLead: 'the language of the service',
   generalLengthLead: 'how long the answers are',
   generalOpenWithLead: 'where you start',
   generalAppearanceLead: 'how the service looks',
@@ -164,6 +168,8 @@ export const enSettings = {
   generalNoticeTitle: 'Applies to the whole service.',
   generalNotice:
     'These choices apply to every thread and project. Projects may later get instructions of their own that override them. Changes are saved at once.',
+  language: 'Language',
+  languageDescription: 'The menus, buttons and messages of the service.',
   answerLanguage: 'Language of the answers',
   answerLanguageDescription:
     'The assistant answers in this language, whatever the language of the sources.',

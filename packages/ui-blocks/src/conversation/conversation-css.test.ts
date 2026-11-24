@@ -47,9 +47,14 @@ describe('the conversation styles', () => {
     expect(outside).toEqual([]);
   });
 
-  it('keep the question’s box without a visible border, in the ground it is drawn on', () => {
-    expect(flat).toContain(
-      '--dsc-card-border-color: var(--genai-conversation-question-border-color, var(--ds-color-surface-tinted));',
+  it('draw the question with no border, its ground alone marking it', () => {
+    expect(flat).toMatch(/\.uib-conversation-question \{[^}]*--dsc-card-border-width: 0;/);
+    expect(flat).not.toContain('--genai-conversation-question-border-color');
+  });
+
+  it('draw the question on the tinted Card’s own ground unless the host names another', () => {
+    expect(flat).toMatch(
+      /\.uib-conversation-question \{[^}]*background: var\(--genai-conversation-question-background, var\(--ds-color-surface-tinted\)\);/,
     );
   });
 

@@ -63,6 +63,23 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+The public `/v1` routes are what other systems build on, so CI refuses a breaking change to them unless this list announces it. [openapi-v1.json](openapi-v1.json) is the `/v1` part of `/openapi.json`, written by `apps/api/src/openapi/public-api.test.ts` (refresh it with `npx vitest run apps/api/src/openapi/public-api.test.ts -u`). `npm run api:compat` compares it with the copy on `origin/main`, or the base of the pull request in CI. These are breaking:
+
+- a removed path or method;
+- a removed response field, a field that is no longer always present, or a removed success response;
+- a new required request field, parameter or body;
+- a narrowed type or enum: a request accepts less than before, or a response can send a type or value it could not before (such as `null`);
+- a changed auth requirement: an open operation that starts to need a credential, the reverse, or another security scheme.
+
+To announce one, add a line to a new dated entry below that names the operation in backticks as the method and path, such as `` `POST /v1/chat/completions` ``. Only lines added in the same change count. Changes outside `/v1` are listed here too, but CI does not check them, nor path parameter schemas or `additionalProperties`.
+
+`npm run definitions:compat` checks every YAML or JSON file in the repository that is a service, step flow, skill or block definition (seeds, examples and fixtures) against the current schema, including the strategy, tool and guardrail settings. Models, datasets, rerankers, tools and blocks are not looked up, since each environment has its own. Give it the path to a tenant export (`GET /tenants/{tenant}/export`) or a folder of definitions to check those instead.
+
+### 2026-11-20: archived services and catalog references
+
+- An archived service no longer keeps a catalog model or reranker in use, so `DELETE /operator/catalog/{kind}/{id}` can delete one only archived services name, and a skipped model only they name is marked `unused`.
+- `PUT /tenants/{tenant}/services/{id}/lifecycle` to `active` from `paused` or `archived` checks the latest version against the catalog as publishing does, and answers `409` with `urn:genai:problem:service-outdated` when it no longer validates; `errors` names what is missing. Pausing an archived service stays unchecked, so a fixed version can be published before activating it.
+
 ### 2026-11-20: genki checks what discovered models can do
 
 - `POST /operator/models/refresh` also checks the capabilities of discovered models that their discovery rule does not name, with at most 12 small synthetic model calls through the gate, and answers `learned` with `checked` (model, capability, `has`), `calls`, `deferred` (checks left over the cap) and the priced `usage`. The audit `result` carries the same.
@@ -77,7 +94,7 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ### 2026-11-19: removing unused step flows, operation kinds and platform secrets
 
-- New `DELETE /tenants/{tenant}/step-flows/{id}` (manage-services, `change-reason`, audited as `platform.step-flow.archive`) archives one of the organisation's own step flows: Stegflyter and Byggeklosser stop listing it, its versions stay, and publishing it again lists it again. It answers `409` with `urn:genai:problem:step-flow-in-use` while the latest version, or a version an environment is pinned to, of a service that is not archived runs it, directly or as a subflow, in any organisation for a Digdir flow. Internal services count. `usedBy` names only services in the caller's own organisation; `otherOrganisations` counts the rest, and `internalServices` the internal ones the caller may not see.
+- New `DELETE /tenants/{tenant}/step-flows/{id}` (manage-services, `change-reason`, audited as `platform.step-flow.archive`) archives one of the organisation's own step flows: Arbeidsflyter and Katalog stop listing it, its versions stay, and publishing it again lists it again. It answers `409` with `urn:genai:problem:step-flow-in-use` while the latest version, or a version an environment is pinned to, of a service that is not archived runs it, directly or as a subflow, in any organisation for a Digdir flow. Internal services count. `usedBy` names only services in the caller's own organisation; `otherOrganisations` counts the rest, and `internalServices` the internal ones the caller may not see.
 - New `DELETE /operator/operation-kinds/{kind}` (operators, `change-reason`, audited as `platform.operations.kind.delete`) deletes a kind that is not built in and that no descriptor describes; `409` with `urn:genai:problem:operation-kind-built-in` or `urn:genai:problem:operation-kind-in-use`.
 - New `DELETE /operator/secrets/{name}` (operators, `change-reason`, audited as `platform.platform-secret.delete` without the value) deletes a stored platform secret nothing names; `409` with `urn:genai:problem:platform-secret-in-use` and `usedBy` while a catalog entry, a configuration entry such as an operator hook, or a definition in any organisation, internal services included, names it. It answers `503` and deletes nothing when the platform cannot check the uses.
 
@@ -255,7 +272,7 @@ jq -n --arg data "$(base64 < brev.txt | tr -d '\n')" '{
 
 ### 2026-11-05: embedders, rerankers and prices per unit
 
-- Embedding models are models in the model catalogue with `apis: { embed: openai/embeddings@1 }` and `embed: { dimensions, maxBatch? }`; the embedding catalogue and the schemas `Embedding` and `EmbeddingEndpoint` are gone. A reranker on an engine with an API is a model with `apis: { rerank: colbert/rerank@1 }` and `rerank: { onFailure }`. Ids do not change, and neither model is listed in `GET /models` as a chat model.
+- Embedding models are models in the model catalogue with `apis: { embed: openai/embeddings@1 }` and `embed: { dimensions, maxBatch? }`; the embedding catalogue and the schemas `Embedding` and `EmbeddingEndpoint` are gone. A reranker on an engine with an API is a model with `apis: { rerank: … }` and `rerank: { onFailure }`, such as the bundled descriptor `compatible/rerank@1`; the earlier built-in rerank descriptor is removed. Ids do not change, and neither model is listed in `GET /models` as a chat model.
 - The descriptor `openai/embed@1` is `openai/embeddings@1`; the old id is still read, and a model bound to it moves to the new one.
 - `PUT /operator/models/{id}/price` takes `{ <kind>: { <unit>: <kroner per unit> } }` with the units `input-token`, `output-token`, `cached-input-token`, `audio-second`, `image`, `video-second`, `character` and `request`. `{ inputPerThousand, outputPerThousand }` is still accepted and holds for every kind the model binds. The answer adds `prices`, and keeps `inputPerThousand` and `outputPerThousand` as the per-1,000-token view. A unit not in the list answers `400`.
 - `GET /operator/apis` adds `units`, the units each API reports.

@@ -8,7 +8,7 @@ import { useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
 import type { ClientView, ServiceKeyView, VersionSummary } from '../../types';
 import type { Format } from '@genai/i18n';
-import { shortWhen } from './dev-format';
+import { placeName, shortWhen } from './dev-format';
 import { Environments, type EnvironmentFacts, type HistoryEntry } from './Environments';
 
 const settled = <T,>(r: PromiseSettledResult<T>) =>
@@ -18,7 +18,7 @@ const historyLimit = 10;
 
 const changeText = (c: EnvironmentChange, t: T, f: Format, who: string) => {
   const when = shortWhen(c.at, f);
-  const base = { when, environment: c.environment, who };
+  const base = { when, environment: placeName(t, c.environment), who };
   const moved = { ...base, from: c.previousVersion ?? '', to: c.version ?? '' };
   const text =
     c.action === 'promoted'
@@ -55,7 +55,7 @@ export const environmentHistory = (
           at: v.publishedAt,
           text: t('serviceDev.historyPublished', {
             when: shortWhen(v.publishedAt, f),
-            environment: e.name,
+            environment: placeName(t, e.name),
             version: v.version,
           }),
         })),

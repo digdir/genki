@@ -255,7 +255,39 @@ const DatasetListItem = DatasetWithStatus.extend({
     .describe('How many published services and adopted building blocks of the tenant read it'),
 }).openapi('DatasetListItem');
 
+const engineFields = {
+  engine: z
+    .string()
+    .optional()
+    .describe("The endpoint's search engine, when the endpoint is known"),
+  engineTitle: z.string().optional().describe("That engine's name"),
+};
+const DatasetEffective = z
+  .object({
+    endpoint: z.string(),
+    ...engineFields,
+    generation: z.string().optional().describe('The generation read on the knowledge database'),
+    version: z.number().int().describe('The catalog version in use; 0 for the seed'),
+    fromSeed: z.boolean().describe("True while the dataset runs on the platform's seed"),
+    expected: z
+      .object({
+        endpoint: z.string(),
+        ...engineFields,
+        generation: z.string().optional(),
+        version: z.number().int(),
+        at: z.string(),
+      })
+      .optional()
+      .describe(
+        'The newest stored version, when the last catalog rebuild left it out; the dataset then runs on its seed, or is missing when it has no seed',
+      ),
+  })
+  .openapi('DatasetEffective');
+
 const DatasetDetail = DatasetWithStatus.extend({
+  effective: DatasetEffective.optional().describe(
+    "Where searches go now; only for the owner's members",
+  ),
   skipped: z.array(SkippedDocument),
   usedBy: z
     .array(DatasetReader)
@@ -727,7 +759,31 @@ const DiscoveryRule = z
     include: z.array(z.string()).optional(),
     exclude: z.array(z.string()).optional(),
     capabilities: z.array(z.enum(capabilities)).optional(),
-    apis: ApiBindings.optional().describe('The APIs a discovered deployment binds'),
+    apis: ApiBindings.optional().describe(
+      'The APIs a discovered deployment binds; a model of another kind than chat binds the API named here for its kind, or the one API of that kind the connection offers',
+    ),
+    residency: z
+      .enum(['norway', 'eu', 'global'])
+      .optional()
+      .describe(
+        'Where the models this rule finds process data; global when left out. An operator can still set one model apart.',
+      ),
+    models: z
+      .record(
+        z.string(),
+        z.object({
+          kind: z.string().optional().describe('The kind of the model, over what the listing says'),
+          embed: z
+            .object({ dimensions: z.number().int(), maxBatch: z.number().int().optional() })
+            .optional()
+            .describe(
+              'An embedding model is served on the embedding port once its dimensions are set',
+            ),
+          rerank: z.object({ onFailure: z.enum(['degrade', 'fail']).optional() }).optional(),
+        }),
+      )
+      .optional()
+      .describe('Settings for one discovered deployment, by its name'),
   })
   .openapi('DiscoveryRule');
 const ModelEndpointFields = {
@@ -1271,7 +1327,7 @@ const catalogRoutes = (base: Base): RouteConfig[] => {
           method: 'get',
           path: '/operator/catalog/entries',
           summary:
-            'Every catalog entry, with the kinds tenants may own and seed entries skipped (operators)',
+            'Every catalog entry, with the kinds tenants may own and the stored entries left out of the catalog with their reasons (operators)',
           request: {
             query: z.object({ kind: kind.optional(), scope: z.string().optional() }),
           },
@@ -1281,7 +1337,13 @@ const catalogRoutes = (base: Base): RouteConfig[] => {
                 data: z.array(CatalogItem),
                 kinds: z.array(z.enum(catalogKinds)),
                 tenantKinds: z.array(z.enum(catalogKinds)),
-                skipped: z.array(z.string()),
+                skipped: z.array(
+                  z.object({
+                    kind: z.enum(catalogKinds),
+                    id: z.string(),
+                    problems: z.array(z.object({ path: z.string(), message: z.string() })),
+                  }),
+                ),
               }),
               'Entries',
             ),

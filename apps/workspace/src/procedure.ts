@@ -35,6 +35,7 @@ const toolTitles: Readonly<Record<string, PlainKey>> = {
   plan_queries: 'procedure.plan_queries',
   inspect_filters: 'procedure.inspect_filters',
   source_facts: 'procedure.source_facts',
+  service_facts: 'procedure.service_facts',
   search: 'procedure.search',
   read_chunks: 'procedure.read_chunks',
   rerank_results: 'procedure.rerank_results',

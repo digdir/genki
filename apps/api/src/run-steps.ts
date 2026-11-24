@@ -252,6 +252,7 @@ const toolTitles: Record<string, [string, ApiKey]> = {
   generate_response: ['model', 'steps.toolGenerate'],
   inspect_filters: ['tool', 'steps.toolInspect'],
   source_facts: ['tool', 'steps.toolSourceFacts'],
+  service_facts: ['tool', 'steps.toolServiceFacts'],
   use_skill: ['tool', 'steps.toolSkill'],
 };
 

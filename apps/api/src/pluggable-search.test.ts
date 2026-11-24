@@ -9,7 +9,13 @@ import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { envSecrets } from '@genai/kernel';
 import { fakeEmbeddingAdapter, testContext } from '@genai/port-embedding/testing';
 import { knowledgeProfiles } from '@genai/port-knowledge';
-import { defaultPgvectorProfiles } from '@genai/providers-pgvector';
+import { memoryEngine } from '@genai/port-knowledge/testing';
+import {
+  defaultPgvectorProfiles,
+  migrateKnowledgeServer,
+  openKnowledgePools,
+  setUpKnowledgeServer,
+} from '@genai/providers-pgvector';
 import { createPool } from '@genai/providers-postgres';
 import { createAdmin, engineSwitchPublisher } from './admin.js';
 import { loadCatalog } from './catalogs.js';
@@ -28,26 +34,67 @@ const principals: Record<string, Principal> = {
 
 let container: StartedPostgreSqlContainer;
 let pool: ReturnType<typeof createPool>;
+let worker: ReturnType<typeof openKnowledgePools>;
+let api: ReturnType<typeof openKnowledgePools>;
 let folder: string;
 
 beforeAll(async () => {
   container = await new PostgreSqlContainer('pgvector/pgvector:0.8.2-pg17').start();
   pool = createPool({ connectionString: container.getConnectionUri() });
+  // The knowledge server with both logins, so a run in the API can write to it and searches read.
+  const password = 'login-pw';
+  for (const login of ['knowledge_api', 'knowledge_worker'])
+    await pool.query(`create role ${login} login password '${password}'`);
+  await setUpKnowledgeServer(pool, {
+    apiLogin: 'knowledge_api',
+    workerLogin: 'knowledge_worker',
+    platformId: '7f3c0d4e-1b2a-4c5d-8e9f-0a1b2c3d4e5f',
+  });
+  const source = (user: string) => ({
+    host: container.getHost(),
+    port: container.getPort(),
+    database: container.getDatabase(),
+    user,
+    password,
+  });
+  worker = openKnowledgePools(source('knowledge_worker'), 'worker');
+  api = openKnowledgePools(source('knowledge_api'), 'api');
+  if (worker.pools.owner) await migrateKnowledgeServer(worker.pools.owner);
   folder = await mkdtemp(join(tmpdir(), 'genai-ingest-'));
 }, 120_000);
 
 afterAll(async () => {
+  await worker?.close();
+  await api?.close();
   await pool?.end();
   await stopPostgres(container);
   if (folder) await rm(folder, { recursive: true, force: true });
 });
 
 const embedding = { model: 'fake/embed', dimensions: 8 };
-const platformPg = {
-  engine: 'pgvector',
-  options: { connection: 'platform' },
-  sharing: { tenants: '*' },
-};
+/** pgvector on the knowledge server, the only place it runs since issue 151. */
+const kunnskapsserveren = { engine: 'pgvector', sharing: { tenants: '*' } };
+/** An engine of genki's own that is not the knowledge server, in memory as platform-pg went with issue 151. */
+const lokal = { engine: 'memory', sharing: { tenants: '*' } };
+
+/** Catalogs with these knowledge endpoints and the fake embedding model `fake/embed`. */
+const embeddingCatalogs = (endpoints: Record<string, Record<string, unknown>>) => ({
+  models: { endpoints: {}, models: [] },
+  knowledge: { endpoints, datasets: [] },
+  rerank: { endpoints: {}, rerankers: [] },
+  embeddings: {
+    endpoints: {
+      fake: {
+        protocol: 'fake',
+        baseURL: 'https://embed.invalid',
+        auth: { kind: 'api-key', secret: 'secret://env/embed-key' },
+      },
+    },
+    models: [
+      { id: 'fake/embed', endpoint: 'fake', deployment: 'e', residency: 'norway', dimensions: 8 },
+    ],
+  },
+});
 
 const boot = async (input: Partial<PlatformInput> = {}, { database = true } = {}) => {
   const warnings: string[] = [];
@@ -55,7 +102,7 @@ const boot = async (input: Partial<PlatformInput> = {}, { database = true } = {}
     catalogs: {
       models: { endpoints: {}, models: [] },
       knowledge: {
-        endpoints: { 'platform-pg': platformPg },
+        endpoints: { kunnskapsserveren },
         datasets: [],
       },
       rerank: { endpoints: {}, rerankers: [] },
@@ -68,7 +115,8 @@ const boot = async (input: Partial<PlatformInput> = {}, { database = true } = {}
       return principal ? { principal } : undefined;
     },
     onWarning: (message) => warnings.push(message),
-    ...(database ? { knowledgePool: pool } : {}),
+    knowledgeEngines: [memoryEngine()],
+    ...(database ? { knowledgeServer: { ...worker.pools, ...api.pools } } : {}),
     ...input,
   });
   const admin = createAdmin({
@@ -100,7 +148,7 @@ describe('pluggable search engines over the API', () => {
     const catalogs = {
       models: { endpoints: {}, models: [] },
       knowledge: {
-        endpoints: { 'platform-pg': platformPg, 'knowledge-pg': knowledgePg },
+        endpoints: { 'knowledge-pg': knowledgePg },
         datasets: [],
       },
       rerank: { endpoints: {}, rerankers: [] },
@@ -115,7 +163,7 @@ describe('pluggable search engines over the API', () => {
     expect(withServer.warnings.filter((w) => w.includes('knowledge-pg'))).toEqual([]);
     expect((await save(withServer.call)).status).toBe(200);
 
-    const without = await boot({ catalogs });
+    const without = await boot({ catalogs }, { database: false });
     expect(without.warnings).toEqual([expect.stringContaining('knowledge-pg')]);
     const refused = await save(without.call);
     expect(refused.status).toBe(400);
@@ -127,7 +175,7 @@ describe('pluggable search engines over the API', () => {
       models: { endpoints: {}, models: [] },
       knowledge: {
         endpoints: {
-          'platform-pg': platformPg,
+          lokal,
           'knowledge-pg': { engine: 'pgvector', options: { connection: 'knowledge' } },
         },
         datasets: [],
@@ -153,7 +201,7 @@ describe('pluggable search engines over the API', () => {
       return { status: res.status, body: await json<{ spec?: { generation?: string } }>(res) };
     };
 
-    it('copy from the platform database to the knowledge database is refused in bokmål, since it cannot hand over its documents one by one, not as shared storage', async () => {
+    it('copy from an engine of its own to the knowledge database is refused in bokmål, since it cannot hand over its documents one by one, not as shared storage', async () => {
       const { call } = await boot({
         embeddingAdapters: [fakeEmbeddingAdapter()],
         catalogs: {
@@ -179,7 +227,7 @@ describe('pluggable search engines over the API', () => {
         },
         knowledgeServer: { reader: pool },
       });
-      expect((await publish(call, 'digdir/notes', dataset('platform-pg'))).status).toBe(200);
+      expect((await publish(call, 'digdir/notes', dataset('lokal'))).status).toBe(200);
       const started = await call('/operator/datasets/digdir%2Fnotes/engine-switches', 'drift', {
         body: { to: 'knowledge-pg', method: 'copy', embedding },
       });
@@ -199,7 +247,7 @@ describe('pluggable search engines over the API', () => {
           knowledge: {
             ...knowledgeCatalogs.knowledge,
             endpoints: {
-              'platform-pg': { ...platformPg, ...shared },
+              lokal: { ...lokal, ...shared },
               'knowledge-pg': {
                 ...knowledgeCatalogs.knowledge.endpoints['knowledge-pg'],
                 ...shared,
@@ -222,7 +270,7 @@ describe('pluggable search engines over the API', () => {
       });
       for (const [id, endpoint] of [
         ['kudos-next', 'knowledge-pg'],
-        ['notes', 'platform-pg'],
+        ['notes', 'lokal'],
       ] as const) {
         const published = await call(`/tenants/${digdir}/catalog/dataset/${id}`, 'kari', {
           method: 'PUT',
@@ -255,7 +303,7 @@ describe('pluggable search engines over the API', () => {
       expect(saved.body.spec?.generation).toEqual(expect.any(String));
       const other = await publish(call, 'digdir/altinn-docs', dataset('knowledge-pg'));
       expect(other.body.spec?.generation).not.toBe(saved.body.spec?.generation);
-      const onPlatform = await publish(call, 'digdir/notes', dataset('platform-pg'));
+      const onPlatform = await publish(call, 'digdir/notes', dataset('lokal'));
       expect(onPlatform.body.spec?.generation).toBeUndefined();
     });
 
@@ -310,7 +358,7 @@ describe('pluggable search engines over the API', () => {
         catalogs: knowledgeCatalogs,
         knowledgeServer: { reader: pool },
       });
-      expect((await publish(call, 'digdir/notes', dataset('platform-pg'))).status).toBe(200);
+      expect((await publish(call, 'digdir/notes', dataset('lokal'))).status).toBe(200);
       const moved = await publish(call, 'digdir/notes', dataset('knowledge-pg'));
       expect(moved.status).toBe(400);
       expect(JSON.stringify(moved.body)).toContain('engine switch');
@@ -329,7 +377,7 @@ describe('pluggable search engines over the API', () => {
         catalogs: knowledgeCatalogs,
         knowledgeServer: { reader: pool },
       });
-      expect((await publish(call, 'digdir/flyttes', dataset('platform-pg'))).status).toBe(200);
+      expect((await publish(call, 'digdir/flyttes', dataset('lokal'))).status).toBe(200);
       const moving = (version: number) => ({
         kind: 'dataset',
         id: 'digdir/flyttes',
@@ -358,7 +406,7 @@ describe('pluggable search engines over the API', () => {
         generation: 'g-20261104-aa11bb',
       });
       // Even the switch names the generation it filled.
-      expect((await publish(call, 'digdir/uten', dataset('platform-pg'))).status).toBe(200);
+      expect((await publish(call, 'digdir/uten', dataset('lokal'))).status).toBe(200);
       const nameless = await admin.perform(
         { ...engineSwitchPublisher('platform', digdir), tenant: digdir },
         'platform.catalog.publish',
@@ -390,12 +438,15 @@ describe('pluggable search engines over the API', () => {
         id: 'digdir/veiledning',
         name: 'Veiledning',
         residency: 'norway',
-        index: { endpoint: 'platform-pg' },
+        index: { endpoint: 'kunnskapsserveren' },
       },
     });
     expect(created.status).toBe(201);
     expect(await json(created)).toMatchObject({
-      index: { endpoint: 'platform-pg', options: { profiles: defaultPgvectorProfiles(false) } },
+      index: {
+        endpoint: 'kunnskapsserveren',
+        options: { profiles: defaultPgvectorProfiles(false) },
+      },
     });
 
     const embedded = await call('/operator/datasets', 'drift', {
@@ -403,7 +454,7 @@ describe('pluggable search engines over the API', () => {
         id: 'digdir/vektor',
         name: 'Vektor',
         residency: 'norway',
-        collection: { endpoint: 'platform-pg' },
+        collection: { endpoint: 'kunnskapsserveren' },
         embedding,
       },
     });
@@ -465,10 +516,12 @@ describe('pluggable search engines over the API', () => {
     });
     expect(withHost.status).toBe(400);
     expect(JSON.stringify(await json(withHost))).toContain('takes no baseURL');
-    expect((await endpoint({ options: { connection: 'platform' } })).status).toBe(200);
+    const platform = await endpoint({ options: { connection: 'platform' } });
+    expect(platform.status).toBe(400);
+    expect((await endpoint({ options: { connection: 'knowledge' } })).status).toBe(200);
   });
 
-  it('ingestion into a pgvector dataset stores, embeds with a fake embedder and becomes searchable', async () => {
+  it('ingestion into a dataset stores, embeds with a fake embedder and becomes searchable', async () => {
     const adapter = fakeEmbeddingAdapter();
     const docs = join(folder, 'veiledning');
     await rm(docs, { recursive: true, force: true });
@@ -484,34 +537,9 @@ describe('pluggable search engines over the API', () => {
     const { call, platform } = await boot({
       ingestFolderRoot: folder,
       embeddingAdapters: [adapter],
-      catalogs: {
-        models: { endpoints: {}, models: [] },
-        knowledge: {
-          endpoints: {
-            'platform-pg': platformPg,
-          },
-          datasets: [],
-        },
-        rerank: { endpoints: {}, rerankers: [] },
-        embeddings: {
-          endpoints: {
-            fake: {
-              protocol: 'fake',
-              baseURL: 'https://embed.invalid',
-              auth: { kind: 'api-key', secret: 'secret://env/embed-key' },
-            },
-          },
-          models: [
-            {
-              id: 'fake/embed',
-              endpoint: 'fake',
-              deployment: 'e',
-              residency: 'norway',
-              dimensions: 8,
-            },
-          ],
-        },
-      },
+      // Runs in the API write only to engines outside the knowledge server, whose runs are jobs.
+      knowledgeEngines: [memoryEngine({ vectors: true })],
+      catalogs: embeddingCatalogs({ lokal }),
     });
     expect(
       (
@@ -520,7 +548,7 @@ describe('pluggable search engines over the API', () => {
             id: 'veiledning',
             name: 'Veiledning',
             residency: 'norway',
-            index: { endpoint: 'platform-pg' },
+            index: { endpoint: 'lokal' },
             embedding,
           },
         })
@@ -556,7 +584,7 @@ describe('pluggable search engines over the API', () => {
     expect(run?.report?.usage).toHaveProperty(['embedder:fake/embed']);
     expect(adapter.calls.length).toBeGreaterThan(0);
 
-    const { ctx, metered } = testContext();
+    const { ctx } = testContext();
     const port = platform.knowledge.open(
       { kind: 'dataset', id: `${digdir}/veiledning`, tenant: digdir },
       { ...ctx, tenant: digdir },
@@ -564,7 +592,57 @@ describe('pluggable search engines over the API', () => {
     expect(port.info().capabilities).toContain('search.hybrid');
     const result = await port.search({ query: 'tilskudd', profile: knowledgeProfiles.content });
     expect(result.hits[0]?.text).toContain('tilskudd');
+  });
+
+  it("a search of a pgvector dataset embeds the query with the dataset's model through the platform", async () => {
+    const adapter = fakeEmbeddingAdapter();
+    const { call, platform } = await boot({
+      embeddingAdapters: [adapter],
+      catalogs: embeddingCatalogs({ kunnskapsserveren }),
+    });
+    const created = await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'tilskudd',
+        name: 'Tilskudd',
+        residency: 'norway',
+        index: { endpoint: 'kunnskapsserveren' },
+        embedding,
+      },
+    });
+    expect(created.status).toBe(201);
+    // The worker fills the generation the catalog names; here the platform's own writer stands in.
+    const route = platform.writers.open(`${digdir}/tilskudd`, {
+      signal: new AbortController().signal,
+    });
+    const generation = route.dataset.generation ?? '';
+    expect(generation).not.toBe('');
+    await route.writer.prepare(route.dataset, generation);
+    await route.writer.store(route.dataset, generation, {
+      id: 'tilskudd',
+      title: 'Tilskudd',
+      fields: {},
+      chunks: [
+        {
+          id: 'tilskudd#0',
+          position: 0,
+          text: 'Kommunen gir tilskudd til lag og foreninger hvert år.',
+          vector: Array.from({ length: embedding.dimensions }, (_, i) => Math.sin(i + 1)),
+        },
+      ],
+      phrases: [],
+    });
+    await route.writer.promote(route.dataset, generation);
+
+    const { ctx, metered } = testContext();
+    const port = platform.knowledge.open(
+      { kind: 'dataset', id: `${digdir}/tilskudd`, tenant: digdir },
+      { ...ctx, tenant: digdir },
+    );
+    expect(port.info().capabilities).toContain('search.hybrid');
+    const result = await port.search({ query: 'tilskudd', profile: knowledgeProfiles.content });
+    expect(result.hits[0]?.text).toContain('tilskudd');
     expect(metered.some((m) => m.model?.kind === 'embedder')).toBe(true);
+    expect(adapter.calls.length).toBeGreaterThan(0);
   });
 
   it('a pipeline cannot read a folder outside the folder root', async () => {
@@ -574,7 +652,7 @@ describe('pluggable search engines over the API', () => {
         id: 'digdir/mappe',
         name: 'Mappe',
         residency: 'norway',
-        index: { endpoint: 'platform-pg' },
+        index: { endpoint: 'kunnskapsserveren' },
       },
     });
     const base = `/operator/datasets/${encodeURIComponent('digdir/mappe')}/pipelines`;
@@ -603,7 +681,7 @@ describe('pluggable search engines over the API', () => {
     );
 
     const memory = await boot({ catalogs }, { database: false });
-    expect(memory.warnings.join(' ')).toContain('platform-pg');
+    expect(memory.warnings.join(' ')).toContain('kunnskapsserveren');
   });
 });
 

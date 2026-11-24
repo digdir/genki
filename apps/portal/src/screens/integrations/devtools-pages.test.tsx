@@ -33,7 +33,7 @@ document.getAnimations ??= () => [];
 const rule = (id: string, mandatory: boolean, spec: Record<string, unknown> = {}): ConfigEntry =>
   ({ id, scope: '999888777', version: 1, mandatory, builtin: false, spec }) as ConfigEntry;
 
-describe('Utviklerverktøy: sider', () => {
+describe('Integrasjoner: sider', () => {
   it('says a developer page that does not exist is not found, with a way back', async () => {
     await renderAt('#/developer/finnes-ikke');
     expect(await screen.findByRole('heading', { name: 'Fant ikke siden' })).toBeTruthy();
@@ -43,7 +43,7 @@ describe('Utviklerverktøy: sider', () => {
   });
 });
 
-describe('Felles sikkerhetsfiltre', () => {
+describe('Sikkerhetsregler', () => {
   it('lists required rules first, without the built-in ones, and names the services using each', () => {
     const rules = sharedRules(
       [
@@ -72,7 +72,7 @@ describe('Felles sikkerhetsfiltre', () => {
     expect(await screen.findByText('fjern-personnummer')).toBeTruthy();
     expect(screen.getByText('ingen-helseraad')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('radio', { name: /^Påbudt/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /^Gjelder alle tjenester/ }));
     expect(screen.getByText('fjern-personnummer')).toBeTruthy();
     expect(screen.queryByText('ingen-helseraad')).toBeNull();
   });
@@ -80,11 +80,11 @@ describe('Felles sikkerhetsfiltre', () => {
   it('shows an empty state with a way to the building blocks when there are no shared rules', async () => {
     await renderLive('#/developer/guardrails', { features: { devtools: { guardrailRules: [] } } });
     expect(
-      await screen.findByRole('heading', { name: 'Ingen felles sikkerhetsfiltre ennå' }),
+      await screen.findByRole('heading', { name: 'Ingen sikkerhetsregler ennå' }),
     ).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Se vern i Byggeklosser' }).getAttribute('href')).toBe(
-      '#/building-blocks/guardrail?show=catalogue',
-    );
+    expect(
+      screen.getByRole('link', { name: 'Se sikkerhetsregler i Katalog' }).getAttribute('href'),
+    ).toBe('#/building-blocks/guardrail?show=catalogue');
   });
 });
 
@@ -196,10 +196,10 @@ describe('Kall fra kode', () => {
   });
 });
 
-describe('Kroker', () => {
+describe('Kjøringspunkter', () => {
   it('names the own hooks without bending the organisation name', async () => {
     await renderAt('#/developer/hooks');
-    expect(await screen.findByRole('list', { name: 'Egne kroker' })).toBeTruthy();
+    expect(await screen.findByRole('list', { name: 'Egne kjøringspunkter' })).toBeTruthy();
   });
 });
 

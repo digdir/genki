@@ -155,8 +155,8 @@ export const evaluate = (template: unknown, scope: Scope): unknown => {
             (a, b) => Number(isRecord(a) ? a[sortBy] : 0) - Number(isRecord(b) ? b[sortBy] : 0),
           )
         : items;
-    return ordered.map((item) =>
-      '$map' in template ? evaluate(template.$map, { ...scope, item }) : item,
+    return ordered.map((item, i) =>
+      '$map' in template ? evaluate(template.$map, { ...scope, item, position: i + 1 }) : item,
     );
   }
   if ('$from' in template) {

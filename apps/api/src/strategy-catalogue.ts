@@ -1,6 +1,11 @@
 import type { UiText } from '@genai/contracts';
 import { jsonSchemaOf } from '@genai/definitions';
-import { datedSystemPromptTemplate, defaultSystemPrompt } from '@genai/strategy-agent-loop';
+import {
+  datedSystemPromptTemplate,
+  defaultSystemPrompt,
+  searchPromptSections,
+  type PromptSectionId,
+} from '@genai/strategy-agent-loop';
 import type { Context } from 'hono';
 import type { z } from 'zod';
 import { enterTenant } from './access.js';
@@ -17,9 +22,18 @@ export interface PipelineStep {
   repeats?: true;
 }
 
+export interface PromptSectionEntry {
+  id: PromptSectionId;
+  title: UiText;
+  reason: UiText;
+  text: string;
+}
+
 export interface DefaultInstructions {
   text: UiText;
   note?: UiText;
+  sections?: PromptSectionEntry[];
+  layered?: true;
 }
 
 export interface StrategyEntry {
@@ -53,6 +67,42 @@ const step = (title: UiText, description: UiText, repeats?: true): PipelineStep 
   ...(repeats ? { repeats } : {}),
 });
 
+const sectionLabels: Record<PromptSectionId, { title: UiText; reason: UiText }> = {
+  role: {
+    title: text('Rolle', 'Role'),
+    reason: text(
+      'Sier hva agenten er til for. Behold den med mindre tjenesten trenger en annen rolle.',
+      'Says what the agent is for. Keep it unless the service needs another role.',
+    ),
+  },
+  reasoning: {
+    title: text('Begrunnelse', 'Reasoning'),
+    reason: text(
+      'Gjør hvert steg sporbart i kjøringen. Vi anbefaler å beholde den.',
+      'Makes each step traceable in the run. We recommend keeping it.',
+    ),
+  },
+  workflow: {
+    title: text('Arbeidsmåte', 'Workflow'),
+    reason: text(
+      'Lar agenten søke, lese og så svare, så svaret bygger på dokumenter. Vi anbefaler å beholde den.',
+      'Has the agent search, read and then answer, so the answer rests on documents. We recommend keeping it.',
+    ),
+  },
+  gate: {
+    title: text('Kontroll', 'Check'),
+    reason: text(
+      'Forteller agenten at plattformen sjekker grunnlaget etter hvert steg. Vi anbefaler å beholde den.',
+      'Tells the agent that the platform checks the basis after each step. We recommend keeping it.',
+    ),
+  },
+};
+
+export const agentPromptSections: PromptSectionEntry[] = searchPromptSections.map((section) => ({
+  ...section,
+  ...sectionLabels[section.id],
+}));
+
 const described: Record<string, Described> = {
   'single-call': {
     how: 'single',
@@ -74,7 +124,7 @@ const described: Record<string, Described> = {
         ),
       ),
       step(
-        text('Vern', 'Guardrails'),
+        text('Sikkerhetsregler', 'Guardrails'),
         text(
           'Kontroll etter risikonivå før resultatet leveres.',
           'Checks by risk level before the result is delivered.',
@@ -85,15 +135,15 @@ const described: Record<string, Described> = {
   'rag-single-shot': {
     how: 'single',
     description: text(
-      'Ett søk i datasettene og ett modellkall med treffene som grunnlag. Rask og forutsigbar.',
-      'One search in the datasets and one model call based on the hits. Fast and predictable.',
+      'Ett søk i dokumentsamlingene og ett modellkall med treffene som grunnlag. Rask og forutsigbar.',
+      'One search in the document collections and one model call based on the hits. Fast and predictable.',
     ),
     pipeline: [
       step(
         text('Søk', 'Search'),
         text(
-          'Ett søk i datasettene med spørsmålet.',
-          'One search in the datasets with the question.',
+          'Ett søk i dokumentsamlingene med spørsmålet.',
+          'One search in the document collections with the question.',
         ),
       ),
       step(
@@ -108,8 +158,8 @@ const described: Record<string, Described> = {
     defaultInstructions: {
       text: text(datedSystemPromptTemplate, datedSystemPromptTemplate),
       note: text(
-        'Ved kjøring blir {date} dagens dato, og plattformen legger til ferdighetene tjenesten har. Spørsmålet og treffene sendes i en egen melding.',
-        "At run time {date} becomes today's date, and the platform adds the skills the service has. The question and the hits are sent in a separate message.",
+        'Ved kjøring blir {date} dagens dato, og plattformen legger til arbeidsinstruksene tjenesten har. Spørsmålet og treffene sendes i en egen melding.',
+        "At run time {date} becomes today's date, and the platform adds the work instructions the service has. The question and the hits are sent in a separate message.",
       ),
     },
   },
@@ -147,7 +197,7 @@ const described: Record<string, Described> = {
       step(
         text('Svar', 'Answer'),
         text(
-          'Svar med kilder. Vernet kjøres før svaret sendes.',
+          'Svar med kilder. Sikkerhetsreglene kjøres før svaret sendes.',
           'Answer with sources. Guardrails run before the answer is sent.',
         ),
       ),
@@ -156,9 +206,11 @@ const described: Record<string, Described> = {
     defaultInstructions: {
       text: text(defaultSystemPrompt, defaultSystemPrompt),
       note: text(
-        'Ved kjøring legger plattformen til ferdighetene tjenesten har, aktive filtre og vedlagte dokumenter.',
-        'At run time the platform adds the skills the service has, active filters and attached documents.',
+        'Ved kjøring starter plattformen med en beskrivelse av tjenesten: navn, formål, dokumentsamlinger med antall dokumenter og årstall, svarspråk og dagens dato. Etter delene under kommer instruksjonene dine, og så arbeidsinstruksene tjenesten har, aktive filtre og vedlagte dokumenter.',
+        "At run time the platform starts with a description of the service: name, purpose, document collections with their number of documents and years, answer languages and today's date. Your instructions come after the sections below, then the work instructions the service has, active filters and attached documents.",
       ),
+      sections: agentPromptSections,
+      layered: true,
     },
   },
   'step-flow': {
@@ -173,7 +225,7 @@ const described: Record<string, Described> = {
   'live-session': {
     how: 'single',
     description: text(
-      'En direkte økt mot en ekstern tjeneste, for eksempel tale til tekst mens noen snakker. Hver melding begge veier går gjennom plattformens vern, og økten er kjøringen.',
+      'En direkte økt mot en ekstern tjeneste, for eksempel tale til tekst mens noen snakker. Hver melding begge veier går gjennom plattformens sikkerhetsregler, og økten er kjøringen.',
       'A live session with an external service, such as speech to text while someone talks. Every message both ways passes the platform safeguards, and the session is the run.',
     ),
     pipeline: [
@@ -203,7 +255,7 @@ const described: Record<string, Described> = {
   'remote-agent': {
     how: 'single',
     description: text(
-      'Hele svaret lages av en motor du driver selv. Plattformen sender samtalen dit og beholder tilgang, kanaler, vern, kostnadstak og logg.',
+      'Hele svaret lages av en motor du driver selv. Plattformen sender samtalen dit og beholder tilgang, kanaler, sikkerhetsregler, kostnadstak og logg.',
       'The whole answer is made by an engine you run yourself. The platform sends the conversation there and keeps access, channels, safeguards, cost caps and logging.',
     ),
     pipeline: [

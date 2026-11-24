@@ -38,10 +38,10 @@ export const ServiceLoading = ({
           </div>
           <div className="service-actions">
             <Button asChild variant="secondary" data-size="sm">
-              <a href={`#${servicePath(id, 'test')}`}>{t('serviceLifecycle.tryService')}</a>
+              <a href={`#${servicePath(id, 'test')}`}>{t('edition.tryIt')}</a>
             </Button>
             <Button variant="primary" data-size="sm" aria-disabled>
-              {t('services.publish')}
+              {t('edition.publish')}
             </Button>
           </div>
         </div>

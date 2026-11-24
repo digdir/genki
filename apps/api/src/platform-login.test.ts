@@ -1,3 +1,4 @@
+import { hkdfSync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { platformLoginFrom } from './platform-login.js';
 
@@ -43,5 +44,47 @@ describe('the platform login settings', () => {
     const unkept = platformLoginFrom(without, 'digdir:genai');
     expect(unkept?.subjectKeyKept).toBe(false);
     expect(platformLoginFrom(without, 'digdir:genai')?.subjectKey).not.toEqual(unkept?.subjectKey);
+  });
+
+  it('keeps a person’s subject after CONTENT_MASTER_KEY is removed when PLATFORM_LOGIN_SUBJECT_KEY holds the key derived from it', () => {
+    const master = Buffer.alloc(32, 1).toString('base64');
+    const login = { PLATFORM_LOGIN_CLIENT_ID: 'c', PLATFORM_LOGIN_HOSTNAME: 'login.example.no' };
+    const before = platformLoginFrom({ ...login, CONTENT_MASTER_KEY: master }, 'digdir:genai');
+    const derived = Buffer.from(
+      hkdfSync('sha256', Buffer.from(master, 'base64'), '', 'genki platform login subject', 32),
+    ).toString('base64');
+    const after = platformLoginFrom(
+      {
+        ...login,
+        CONTENT_MASTER_KEY_2: Buffer.alloc(32, 2).toString('base64'),
+        PLATFORM_LOGIN_SUBJECT_KEY: derived,
+      },
+      'digdir:genai',
+    );
+    expect(after?.subjectKeyKept).toBe(true);
+    expect(after?.subjectKey).toEqual(before?.subjectKey);
+    expect(
+      platformLoginFrom({ ...login, PLATFORM_LOGIN_SUBJECT_KEY: master }, 'digdir:genai')
+        ?.subjectKey,
+    ).toEqual(new Uint8Array(Buffer.from(master, 'base64')));
+  });
+
+  it('refuses the platform login with a database but no key to derive subjects from', () => {
+    const env = {
+      PLATFORM_LOGIN_CLIENT_ID: 'c',
+      PLATFORM_LOGIN_HOSTNAME: 'login.example.no',
+      DATABASE_URL: 'postgres://localhost/genai',
+      CONTENT_MASTER_KEY_2: Buffer.alloc(32, 2).toString('base64'),
+    };
+    expect(() => platformLoginFrom(env, 'digdir:genai')).toThrow('PLATFORM_LOGIN_SUBJECT_KEY');
+  });
+
+  it('refuses a platform login subject key that is not 32 bytes in base64', () => {
+    const env = {
+      PLATFORM_LOGIN_CLIENT_ID: 'c',
+      PLATFORM_LOGIN_HOSTNAME: 'login.example.no',
+      PLATFORM_LOGIN_SUBJECT_KEY: 'too-short',
+    };
+    expect(() => platformLoginFrom(env, 'digdir:genai')).toThrow('32 bytes');
   });
 });

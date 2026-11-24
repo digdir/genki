@@ -29,6 +29,7 @@ import { Tracing } from './screens/Tracing';
 import { allPages, Shell, type NavBadges } from './Shell';
 import { EmptyState, Loading } from './states';
 import { SupportProvider } from './support';
+import { definitionKindOfParam } from './definition-kinds';
 import { useSessionRenewal } from './session-renewal';
 import {
   forgetUnsavedInput,
@@ -272,7 +273,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
       <TenantServices
         api={api}
         tenant={params.get('tenant') ?? undefined}
-        kind={params.get('kind') === 'step-flow' ? 'StepFlow' : 'Service'}
+        kind={definitionKindOfParam(params.get('kind'))}
         id={params.get('id') ?? undefined}
       />
     ),

@@ -69,7 +69,7 @@
     flex-direction: column;
     gap: var(--genai-answer-actions-form-gap, var(--ds-size-2));
     padding: var(--genai-answer-actions-form-padding, var(--ds-size-3));
-    border-radius: var(--genai-answer-actions-form-border-radius, var(--ds-border-radius-md));
+    border-radius: var(--genai-answer-actions-form-border-radius, var(--ds-border-radius-xl));
     background: var(
       --genai-answer-actions-form-background,
       var(--ds-color-neutral-background-tinted)
@@ -101,5 +101,13 @@
     margin: 0;
     color: var(--genai-answer-actions-status-color, var(--ds-color-neutral-text-subtle));
     font-size: var(--genai-answer-actions-status-font-size, var(--ds-font-size-2));
+  }
+
+  /* The row's buttons in the assistant's one corner (kunnskapsassistenten#266). */
+  .uib-answer-actions .ds-button {
+    --dsc-button-border-radius: var(
+      --genai-answer-actions-button-radius,
+      var(--ds-border-radius-xl)
+    );
   }
 }

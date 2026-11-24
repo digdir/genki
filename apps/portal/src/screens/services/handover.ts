@@ -6,7 +6,7 @@ import { autoPublicName, slug, withModel, withPublicName } from '../../data/serv
 import type { TriedHere } from '../../components/playground/PlaygroundPanel';
 import { withPlaygroundChanges } from '../../components/playground/startDraft';
 
-/** What "Make a service of this" in the playground can carry into a new service, or not. */
+/** What "Make a service of this" can carry into a new service, or not. */
 export type HandoverItem =
   | 'layout'
   | 'model'
@@ -20,26 +20,30 @@ export type HandoverItem =
   | 'startService'
   | 'conversation';
 
-/** What the new service got from the playground, and what it tried that the service did not get. */
+/** What the new service got, and what was tried but not carried. */
 export interface Handover {
   carried: HandoverItem[];
   left: HandoverItem[];
 }
 
-/** A new draft from the template with Frontend's layout and Backend's model, instructions and datasets. */
+/** A new draft: Frontend's layout, Backend's model, instructions and datasets. */
 export const serviceFromPlayground = ({
   template,
   tenant,
-  name,
+  draft,
+  name: baseName,
   layout,
   tried,
 }: {
   template: Record<string, unknown>;
   tenant: string;
+  draft: string;
   name: string;
   layout: AssistantLayout;
   tried: TriedHere | undefined;
 }): { definition: Record<string, unknown>; files: Record<string, string>; handover: Handover } => {
+  // The draft id's tail keeps each new service's id apart.
+  const name = `${baseName} ${draft.slice(-4)}`;
   const carried: HandoverItem[] = ['layout'];
   const left: HandoverItem[] = [];
   const base = applySpec(renamed(asServiceDefinition(template), name), (d) => ({
@@ -64,11 +68,11 @@ export const serviceFromPlayground = ({
       changes.push(...setup.datasets.map((id) => ({ kind: 'dataset' as const, id, on: true })));
       carried.push('datasets');
     }
-    // The template's own variant is the one the changes go into, not the tried service's.
+    // The changes go into the template's variant, not the tried service's.
     const own: PlaygroundSetup = { ...setup, instructions: tried.instructions ?? '' };
     delete own.service;
     const next = withPlaygroundChanges(definition, own, changes);
-    // A new service keeps its data where the tried model does, so the model is allowed in it.
+    // Keep data where the tried model does, so the model is allowed.
     definition = tried.residency
       ? (applySpec(asServiceDefinition(next.definition), (d) =>
           withModel(d.spec, setup.model, tried.residency),
@@ -95,10 +99,7 @@ export const serviceFromPlayground = ({
   };
 };
 
-/** A new draft's id, in the shape the builder gives its own new drafts. */
-export const handoverDraftId = () => `utkast-${crypto.randomUUID().slice(0, 8)}`;
-
-// Held in memory only: the notice belongs to the visit that made the service, and a reload drops it.
+// In memory only, so a reload drops the notice.
 const handed = new Map<string, Handover>();
 
 /** Keeps what the new draft got, for Oppsett to say once. */

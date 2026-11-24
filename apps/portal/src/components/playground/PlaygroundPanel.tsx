@@ -100,14 +100,14 @@ export interface PlaygroundPanelProps {
   tenantName?: string;
   serviceDraft?: ServiceDraft;
   timelinePanel?: boolean;
-  /** Told what is tried here, or nothing until the person changes the setup or runs it. */
+  /** Told what is tried here; nothing until the setup changes or runs. */
   onTried?: (tried: TriedHere | undefined) => void;
 }
 
-/** What the page's setup holds now: the setup, the instructions it runs with, and the rest tried. */
+/** What the page's setup holds now, and what else was tried. */
 export interface TriedHere {
   setup: PlaygroundSetup;
-  /** The typed instructions or the started service's; undefined while those are still loading. */
+  /** The instructions it runs with; undefined while they load. */
   instructions: string | undefined;
   residency: Residency | undefined;
   /** Building blocks chosen beyond those every setup starts with. */
@@ -390,7 +390,7 @@ export const PlaygroundPanel = ({
   const [formErrs, setFormErrs] = useState<Record<string, string>>({});
   const [draftOptions, setDraftOptions] = useState<PlaygroundInputField[]>();
   const draftDefinition = serviceDraft?.definition;
-  // The setup this page started with: only a change from it, or a run, counts as tried.
+  // The setup without memory: anything else, or a run, counts as tried.
   const startedWith = useRef<string | undefined>(undefined);
   const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
@@ -468,9 +468,9 @@ export const PlaygroundPanel = ({
       state === 'empty'
         ? loadSetups(rememberKey(tenant, context, name), options, hasDraft ? name : undefined)
         : undefined;
-    const first: PlaygroundSetup =
-      stored?.a ??
-      (hasDraft && name ? { ...initial, service: { id: name, version: 'draft' } } : initial);
+    const fresh: PlaygroundSetup =
+      hasDraft && name ? { ...initial, service: { id: name, version: 'draft' } } : initial;
+    const first: PlaygroundSetup = stored?.a ?? fresh;
     const question = first.skills.includes('skrive-vedtaksbrev')
       ? decisionQuestion
       : evaluationQuestion;
@@ -514,7 +514,9 @@ export const PlaygroundPanel = ({
     const blocked = options.models.find((m) => m.status === 'not_allowed');
     const notAllowed = state === 'not-allowed';
     const startA = notAllowed && page ? { ...first, model: blocked?.id ?? first.model } : first;
-    startedWith.current = JSON.stringify(startA);
+    startedWith.current = JSON.stringify(
+      notAllowed && page ? { ...fresh, model: blocked?.id ?? fresh.model } : fresh,
+    );
     setA(startA);
     setB(second);
     setEditing(notAllowed && !page ? 'a' : null);
