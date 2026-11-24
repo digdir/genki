@@ -161,6 +161,7 @@ export const agentLoopConfig = z.strictObject({
       searches: z.number().int().positive().optional(),
       reads: z.number().int().positive().optional(),
       readChars: z.number().int().positive().optional(),
+      chunksPerRead: z.number().int().min(1).max(50).optional(),
       seconds: z.number().int().min(10).max(600).optional(),
     })
     .optional(),
@@ -517,6 +518,9 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       searches: settings.budget?.searches ?? 4,
       reads: settings.budget?.reads ?? 6,
       readChars: settings.budget?.readChars ?? 12000,
+      ...(settings.budget?.chunksPerRead === undefined
+        ? {}
+        : { chunksPerRead: settings.budget.chunksPerRead }),
     });
     workspace.queryIntent = inferQueryIntent(query, history);
     workspace.attached = attachedChunks(input);

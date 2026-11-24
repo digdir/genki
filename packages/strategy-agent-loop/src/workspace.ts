@@ -110,6 +110,8 @@ export interface BudgetLimits {
   searches: number;
   reads: number;
   readChars: number;
+  /** The most chunks one range read returns. */
+  chunksPerRead?: number;
 }
 
 export interface BudgetState {
@@ -122,6 +124,7 @@ export interface BudgetState {
   readCharsUsed: number;
   maxReadChars: number;
   readCharsRemaining: number;
+  chunksPerRead: number;
   searchExhausted: boolean;
   readsExhausted: boolean;
   readCharsExhausted: boolean;
@@ -219,9 +222,8 @@ export interface ClaimCoverage {
 export const shortDocThreshold = 6;
 export const defaultSearchDisplayLimit = 20;
 const fallbackEstimatedChunkLength = 1500;
-const defaultMaxRangeWidth = 3;
+export const defaultChunksPerRead = 10;
 const lowBudgetMaxRangeWidth = 2;
-const broadRangeThreshold = 5;
 const repeatedGapWindow = 2;
 
 export const chunkContentLength = (
@@ -281,6 +283,7 @@ export class Workspace {
       readCharsUsed: this.readCharsUsed,
       maxReadChars: this.limits.readChars,
       readCharsRemaining,
+      chunksPerRead: this.limits.chunksPerRead ?? defaultChunksPerRead,
       searchExhausted: searchesRemaining === 0,
       readsExhausted: readsRemaining === 0,
       readCharsExhausted: readCharsRemaining === 0,
@@ -725,18 +728,43 @@ const clampRangeAroundAnchor = (anchor: number, r: ChunkRange, maxWidth: number)
   return { from: Math.max(r.from, tentativeTo - (width - 1)), to: tentativeTo };
 };
 
+const hitScore = (s: SearchSummary) => [
+  s['rerank-score'] ?? Number.NEGATIVE_INFINITY,
+  s['retrieval-prior'] ?? Number.NEGATIVE_INFINITY,
+];
+
+const higher = (a: number[], b: number[]) => {
+  for (let i = 0; i < a.length; i++)
+    if ((a[i] as number) !== (b[i] as number)) return (a[i] as number) > (b[i] as number);
+  return false;
+};
+
+// The best-scoring unread hit in the range, from every search so far, not the first one listed.
 const preferredRangeAnchor = (workspace: Workspace, document: string, r: ChunkRange) => {
   const readIds = workspace.readChunkIds();
-  return (
-    (workspace.searches.at(-1)?.summaries ?? []).find(
-      (s) =>
-        s['doc-num'] === document &&
-        s['chunk-index'] !== null &&
-        s['chunk-index'] >= r.from &&
-        s['chunk-index'] <= r.to &&
-        !readIds.has(s['chunk-id']),
-    )?.['chunk-index'] ?? undefined
-  );
+  let best: { index: number; score: number[] } | undefined;
+  for (const search of workspace.searches)
+    for (const s of search.summaries) {
+      const index = s['chunk-index'];
+      if (s['doc-num'] !== document || index === null || index < r.from || index > r.to) continue;
+      if (readIds.has(s['chunk-id'])) continue;
+      const score = hitScore(s);
+      if (!best || higher(score, best.score)) best = { index, score };
+    }
+  return best?.index;
+};
+
+const knownTotalChunks = (workspace: Workspace, document: string) =>
+  [...workspace.chunks.values()].find(
+    (c) =>
+      c.document === document && c.totalChunks !== undefined && Number.isInteger(c.totalChunks),
+  )?.totalChunks;
+
+// A range past the document's last chunk is cut to it, when the length is known.
+const withinDocument = (workspace: Workspace, document: string, r: ChunkRange): ChunkRange => {
+  const total = knownTotalChunks(workspace, document);
+  if (total === undefined || total < 1 || r.from > total - 1) return r;
+  return { from: r.from, to: Math.min(r.to, total - 1) };
 };
 
 const mean = (xs: number[]) => Math.ceil(xs.reduce((a, b) => a + b, 0) / xs.length);
@@ -782,8 +810,9 @@ const candidateReadRange = (
   requested: ChunkRange,
   budget: BudgetState,
 ) => {
-  const r = normalizeChunkRange(requested);
-  const base = budget.lowReadBudget ? lowBudgetMaxRangeWidth : defaultMaxRangeWidth;
+  const r = withinDocument(workspace, document, normalizeChunkRange(requested));
+  const cap = Math.max(1, budget.chunksPerRead);
+  const base = budget.lowReadBudget ? Math.min(cap, lowBudgetMaxRangeWidth) : cap;
   const remaining = budget.readCharsRemaining;
   const maxWidth =
     remaining > 0
@@ -795,7 +824,7 @@ const candidateReadRange = (
           ),
         )
       : 1;
-  if (rangeWidth(r) <= broadRangeThreshold) return r;
+  if (rangeWidth(r) <= maxWidth) return r;
   return clampRangeAroundAnchor(
     preferredRangeAnchor(workspace, document, r) ?? r.from,
     r,
@@ -839,10 +868,13 @@ export const planRangeRead = (
   requested: { from?: number | undefined; to?: number | undefined },
   budget: BudgetState,
 ) => {
-  const r = normalizeChunkRange(requested);
+  const r = withinDocument(workspace, document, normalizeChunkRange(requested));
   const candidate = candidateReadRange(workspace, document, r, budget);
   const selected = effectiveReadRange(workspace, document, r, budget);
   return {
+    requested: r,
+    cappedByCount:
+      rangeWidth(candidate) < rangeWidth(r) && rangeWidth(candidate) === budget.chunksPerRead,
     selected,
     prefetchSkippedCount: rangeWidth(candidate) - (selected ? rangeWidth(selected) : 0),
   };
@@ -925,6 +957,51 @@ export const readBudgetNote = (o: {
     (o.postfetchTrimmed > 0
       ? ` Trimmed ${o.postfetchTrimmed} after fetch because actual chunk sizes exceeded estimates.`
       : '')
+  );
+};
+
+const spans = (positions: number[]) => {
+  const out: [number, number][] = [];
+  for (const p of [...new Set(positions)].sort((a, b) => a - b)) {
+    const last = out.at(-1);
+    if (last && p === last[1] + 1) last[1] = p;
+    else out.push([p, p]);
+  }
+  return out;
+};
+
+const spanText = (xs: [number, number][]) =>
+  xs.map(([a, b]) => (a === b ? `${a}` : `${a}–${b}`)).join(', ');
+
+/**
+ * When a range read returns less than was asked, names the positions it returned and
+ * those it left out, so the agent can ask for the rest instead of taking it for the whole.
+ */
+export const rangeCutNote = (o: {
+  document: string;
+  requested: ChunkRange;
+  returned: Chunk[];
+  cappedByCount: boolean;
+  chunksPerRead: number;
+  remaining: number;
+}): string | undefined => {
+  const total = o.returned.find((c) => c.totalChunks !== undefined)?.totalChunks;
+  const to = total === undefined ? o.requested.to : Math.min(o.requested.to, total - 1);
+  const returned = new Set(
+    o.returned.flatMap((c) => (c.position === undefined ? [] : [c.position])),
+  );
+  const leftOut: number[] = [];
+  for (let i = o.requested.from; i <= to; i++) if (!returned.has(i)) leftOut.push(i);
+  const missing = spans(leftOut);
+  const first = missing[0];
+  if (!first) return undefined;
+  return (
+    (o.cappedByCount
+      ? `This read was cut to the read cap of ${o.chunksPerRead} chunks.`
+      : `This read was cut to fit the remaining ${o.remaining}-char read budget.`) +
+    ` Returned chunk_index ${returned.size ? spanText(spans([...returned])) : 'none'} of doc_num="${o.document}".` +
+    ` Left out chunk_index ${spanText(missing)}.` +
+    ` To read them, call read_chunks with {"doc_num": "${o.document}", "chunk_range": {"from": ${first[0]}, "to": ${first[1]}}}.`
   );
 };
 

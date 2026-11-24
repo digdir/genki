@@ -27,6 +27,7 @@ import {
   expandShortDocReads,
   nextReadSuggestions,
   planRangeRead,
+  rangeCutNote,
   readBudgetNote,
   selectChunkIdsWithinBudget,
   trimChunksToBudget,
@@ -809,6 +810,7 @@ const read = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> =>
   let suppressed: string[] = [];
   let selectedIds: string[] | undefined;
   let rangeSelected = true;
+  let rangePlan: ReturnType<typeof planRangeRead> | undefined;
   try {
     if (chunkIds?.length) {
       suppressed = chunkIds.filter((id) => workspace.nonSupporting.has(id));
@@ -828,6 +830,7 @@ const read = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> =>
     } else if (docNum !== undefined) {
       const plan = planRangeRead(workspace, docNum, chunkRange ?? { from: 0, to: 4 }, budget);
       prefetchSkipped = plan.prefetchSkippedCount;
+      rangePlan = plan;
       rangeSelected = plan.selected !== undefined;
       if (plan.selected) {
         fetched = await retrieval.readRange(docNum, plan.selected.from, plan.selected.to, signal);
@@ -847,12 +850,27 @@ const read = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> =>
   const shaped = fetched.map((c) => truncate(c, maxContentLength));
   const { kept, consumed, trimmed } = trimChunksToBudget(shaped, remaining);
   const skippedNote = skippedNonSupportingReadNote(suppressed);
-  const budgetNote = readBudgetNote({
-    returned: kept.length,
-    prefetchSkipped,
-    postfetchTrimmed: trimmed,
-    remaining,
-  });
+  const cutNote =
+    rangePlan && docNum !== undefined
+      ? rangeCutNote({
+          document: docNum,
+          requested: rangePlan.requested,
+          returned: kept,
+          cappedByCount: rangePlan.cappedByCount && trimmed === 0,
+          chunksPerRead: budget.chunksPerRead,
+          remaining,
+        })
+      : undefined;
+  const budgetNote =
+    cutNote ??
+    (rangePlan
+      ? undefined
+      : readBudgetNote({
+          returned: kept.length,
+          prefetchSkipped,
+          postfetchTrimmed: trimmed,
+          remaining,
+        }));
 
   if (chunkIds?.length && selectedIds?.length === 0) {
     const survivors = chunkIds.length - suppressed.length;
