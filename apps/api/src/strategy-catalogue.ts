@@ -76,10 +76,10 @@ const sectionLabels: Record<PromptSectionId, { title: UiText; reason: UiText }> 
     ),
   },
   reasoning: {
-    title: text('Begrunnelse', 'Reasoning'),
+    title: text('Før verktøykall', 'Before a tool call'),
     reason: text(
-      'Gjør hvert steg sporbart i kjøringen. Vi anbefaler å beholde den.',
-      'Makes each step traceable in the run. We recommend keeping it.',
+      'Lar agenten si kort hva den ser etter før et verktøykall, så kjøringen viser det. Vi anbefaler å beholde den.',
+      'Lets the agent say briefly what it looks for before a tool call, so the run shows it. We recommend keeping it.',
     ),
   },
   workflow: {

@@ -153,9 +153,9 @@ const steps: readonly StepDef[] = [
     title: 'getStarted.tryTitle',
     body: 'getStarted.tryBody',
     action: 'getStarted.tryAction',
-    href: '#/playground',
+    href: '#/playground/backend',
     doneAction: 'getStarted.tryAction',
-    doneHref: '#/playground',
+    doneHref: '#/playground/backend',
   },
   {
     id: 'published',

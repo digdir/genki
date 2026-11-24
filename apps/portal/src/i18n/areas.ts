@@ -155,7 +155,7 @@ export const areas = {
   integrations: ['serviceUi', 'blocksLane', 'integrationsArea', 'settingsArea'],
   log: ['playgroundUi'],
   onboarding: [],
-  playground: ['serviceUi', 'playgroundUi', 'modelsLane'],
+  playground: ['serviceUi', 'playgroundUi', 'blocksUi', 'modelsLane'],
   pricePage: [],
   profile: [],
   services: [

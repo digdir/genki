@@ -28,7 +28,7 @@ const openPage = async (
   wrap: (inner: typeof fetch) => typeof fetch = (inner) => inner,
 ) => {
   await renderAt(
-    '#/playground',
+    '#/playground/backend',
     wrap(mockFetch(undefined, undefined, undefined, undefined, { features: { playground } })),
   );
   return screen.findByRole('complementary', { name: 'Oppsett' });
@@ -91,7 +91,7 @@ describe('the playground page', () => {
         ? new Promise<Response>(() => undefined)
         : mockFetch()(input, init);
     };
-    await renderAt('#/playground', pending);
+    await renderAt('#/playground/backend', pending);
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Prøveområdet' })).toBeTruthy();
     expect(
@@ -208,7 +208,7 @@ describe('the playground page', () => {
       });
       return inner(input, init);
     };
-    await renderAt('#/playground', recording);
+    await renderAt('#/playground/backend', recording);
     const panel = await screen.findByRole('complementary', { name: 'Oppsett' });
     const instructions = within(panel).getByRole('textbox', { name: 'Instruksjoner' });
     await waitFor(() =>
@@ -272,7 +272,7 @@ describe('the playground page', () => {
         puts.push(JSON.parse(init.body) as (typeof puts)[number]);
       return inner(input, init);
     };
-    await renderAt('#/playground', recording);
+    await renderAt('#/playground/backend', recording);
     const panel = await screen.findByRole('complementary', { name: 'Oppsett' });
     const save = async () => {
       fireEvent.click(within(panel).getByRole('button', { name: 'Lagre i Rapportassistenten' }));
