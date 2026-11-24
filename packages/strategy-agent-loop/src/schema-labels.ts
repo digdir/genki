@@ -14,6 +14,10 @@ const nb = {
   'budget.searches': { label: 'Flest søk' },
   'budget.reads': { label: 'Flest dokumenter som leses' },
   'budget.readChars': { label: 'Flest tegn som leses' },
+  'budget.chunksPerRead': {
+    label: 'Flest tekstbiter per lesing',
+    help: 'Så mange tekstbiter gir én lesing av et område. Ikke satt gir 10.',
+  },
   'budget.seconds': {
     label: 'Lengste tid (sekunder)',
     help: 'Når tiden er brukt, svarer agenten med det den har lest. Ikke satt gir ingen tidsgrense.',
@@ -80,6 +84,10 @@ const en: Record<keyof typeof nb, LabelText> = {
   'budget.searches': { label: 'Most searches' },
   'budget.reads': { label: 'Most documents read' },
   'budget.readChars': { label: 'Most characters read' },
+  'budget.chunksPerRead': {
+    label: 'Most chunks per read',
+    help: 'How many chunks one read of a range returns. Not set gives 10.',
+  },
   'budget.seconds': {
     label: 'Longest time (seconds)',
     help: 'When the time is used up, the agent answers from what it has read. Not set means no time limit.',

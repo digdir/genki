@@ -27,6 +27,8 @@ import {
   expandShortDocReads,
   nextReadSuggestions,
   planRangeRead,
+  rangeCutNote,
+  readPositions,
   readBudgetNote,
   selectChunkIdsWithinBudget,
   trimChunksToBudget,
@@ -810,6 +812,8 @@ const read = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> =>
   let suppressed: string[] = [];
   let selectedIds: string[] | undefined;
   let rangeSelected = true;
+  let rangePlan: ReturnType<typeof planRangeRead> | undefined;
+  let alreadyRead = new Set<number>();
   try {
     if (chunkIds?.length) {
       suppressed = chunkIds.filter((id) => workspace.nonSupporting.has(id));
@@ -829,6 +833,8 @@ const read = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> =>
     } else if (docNum !== undefined) {
       const plan = planRangeRead(workspace, docNum, chunkRange ?? { from: 0, to: 4 }, budget);
       prefetchSkipped = plan.prefetchSkippedCount;
+      rangePlan = plan;
+      alreadyRead = readPositions(workspace, docNum);
       rangeSelected = plan.selected !== undefined;
       if (plan.selected) {
         fetched = await retrieval.readRange(docNum, plan.selected.from, plan.selected.to, signal);
@@ -848,12 +854,34 @@ const read = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> =>
   const shaped = fetched.map((c) => truncate(c, maxContentLength));
   const { kept, consumed, trimmed } = trimChunksToBudget(shaped, remaining);
   const skippedNote = skippedNonSupportingReadNote(suppressed);
-  const budgetNote = readBudgetNote({
-    returned: kept.length,
-    prefetchSkipped,
-    postfetchTrimmed: trimmed,
-    remaining,
-  });
+  const cutNote =
+    rangePlan && docNum !== undefined
+      ? rangeCutNote({
+          document: docNum,
+          requested: rangePlan.requested,
+          returned: kept,
+          alreadyRead,
+          cappedByCount: rangePlan.cappedByCount && trimmed === 0,
+          narrowed:
+            trimmed > 0 ||
+            (rangePlan.selected !== undefined &&
+              rangePlan.selected.to - rangePlan.selected.from <
+                rangePlan.requested.to - rangePlan.requested.from),
+          chunksPerRead: budget.chunksPerRead,
+          remaining: Math.max(0, remaining - consumed),
+          readsRemaining: Math.max(0, budget.readsRemaining - 1),
+        })
+      : undefined;
+  const budgetNote =
+    cutNote ??
+    (rangePlan
+      ? undefined
+      : readBudgetNote({
+          returned: kept.length,
+          prefetchSkipped,
+          postfetchTrimmed: trimmed,
+          remaining,
+        }));
 
   if (chunkIds?.length && selectedIds?.length === 0) {
     const survivors = chunkIds.length - suppressed.length;
