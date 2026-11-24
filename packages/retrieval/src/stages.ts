@@ -248,17 +248,29 @@ const reportOf = (c: Chunk): ReportInfo | undefined => {
 
 /** Records whose page counts differ by more than this are kept apart, whatever their key. */
 const reportPageTolerance = 0.05;
-/** Two hits are the same page when this share of their words is shared. */
-const samePageOverlap = 0.8;
+/**
+ * Two hits are the same page when this share of the shorter hit's words is in the longer one.
+ * Copies are cut into chunks at other places, so neither hit holds all of the other.
+ */
+const samePageShorterShare = 0.8;
+/**
+ * The shared words also make this share of the longer hit, so a short hit whose words are all
+ * somewhere in a long page is not taken for that page.
+ */
+const samePageLongerShare = 0.5;
 /** Fewer words than this, such as a footer, are compared by page instead. */
 const samePageMinWords = 5;
 
 const closePages = (a: number, b: number) =>
   Math.abs(a - b) <= reportPageTolerance * Math.max(a, b);
 
-const overlap = (a: Set<string>, b: Set<string>) => {
-  if (a.size === 0 || b.size === 0) return 0;
-  return intersect(a, b).size / new Set([...a, ...b]).size;
+const sameWords = (a: Set<string>, b: Set<string>) => {
+  if (a.size === 0 || b.size === 0) return false;
+  const shared = intersect(a, b).size;
+  return (
+    shared >= samePageShorterShare * Math.min(a.size, b.size) &&
+    shared >= samePageLongerShare * Math.max(a.size, b.size)
+  );
 };
 
 /** The agency's own record first, then the latest publish date. */
@@ -284,7 +296,7 @@ export const collapseReportCopies = (
   const samePage = (a: Member, b: Member) => {
     const aLong = a.words.size >= samePageMinWords;
     const bLong = b.words.size >= samePageMinWords;
-    if (aLong && bLong) return overlap(a.words, b.words) >= samePageOverlap;
+    if (aLong && bLong) return sameWords(a.words, b.words);
     // A short hit, such as a footer, only matches another short one on the same page.
     return (
       !aLong && !bLong && a.info.pages === b.info.pages && a.page !== undefined && a.page === b.page

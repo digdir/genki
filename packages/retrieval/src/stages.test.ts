@@ -13,6 +13,7 @@ import {
   unionMerge,
   type Chunk,
 } from './stages.js';
+import { tokenize } from './text.js';
 
 const defaults = retrievalConfig.parse({});
 
@@ -317,6 +318,59 @@ describe('records of one report', () => {
     const kept = collapseReportCopies([first as Chunk, second as Chunk]);
 
     expect(kept.map((c) => [c.id, c.copies?.map((x) => x.id)])).toEqual([['a#18', ['b#18']]]);
+  });
+
+  describe('a copy whose PDF is cut into chunks at other places', () => {
+    const words = (prefix: string, count: number) =>
+      Array.from({ length: count }, (_, i) => `${prefix}${i}`).join(' ');
+    // The 2023 HOD copy's chunk starts at another heading and ends on another table row than the
+    // agency's own chunk of the same page: 154 and 140 distinct words, 128 of them shared.
+    const table = `${salary} ${words('rad', 119)}`;
+    const ownChunk = `# Redegjørelse om likestilling ${table} ${words('innledning', 23)}`;
+    const hodChunk = `# Kjønnsbalanse ${table} ${words('sluttrad', 11)}`;
+
+    it('the regression chunks have 154 and 140 distinct words, 128 shared, as measured in test', () => {
+      const own = tokenize(ownChunk);
+      const copy = tokenize(hodChunk);
+
+      expect([own.size, copy.size, [...own].filter((w) => copy.has(w)).length]).toEqual([
+        154, 140, 128,
+      ]);
+    });
+
+    it("a copy's hit is grouped with the own record's hit when nearly all of the shorter hit's words are in the other", () => {
+      const kept = collapseReportCopies([
+        record('hod#17', 'kudos:fdfac1a8', hod, hodChunk),
+        record('own#15', 'kudos:51fe0107', own, ownChunk),
+      ]);
+
+      expect(kept.map((c) => c.id)).toEqual(['own#15']);
+      expect(kept[0]?.copies).toEqual([{ id: 'hod#17', document: 'kudos:fdfac1a8' }]);
+    });
+
+    it('two different pages of one report that share ordinary words are not grouped', () => {
+      const ordinary = `Helsedirektoratet 2023 og i for med som til av på er det ${words('felles', 40)}`;
+      const kept = collapseReportCopies([
+        record('hod#17', 'kudos:fdfac1a8', hod, `${ordinary} ${words('side17', 90)}`),
+        record('own#18', 'kudos:51fe0107', own, `${ordinary} ${words('side18', 90)}`),
+      ]);
+
+      expect(kept.map((c) => c.id)).toEqual(['hod#17', 'own#18']);
+    });
+
+    it('a short hit whose words are all in a much longer hit is not grouped with it', () => {
+      const kept = collapseReportCopies([
+        record(
+          'hod#40',
+          'kudos:fdfac1a8',
+          hod,
+          'Redegjørelse om likestilling. For kvinner utgjorde gjennomsnittslønnen rad1 rad2 rad3',
+        ),
+        record('own#15', 'kudos:51fe0107', own, ownChunk),
+      ]);
+
+      expect(kept.map((c) => c.id)).toEqual(['hod#40', 'own#15']);
+    });
   });
 
   it('a record with no page count is never grouped', () => {
