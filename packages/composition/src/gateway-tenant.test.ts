@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { InMemoryDefinitionStore } from '@genai/definitions';
 import {
   envSecrets,
@@ -7,6 +8,7 @@ import {
   InMemoryTaskStore,
   type PortContext,
 } from '@genai/kernel';
+import type { Ranked, RerankAdapter } from '@genai/port-rerank';
 import { createRuntime } from './runtime.js';
 import { TenantSecretVault } from './tenant-secrets.js';
 
@@ -50,10 +52,28 @@ const answerFor = (url: string, body: string) => {
   });
 };
 
+/** A rerank engine for the test, since genki has none built in (ADR 0048). */
+const testRerank: RerankAdapter = {
+  engine: 'omrangering',
+  api: { id: 'omrangering/rerank@1', family: 'omrangering' },
+  endpointOptions: z.strictObject({}),
+  rerankerOptions: z.strictObject({}),
+  connect: (endpoint) => ({
+    rerank: async (_reranker, request, signal) =>
+      (await (
+        await (endpoint.fetch ?? fetch)(endpoint.baseURL, {
+          method: 'POST',
+          body: JSON.stringify(request),
+          signal,
+        })
+      ).json()) as Ranked[],
+  }),
+};
+
 const connection = (host: string, gateway?: boolean) => ({
   baseURL: `https://${host}/v1`,
   auth: { kind: 'api-key', secret: 'secret://env/model-key' },
-  families: { openai: '', colbert: '/rerank' },
+  families: { openai: '', omrangering: '/rerank' },
   ...(gateway === undefined ? {} : { gateway }),
 });
 
@@ -79,7 +99,7 @@ const modelsOn = (endpoint: string) => [
     endpoint,
     deployment: 'rerank',
     residency: 'norway',
-    apis: { rerank: 'colbert/rerank@1' },
+    apis: { rerank: 'omrangering/rerank@1' },
   },
 ];
 
@@ -114,6 +134,7 @@ const setup = async () => {
     tasks: new InMemoryTaskStore(),
     state: new InMemoryStateStore(),
     endpointFetch: fakeFor,
+    rerankAdapters: [testRerank],
   });
   const ctxFor = (org: string): PortContext => ({
     tenant: org,

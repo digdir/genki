@@ -23,6 +23,7 @@ import { platformScope } from './config-store.js';
 import { localeMiddleware } from './i18n/index.js';
 import type { TaskIndex } from './extensions.js';
 import type { PlaygroundOptions, PlaygroundRunResponse } from './playground.js';
+import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -121,7 +122,9 @@ const service = (id: string, instructions: string) => ({
 const knowledgeWith = (
   datasets: (list: Record<string, unknown>[]) => Record<string, unknown>[],
 ) => {
-  const catalog = yaml('knowledge.yaml') as { datasets: Record<string, unknown>[] };
+  const catalog = seedOnTypesense(yaml('knowledge.yaml')) as {
+    datasets: Record<string, unknown>[];
+  };
   return { ...catalog, datasets: datasets(catalog.datasets) };
 };
 
@@ -169,7 +172,6 @@ const boot = async ({
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
     TYPESENSE_URL: search.url,
-    COLBERT_API_URL: search.url,
   };
   const settings = new SettingsRegistry(platformSettings);
   const blobs = new InMemoryBlobStore();
@@ -181,7 +183,7 @@ const boot = async ({
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     prices: { [modelId]: { inputPerThousand: 1, outputPerThousand: 2 } },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
     definitions: store,
     settings,
     ...(taskIndex ? { taskIndex } : {}),
@@ -1256,7 +1258,9 @@ describe('playground changes on top of a service version', () => {
 
     expect(res.status).toBe(422);
     expect(res.body).toMatchObject({
-      errors: [{ path: 'setup.instructions', message: expect.stringContaining('Fast stegflyt') }],
+      errors: [
+        { path: 'setup.instructions', message: expect.stringContaining('Fast arbeidsflyt') },
+      ],
     });
     expect(model.seen.length).toBe(before);
   });
@@ -1344,7 +1348,7 @@ describe('playground changes on top of a service version', () => {
     expect(strategyOf('flyt')).toEqual({
       id: 'step-flow',
       version: 1,
-      title: { nb: 'Fast stegflyt', en: 'Fixed step flow' },
+      title: { nb: 'Fast arbeidsflyt', en: 'Fixed workflow' },
       takesInstructions: false,
       flow: {
         ref: 'les-dokumentet@1',

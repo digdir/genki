@@ -1,0 +1,18 @@
+apiVersion: genai/v1
+kind: Block
+metadata:
+  tenant: '991825827'
+  id: threads
+  name: Tidligere samtaler
+spec:
+  tier: built-in
+  builtIn: threads
+  title:
+    nb: Tidligere samtaler
+    en: Previous chats
+  summary:
+    nb: Samtalene, gruppert etter dato
+    en: The conversations, grouped by date
+  zones:
+    - primary
+  sharing: everyone

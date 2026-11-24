@@ -49,6 +49,24 @@ export const environmentName = z
   .string()
   .regex(environmentNamePattern, 'must be a lowercase environment name such as prod or test');
 
+const dnsLabel = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/** A DNS name in lowercase: no wildcard, no IP address, no port, at most 253 characters. */
+export const isHostname = (value: string) => {
+  if (value.length > 253) return false;
+  const labels = value.split('.');
+  const top = labels.at(-1) ?? '';
+  return labels.length >= 2 && labels.every((l) => dnsLabel.test(l)) && /^[a-z]{2,63}$/.test(top);
+};
+
+export const hostname = z
+  .string()
+  .refine(isHostname, 'must be a lowercase hostname such as ka.example.no');
+
+export const maxHostnames = 4;
+
+export const hostedOrigin = (name: string) => `https://${name}`;
+
 export const clientDefinition = z
   .strictObject({
     apiVersion: z.literal('genai/v1'),
@@ -68,11 +86,17 @@ export const clientDefinition = z
       oidc: z
         .strictObject({
           clientId: z
-            .string()
+            .string({
+              error: (issue) =>
+                issue.input === undefined
+                  ? 'a client id from Ansattporten; a hosted client that leaves out oidc logs in through genki’s platform login, whose resource it takes, so it sets no audience of its own'
+                  : undefined,
+            })
             .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/, 'must be a client id from Ansattporten'),
           audience: z.string().min(1).optional(),
           redirectUris: z.array(webUrl).min(1),
           postLogoutRedirectUris: z.array(webUrl).default([]),
+          secret: slug.optional(),
         })
         .optional(),
       webhook: z
@@ -82,17 +106,64 @@ export const clientDefinition = z
           secret: slug,
         })
         .optional(),
+      hosted: z.boolean().optional(),
+      hostnames: z
+        .array(z.strictObject({ hostname, environment: environmentName.default('prod') }))
+        .max(maxHostnames)
+        .optional(),
     }),
   })
   .superRefine((client, ctx) => {
+    const names = client.spec.hostnames ?? [];
+    if (client.spec.hosted) {
+      if (client.spec.kind !== 'browser')
+        ctx.addIssue({
+          code: 'custom',
+          path: ['spec', 'hosted'],
+          message: 'only a browser client is hosted, since people log in to it',
+        });
+      if (names.length === 0)
+        ctx.addIssue({
+          code: 'custom',
+          path: ['spec', 'hostnames'],
+          message: 'a hosted client needs at least one hostname',
+        });
+    } else if (names.length > 0)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['spec', 'hostnames'],
+        message: 'only a hosted client has hostnames',
+      });
+    if (client.spec.oidc?.secret && !client.spec.hosted)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['spec', 'oidc', 'secret'],
+        message: 'only a hosted client has a client secret, which genki logs in with',
+      });
+    if (new Set(names.map((n) => n.hostname)).size !== names.length)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['spec', 'hostnames'],
+        message: 'a hostname is listed twice',
+      });
+    const environments = client.spec.environments;
+    names.forEach((n, i) => {
+      if (environments?.length ? !environments.includes(n.environment) : n.environment !== 'prod')
+        ctx.addIssue({
+          code: 'custom',
+          path: ['spec', 'hostnames', i, 'environment'],
+          message: `the client may not use the environment ${n.environment}`,
+        });
+    });
     if (client.spec.kind !== 'browser') return;
-    if (!client.spec.oidc)
+    if (!client.spec.oidc && !client.spec.hosted)
       ctx.addIssue({
         code: 'custom',
         path: ['spec', 'oidc'],
-        message: 'a browser client logs users in, so it needs an OIDC registration',
+        message:
+          'a browser client logs users in, so it needs an OIDC registration unless it is hosted and logs in through genki’s platform login',
       });
-    if (client.spec.allowedOrigins.length === 0)
+    if (client.spec.allowedOrigins.length === 0 && names.length === 0)
       ctx.addIssue({
         code: 'custom',
         path: ['spec', 'allowedOrigins'],
@@ -164,7 +235,7 @@ export const checkClient = (
         message: i.message,
       })),
     };
-  const definition = parsed.data;
+  const definition = withHostedOrigins(parsed.data);
   const { tenant, id } = definition.metadata;
   const clientId = definition.spec.oidc?.clientId;
   const taken = clientId
@@ -189,6 +260,17 @@ export const checkClient = (
       }
     : { ok: true, definition };
 };
+
+/** A hosted client's origins are its hostnames' origins, kept in step with them. */
+const withHostedOrigins = (definition: ClientDefinition): ClientDefinition => {
+  if (!definition.spec.hosted) return definition;
+  const own = (definition.spec.hostnames ?? []).map((n) => hostedOrigin(n.hostname));
+  return { ...definition, spec: { ...definition.spec, allowedOrigins: own } };
+};
+
+/** A hosted Client without its own `oidc` logs in through genki's platform login client (ADR 0061). */
+export const usesPlatformLogin = (definition: ClientDefinition) =>
+  definition.spec.hosted === true && definition.spec.oidc === undefined;
 
 export const oidcAudienceOf = (definition: ClientDefinition) =>
   definition.spec.oidc?.audience ?? definition.spec.oidc?.clientId;

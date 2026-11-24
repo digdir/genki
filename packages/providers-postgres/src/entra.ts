@@ -44,15 +44,29 @@ export const managedIdentityTokenSource = (clientId?: string): TokenSource => {
 
 type Env = Record<string, string | undefined>;
 
+const minPoolMax = 3;
+
 export const usesEntraPostgres = (env: Env) => !env.DATABASE_URL && Boolean(env.PGHOST);
+
+const poolMaxFromEnv = (env: Env): { max?: number } => {
+  const value = env.DATABASE_POOL_MAX;
+  if (!value) return {};
+  const max = Number(value);
+  if (!Number.isInteger(max) || max < minPoolMax)
+    throw new Error(
+      `DATABASE_POOL_MAX must be a whole number of at least ${minPoolMax}, not ${value}`,
+    );
+  return { max };
+};
 
 export const postgresSourceFromEnv = (
   env: Env,
   tokens: TokenSource = managedIdentityTokenSource(env.AZURE_CLIENT_ID),
 ): PostgresPoolOptions | undefined => {
-  if (env.DATABASE_URL) return { connectionString: env.DATABASE_URL };
+  if (env.DATABASE_URL) return { connectionString: env.DATABASE_URL, ...poolMaxFromEnv(env) };
   if (!env.PGHOST) return undefined;
   return {
+    ...poolMaxFromEnv(env),
     host: env.PGHOST,
     ...(env.PGPORT ? { port: Number(env.PGPORT) } : {}),
     database: env.PGDATABASE ?? 'genai',
@@ -79,6 +93,20 @@ export const knowledgeIdentityTokenSource = (clientId: string): TokenSource => {
   };
 };
 
+const defaultKnowledgePoolMax = 20;
+
+const knowledgePoolMaxOf = (env: Env, login: KnowledgeLogin): { max?: number } => {
+  if (login !== 'api') return {};
+  const value = env.KNOWLEDGE_DATABASE_POOL_MAX;
+  if (!value) return { max: defaultKnowledgePoolMax };
+  const max = Number(value);
+  if (!Number.isInteger(max) || max < 1)
+    throw new Error(
+      `KNOWLEDGE_DATABASE_POOL_MAX must be a whole number of at least 1, not ${value}`,
+    );
+  return { max };
+};
+
 const knowledgePasswords: Record<KnowledgeLogin, string> = {
   api: 'KNOWLEDGE_API_PASSWORD',
   worker: 'KNOWLEDGE_WORKER_PASSWORD',
@@ -93,7 +121,7 @@ export const knowledgeSourceFromEnv = (
     const url = new URL(env.KNOWLEDGE_DATABASE_URL);
     url.username = knowledgeLocalLogins[login];
     url.password = encodeURIComponent(env[knowledgePasswords[login]] ?? '');
-    return { connectionString: url.toString() };
+    return { connectionString: url.toString(), ...knowledgePoolMaxOf(env, login) };
   }
   if (!env.KNOWLEDGE_PGHOST) return undefined;
   if (!env.KNOWLEDGE_AZURE_CLIENT_ID)
@@ -103,6 +131,7 @@ export const knowledgeSourceFromEnv = (
   if (!env.KNOWLEDGE_PGUSER)
     throw new Error("set KNOWLEDGE_PGUSER to the Postgres name of this app's knowledge identity");
   return {
+    ...knowledgePoolMaxOf(env, login),
     host: env.KNOWLEDGE_PGHOST,
     ...(env.KNOWLEDGE_PGPORT ? { port: Number(env.KNOWLEDGE_PGPORT) } : {}),
     database: env.KNOWLEDGE_PGDATABASE ?? 'genai_knowledge',

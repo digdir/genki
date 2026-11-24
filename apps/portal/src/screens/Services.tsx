@@ -1,5 +1,5 @@
 import { Alert, Heading, Paragraph } from '@digdir/designsystemet-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { ApiError } from '../api';
 import {
   exampleDefinitions,
@@ -7,10 +7,9 @@ import {
   exampleTemplate,
   exampleVersions,
   serviceRows,
-  type JobId,
   type ServiceRow,
 } from '../data/services';
-import { applySpec, asServiceDefinition } from '../data/service-definition';
+import { applySpec, asServiceDefinition, forTenant } from '../data/service-definition';
 import { channelKeys, channelOn, jobOf } from '../data/service-form';
 import { usePortalFormat } from '../format';
 import { navigate, useAsync } from '../hooks';
@@ -19,13 +18,13 @@ import type { ScreenProps } from '../screen';
 import { rightLabel, useRights } from '../Shell';
 import { EmptyState, ErrorState, Loading } from '../states';
 import { listedServiceCount, rememberServiceNames } from '../listed-services';
+import { modelLabel } from '../models';
 import { StrategyCatalogue } from '../strategy-catalogue';
 import { ServiceLoading } from './service/ServiceLoading';
-import { availableSections, locate } from './service/sections';
+import { productionEnvironment } from '../api/environments';
+import { availableSections, editionOf, editionView, locate, servicePath } from './service/sections';
 import { Builder, newDraftId, newServiceInit, type BuilderInit } from './services/Builder';
-import { LiveNewService } from './services/LiveNewService';
-import { NewService } from './services/NewService';
-import { ServiceList } from './services/ServiceList';
+import { ServiceList, type ListedService } from './services/ServiceList';
 import { startKeys } from './services/SetupTab';
 import './services.css';
 
@@ -44,11 +43,12 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
   const p = usePortalFormat();
   const { t } = p;
   const [state, retry] = useAsync(
-    async (signal): Promise<{ rows: ServiceRow[]; listed?: number }> => {
+    async (signal): Promise<{ rows: ListedService[]; listed?: number }> => {
       if (live) {
-        const [services, drafts] = await Promise.all([
+        const [services, drafts, models] = await Promise.all([
           api.services(tenant, signal),
           api.quality.drafts(tenant, signal),
+          api.listModels({ all: true }, signal).catch(() => []),
         ]);
         const unpublished = drafts
           .filter((d) => d.latestVersion === null)
@@ -66,10 +66,11 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
           }));
         const rows = [
           ...unpublished,
-          ...services.data.map((s): ServiceRow => ({
+          ...services.data.map((s): ListedService => ({
             id: s.id,
             name: s.name,
             purpose: s.purpose,
+            ...(s.model ? { model: modelLabel(s.model.id, models) } : {}),
             job: jobOf(s.outputKind),
             start: s.channels
               .filter((key) => startKeys[key])
@@ -93,13 +94,16 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
         (d) => d.kind === 'Service' && !serviceRows.some((r) => r.id === d.id),
       );
       const extra = await Promise.all(
-        unknown.map(async (d): Promise<ServiceRow> => {
+        unknown.map(async (d): Promise<ListedService> => {
           const full = await api.getDefinition(tenant, 'Service', d.id, signal);
           const service = asServiceDefinition(full.latest.definition);
           return {
             id: d.id,
             name: service.metadata.name ?? d.id,
             purpose: service.spec.purpose,
+            ...(service.spec.model?.primary
+              ? { model: modelLabel(service.spec.model.primary) }
+              : {}),
             job: jobOf(service.spec.output.kind),
             start: channelKeys
               .filter((key) => channelOn(service.spec, key) && startKeys[key])
@@ -112,7 +116,11 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
           };
         }),
       );
-      return { rows: [...serviceRows, ...extra] };
+      const known = serviceRows.map((r): ListedService => {
+        const model = exampleDefinitions[r.id]?.spec.model?.primary;
+        return model ? { ...r, model: modelLabel(model) } : r;
+      });
+      return { rows: [...known, ...extra] };
     },
     [api, tenant, live],
   );
@@ -141,8 +149,18 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
   );
 };
 
+// Until the service loads, its address may name a section of either kind.
+const eitherKind = [
+  ...new Set([...availableSections({ isNew: false }), ...availableSections({ isNew: true })]),
+];
+
 const useLocation = (id: string, route: ScreenProps['route'], isNew: boolean) => {
-  const location = locate(id, route.segments, route.query, availableSections({ isNew }));
+  const location = locate(
+    id,
+    route.segments,
+    route.query,
+    isNew ? availableSections({ isNew }) : eitherKind,
+  );
   const { redirect } = location;
   useEffect(() => {
     if (redirect) window.location.replace(`#${redirect}`);
@@ -162,9 +180,24 @@ const BuilderScreen = (
   const p = usePortalFormat();
   const { t } = p;
   const canManage = useRights().has('manage-services');
+  const inUse =
+    editionOf(route.query) === 'inUse' && editionView(location.section, 'inUse') === 'inUse';
   const [state, retry] = useAsync(
     async (signal) => {
       try {
+        if (inUse && props.live) {
+          const [found, pointers] = await Promise.all([
+            api.getDefinition(tenant, 'Service', id, signal),
+            api.environments.list(tenant, id, signal).catch(() => undefined),
+          ]);
+          const prod = pointers?.environments.find((e) => e.name === productionEnvironment);
+          const version = prod?.version ?? found.latest.version;
+          const shown =
+            version === found.latest.version
+              ? found.latest
+              : await api.getVersion(tenant, 'Service', id, version, signal);
+          return { found, draft: undefined, inUse: shown };
+        }
         const [found, opened] = await Promise.all([
           api.getDefinition(tenant, 'Service', id, signal),
           props.live ? api.quality.openDraft(tenant, id, t('services.rebaseReason')) : undefined,
@@ -179,9 +212,27 @@ const BuilderScreen = (
         return unpublished ? { unpublished } : undefined;
       }
     },
-    [api, tenant, id, props.live, canManage],
+    [api, tenant, id, props.live, canManage, inUse],
   );
-  if (state.status === 'loading')
+  const loadedInUse = state.status === 'ready' && state.data !== undefined && 'inUse' in state.data;
+  const otherEdition =
+    state.status === 'ready' &&
+    state.data !== undefined &&
+    'found' in state.data &&
+    loadedInUse !== (inUse && props.live === true);
+  const unpublishedDraft =
+    state.status === 'ready' && state.data !== undefined && 'unpublished' in state.data;
+  const settled = locate(
+    id,
+    route.segments,
+    route.query,
+    availableSections({ isNew: unpublishedDraft }),
+  );
+  const settledRedirect = state.status === 'ready' ? settled.redirect : undefined;
+  useEffect(() => {
+    if (settledRedirect) window.location.replace(`#${settledRedirect}`);
+  }, [settledRedirect, route]);
+  if (state.status === 'loading' || otherEdition)
     return (
       <ServiceLoading
         tenant={tenant}
@@ -214,8 +265,8 @@ const BuilderScreen = (
           status: 'Utkast',
         }}
         route={route}
-        section={sections.includes(location.section) ? location.section : 'setup'}
-        detail={location.detail}
+        section={sections.includes(settled.section) ? settled.section : 'setup'}
+        detail={settled.detail}
         pane={paneOf(route.query)}
         openPublish={false}
       />
@@ -223,7 +274,8 @@ const BuilderScreen = (
   }
   const live = state.data?.found;
   const draft = live ? state.data?.draft : undefined;
-  const current = draft ?? live?.latest;
+  const shownInUse = state.data && 'inUse' in state.data ? state.data.inUse : undefined;
+  const current = shownInUse ?? draft ?? live?.latest;
   const row = props.live ? undefined : serviceRows.find((r) => r.id === id);
   const example = props.live ? undefined : exampleDefinitions[id];
   if (!live && !row && !example)
@@ -272,17 +324,19 @@ const BuilderScreen = (
   const pane = paneOf(route.query);
   return (
     <Builder
-      key={`${id}-${live?.latest.version ?? 0}`}
+      key={`${id}-${live?.latest.version ?? 0}-${inUse ? 'in-use' : 'test'}`}
       api={api}
       tenant={tenant}
       tenantName={props.tenantName}
       live={props.live}
       init={init}
       route={route}
-      section={location.section}
-      detail={location.detail}
+      section={settled.section}
+      detail={settled.detail}
       pane={pane}
       openPublish={route.query.get('publiser') === '1'}
+      edition={inUse ? 'inUse' : 'test'}
+      {...(shownInUse ? { inUseEdition: shownInUse } : {})}
       onPublished={retry}
     />
   );
@@ -316,32 +370,67 @@ export const Services = (props: ScreenProps) => {
   );
 };
 
+/** A new service in the example portal, which has no drafts to save. */
+const mockStart: BuilderInit = {
+  ...newServiceInit('answers', '', '', false),
+  messages: [],
+  extraCards: {},
+};
+
+/** Saves an empty draft for a new service and opens its Oppsett. */
+const StartDraft = ({ api, tenant }: Pick<ScreenProps, 'api' | 'tenant'>) => {
+  const t = useT();
+  const reason = t('services.draftSavedReason');
+  // One draft per visit and tenant: React may run the effect twice in development.
+  const started = useRef<{ tenant: string; id: Promise<string> }>(undefined);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [state, retry] = useAsync(() => {
+    if (started.current?.tenant !== tenant)
+      started.current = {
+        tenant,
+        id: (async () => {
+          const template = await api.definitionTemplate(tenant, 'Service');
+          // Switching organisation leaves this screen; save nothing for the one switched to.
+          if (!mounted.current) throw new Error('left Ny tjeneste');
+          const id = newDraftId();
+          const { definition } = newServiceInit('answers', '', '', true, template);
+          const stamped = forTenant(definition, { tenant, id: 'ny-tjeneste', version: 1 });
+          const draft = { ...stamped, metadata: { ...stamped.metadata, name: '' } };
+          await api.quality.saveDraft(
+            tenant,
+            id,
+            { definition: draft as unknown as Record<string, unknown>, files: {}, revision: 0 },
+            reason,
+          );
+          return id;
+        })(),
+      };
+    const current = started.current;
+    return current.id.catch((error: unknown) => {
+      if (started.current === current) started.current = undefined;
+      throw error;
+    });
+  }, [api, tenant]);
+  useEffect(() => {
+    if (state.status === 'ready') window.location.replace(`#${servicePath(state.data, 'setup')}`);
+  }, [state]);
+  if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
+  return <Loading label={t('servicesScreen.loadingStart')} shape="form" />;
+};
+
 const ServiceScreens = (props: ScreenProps) => {
   const t = useT();
   const canCreate = useRights().has('manage-services');
   const { route } = props;
   const [, id] = route.segments;
-  const [draft, setDraft] = useState<BuilderInit>();
-  const [starting, setStarting] = useState<{ error?: unknown }>();
-  const building = id === 'new' || (!!draft && id === draft.id);
+  const building = id === 'new';
   const location = useLocation(id ?? '', route, building);
-  useEffect(() => {
-    if (!building) {
-      setDraft(undefined);
-      setStarting(undefined);
-    }
-  }, [building]);
-
-  const startLive = async (job: JobId, text: string, name = '') => {
-    setStarting({});
-    try {
-      const template = await props.api.definitionTemplate(props.tenant, 'Service');
-      setDraft({ ...newServiceInit(job, text, name, true, template), id: newDraftId() });
-      setStarting(undefined);
-    } catch (error) {
-      setStarting({ error });
-    }
-  };
 
   if (!id) return <ListScreen {...props} />;
   if (id === 'new' && !canCreate)
@@ -362,21 +451,7 @@ const ServiceScreens = (props: ScreenProps) => {
       </div>
     );
   if (building) {
-    if (id === 'new' && props.live && route.query.get('skjema') === '1')
-      return <LiveNewService api={props.api} tenant={props.tenant} />;
-    if (starting?.error) return <ErrorState error={starting.error} />;
-    if (starting) return <Loading label={t('servicesScreen.loadingStart')} shape="form" />;
-    if (!draft)
-      return (
-        <NewService
-          live={props.live}
-          onStart={(job, text, name) =>
-            props.live
-              ? void startLive(job, text, name)
-              : setDraft(newServiceInit(job, text, name, false))
-          }
-        />
-      );
+    if (props.live) return <StartDraft api={props.api} tenant={props.tenant} />;
     return (
       <Builder
         key="new"
@@ -384,7 +459,7 @@ const ServiceScreens = (props: ScreenProps) => {
         tenant={props.tenant}
         tenantName={props.tenantName}
         live={props.live}
-        init={draft}
+        init={mockStart}
         route={route}
         section={location.section}
         detail={location.detail}

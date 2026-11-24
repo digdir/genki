@@ -557,7 +557,15 @@ export const RunHistory = ({
   // Unticking every marked case closes the question, so it cannot start a run of no cases.
   if (confirming === 'marked' && marked.length === 0) setConfirming(undefined);
   const [round, setRound] = useState(0);
-  const [version, setVersion] = useState<'draft' | 'published'>('draft');
+  const [picked, setVersion] = useState<'draft' | 'published'>('draft');
+  const [draft] = useAsync(
+    (signal) => api.quality.draft(tenant, serviceId, signal).then(Boolean),
+    [api, tenant, serviceId],
+  );
+  const [draftGone, setDraftGone] = useState(false);
+  const noDraft = draftGone || (draft.status === 'ready' && !draft.data);
+  const version = noDraft ? 'published' : picked;
+  const versions = noDraft ? (['published'] as const) : (['draft', 'published'] as const);
   const [models] = useAsync((signal) => api.listModels({ all: true }, signal), [api]);
   const modelList = models.status === 'ready' ? models.data : [];
   const [starting, setStarting] = useState(false);
@@ -612,20 +620,24 @@ export const RunHistory = ({
       starting ||
       running ||
       !canRun ||
+      draft.status === 'loading' ||
       refusedText ||
       (choice === 'marked' && marked.length === 0)
     )
       return;
     setConfirming(undefined);
     setStarting(true);
-    const names = { name: testSet.name, version: versionText(t, version).toLowerCase() };
     try {
+      const gone = version === 'draft' && !(await api.quality.draft(tenant, serviceId));
+      if (gone) setDraftGone(true);
+      const runOn = gone ? 'published' : version;
+      const names = { name: testSet.name, version: versionText(t, runOn).toLowerCase() };
       const started = await api.quality.startRun(
         tenant,
         serviceId,
         {
           testSet: testSet.id,
-          version,
+          version: runOn,
           ...(choice === 'marked' ? { cases: marked } : {}),
           ...(trace && sink ? { trace: true } : {}),
         },
@@ -643,7 +655,7 @@ export const RunHistory = ({
     }
   };
 
-  const blocked = starting || running || !canRun;
+  const blocked = starting || running || !canRun || draft.status === 'loading';
   const chosen = confirming === 'marked' ? marked.length : cases;
 
   return (
@@ -655,7 +667,7 @@ export const RunHistory = ({
         <Fieldset>
           <Fieldset.Legend>{t('quality.runOn')}</Fieldset.Legend>
           <div className="tag-row">
-            {(['draft', 'published'] as const).map((v) => (
+            {versions.map((v) => (
               <Chip.Radio
                 key={v}
                 name="run-version"

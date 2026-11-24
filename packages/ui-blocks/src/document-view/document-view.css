@@ -44,8 +44,8 @@
     padding: var(--genai-document-view-head-padding, var(--_head-padding));
     border: var(--genai-document-view-head-border-width, var(--ds-border-width-default)) solid
       var(--genai-document-view-head-border-color, var(--ds-color-border-subtle));
-    border-start-start-radius: var(--genai-document-view-border-radius, var(--ds-border-radius-lg));
-    border-start-end-radius: var(--genai-document-view-border-radius, var(--ds-border-radius-lg));
+    border-start-start-radius: var(--genai-document-view-border-radius, var(--ds-border-radius-xl));
+    border-start-end-radius: var(--genai-document-view-border-radius, var(--ds-border-radius-xl));
     hyphens: auto;
     background: var(--genai-document-view-head-background, var(--ds-color-surface-tinted));
     color: var(--genai-document-view-head-color, var(--ds-color-text-default));
@@ -61,8 +61,8 @@
     border: var(--genai-document-view-body-border-width, var(--ds-border-width-default)) solid
       var(--genai-document-view-body-border-color, var(--ds-color-border-subtle));
     border-block-start: 0;
-    border-end-start-radius: var(--genai-document-view-border-radius, var(--ds-border-radius-lg));
-    border-end-end-radius: var(--genai-document-view-border-radius, var(--ds-border-radius-lg));
+    border-end-start-radius: var(--genai-document-view-border-radius, var(--ds-border-radius-xl));
+    border-end-end-radius: var(--genai-document-view-border-radius, var(--ds-border-radius-xl));
     background: var(--genai-document-view-body-background, var(--ds-color-background-tinted));
   }
   .uib-document-view-body > * {
@@ -185,7 +185,7 @@
     gap: var(--genai-document-view-passage-gap, var(--ds-size-2));
     padding: var(--genai-document-view-passage-padding, var(--_passage-padding));
     background: var(--genai-document-view-passage-background, var(--ds-color-surface-default));
-    border-radius: var(--genai-document-view-passage-border-radius, var(--ds-border-radius-lg));
+    border-radius: var(--genai-document-view-passage-border-radius, var(--ds-border-radius-xl));
     /* Clear of «Utdrag i svaret» above when it is scrolled to. */
     scroll-margin-block-start: var(
       --genai-document-view-passage-scroll-margin,
@@ -258,7 +258,7 @@
     min-block-size: var(--genai-document-view-file-min-block-size, 20rem);
     border: var(--genai-document-view-file-border-width, var(--ds-border-width-default)) solid
       var(--genai-document-view-file-border-color, var(--ds-color-border-subtle));
-    border-radius: var(--genai-document-view-file-border-radius, var(--ds-border-radius-md));
+    border-radius: var(--genai-document-view-file-border-radius, var(--ds-border-radius-xl));
     background: var(--genai-document-view-file-background, var(--ds-color-surface-default));
   }
   .uib-document-view-file-note {

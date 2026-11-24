@@ -9,7 +9,8 @@ import {
   type Zone,
 } from '@genai/ui-blocks/builder';
 import { useT, type PlainKey } from '../../../i18n';
-import { blockLabel } from './BlocksPanel';
+import { Fragment } from 'react';
+import { blockLabel, ComingName } from './BlocksPanel';
 
 const shortZone: Record<Zone, PlainKey> = {
   primary: 'builderBlocks.panelLeftShort',
@@ -26,9 +27,11 @@ export const TemplatesPanel = ({
 }) => {
   const t = useT();
   const nameOf = (id: Parameters<typeof blockLabel>[0]) =>
-    blockSpec(id).status === 'planned'
-      ? t('builderBlocks.planned', { block: t(blockLabel(id)) })
-      : t(blockLabel(id));
+    blockSpec(id).status === 'planned' ? (
+      <ComingName name={t(blockLabel(id))} />
+    ) : (
+      t(blockLabel(id))
+    );
   return (
     <div className="blocks-panel">
       <Paragraph data-size="sm">{t('builderBlocks.templatesIntro')}</Paragraph>
@@ -57,7 +60,12 @@ export const TemplatesPanel = ({
                       <span key={zone} className="meta">
                         <strong>{t(shortZone[zone])}:</strong>{' '}
                         {template[zone].length
-                          ? template[zone].map(nameOf).join(', ')
+                          ? template[zone].map((block, i) => (
+                              <Fragment key={block}>
+                                {i > 0 ? ', ' : null}
+                                {nameOf(block)}
+                              </Fragment>
+                            ))
                           : t('builderBlocks.templateNone')}
                       </span>
                     ))}

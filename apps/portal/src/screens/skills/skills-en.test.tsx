@@ -15,14 +15,16 @@ const t = translator('en');
 
 describe('skills in English', () => {
   it('describes draft changes and scores', () => {
-    expect(draftChanges({} as never, undefined, [], t)).toEqual(['First version']);
+    expect(draftChanges({} as never, undefined, [], t)).toEqual(['First edition']);
     expect(scoreText(t, 3, 4)).toBe('3 of 4 (75%)');
   });
 
   it('explains why a publishing requirement is not met', () => {
     const gate = { kind: 'test_run_on_draft', passed: false, reason: 'stale' } as SkillGate;
     expect(gateLabel(t, gate, 0.8)).toBe('The test set has been run on the draft');
-    expect(gateWhy(t, gate)).toBe('The draft or the judge has changed since the last run.');
+    expect(gateWhy(t, gate)).toBe(
+      'The draft or the automatic evaluation has changed since the last run.',
+    );
   });
 
   it('names who published each version, marks the one in use and quotes the reason', () => {
@@ -50,9 +52,9 @@ describe('skills in English', () => {
     );
     const items = screen.getAllByRole('listitem');
     expect(items[0]?.textContent).toMatch(
-      /^Version 2 · .* by Per · in use"Shorter first paragraph"$/,
+      /^Edition 2 · .* by Per · in use"Shorter first paragraph"$/,
     );
-    expect(items[1]?.textContent).toMatch(/^Version 1 · .* by KariNo reason given\.$/);
+    expect(items[1]?.textContent).toMatch(/^Edition 1 · .* by KariNo reason given\.$/);
   });
 
   it('renders the rejected and fix cards', () => {

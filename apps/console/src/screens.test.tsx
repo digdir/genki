@@ -145,7 +145,7 @@ describe('byggeklosser', () => {
     };
     await open('#/building-blocks', live);
 
-    const strategies = await screen.findByRole('region', { name: 'Strategier' });
+    const strategies = await screen.findByRole('region', { name: 'Arbeidsmåter' });
     expect(within(strategies).getByRole('button', { name: /single-call/ }).textContent).toMatch(
       /Ikke målt/,
     );
@@ -209,7 +209,7 @@ describe('byggeklosser fra manifestene', () => {
     window.location.hash = '#/building-blocks';
     render(<App auth={auth} fetch={live} live />);
 
-    const models = await screen.findByRole('region', { name: 'Modeller' });
+    const models = await screen.findByRole('region', { name: 'Modellprotokoller' });
     fireEvent.click(within(models).getByRole('button', { name: /OpenAI-kompatibel chat/ }));
     fireEvent.click(screen.getByRole('tab', { name: 'Kontrakttester' }));
     expect(screen.getByText('content: expected "Hei"')).toBeTruthy();

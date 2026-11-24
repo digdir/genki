@@ -1,4 +1,5 @@
 import { sourceLinkRules, type Principal } from '@genai/contracts';
+import { tenantSecretNamePattern } from '@genai/composition';
 import type { ActorNames } from './actor-names.js';
 import { testCase, testSet, type TestSet, type TestSetStore } from '@genai/eval';
 import { guardrailSchemas, ruleKinds } from '@genai/guardrails';
@@ -56,6 +57,7 @@ import {
 } from './endpoint-source.js';
 import { candidateRelease, tenantModelRefusal } from './model-access.js';
 import { effectiveResidency, locationOf } from './residency.js';
+import { datasetEffective } from './catalog-health.js';
 
 export interface ConfigDeps {
   catalog: CatalogRegistry;
@@ -909,6 +911,8 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
         ]),
       };
     const secretName = endpointSourceSecret(datasetId);
+    if (source.auth.kind === 'api-key' && !tenantSecretNamePattern.test(secretName))
+      return issues([{ path: 'id', message: t('blocks.secretNameInvalid') }]);
     if (source.auth.kind === 'api-key' && (await sources.secretNames(scope)).includes(secretName))
       return {
         response: problem(c, 409, 'Conflict', [
@@ -1083,17 +1087,19 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
     return saveDataset(c, guard.principal, platformScope, param(c, 'id'), false);
   });
 
+  const endpointEngine = (scope: string, endpoint: string) => {
+    const found =
+      deps.catalog.get('knowledge-endpoint', deps.catalog.qualify(scope, endpoint)) ??
+      deps.catalog.get('knowledge-endpoint', endpoint);
+    const engine = typeof found?.spec.engine === 'string' ? found.spec.engine : undefined;
+    const title = engine ? deps.engines().find((e) => e.engine === engine)?.title : undefined;
+    return { ...(engine ? { engine } : {}), ...(title ? { engineTitle: title } : {}) };
+  };
   const statusDeps = {
     ingestion: deps.ingestion,
     ...(deps.writers ? { writers: deps.writers } : {}),
     countable: (engine: string) => deps.engines().some((e) => e.engine === engine && e.builtin),
-    engineOf: (item: CatalogItem) => {
-      const endpoint = String(item.spec.endpoint);
-      const found =
-        deps.catalog.get('knowledge-endpoint', deps.catalog.qualify(item.scope, endpoint)) ??
-        deps.catalog.get('knowledge-endpoint', endpoint);
-      return typeof found?.spec.engine === 'string' ? found.spec.engine : undefined;
-    },
+    engineOf: (item: CatalogItem) => endpointEngine(item.scope, String(item.spec.endpoint)).engine,
   };
   const ownerNames = () => deps.admin.tenantNames().catch(() => new Map<string, string>());
   const namesOf = async (actors: string[]) =>
@@ -1143,6 +1149,14 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
         : { source: 'none' as const, lastExecution: null, nextRunAt: null, updatedAt: null }),
       ...(starterName && status.lastExecution
         ? { lastExecution: { ...status.lastExecution, startedByName: starterName } }
+        : {}),
+      ...(detail && tenant === ownerTenant
+        ? {
+            effective: await datasetEffective(
+              { catalog: deps.catalog, engineOf: endpointEngine },
+              item,
+            ),
+          }
         : {}),
       ...(detail
         ? {

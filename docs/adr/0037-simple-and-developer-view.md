@@ -1,6 +1,6 @@
 # 0037 Owner pages and developer tools in the portal
 
-Status: proposed, 2026-10-20 (rewritten to a developer tools area, 2026-10-30; the menu, Utviklerverktøy at `/developer` and forwarding of old addresses built, 2026-11-03; what the step-flow library and model choice show in it, [ADR 0050](0050-building-blocks-are-made-where-they-are-found.md), 2026-11-05)
+Status: proposed, 2026-10-20 (rewritten to a developer tools area, 2026-10-30; the menu, Integrasjoner at `/developer` and forwarding of old addresses built, 2026-11-03; what the step-flow library and model choice show in it, [ADR 0050](0050-building-blocks-are-made-where-they-are-found.md), 2026-11-05)
 
 ## Context
 
@@ -10,11 +10,11 @@ The first version of this record proposed a switch that added the technical part
 
 ## Decision
 
-- **The main menu holds the owner's work, in three groups.** Bygg (Tjenester, Fellestjenester, Datasett, Byggeklosser, Prøveområde, Utviklerverktøy), Analyse (Statistikk, Logg) and Administrasjon (Tilgang, Innstillinger).
-- **Technical parts live in one place, Utviklerverktøy.** For the organisation it is `/developer`, with Driftsstatus, Nøkler, Brukerflater, Systemer, Utløsere, Stegflyter, Kroker, Sporing og evaluering, Felles sikkerhetsfiltre and API-referanse og dokumentasjon. Each service gets its own Utviklerverktøy tab with what is technical about that service: calling it from code, strategy parameters and step flows, model fallback and roles, variants, hooks, the definition and tracing.
+- **The main menu holds the owner's work, in three groups.** Bygg (Tjenester, Delte tjenester, Dokumentsamlinger, Katalog, Prøveområde, Integrasjoner), Analyse (Statistikk, Logg) and Administrasjon (Tilgang, Innstillinger).
+- **Technical parts live in one place, Integrasjoner.** For the organisation it is `/developer`, with Driftsstatus, API-nøkler, Egne løsninger, Koblinger, Utløsere, Arbeidsflyter, Kjøringspunkter, Sporing og evaluering, Sikkerhetsregler and API-referanse og dokumentasjon. Each service gets its own Teknisk tab with what is technical about that service: calling it from code, strategy parameters and step flows, model fallback and roles, variants, hooks, the definition and tracing.
 - **The owner keeps what the owner decides.** On a service: the model in plain words (its name, where data is processed, cost in kroner), risk level and confirmation, privacy and safety filters, topics to refuse, whether the service may be improved automatically, testing, the log and versions with rollback. For the organisation: statistics, access and settings.
-- **Where a setting lives is decided once.** One map from a part of the definition to its page is used by the publish dialog's fix buttons, the builder assistant's cards, error messages and old addresses, so they never point to a page that no longer holds the setting.
-- **Utviklerverktøy is visible to everyone signed in, until a personal preference hides it.** The preference is `view: simple | developer` in `PUT /tenants/{tenant}/me/preferences`. It grants nothing: rights still come from Altinn (ADR 0027), and hiding something never stands in for checking a right in the API.
+- **Where a setting lives is decided once.** One map from a part of the definition to its page is used by the first publish page's list of what is left, the builder assistant's cards, error messages and old addresses, so they never point to a page that no longer holds the setting.
+- **Integrasjoner is visible to everyone signed in, until a personal preference hides it.** The preference is `view: simple | developer` in `PUT /tenants/{tenant}/me/preferences`. It grants nothing: rights still come from Altinn (ADR 0027), and hiding something never stands in for checking a right in the API.
 - **Old addresses keep working.** `/integrations` and its tabs, `/usage` and `/help` forward to where the page lives now, keeping the open row and the query.
 - **The console has no owner view.** Its users are operators.
 
@@ -31,7 +31,7 @@ The first version of this record proposed a switch that added the technical part
 ## Consequences
 
 - Not built:
-  - The `view` preference and its switch in the user menu. Until then Utviklerverktøy is in the menu for everyone.
-  - The Utviklerverktøy tab on each service and the map from setting to page. The service builder is unchanged until they land, together with the new builder for new services.
-- New technical parts go into Utviklerverktøy. Putting something in an owner page is a deliberate choice.
+  - The `view` preference and its switch in the user menu. Until then Integrasjoner is in the menu for everyone.
+  - The Teknisk tab on each service and the map from setting to page. The service builder is unchanged until they land, together with the new builder for new services.
+- New technical parts go into Integrasjoner. Putting something in an owner page is a deliberate choice.
 - A page with no content yet is not shown in a menu.

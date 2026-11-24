@@ -1,4 +1,3 @@
-import type { ProfileSummary } from './profiles.js';
 import type { AnswerSummary, RetrievalSummary, ServedModels } from './quality.js';
 
 const pct = (x: number | undefined) => (x === undefined ? 'n/a' : `${(x * 100).toFixed(1)}%`);
@@ -16,7 +15,6 @@ export interface QualityReport {
   servedModels?: { systems: [ServedModels, ServedModels]; problems: string[] };
   retrieval?: RetrievalSummary;
   answers?: AnswerSummary;
-  profiles?: ProfileSummary;
   notes: string[];
 }
 
@@ -101,18 +99,6 @@ export const renderMarkdown = (report: QualityReport): string => {
     lines.push('', '| Tag | n | headless-rag | genki |', '|---|---|---|---|');
     for (const t of report.answers.byTag)
       lines.push(`| ${t.tag} | ${t.n} | ${num(t.scores[0])} | ${num(t.scores[1])} |`);
-  }
-  if (report.profiles) {
-    const p = report.profiles;
-    lines.push('', '## Search profiles on Norwegian questions (M.2)', '');
-    lines.push(
-      `Raw question, no planner, top ${p.limit} per profile, ${p.cases} questions with a known source.`,
-      '',
-    );
-    lines.push('| Profile | Expected source found | Only this profile found it |', '|---|---|---|');
-    for (const name of p.profiles)
-      lines.push(`| ${name} | ${pct(p.recall[name])} | ${p.onlyFoundBy[name] ?? 0} |`);
-    lines.push(`| any profile | ${pct(p.union)} | |`);
   }
   if (report.notes.length) {
     lines.push('', '## Notes', '');

@@ -18,7 +18,7 @@ const Harness = () => {
 const notInForce = 'Fotnoter: Trenger Kilder eller Dokumentvisning.';
 const turnOffInRight = (name: string) =>
   fireEvent.click(
-    within(screen.getByRole('group', { name: 'Høyre panel' })).getByRole('switch', { name }),
+    within(screen.getByRole('group', { name: 'Høyre' })).getByRole('switch', { name }),
   );
 
 describe('the footnotes on Chat', () => {
@@ -26,14 +26,14 @@ describe('the footnotes on Chat', () => {
     render(<Harness />);
     turnOffInRight('Kilder');
     turnOffInRight('Dokumentvisning');
-    fireEvent.click(screen.getByText('Valg for Chat'));
+    fireEvent.click(screen.getByText('Valg for Samtale'));
     expect(screen.getByText(notInForce)).toBeTruthy();
   });
 
   it('keeps Fotnoter in force with Dokumentvisning and no Kilder, since a footnote opens the document', () => {
     render(<Harness />);
     turnOffInRight('Kilder');
-    fireEvent.click(screen.getByText('Valg for Chat'));
+    fireEvent.click(screen.getByText('Valg for Samtale'));
     expect(screen.queryByText(notInForce)).toBeNull();
   });
 });

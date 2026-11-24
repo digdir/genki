@@ -36,6 +36,13 @@ const outside = genaiUses(flat)
   .reduce((rest, use) => rest.slice(0, use.start) + rest.slice(use.end), flat);
 
 describe('the assembly’s styles', () => {
+  it('draw every corner in the blocks’ one corner, xl (kunnskapsassistenten#266)', () => {
+    const corners = [...flat.matchAll(/border(?:-[a-z]+)*-radius: ([^;]+);/g)].map(
+      (found) => found[1],
+    );
+    expect(corners).toEqual(['var(--genai-assembly-strip-radius, var(--ds-border-radius-xl))']);
+  });
+
   it('hold no literal colour, only Designsystemet tokens', () => {
     expect(css.match(/#[0-9a-f]{3,8}\b/gi) ?? []).toEqual([]);
     expect(css.match(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/gi) ?? []).toEqual([]);
@@ -73,10 +80,8 @@ describe('the assembly’s styles', () => {
     expect(classes.filter((name) => !name.startsWith('.uia-'))).toEqual([]);
   });
 
-  it('hide the next look’s greeting and suggestions while a question is written, keeping their room', () => {
-    expect(flat).toContain(
-      '.uia-chat[data-typing] .uia-welcome, .uia-chat[data-typing] .uia-suggestions { visibility: hidden; }',
-    );
+  it('never hide the greeting or the suggestions, so writing a question leaves the front page as it is', () => {
+    expect(flat).not.toMatch(/\.uia-(welcome|suggestions)[^{]*\{[^}]*visibility: hidden/);
   });
 
   it('sit in one layer after Designsystemet’s, so a host’s own CSS wins', () => {

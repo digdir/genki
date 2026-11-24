@@ -75,6 +75,7 @@ export const audit = defineNamespace({
   actionHookFeedback: 'Kjørte kroker ved tilbakemelding',
   actionPrivateNetworksSave: 'Lagret private nettverk',
   actionServiceLifecycle: 'Endret status på tjeneste',
+  actionServiceDelete: 'Slettet tjeneste',
   actionServiceEnvironmentAdd: 'La til miljø på tjeneste',
   actionServiceEnvironmentRemove: 'Fjernet miljø fra tjeneste',
   actionServiceEnvironmentPromote: 'Fremmet versjon til miljø',

@@ -24,7 +24,7 @@ describe('vendor names', () => {
   it('flag code names but allow vendor names as config keys, strings and provider imports', () => {
     const source = [
       "import { typesense } from '@genai/providers-typesense';",
-      'const colbertClient = 1;',
+      'const cohereClient = 1;',
       'const exposure = { openai: true };',
       'const on = exposure.openai;',
       "const label = 'Azure OpenAI';",
@@ -32,7 +32,7 @@ describe('vendor names', () => {
       'function readFromAnthropic() {}',
     ].join('\n');
     expect(vendorIdentifiers('x.ts', source).map((v) => v.name)).toEqual([
-      'colbertClient',
+      'cohereClient',
       'readFromAnthropic',
     ]);
   });

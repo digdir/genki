@@ -4,7 +4,7 @@ import { envSecrets } from '@genai/kernel';
 import { KnowledgeRouter } from '@genai/port-knowledge';
 import { fakeHttp, type FakeReply, type FakeServer } from '@genai/port-model/testing';
 import { typesense } from '@genai/providers-typesense';
-import { createRestAdapter, type RestAdapterOptions } from './index.js';
+import { createRestAdapter, remoteFileOriginsFrom, type RestAdapterOptions } from './index.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -380,5 +380,355 @@ describe('facets', () => {
 
     expect(res.status).toBe(502);
     expect(await res.json()).toMatchObject({ error: 'Facets are unavailable for this dataset.' });
+  });
+});
+
+const documentReply =
+  (documents: Record<string, unknown>[]): ((body: Record<string, unknown>) => FakeReply) =>
+  (body) => ({
+    status: 200,
+    json: {
+      results: (body.searches as Search[]).map((s) => {
+        const wanted = /:=\[(.*)\]/.exec(String(s.filter_by ?? ''))?.[1]?.replace(/[`"]/g, '');
+        const hits = documents
+          .filter((d) => !wanted || wanted.split(',').includes(String(d.doc_num)))
+          .map((document) => ({ document }));
+        return { hits, found: hits.length };
+      }),
+    },
+  });
+
+const fileOf = (doc: string, dataset = 'kudos') => `/api/datasets/${dataset}/documents/${doc}/file`;
+
+describe('a document file', () => {
+  const remote = documentReply([
+    { doc_num: '4711', title: 'Årsrapport', url: 'https://kilde.example/files/4711.pdf#page=3' },
+    { doc_num: '4712', title: 'Landingsside', url: 'https://kilde.example/dokument/4712' },
+    { doc_num: '4713', title: 'Uten adresse' },
+    { doc_num: '4714', title: 'Farlig', url: 'javascript:alert(1)' },
+  ]);
+
+  it('sends a reader of the dataset to the remote source of a document', async () => {
+    const { app } = await setup(remote);
+
+    const res = await get(app, fileOf('4711'));
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://kilde.example/files/4711.pdf');
+  });
+
+  it('describes the remote file as JSON when asked, with its media type when the address shows it', async () => {
+    const { app } = await setup(remote);
+    const asJson = (doc: string) =>
+      app.request(fileOf(doc), {
+        headers: { authorization: 'Bearer kari', accept: 'application/json' },
+      });
+
+    const pdf = await asJson('4711');
+    const page = await asJson('4712');
+
+    expect(pdf.headers.get('cache-control')).toBe('private, no-store');
+    expect(await pdf.json()).toEqual({
+      kind: 'source',
+      url: 'https://kilde.example/files/4711.pdf',
+      mediaType: 'application/pdf',
+    });
+    expect(await page.json()).toEqual({
+      kind: 'source',
+      url: 'https://kilde.example/dokument/4712',
+      mediaType: null,
+    });
+  });
+
+  it('answers document_file_not_found for a document without an address, or with one that is not http', async () => {
+    const { app } = await setup(remote);
+
+    for (const doc of ['4713', '4714']) {
+      const res = await get(app, fileOf(doc));
+      expect(res.status).toBe(404);
+      expect(await res.json()).toMatchObject({ code: 'document_file_not_found' });
+    }
+  });
+
+  it('answers document_not_found for a number the dataset does not hold', async () => {
+    const { app } = await setup(remote);
+
+    const res = await get(app, fileOf('9999'));
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ code: 'document_not_found' });
+  });
+
+  it('keeps the access rules of the dataset: a hidden dataset reads as one that does not exist', async () => {
+    const { app, server } = await setup(remote);
+
+    const hidden = await get(app, fileOf('4711', 'nav/internal'));
+    const refused = await (
+      await setup(remote, { mayRead: () => false })
+    ).app.request(fileOf('4711'), { headers: { authorization: 'Bearer kari' } });
+    const anonymous = await get(app, fileOf('4711'), '');
+
+    for (const res of [hidden, refused]) {
+      expect(res.status).toBe(404);
+      expect(await res.json()).toMatchObject({ code: 'dataset_not_found' });
+    }
+    expect(anonymous.status).toBe(401);
+    expect(server.seen).toHaveLength(0);
+  });
+
+  it('serves an uploaded original in place of the source, a PDF inline and anything else as an attachment', async () => {
+    const pdf = new TextEncoder().encode('%PDF-1.7');
+    const { app } = await setup(remote, {
+      originalFile: async (_principal, _dataset, doc) =>
+        doc === '4711'
+          ? { name: 'årsrapport.pdf', type: 'application/pdf', body: pdf }
+          : doc === '4712'
+            ? { name: 'side.html', type: 'text/html', body: new TextEncoder().encode('<b>x</b>') }
+            : undefined,
+    });
+
+    const inline = await get(app, fileOf('4711'));
+    const html = await get(app, fileOf('4712'));
+
+    expect(inline.status).toBe(200);
+    expect(inline.headers.get('content-type')).toBe('application/pdf');
+    expect(inline.headers.get('content-disposition')).toMatch(/^inline;/);
+    expect(inline.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(new Uint8Array(await inline.arrayBuffer())).toEqual(pdf);
+    expect(html.headers.get('content-disposition')).toMatch(/^attachment;/);
+    expect(html.headers.get('content-security-policy')).toContain('sandbox');
+  });
+
+  it('asks for the original as the caller, so the platform can refuse it to another organisation', async () => {
+    const asked: string[] = [];
+    const { app } = await setup(remote, {
+      originalFile: async (principal) => {
+        asked.push(principal.subject);
+        return undefined;
+      },
+    });
+
+    const res = await get(app, fileOf('4711'));
+
+    expect(asked).toEqual(['kari']);
+    expect(res.status).toBe(302);
+  });
+});
+
+describe('a remote PDF genki serves', () => {
+  const pdfBytes = new TextEncoder().encode('%PDF-1.7 innhold');
+  const listed = documentReply([
+    {
+      doc_num: '4711',
+      title: 'Årsrapport',
+      url: 'https://kilde.example/dokument/4711',
+      files: [
+        { url: 'https://kilde.example/dokument/4711/filer/a.pdf', mimetype: 'application/pdf' },
+        { url: 'https://kilde.example/dokument/4711/filer/b.pdf', mimetype: 'application/pdf' },
+        { url: 'https://annen.example/x.pdf', mimetype: 'application/pdf' },
+        { url: 'https://kilde.example/dokument/4711/filer/Årsrapport 2022.pdf' },
+        { url: 'https://kilde.example/dokument/4711/filer/100%.pdf' },
+      ],
+    },
+    { doc_num: '4712', title: 'Landingsside', url: 'https://kilde.example/dokument/4712' },
+  ]);
+  const source = (body: BodyInit, headers: Record<string, string> = {}, status = 200) => {
+    const asked: { url: string; redirect: RequestRedirect | undefined }[] = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      asked.push({ url: String(input), redirect: init?.redirect });
+      return new Response(body, {
+        status,
+        headers: { 'content-type': 'application/pdf', ...headers },
+      });
+    };
+    return { asked, fetcher };
+  };
+  const remote = (fetcher: typeof fetch, extra: object = {}) => ({
+    remoteFile: { origins: ['https://kilde.example'], fetch: fetcher, ...extra },
+  });
+
+  it('serves the first PDF the record lists on an allowed origin, inline, framed only by its own site', async () => {
+    const { asked, fetcher } = source(pdfBytes);
+    const { app } = await setup(listed, remote(fetcher));
+
+    const res = await get(app, fileOf('4711'));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/pdf');
+    expect(res.headers.get('content-disposition')).toMatch(/^inline;/);
+    expect(res.headers.get('content-security-policy')).toBe(
+      "default-src 'none'; frame-ancestors 'self'",
+    );
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(pdfBytes);
+    expect(asked).toEqual([
+      { url: 'https://kilde.example/dokument/4711/filer/a.pdf', redirect: 'manual' },
+    ]);
+  });
+
+  it('serves the excerpt’s own file only when the record lists it on an allowed origin', async () => {
+    const { asked, fetcher } = source(pdfBytes);
+    const { app } = await setup(listed, remote(fetcher));
+    const asking = (file: string) => `${fileOf('4711')}?file=${encodeURIComponent(file)}`;
+
+    const own = await get(app, asking('https://kilde.example/dokument/4711/filer/b.pdf#page=3'));
+    const elsewhere = await get(app, asking('https://annen.example/x.pdf'));
+    const unlisted = await get(app, asking('https://kilde.example/dokument/9999/filer/c.pdf'));
+
+    expect(own.status).toBe(200);
+    for (const res of [elsewhere, unlisted]) {
+      expect(res.status).toBe(404);
+      expect(await res.json()).toMatchObject({ code: 'document_file_not_found' });
+    }
+    expect(asked.map((a) => a.url)).toEqual(['https://kilde.example/dokument/4711/filer/b.pdf']);
+  });
+
+  it('serves a listed file whose name has spaces or æøå, however the address is spelled', async () => {
+    const { asked, fetcher } = source(pdfBytes);
+    const { app } = await setup(listed, remote(fetcher));
+    const asking = (file: string) => `${fileOf('4711')}?file=${encodeURIComponent(file)}`;
+
+    const raw = await get(
+      app,
+      asking('https://KILDE.example/dokument/4711/filer/Årsrapport 2022.pdf#page=2'),
+    );
+    const encoded = await get(
+      app,
+      asking('https://kilde.example/dokument/4711/filer/%C3%85rsrapport%202022.pdf'),
+    );
+
+    expect([raw.status, encoded.status]).toEqual([200, 200]);
+    expect(raw.headers.get('content-disposition')).toContain(
+      "filename*=UTF-8''%C3%85rsrapport%202022.pdf",
+    );
+    expect(asked.map((a) => a.url)).toEqual([
+      'https://kilde.example/dokument/4711/filer/%C3%85rsrapport%202022.pdf',
+      'https://kilde.example/dokument/4711/filer/%C3%85rsrapport%202022.pdf',
+    ]);
+  });
+
+  it('names a file with a stray percent sign as it is, and still serves it', async () => {
+    const { fetcher } = source(pdfBytes);
+    const { app } = await setup(listed, remote(fetcher));
+
+    const res = await get(
+      app,
+      `${fileOf('4711')}?file=${encodeURIComponent('https://kilde.example/dokument/4711/filer/100%.pdf')}`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-disposition')).toContain('filename="100_.pdf"');
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(pdfBytes);
+  });
+
+  it('stops a body without a length once it passes the cap', async () => {
+    const big = new Uint8Array(64).fill(0x41);
+    big.set(pdfBytes.subarray(0, 5));
+    const streamed = () =>
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(big.subarray(0, 32));
+          controller.enqueue(big.subarray(32));
+          controller.close();
+        },
+      });
+    const fetcher: typeof fetch = async () =>
+      new Response(streamed(), { headers: { 'content-type': 'application/pdf' } });
+    const { app } = await setup(listed, remote(fetcher, { maxBytes: 40 }));
+
+    const res = await get(app, fileOf('4711'));
+
+    expect(res.headers.get('content-length')).toBeNull();
+    await expect(res.arrayBuffer()).rejects.toThrow();
+  });
+
+  it('answers document_unavailable when the source does not answer in time', async () => {
+    const fetcher: typeof fetch = (_input, init) =>
+      new Promise((_resolve, reject) =>
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason)),
+      );
+    const { app } = await setup(listed, remote(fetcher, { timeoutMs: 20 }));
+
+    const res = await get(app, fileOf('4711'));
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ code: 'document_unavailable' });
+  });
+
+  it('says it serves the PDF itself as JSON when asked, without reading the source', async () => {
+    const { asked, fetcher } = source(pdfBytes);
+    const { app } = await setup(listed, remote(fetcher));
+
+    const res = await app.request(fileOf('4711'), {
+      headers: { authorization: 'Bearer kari', accept: 'application/json' },
+    });
+
+    expect(await res.json()).toEqual({
+      kind: 'served',
+      mediaType: 'application/pdf',
+      source: 'https://kilde.example/dokument/4711/filer/a.pdf',
+    });
+    expect(asked).toEqual([]);
+  });
+
+  it('keeps sending a document without a listed PDF to its source', async () => {
+    const { asked, fetcher } = source(pdfBytes);
+    const { app } = await setup(listed, remote(fetcher));
+
+    const res = await get(app, fileOf('4712'));
+
+    expect(res.status).toBe(302);
+    expect(asked).toEqual([]);
+  });
+
+  it('reads nothing remote without allowed origins', async () => {
+    const { asked, fetcher } = source(pdfBytes);
+    const { app } = await setup(listed, { remoteFile: { origins: [], fetch: fetcher } });
+
+    const res = await get(app, fileOf('4711'));
+
+    expect(res.status).toBe(302);
+    expect(asked).toEqual([]);
+  });
+
+  it('answers document_unavailable for a source that redirects, sends no PDF or a file too large', async () => {
+    const cases = [
+      source('', { location: 'http://169.254.169.254/' }, 302),
+      source('<html>', { 'content-type': 'text/html' }),
+      source(pdfBytes, { 'content-length': '999' }),
+    ];
+    for (const { fetcher } of cases) {
+      const { app } = await setup(listed, remote(fetcher, { maxBytes: 10 }));
+      const res = await get(app, fileOf('4711'));
+      expect(res.status).toBe(502);
+      expect(await res.json()).toMatchObject({ code: 'document_unavailable' });
+    }
+  });
+
+  it('stops a body that does not start as a PDF', async () => {
+    const { fetcher } = source(new TextEncoder().encode('<html>not a pdf</html>'));
+    const { app } = await setup(listed, remote(fetcher));
+
+    const res = await get(app, fileOf('4711'));
+
+    await expect(res.arrayBuffer()).rejects.toThrow();
+  });
+
+  it('keeps the access rules of the dataset before it reads anything remote', async () => {
+    const { asked, fetcher } = source(pdfBytes);
+    const refused = await (
+      await setup(listed, { ...remote(fetcher), mayRead: () => false })
+    ).app.request(fileOf('4711'), { headers: { authorization: 'Bearer kari' } });
+
+    expect(refused.status).toBe(404);
+    expect(asked).toEqual([]);
+  });
+
+  it('takes only https origins written out in full, a trailing slash allowed, as allowed origins', () => {
+    expect(
+      remoteFileOriginsFrom(
+        'https://kudos.dfo.no, https://d.example/, http://a.example, https://b.example/path, https://u:p@c.example,x',
+      ),
+    ).toEqual(['https://kudos.dfo.no', 'https://d.example']);
   });
 });

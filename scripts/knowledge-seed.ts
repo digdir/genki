@@ -6,7 +6,6 @@ import { parseArgs } from 'node:util';
 import type { DatasetConfig, IndexDocument } from '@genai/port-knowledge';
 import { openKnowledgePools, pgvectorEngine } from '@genai/providers-pgvector';
 import { knowledgeSourceFromEnv } from '@genai/providers-postgres';
-import pg from 'pg';
 
 const envFile = join(import.meta.dirname, '..', '.env.local');
 if (existsSync(envFile)) process.loadEnvFile(envFile);
@@ -106,32 +105,24 @@ const dataset: DatasetConfig = {
 };
 
 const pools = openKnowledgePools(source, 'worker');
-const platform = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 try {
-  const writer = pgvectorEngine({ pool: platform, knowledge: pools.pools }).writer.connect(
+  const writer = pgvectorEngine({ knowledge: pools.pools }).writer.connect(
     { options: { connection: 'knowledge' }, timeoutMs: 30_000 },
     { signal: new AbortController().signal },
   );
   await writer.prepare(dataset, values.generation);
   for (const document of documents) await writer.store(dataset, values.generation, document);
   await writer.promote(dataset, values.generation);
-  // The shipped catalog has no knowledge endpoint, since a deployed API without a knowledge server would refuse to start.
   console.log(`${values.dataset}: generation ${values.generation} with ${documents.length} documents.
 In apps/api/config/local/knowledge.yaml (do not commit it), then restart the API:
 
-Add under \`endpoints:\`
-  knowledge-pg:
-    engine: pgvector
-    options: { connection: knowledge }
-
 Add under \`datasets:\`
   - id: ${values.dataset}
-    endpoint: knowledge-pg
+    endpoint: kunnskapsserveren
     residency: norway
     filters: { type: multiselect }
     generation: ${values.generation}
     options: { textSearchConfig: norwegian }`);
 } finally {
   await pools.close();
-  await platform.end();
 }

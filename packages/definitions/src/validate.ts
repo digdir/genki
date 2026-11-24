@@ -1,9 +1,12 @@
-import { checkInputFields, reservedInputFieldIds } from '@genai/contracts';
+import { checkInputFields, isBuiltInBlockId, reservedInputFieldIds } from '@genai/contracts';
+import { checkBlockCode } from './block-code.js';
+import { checkBlockTemplate } from './block-template.js';
 import { parse as parseYaml } from 'yaml';
 import { flowSettingRefs } from './flow-settings.js';
 import { checkSettingValue, type SettingDefinition } from './settings.js';
 import type { z } from 'zod';
 import {
+  blockDefinition,
   decisionModelOf,
   publicNamesOf,
   residencies,
@@ -14,6 +17,7 @@ import {
   variantId,
   variantModelOf,
   variantStrategyOf,
+  type BlockDefinition,
   type Definition,
   type FlowStep,
   type ServiceDefinition,
@@ -40,7 +44,12 @@ export interface PluginSchemas {
   blocks: Set<string>;
   models: Map<
     string,
-    { residency: (typeof residencies)[number]; capabilities: string[]; operations?: string[] }
+    {
+      residency: (typeof residencies)[number];
+      capabilities: string[];
+      operations?: string[];
+      checked?: Record<string, string>;
+    }
   >;
   settings?: SettingDefinition[];
   retrieval?: z.ZodType;
@@ -129,6 +138,43 @@ const placeWords: Record<Residency, string> = {
 
 const wider = (actual: Residency, allowed: Residency) =>
   residencies.indexOf(actual) > residencies.indexOf(allowed);
+
+/** Where a service processes data: the widest place of every model, dataset, reranker, agent and trace sink it uses; undefined while one is unknown. */
+export const serviceDataLocation = (
+  spec: ServiceDefinition['spec'],
+  plugins: Pick<
+    PluginSchemas,
+    'models' | 'datasetLocation' | 'rerankerResidency' | 'strategyResidency' | 'traceSink'
+  >,
+): Residency | undefined => {
+  const strategies = [spec.strategy, ...spec.variants.map((v) => variantStrategyOf(spec, v))];
+  const external = strategies.map((s) =>
+    plugins.strategyResidency?.(strategyKey(s.id, s.version), s.config),
+  );
+  const modelIds = [
+    spec.model.primary,
+    spec.model.fallback,
+    ...Object.values(spec.model.roles ?? {}),
+    ...Object.values(spec.model.operations ?? {}),
+    decisionModelOf(spec),
+    ...spec.variants.map(variantModelOf),
+  ].filter((id): id is string => typeof id === 'string' && id !== '');
+  const places: (Residency | undefined)[] = [
+    ...modelIds.map((id) => plugins.models.get(id)?.residency),
+    ...external.filter((r): r is Residency => r !== undefined),
+  ];
+  for (const { dataset } of spec.knowledge.datasets) {
+    const location = plugins.datasetLocation?.(dataset);
+    places.push(location?.stored);
+    if (location?.embedding) places.push(location.embedding.residency);
+  }
+  const reranker = spec.knowledge.reranker;
+  if (reranker) places.push(plugins.rerankerResidency?.(reranker));
+  const traces = plugins.traceSink?.();
+  if (traces?.content) places.push(traces.residency);
+  if (places.length === 0 || places.some((p) => p === undefined)) return undefined;
+  return (places as Residency[]).reduce((a, b) => (wider(b, a) ? b : a));
+};
 
 const residencyProblems = (
   spec: ServiceDefinition['spec'],
@@ -495,9 +541,17 @@ const checkService = (definition: ServiceDefinition, plugins: PluginSchemas): Va
       (c) => !model.capabilities.includes(c) && !(c === 'tools' && spec.tools.length > 0),
     );
     if (missing.length > 0) {
+      const checked = missing.filter((c) => model.checked?.[c]);
+      const on = checked
+        .map((c) => model.checked?.[c] ?? '')
+        .sort()
+        .at(-1)
+        ?.slice(0, 10);
       errors.push({
         path,
-        message: `model ${id} lacks ${missing.join(', ')}, which ${strategy.id} needs`,
+        message: `model ${id} lacks ${missing.join(', ')}, which ${strategy.id} needs${
+          checked.length > 0 ? `; checked ${checked.join(', ')} on ${on}` : ''
+        }`,
       });
     }
   }
@@ -634,8 +688,23 @@ const checkSkill = (definition: SkillDefinition, plugins: PluginSchemas): Valida
       : [{ path: `spec.tools[${i}]`, message: `unknown tool or tool version ${ref}` }],
   );
 
+const checkBlock = (definition: BlockDefinition): ValidationError[] => {
+  const { spec } = definition;
+  if (spec.tier === 'declarative') return checkBlockTemplate(spec);
+  if (spec.tier === 'code') return checkBlockCode(spec);
+  return isBuiltInBlockId(spec.builtIn)
+    ? []
+    : [{ path: 'spec.builtIn', message: `unknown built-in block ${spec.builtIn}` }];
+};
+
 export const validateDefinition = (input: unknown, plugins: PluginSchemas): Validated => {
   const kind = input && typeof input === 'object' ? (input as { kind?: unknown }).kind : undefined;
+  if (kind === 'Block') {
+    const parsed = parse(blockDefinition, input);
+    if (!parsed.ok) return parsed;
+    const errors = checkBlock(parsed.definition);
+    return errors.length > 0 ? { ok: false, errors } : parsed;
+  }
   if (kind === 'Skill') {
     const parsed = parse(skillDefinition, input);
     if (!parsed.ok) return parsed;

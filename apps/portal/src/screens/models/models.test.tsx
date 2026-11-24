@@ -68,17 +68,65 @@ describe('the model catalogue', () => {
     expect(screen.queryByRole('button', { name: 'Vis flere' })).toBeNull();
   });
 
-  it('shows the three facts on a card from the API: context window, price per 1M tokens and where data is processed', async () => {
+  it('shows on a card where data is processed, the price in and out per 1M tokens, and the context window only when the API gives it', async () => {
     await at('#/building-blocks/models');
     const card = (await screen.findByRole('link', { name: 'Borealis-27B' })).closest('li');
     fireEvent.click(screen.getByRole('button', { name: 'Vis flere' }));
     expect(within(card as HTMLElement).getByText('128 000 tokens')).toBeTruthy();
     expect(within(card as HTMLElement).getByText('Ikke priset')).toBeTruthy();
-    expect(within(card as HTMLElement).getByText('Norge')).toBeTruthy();
+    expect(within(card as HTMLElement).getByText('Data i Norge')).toBeTruthy();
     const mistral = screen.getByRole('link', { name: 'mistral-large' }).closest('li');
-    expect(within(mistral as HTMLElement).getByText('2,00 / 6,00 kr')).toBeTruthy();
-    expect(within(mistral as HTMLElement).getByText('EU/EØS (Frankrike)')).toBeTruthy();
-    expect(within(mistral as HTMLElement).getByText('Ikke oppgitt')).toBeTruthy();
+    expect(within(mistral as HTMLElement).getByText('inn 2,00 / ut 6,00 kr')).toBeTruthy();
+    expect(within(mistral as HTMLElement).getByText('Data i EU/EØS')).toBeTruthy();
+    expect(
+      within(mistral as HTMLElement).getByText('Mistral AI · Mistral AI, Frankrike'),
+    ).toBeTruthy();
+    expect(within(mistral as HTMLElement).queryByText('Kontekstvindu')).toBeNull();
+  });
+
+  it('leaves out who made and runs a model when the API does not say, instead of "Ikke oppgitt"', async () => {
+    const bare = model('ukjent');
+    delete bare.maker;
+    delete bare.operator;
+    await at('#/building-blocks/models', [bare]);
+    const card = (await screen.findByRole('link', { name: 'ukjent' })).closest('li') as HTMLElement;
+    expect(within(card).queryByText(/Ikke oppgitt|Ukjent/)).toBeNull();
+    expect(within(card).getByText('Data i EU/EØS')).toBeTruthy();
+  });
+
+  it('calls a model priced at nothing free, and lets the price filter find it', async () => {
+    await at('#/building-blocks/models', [
+      model('gratis', { price: { inputPerThousand: 0, outputPerThousand: 0 } }),
+      model('betalt', { price: { inputPerThousand: 0.002, outputPerThousand: 0.006 } }),
+    ]);
+    const card = (await screen.findByRole('link', { name: 'gratis' })).closest('li') as HTMLElement;
+    expect(within(card).getByText('Gratis')).toBeTruthy();
+    expect(within(card).queryByText('Ikke priset')).toBeNull();
+    const price = screen.getByRole('group', { name: 'Pris' });
+    fireEvent.click(within(price).getByRole('checkbox', { name: 'Gratis 1' }));
+    expect(cardNames()).toEqual(['gratis']);
+  });
+
+  it("shows the maker's mark on a card, and a neutral mark for a maker without one", async () => {
+    await at('#/building-blocks/models', [
+      model('kjent', { maker: 'Anthropic' }),
+      model('ukjent', { maker: 'Ingen kjent' }),
+    ]);
+    const known = (await screen.findByRole('link', { name: 'kjent' })).closest('li');
+    const unknown = screen.getByRole('link', { name: 'ukjent' }).closest('li');
+    expect(known?.querySelector('.maker-mark:not(.maker-mark-neutral) svg')).toBeTruthy();
+    expect(unknown?.querySelector('.maker-mark-neutral svg')).toBeTruthy();
+  });
+
+  it('marks a model reached through the AI gateway', async () => {
+    await at('#/building-blocks/models', [
+      model('ai-gateway/x', { name: 'Borealis', gateway: true }),
+      model('direkte', { name: 'Direkte' }),
+    ]);
+    const gateway = (await screen.findByRole('link', { name: 'Borealis' })).closest('li');
+    expect(within(gateway as HTMLElement).getByText('Via KI-gatewayen')).toBeTruthy();
+    const direct = screen.getByRole('link', { name: 'Direkte' }).closest('li');
+    expect(within(direct as HTMLElement).queryByText('Via KI-gatewayen')).toBeNull();
   });
 
   it('names the use cases the platform knows in bokmål, on the card and in the filter', async () => {
@@ -102,7 +150,13 @@ describe('the model catalogue', () => {
     );
     await renderAt('#/building-blocks/models', fetch);
     const filters = await screen.findByRole('complementary', { name: 'Filtre' });
-    for (const facet of ['Tilgjengelighet', 'Leverandør', 'Hvor data behandles', 'Bruksområde'])
+    for (const facet of [
+      'Tilgjengelighet',
+      'Kjører hos',
+      'Laget av',
+      'Hvor data behandles',
+      'Bruksområde',
+    ])
       expect(within(filters).getByText(facet)).toBeTruthy();
     expect(screen.getByRole('status', { name: 'Henter modellene' })).toBeTruthy();
     fireEvent.change(screen.getByRole('searchbox', { name: 'Søk' }), {
@@ -122,16 +176,24 @@ describe('the model catalogue', () => {
     expect(cardNames()).toEqual(['Borealis-27B']);
   });
 
-  it('filters by provider and counts the models behind each option', async () => {
+  it('filters by where a model runs and counts the models behind each option', async () => {
     await at('#/building-blocks/models');
     const filters = await screen.findByRole('complementary', { name: 'Filtre' });
-    const mistral = within(filters).getByRole('checkbox', { name: 'Mistral AI 1' });
-    fireEvent.click(mistral);
-    expect(cardNames()).toEqual(['mistral-large']);
+    const provider = within(filters).getByRole('group', { name: 'Kjører hos' });
+    fireEvent.click(within(provider).getByRole('checkbox', { name: 'AI-gatewayen 1' }));
+    expect(cardNames()).toEqual(['Borealis-27B']);
     expect(screen.getByText('Viser 1 av 1 modeller dere kan bruke')).toBeTruthy();
 
     fireEvent.click(within(filters).getByRole('button', { name: 'Nullstill' }));
     expect(cardNames()).toHaveLength(20);
+  });
+
+  it('filters by who made a model', async () => {
+    await at('#/building-blocks/models');
+    const filters = await screen.findByRole('complementary', { name: 'Filtre' });
+    const maker = within(filters).getByRole('group', { name: 'Laget av' });
+    fireEvent.click(within(maker).getByRole('checkbox', { name: 'Mistral AI 1' }));
+    expect(cardNames()).toEqual(['mistral-large']);
   });
 
   it('shows models the policy holds back under "Alle modeller", with their status and a way to ask for access', async () => {
@@ -274,6 +336,13 @@ describe('models in use', () => {
         .getAllByRole('rowheader')
         .map((h) => h.textContent),
     ).toEqual(['Borealis-27B']);
+  });
+
+  it('names three of the services that use a model and counts the rest, so the row stays short', async () => {
+    await at('#/building-blocks/models/in-use');
+    const table = await screen.findByRole('table');
+    const cell = within(table).getByText(/^5 tjenester: /);
+    expect(cell.textContent).toMatch(/^5 tjenester: [^,]+, [^,]+, [^,]+ og 2 til$/);
   });
 
   it('searches models by the services that use them', async () => {

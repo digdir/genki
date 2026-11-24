@@ -13,6 +13,10 @@ import { ModelError, type ChatResult, type ModelPort } from './port.js';
 
 export const chatPayload = (continuations: readonly Shape[] = []): GatePayload<ChatResult> => ({
   shape: chatShape(continuations),
+  end: (result) => ({
+    finishReason: result.finishReason,
+    ...(result.stopDetail?.category ? { refusalCategory: result.stopDetail.category } : {}),
+  }),
 });
 
 export const decidePayload: GatePayload<DecisionResult> = {

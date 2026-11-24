@@ -1,5 +1,5 @@
 param name string
-param environmentName string
+param platformTier string
 param location string
 param tags object
 param appsSubnetId string
@@ -11,6 +11,10 @@ param identityName string
 param registryServer string
 param keyVaultUri string
 param keyVaultSecretNames array
+@description('Gives the API the assistant host\'s proxy key, genai-proxy-key in Key Vault, which the BFF trusts the forwarded hostname by (ADR 0061).')
+param bffProxyKey bool = false
+@description('Reads platform-login-client-secret from genki\'s Key Vault for the API: the secret of genki\'s own login client (ADR 0061).')
+param platformLoginSecret bool = false
 param apiImage string
 param apiRevisionSuffix string = ''
 param apiLiveRevision string = ''
@@ -21,8 +25,11 @@ param appsImage string
 @description('The Docling server image by digest (docker/docling).')
 param doclingImage string
 
-@description('Most Docling replicas at once; each converts one PDF at a time.')
-param doclingMaxReplicas int = 8
+@description('Most Docling replicas at once; each converts one PDF at a time. 24 × 4 vCPU (issue 922): one conversion uses about 2.6 cores however many it gets, so more replicas, not bigger ones, convert more pages an hour.')
+param doclingMaxReplicas int = 24
+
+@description('Memory of a Docling replica in GiB, with 4 vCPU (Consumption allows at most 8). The memory alert and the idle restart read it (issue 922).')
+param doclingMemoryGiB int = 8
 param appVersion string
 param workerVersion string = ''
 param appEnv object
@@ -36,6 +43,9 @@ param knowledge object = {}
 
 @description('The principals job: { host, admin: { id, clientId }, args }, run in the worker image. Empty: none.')
 param knowledgeSetup object = {}
+
+@description('The nightly copy of the platform database: { pgDumpImage, writer: { id, clientId }, containerUrl, schedule, drillHost }. Empty: none.')
+param platformBackup object = {}
 param storageAccountName string
 param storageShareName string
 
@@ -49,6 +59,9 @@ param customDomainsStage string
 param existingCertificates object = {}
 param minReplicas int
 param maxReplicas int
+param apiDatabasePoolMax int
+param workerDatabasePoolMax int
+param workerRevisionsMode string
 param cpu string
 param memory string
 param workerCpu string
@@ -150,7 +163,7 @@ var identityPlainEnv = filter(map(items(identityEnv), item => { name: item.key, 
 
 var serverEnv = concat(
   [
-    { name: 'GENAI_ENV', value: environmentName }
+    { name: 'GENAI_ENV', value: platformTier }
     { name: 'AZURE_CLIENT_ID', value: identityClientId }
     { name: 'PGHOST', value: postgresHost }
     { name: 'PGDATABASE', value: postgresDatabase }
@@ -197,6 +210,20 @@ var doclingKeySecret = {
   identity: identityId
 }
 
+var proxyKeySecret = bffProxyKey
+  ? [{ name: 'genai-proxy-key', keyVaultUrl: '${keyVaultUri}secrets/genai-proxy-key', identity: identityId }]
+  : []
+var proxyKeyEnv = bffProxyKey ? [{ name: 'GENAI_PROXY_KEY', secretRef: 'genai-proxy-key' }] : []
+var platformLoginSecretRef = platformLoginSecret
+  ? [{ name: 'platform-login-client-secret', keyVaultUrl: '${keyVaultUri}secrets/platform-login-client-secret', identity: identityId }]
+  : []
+var platformLoginSecretEnv = platformLoginSecret
+  ? [{ name: 'PLATFORM_LOGIN_CLIENT_SECRET', secretRef: 'platform-login-client-secret' }]
+  : []
+
+// The API's revision from before #690 still reads typesense-key, so the secret stays with no env var; it goes in a later PR once that revision is gone.
+var typesenseKeySecret = { name: 'typesense-key', keyVaultUrl: '${keyVaultUri}secrets/typesense-key', identity: identityId }
+
 var apiAppName = '${name}-api'
 var apiCandidateRevision = empty(apiRevisionSuffix) ? '' : '${apiAppName}--${apiRevisionSuffix}'
 var apiCandidateLabelled = !empty(apiCandidateRevision) && !contains([apiLiveRevision, apiPreviousRevision], apiCandidateRevision)
@@ -233,7 +260,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
         traffic: apiTraffic
       }
       registries: [{ server: registryServer, identity: identityId }]
-      secrets: secrets
+      secrets: concat(secrets, proxyKeySecret, platformLoginSecretRef, [typesenseKeySecret])
     }
     template: {
       revisionSuffix: empty(apiRevisionSuffix) ? null : apiRevisionSuffix
@@ -242,7 +269,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
           name: 'api'
           image: apiImage
           resources: { cpu: json(cpu), memory: memory }
-          env: concat([{ name: 'PORT', value: '8080' }, { name: 'APP_VERSION', value: appVersion }], serverEnv, knowledgeEnv.api)
+          env: concat([{ name: 'PORT', value: '8080' }, { name: 'APP_VERSION', value: appVersion }, { name: 'DATABASE_POOL_MAX', value: string(apiDatabasePoolMax) }], serverEnv, knowledgeEnv.api, proxyKeyEnv, platformLoginSecretEnv)
           volumeMounts: dataMount
           probes: [
             { type: 'Liveness', httpGet: { path: '/health', port: 8080 }, periodSeconds: 30 }
@@ -269,7 +296,7 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
     environmentId: environment.id
     workloadProfileName: 'Consumption'
     configuration: {
-      activeRevisionsMode: 'Single'
+      activeRevisionsMode: workerRevisionsMode
       registries: [{ server: registryServer, identity: identityId }]
       secrets: concat(secrets, [doclingKeySecret])
     }
@@ -280,7 +307,7 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
             name: 'worker'
             image: workerImage
             resources: { cpu: json(workerCpu), memory: workerMemory }
-            env: concat([{ name: 'APP_VERSION', value: empty(workerVersion) ? appVersion : workerVersion }], serverEnv, knowledgeEnv.worker, doclingEnv, [
+            env: concat([{ name: 'APP_VERSION', value: empty(workerVersion) ? appVersion : workerVersion }, { name: 'DATABASE_POOL_MAX', value: string(workerDatabasePoolMax) }], serverEnv, knowledgeEnv.worker, doclingEnv, [
               { name: 'NODE_OPTIONS', value: '--max-old-space-size=${workerHeapMb}' }
             ])
             volumeMounts: dataMount
@@ -298,9 +325,11 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
 }
 
 // The Docling server (ADR 0042, issue 476): PDF conversions for knowledge.convert. Internal TCP ingress, since
-// HTTP ingress ends a request after 240 s and a conversion takes minutes; the worker holds one request open
-// until Docling answers. One conversion per replica (one Docling worker on 4 vCPU), and replicas start on open
-// connections, from zero. It keeps nothing past a replica: no volume, results dropped once fetched, OCR page images
+// HTTP ingress ends a request after 240 s and a conversion takes minutes; the worker submits a file on the async
+// route and polls its task every 30 s on one connection, since TCP ingress closes a connection idle for 300 s
+// (issue 906). One conversion per replica (one Docling worker on 4 vCPU), and replicas start on open
+// connections, from zero: a connection to the app's name is held until the first replica is up (74 s in test,
+// issue 867). It keeps nothing past a replica: no volume, results dropped once fetched, OCR page images
 // in /tmp deleted after each region, and WARNING logs, which still name the file and page when Tesseract fails on
 // one. The platform identity is there only to pull the image and read the key: code in the container, which
 // parses untrusted PDFs, cannot get a token for it.
@@ -332,12 +361,16 @@ resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
         {
           name: 'docling'
           image: doclingImage
-          resources: { cpu: json('4'), memory: '8Gi' }
+          resources: { cpu: json('4'), memory: '${doclingMemoryGiB}Gi' }
           env: [
             { name: 'DOCLING_SERVE_API_KEY', secretRef: doclingKeySecret.name }
+            // A replica keeps memory after a conversion; idle above half its memory, it restarts (genki_busy.py, issue 922)
+            { name: 'GENKI_DOCLING_RESTART_IDLE_GIB', value: '${doclingMemoryGiB / 2}${doclingMemoryGiB % 2 == 1 ? '.5' : ''}' }
             { name: 'DOCLING_SERVE_ENG_LOC_NUM_WORKERS', value: '1' }
             { name: 'DOCLING_NUM_THREADS', value: '4' }
             { name: 'OMP_NUM_THREADS', value: '4' }
+            // At most 4 pages wait between the steps of a conversion, not 100: a 248-page file peaked at 4.75 GiB instead of 11.0 (issue 922)
+            { name: 'DOCLING_SERVE_QUEUE_MAX_SIZE', value: '4' }
             { name: 'DOCLING_SERVE_MAX_SYNC_WAIT', value: '21600' }
             { name: 'DOCLING_SERVE_SINGLE_USE_RESULTS', value: 'true' }
             { name: 'DOCLING_SERVE_RESULT_REMOVAL_DELAY', value: '1' }
@@ -358,7 +391,8 @@ resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
           ]
         }
       ]
-      // A replica stopped while it converts (scale-in, a new revision) gets 10 minutes to finish; not checked in Azure
+      // A stopped replica (scale-in, a new revision) gets 10 minutes, but docling-serve waits only for a request in
+      // flight, not for a task between polls: the worker submits a lost task again (issue 906)
       terminationGracePeriodSeconds: 600
       scale: {
         minReplicas: 0
@@ -369,7 +403,9 @@ resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
   }
 }
 
-var doclingUrl = 'http://${docling.properties.configuration.ingress.fqdn}:5001'
+// By the app's name: the internal FQDN goes to the environment's HTTP ingress, which has nothing on 5001, so no
+// connection ever reached Docling by it, awake or not (issue 867).
+var doclingUrl = 'http://${docling.name}:5001'
 var doclingEnv = [
   { name: 'DOCLING_URL', value: doclingUrl }
   { name: 'DOCLING_API_KEY', secretRef: doclingKeySecret.name }
@@ -433,6 +469,120 @@ resource knowledgeSetupJob 'Microsoft.App/jobs@2025-02-02-preview' = if (setupOn
   }
 }
 
+// The nightly copy (docs/runbook.md, "Backups"): the app identity reads, the backup identity writes.
+var backupOn = !empty(platformBackup)
+var platformLoginEnv = [
+  { name: 'PGHOST', value: postgresHost }
+  { name: 'PGDATABASE', value: postgresDatabase }
+  { name: 'PGUSER', value: identityName }
+  { name: 'PGSSLMODE', value: 'require' }
+]
+var dumpFile = '/work/platform.dump'
+var tokenFile = '/work/pgtoken'
+
+resource platformBackupJob 'Microsoft.App/jobs@2025-02-02-preview' = if (backupOn) {
+  name: '${name}-pg-backup'
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: union({ '${identityId}': {} }, backupOn ? { '${platformBackup.writer.id}': {} } : {})
+  }
+  properties: {
+    environmentId: environment.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      triggerType: 'Schedule'
+      scheduleTriggerConfig: {
+        cronExpression: backupOn ? platformBackup.schedule : ''
+        parallelism: 1
+        replicaCompletionCount: 1
+      }
+      replicaTimeout: 3600
+      replicaRetryLimit: 1
+      registries: [{ server: registryServer, identity: identityId }]
+    }
+    template: {
+      volumes: [{ name: 'work', storageType: 'EmptyDir' }]
+      initContainers: [
+        {
+          name: 'token'
+          image: workerImage
+          resources: { cpu: json('0.25'), memory: '0.5Gi' }
+          command: ['node', 'scripts/platform-backup.ts', 'token']
+          env: [
+            { name: 'AZURE_CLIENT_ID', value: identityClientId }
+            { name: 'PGTOKEN_FILE', value: tokenFile }
+          ]
+          volumeMounts: [{ volumeName: 'work', mountPath: '/work' }]
+        }
+        {
+          name: 'dump'
+          image: backupOn ? platformBackup.pgDumpImage : ''
+          resources: { cpu: json('0.5'), memory: '1Gi' }
+          command: [
+            'sh'
+            '-c'
+            'PGPASSWORD="$(cat ${tokenFile})" && rm ${tokenFile} && export PGPASSWORD && exec pg_dump --format=custom --compress=6 --enable-row-security --file=${dumpFile}'
+          ]
+          env: concat(platformLoginEnv, [{ name: 'PGOPTIONS', value: '-c app.platform_access=backup' }])
+          volumeMounts: [{ volumeName: 'work', mountPath: '/work' }]
+        }
+      ]
+      containers: [
+        {
+          name: 'upload'
+          image: workerImage
+          resources: { cpu: json('0.5'), memory: '1Gi' }
+          command: ['node', 'scripts/platform-backup.ts', 'upload']
+          env: [
+            { name: 'AZURE_CLIENT_ID', value: backupOn ? platformBackup.writer.clientId : '' }
+            { name: 'BACKUP_FILE', value: dumpFile }
+            { name: 'BACKUP_CONTAINER_URL', value: backupOn ? platformBackup.containerUrl : '' }
+          ]
+          volumeMounts: [{ volumeName: 'work', mountPath: '/work' }]
+        }
+      ]
+    }
+  }
+}
+
+// The restore drill's row counts, run by .github/workflows/platform-restore-drill.yml against the throwaway server.
+resource restoreCheckJob 'Microsoft.App/jobs@2025-02-02-preview' = if (backupOn) {
+  name: '${name}-pg-restore-check'
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: { '${identityId}': {} }
+  }
+  properties: {
+    environmentId: environment.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      triggerType: 'Manual'
+      manualTriggerConfig: { parallelism: 1, replicaCompletionCount: 1 }
+      replicaTimeout: 600
+      replicaRetryLimit: 0
+      registries: [{ server: registryServer, identity: identityId }]
+    }
+    template: {
+      containers: [
+        {
+          name: 'check'
+          image: workerImage
+          resources: { cpu: json('0.25'), memory: '0.5Gi' }
+          command: ['node', 'scripts/platform-backup.ts', 'count']
+          env: concat(platformLoginEnv, [
+            { name: 'AZURE_CLIENT_ID', value: identityClientId }
+            { name: 'DRILL_PGHOST', value: backupOn ? platformBackup.drillHost : '' }
+          ])
+        }
+      ]
+    }
+  }
+}
+
 var apiPublicUrl = empty(hostnames.api) ? 'https://${api.properties.configuration.ingress.fqdn}' : 'https://${hostnames.api}'
 var portalUrl = empty(hostnames.portal) ? '' : 'https://${hostnames.portal}'
 
@@ -458,7 +608,7 @@ var webApps = [
       OIDC_ISSUER: webSettings.consoleIssuer
       OIDC_CLIENT_ID: webSettings.consoleClientId
       OIDC_TOKEN_ENDPOINT: webSettings.consoleTokenEndpoint
-      ENVIRONMENT: environmentName
+      ENVIRONMENT: platformTier
     }
   }
 ]
@@ -522,7 +672,9 @@ output appName string = api.name
 output workerName string = worker.name
 output webAppNames array = [for (item, i) in webApps: web[i].name]
 output doclingName string = docling.name
+output doclingMemoryGiB int = doclingMemoryGiB
 output knowledgeSetupJobName string = setupOn ? knowledgeSetupJob.name : ''
+output platformBackupJobName string = backupOn ? platformBackupJob.name : ''
 output fqdn string = api.properties.configuration.ingress.fqdn
 output apiCandidateRevision string = apiCandidateRevision
 output apiCandidateUrl string = !empty(apiLiveRevision) && apiCandidateLabelled

@@ -31,9 +31,9 @@ const inputFieldNb = {
   required: { label: 'Må fylles ut' },
   help: { label: 'Hjelpetekst' },
   options: { label: 'Valg' },
-  optionsFrom: { label: 'Valg fra et datasett' },
-  'optionsFrom.dataset': { label: 'Datasett' },
-  'optionsFrom.facet': { label: 'Felt i datasettet' },
+  optionsFrom: { label: 'Valg fra en dokumentsamling' },
+  'optionsFrom.dataset': { label: 'Dokumentsamling' },
+  'optionsFrom.facet': { label: 'Felt i dokumentsamlingen' },
   'optionsFrom.min': { label: 'Minste verdi' },
   'optionsFrom.max': { label: 'Største verdi' },
   'optionsFrom.pattern': { label: 'Mønster (regulært uttrykk)' },
@@ -60,9 +60,9 @@ const inputFieldEn: Record<keyof typeof inputFieldNb, LabelText> = {
   required: { label: 'Required' },
   help: { label: 'Help text' },
   options: { label: 'Choices' },
-  optionsFrom: { label: 'Choices from a dataset' },
-  'optionsFrom.dataset': { label: 'Dataset' },
-  'optionsFrom.facet': { label: 'Field in the dataset' },
+  optionsFrom: { label: 'Choices from a document collection' },
+  'optionsFrom.dataset': { label: 'Document collection' },
+  'optionsFrom.facet': { label: 'Field in the document collection' },
   'optionsFrom.min': { label: 'Lowest value' },
   'optionsFrom.max': { label: 'Highest value' },
   'optionsFrom.pattern': { label: 'Pattern (regular expression)' },
@@ -206,7 +206,7 @@ const common = {
     description: { label: 'Beskrivelse' },
     input: { label: 'Inndata' },
     tools: { label: 'Verktøy' },
-    dataset: { label: 'Datasett' },
+    dataset: { label: 'Dokumentsamling' },
   } satisfies Texts,
   en: {
     apiVersion: { label: 'API version' },
@@ -223,9 +223,100 @@ const common = {
     description: { label: 'Description' },
     input: { label: 'Input' },
     tools: { label: 'Tools' },
-    dataset: { label: 'Dataset' },
+    dataset: { label: 'Document collection' },
   },
 };
+
+type Pair = [nb: string, en: string];
+
+const interfaceTexts: Record<string, Pair> = {
+  'profile.assistantName': ['Navnet på assistenten', 'Name of the assistant'],
+  'profile.suggestions': ['Forslag til spørsmål', 'Suggested questions'],
+  'profile.followUps': ['Oppfølgingsspørsmål', 'Follow-up questions'],
+  'profile.settingsNote': ['Merknad under innstillingene', 'Note under the settings'],
+  'profile.corpora.label': ['Navn på samlingen', 'Name of the collection'],
+  'profile.corpora.description': ['Beskrivelse av samlingen', 'Description of the collection'],
+  'profile.corpora.fields.label': ['Navn på feltet', 'Name of the field'],
+  'profile.corpora.fields.heading': ['Overskrift i filteret', 'Heading in the filter'],
+  'profile.corpora.typePlurals': ['Flertall av dokumenttypene', 'Plurals of the document types'],
+  'profile.experiments.title': ['Tittel', 'Title'],
+  'profile.experiments.description': ['Beskrivelse', 'Description'],
+  'profile.experiments.hrefLabel': ['Lenketekst', 'Link text'],
+};
+
+const interfaceFields: Record<string, Pair> = {
+  layout: ['Oppsett', 'Layout'],
+  'layout.version': ['Versjon av oppsettet', 'Layout version'],
+  'layout.template': ['Mal', 'Template'],
+  'layout.look': ['Utseende', 'Look'],
+  'layout.zones': ['Felt', 'Areas'],
+  'layout.zones.primary': ['Venstre', 'Left'],
+  'layout.zones.main': ['Midten', 'Middle'],
+  'layout.zones.secondary': ['Høyre', 'Right'],
+  ...Object.fromEntries(
+    ['primary', 'main', 'secondary'].flatMap((zone): [string, Pair][] => [
+      [`layout.zones.${zone}.block`, ['Designelement', 'Design element']],
+      [`layout.zones.${zone}.settings`, ['Valg', 'Options']],
+      [
+        `layout.zones.${zone}.ref`,
+        ['Fast utgave av designelementet', 'Pinned design element edition'],
+      ],
+    ]),
+  ),
+  'layout.profile': ['Tekster', 'Texts'],
+  'layout.profile.corpora': ['Samlinger', 'Collections'],
+  'layout.profile.corpora.fields': ['Felt i filteret', 'Fields in the filter'],
+  'layout.profile.corpora.fields.id': ['Felt', 'Field'],
+  'layout.profile.corpora.fields.kind': ['Slags felt', 'Kind of field'],
+  'layout.profile.corpora.fields.years': ['År som tilbys', 'Years offered'],
+  'layout.profile.corpora.fields.years.first': ['Første år', 'First year'],
+  'layout.profile.corpora.fields.years.last': ['Siste år', 'Last year'],
+  'layout.profile.corpora.typeField': ['Felt for dokumenttype', 'Document type field'],
+  'layout.profile.corpora.documentLinks': ['Lenker til dokumentene', 'Links to the documents'],
+  'layout.profile.corpora.documentLinks.digits': ['Lenke for tallnumre', 'Link for numbers'],
+  'layout.profile.corpora.documentLinks.uuid': ['Lenke for UUID-er', 'Link for UUIDs'],
+  'layout.profile.corpora.documentLinks.any': ['Lenke for andre numre', 'Link for other ids'],
+  'layout.profile.corpora.about': ['Om et dokument', 'About a document'],
+  'layout.profile.corpora.about.idField': ['Felt med nummeret', 'Field with the number'],
+  'layout.profile.corpora.about.fields': ['Felt som vises', 'Fields shown'],
+  'layout.profile.experiments': ['Eksperimenter', 'Experiments'],
+  'layout.profile.experiments.id': ['ID', 'ID'],
+  'layout.profile.experiments.href': ['Lenke', 'Link'],
+  ...Object.fromEntries(
+    Object.entries(interfaceTexts).flatMap(([path, [nb, en]]): [string, Pair][] => [
+      [`layout.${path}`, [nb, en]],
+      [`layout.${path}.nb`, [`${nb} på bokmål`, `${en} in Norwegian Bokmål`]],
+      [`layout.${path}.en`, [`${nb} på engelsk`, `${en} in English`]],
+    ]),
+  ),
+  icon: ['Ikon', 'Icon'],
+  menu: ['Meny', 'Menu'],
+  'menu.page': ['Side', 'Page'],
+  'menu.href': ['Lenke', 'Link'],
+  pages: ['Sider', 'Pages'],
+  'pages.id': ['Adresse', 'Address'],
+  ...Object.fromEntries(
+    Object.entries({
+      'menu.label': ['Tekst i menyen', 'Text in the menu'],
+      'pages.title': ['Tittel', 'Title'],
+      'pages.body': ['Innhold i Markdown', 'Content in Markdown'],
+    } satisfies Record<string, Pair>).flatMap(([path, [nb, en]]): [string, Pair][] => [
+      [path, [nb, en]],
+      [`${path}.nb`, [`${nb} på bokmål`, `${en} in Norwegian Bokmål`]],
+      [`${path}.en`, [`${nb} på engelsk`, `${en} in English`]],
+    ]),
+  ),
+};
+
+const interfaceLabels = (at: 0 | 1, root: LabelText): Texts => ({
+  'spec.interface': root,
+  ...prefixed(
+    'spec.interface',
+    Object.fromEntries(
+      Object.entries(interfaceFields).map(([path, pair]) => [path, { label: pair[at] }]),
+    ),
+  ),
+});
 
 const serviceNb = {
   'metadata.id': { label: 'ID', help: 'Små bokstaver, tall og bindestrek.' },
@@ -301,7 +392,7 @@ const serviceNb = {
       'single-call': 'Ett steg',
       'agent-loop': 'Agent (søker selv)',
       'rag-single-shot': 'Ett søk og ett svar',
-      'step-flow': 'Fast stegflyt',
+      'step-flow': 'Fast arbeidsflyt',
       'remote-agent': 'Egen motor',
       'live-session': 'Direkte økt',
     },
@@ -309,13 +400,13 @@ const serviceNb = {
   'strategy.version': { label: 'Versjon av arbeidsmåten' },
   'strategy.config': { label: 'Oppsett for arbeidsmåten' },
   'spec.knowledge': { label: 'Kunnskap' },
-  'spec.knowledge.datasets': { label: 'Datasett' },
+  'spec.knowledge.datasets': { label: 'Dokumentsamlinger' },
   'spec.knowledge.datasets.filters': { label: 'Filter' },
   'spec.knowledge.runtimeDocuments': { label: 'Dokumenter ved kjøring' },
   'spec.knowledge.retrieval': { label: 'Søkeoppsett' },
   'spec.knowledge.reranker': { label: 'Omrangering' },
   'spec.tools.use': { label: 'Verktøy' },
-  'spec.skills': { label: 'Ferdigheter' },
+  'spec.skills': { label: 'Arbeidsinstrukser' },
   'spec.model': { label: 'Modell' },
   'spec.model.primary': { label: 'Hovedmodell' },
   'spec.model.fallback': { label: 'Reservemodell' },
@@ -331,7 +422,7 @@ const serviceNb = {
     label: 'Hvor data behandles',
     values: { norway: 'Norge', eu: 'EU/EØS', global: 'Globalt' },
   },
-  'spec.guardrails': { label: 'Vern' },
+  'spec.guardrails': { label: 'Sikkerhetsregler' },
   'spec.settings': { label: 'Innstillinger' },
   'spec.callOverrides': { label: 'Innstillinger som kan overstyres per kall' },
   'spec.callOverrides.mcp': { label: 'MCP' },
@@ -355,8 +446,8 @@ const serviceNb = {
   },
   'spec.triggers': { label: 'Utløsere' },
   ...prefixed('spec.triggers', triggerNb),
-  'spec.batch': { label: 'Samlet jobb' },
-  'spec.batch.enabled': { label: 'Kan kjøres over et datasett eller en mappe' },
+  'spec.batch': { label: 'Massekjøring' },
+  'spec.batch.enabled': { label: 'Kan kjøres over en dokumentsamling eller en mappe' },
   'spec.evaluation': { label: 'Evaluering' },
   'spec.evaluation.testSets': { label: 'Testsett' },
   'spec.evaluation.gates': { label: 'Krav før publisering' },
@@ -446,7 +537,7 @@ const serviceEn: Record<keyof typeof serviceNb, LabelText> = {
       'single-call': 'One step',
       'agent-loop': 'Agent (searches by itself)',
       'rag-single-shot': 'One search and one answer',
-      'step-flow': 'Fixed step flow',
+      'step-flow': 'Fixed workflow',
       'remote-agent': 'Own engine',
       'live-session': 'Live session',
     },
@@ -454,20 +545,20 @@ const serviceEn: Record<keyof typeof serviceNb, LabelText> = {
   'strategy.version': { label: 'Version of the way of working' },
   'strategy.config': { label: 'Setup for the way of working' },
   'spec.knowledge': { label: 'Knowledge' },
-  'spec.knowledge.datasets': { label: 'Datasets' },
+  'spec.knowledge.datasets': { label: 'Document collections' },
   'spec.knowledge.datasets.filters': { label: 'Filters' },
   'spec.knowledge.runtimeDocuments': { label: 'Documents at run time' },
   'spec.knowledge.retrieval': { label: 'Search setup' },
   'spec.knowledge.reranker': { label: 'Reranking' },
   'spec.tools.use': { label: 'Tool' },
-  'spec.skills': { label: 'Skills' },
+  'spec.skills': { label: 'Work instructions' },
   'spec.model': { label: 'Model' },
   'spec.model.primary': { label: 'Main model' },
   'spec.model.fallback': { label: 'Fallback model' },
   'spec.model.roles': { label: 'Model per role' },
   'spec.model.roles.synthesis': { label: 'Model that writes the answer' },
   'spec.model.roles.planner': { label: 'Model that plans the search' },
-  'spec.model.roles.judge': { label: 'Model that judges' },
+  'spec.model.roles.judge': { label: 'Model that evaluates' },
   'spec.model.operations': {
     label: 'Model per operation',
     help: 'The model a step that calls an operation uses for each kind of operation, when the step names none.',
@@ -501,7 +592,7 @@ const serviceEn: Record<keyof typeof serviceNb, LabelText> = {
   'spec.triggers': { label: 'Triggers' },
   ...(prefixed('spec.triggers', triggerEn) as Record<string, LabelText>),
   'spec.batch': { label: 'Batch run' },
-  'spec.batch.enabled': { label: 'Can run over a dataset or a folder' },
+  'spec.batch.enabled': { label: 'Can run over a document collection or a folder' },
   'spec.evaluation': { label: 'Evaluation' },
   'spec.evaluation.testSets': { label: 'Test sets' },
   'spec.evaluation.gates': { label: 'Gates before publishing' },
@@ -523,7 +614,7 @@ const knowledge = group('Kunnskap', 'Knowledge');
 const toolsGroup = group('Verktøy', 'Tools');
 const how = group('Arbeidsmåte', 'Way of working');
 const model = group('Modell', 'Model');
-const guards = group('Vern', 'Guardrails');
+const guards = group('Sikkerhetsregler', 'Guardrails');
 const start = group('Start og kanaler', 'Start and channels');
 const advanced: PropertyMeta = { ...group('Avansert', 'Advanced'), 'x-advanced': true };
 
@@ -565,6 +656,7 @@ const serviceMeta: Record<string, PropertyMeta> = {
   'spec.settings': { ...advanced, 'x-order': 81 },
   'spec.evaluation': { ...advanced, 'x-order': 82 },
   'spec.improve': { ...advanced, 'x-order': 83 },
+  'spec.interface': { ...advanced, 'x-order': 84, 'x-widget': 'code' },
   'spec.availableTo': { ...start, 'x-order': 73, 'x-operator': true, 'x-widget': 'list' },
   'spec.visibility': { ...start, 'x-order': 74, 'x-operator': true },
   'strategy.id': { 'x-widget': 'select' },
@@ -574,7 +666,7 @@ const flowNb = {
   'spec.purpose': { label: 'Formål' },
   'spec.input': { label: 'Inndata til flyten' },
   steps: { label: 'Steg' },
-  block: { label: 'Byggekloss' },
+  block: { label: 'Stegtype' },
   params: { label: 'Parametere' },
   onError: {
     label: 'Ved feil',
@@ -631,7 +723,7 @@ const flowEn: Record<keyof typeof flowNb, LabelText> = {
   'spec.purpose': { label: 'Purpose' },
   'spec.input': { label: 'Flow input' },
   steps: { label: 'Steps' },
-  block: { label: 'Building block' },
+  block: { label: 'Step type' },
   params: { label: 'Parameters' },
   onError: {
     label: 'On error',
@@ -715,7 +807,7 @@ const skillNb = {
     values: { criteria: 'Kriterier', fields: 'Felter', must_reject: 'Skal avvises' },
   },
   'spec.testset.cases.context': { label: 'Kontekst' },
-  'spec.testset.cases.dataset': { label: 'Datasett' },
+  'spec.testset.cases.dataset': { label: 'Dokumentsamling' },
 } satisfies Texts;
 
 const skillEn: Record<keyof typeof skillNb, LabelText> = {
@@ -739,7 +831,7 @@ const skillEn: Record<keyof typeof skillNb, LabelText> = {
     values: { criteria: 'Criteria', fields: 'Fields', must_reject: 'Must be rejected' },
   },
   'spec.testset.cases.context': { label: 'Context' },
-  'spec.testset.cases.dataset': { label: 'Dataset' },
+  'spec.testset.cases.dataset': { label: 'Document collection' },
 };
 
 const skillMeta: Record<string, PropertyMeta> = {
@@ -761,8 +853,20 @@ export const commonSchemaLabels: SchemaLabels = {
 };
 
 export const serviceSchemaLabels: SchemaLabels = {
-  nb: serviceNb,
-  en: serviceEn,
+  nb: {
+    ...serviceNb,
+    ...interfaceLabels(0, {
+      label: 'Utforming',
+      help: 'Oppsettet byggeren i fanen Utforming lagrer, publisert med tjenesten.',
+    }),
+  },
+  en: {
+    ...serviceEn,
+    ...interfaceLabels(1, {
+      label: 'Design',
+      help: 'The layout the builder in the Design tab saves, published with the service.',
+    }),
+  },
   meta: serviceMeta,
 };
 

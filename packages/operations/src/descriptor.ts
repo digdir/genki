@@ -1135,7 +1135,14 @@ const toStep = (
         throw new DescriptorError(`${at}: a file name is text or plain`);
   } else if (raw.wire.filenames !== undefined)
     throw new DescriptorError(`${at}: wire.filenames without filenames`);
-  const requestRoots = ['input', 'deployment', 'steps', 'item', ...(raw.parts ? ['part'] : [])];
+  const requestRoots = [
+    'input',
+    'deployment',
+    'steps',
+    'item',
+    'position',
+    ...(raw.parts ? ['part'] : []),
+  ];
   checkRoots(template, requestRoots, `${at}: request.body`);
   checkRoots(request.query, [...requestRoots, 'connection'], `${at}: request.query`);
   checkRoots(request.headers, [...requestRoots, 'connection'], `${at}: request.headers`);
@@ -1158,7 +1165,7 @@ const toStep = (
     if (found.class.kind === 'url')
       throw new DescriptorError(`${at}: reads ${path}, a link only the gate may follow`);
   }
-  const answerRoots = ['response', 'headers', 'item'];
+  const answerRoots = ['response', 'headers', 'item', 'position'];
   const bindRoots = raw.parts ? [...answerRoots, 'part'] : answerRoots;
   checkRoots(raw.usage, answerRoots, `${at}: usage`);
   if (raw.until) {
@@ -1168,7 +1175,7 @@ const toStep = (
   for (const rule of raw.errors) checkRoots(rule.message, answerRoots, `${at}: errors`);
   checkRoots(
     raw.checks,
-    ['input', 'deployment', 'response', 'headers', 'steps', 'item'],
+    ['input', 'deployment', 'response', 'headers', 'steps', 'item', 'position'],
     `${at}: checks`,
   );
   const bind = Object.fromEntries(
@@ -1410,7 +1417,7 @@ export const toDescriptor = (value: unknown): Descriptor => {
   const resources = resourcesOf(at, d.resources, bound, steps, finallySteps);
   checkRoots(
     d.result,
-    ['response', 'headers', 'input', 'deployment', 'usage', 'dropped', 'item', 'steps'],
+    ['response', 'headers', 'input', 'deployment', 'usage', 'dropped', 'item', 'position', 'steps'],
     `${at}: result`,
   );
   for (const path of pathsOf(d.result).filter((p) => p.startsWith('$steps.'))) {

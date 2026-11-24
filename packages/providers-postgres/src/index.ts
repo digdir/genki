@@ -26,6 +26,7 @@ import {
   PostgresSinkLabelStore,
   PostgresTestSetStore,
 } from './eval.js';
+import { PostgresBffSessions } from './bff-sessions.js';
 import { PostgresTenantSecrets } from './secrets.js';
 import { PostgresSettingsStore } from './settings.js';
 import { PostgresChangeFeed } from './change-feed.js';
@@ -41,7 +42,9 @@ import {
 
 export {
   createPool,
+  defaultConnectionTimeoutMs,
   entraPostgresScope,
+  isPoolExhausted,
   type PasswordProvider,
   type PostgresPoolOptions,
 } from './pool.js';
@@ -69,7 +72,7 @@ export { PostgresWebhookDeliveries } from './webhook-deliveries.js';
 export { PostgresProviderObjects } from './provider-objects.js';
 export { PostgresTriggerRuns } from './trigger-runs.js';
 export { PostgresUsageBuckets } from './usage.js';
-export { PostgresLeaderLease } from './leader-lease.js';
+export { PostgresLeases, type LeaderLease } from './leader-lease.js';
 export { PostgresRateLimiter, type PostgresRateDecision } from './rate-limits.js';
 export {
   PostgresOutsideRunRetention,
@@ -88,6 +91,7 @@ export {
   PostgresTestSetStore,
 } from './eval.js';
 export { PostgresTenantSecrets } from './secrets.js';
+export { PostgresBffSessions, type BffSessionRow } from './bff-sessions.js';
 export { PostgresSettingsStore } from './settings.js';
 export {
   PostgresApiKeys,
@@ -99,11 +103,21 @@ export {
   type StoredKeyPolicy,
 } from './api-keys.js';
 export { PostgresConversationStore, threadScope } from './conversations.js';
-export { LocalKeyWrapper, type KeyWrapper } from './crypto.js';
+export { LocalKeyWrapper, type KeyWrapper, type MasterKey } from './crypto.js';
+export {
+  rewrapContentKeys,
+  type RewrapFailure,
+  type RewrapProgress,
+  type RewrapResult,
+} from './rewrap.js';
 export { PostgresDefinitionStore } from './definitions.js';
 export { erased, PostgresEventLog } from './event-log.js';
 export { PostgresIdentities } from './identities.js';
-export { PostgresModelClassifications } from './models.js';
+export {
+  PostgresDiscoveredModels,
+  PostgresModelClassifications,
+  type StoredListing,
+} from './models.js';
 export { ContentKeys } from './keys.js';
 export { grantRuntimeRole, migrate, platformId, runtimeRole, workerRole } from './schema.js';
 export {
@@ -180,7 +194,7 @@ export const createPostgresStores = async (
       ? runtimePoolFor(owner, options.role ?? runtimeRole)
       : 'query' in options.runtime
         ? withClientErrorListener(options.runtime)
-        : createPool(options.runtime);
+        : createPool({ max: owner.options.max, ...options.runtime });
   if (pool.listenerCount('error') === 0) pool.on('error', onError);
   const keys = new ContentKeys(pool, wrapper);
   const log = new PostgresEventLog(pool, keys, options.pollMs, onError);
@@ -203,6 +217,7 @@ export const createPostgresStores = async (
     settings: new PostgresSettingsStore(pool, keys),
     adminRecords: await PostgresAdminRecords.open(pool),
     tenantSecrets: new PostgresTenantSecrets(pool, keys),
+    bffSessions: new PostgresBffSessions(pool, keys),
     connections: new PostgresConnections(pool),
     eval: {
       testSets: new PostgresTestSetStore(pool),

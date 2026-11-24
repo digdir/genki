@@ -1,6 +1,6 @@
 # 0034 Tokens in the browser
 
-Status: proposed, 2026-10-16
+Status: proposed, 2026-10-16 (the BFF in the API, for the assistant host first, ADR 0061; built for the assistant host, 2026-11-19, and the host signs in through it wherever it serves the BFF; without it, the host keeps its token in `sessionStorage` on the same conditions)
 
 ## Context
 
@@ -17,13 +17,14 @@ A backend-for-frontend (BFF) keeps the tokens on a server and gives the browser 
   - The System Atlas is a same-origin frame of the console that can read the console's session. It counts as console code, and every `innerHTML` in it takes only escaped or console-rendered HTML.
 - **The token that matters in test is a trusted Entra login, not TestID.** A stolen TestID token is worth no more than a fresh TestID login. A trusted Entra login (ADR 0033) has every platform right and can create API keys and clients that keep model access after the token expires and after the person leaves the Entra group. The risk this decision accepts is an XSS against a team member.
 - **Production gets a BFF before real people log in.** It does the code exchange as a confidential client, keeps the tokens server-side, and gives each app origin its own HTTP-only, `Secure`, `SameSite=Lax` cookie with the `__Host-` prefix. The apps call the API through their own origin with that cookie, and the API turns the session into the same principal as a bearer token today, accepted only from the app origin it was created for. External frontends keep using bearer tokens (ADR 0032).
+- **The BFF is built in the API, for the assistant host first** (ADR 0061). The portal, workspace and console move to it later under #41.
 - **Until then the apps keep tokens in `sessionStorage` only,** never in `localStorage` or IndexedDB. `sessionStorage` is per tab, but survives a reload, a duplicated tab and a restored session.
 
 ## Why
 
 A BFF removes the token from the browser, so an XSS bug can act as the person only while the page is open, not take the token away. That matters in production, where the tokens act for real organisations. In test the data is synthetic, and the people whose tokens are worth stealing are a small team. Kunnskapsassistenten already built a BFF, so the pattern and its pitfalls are known: tokens live in the replica that signed the person in, so it needs sticky sessions or a shared session store.
 
-Rejected: tokens in `localStorage` (survives the tab, readable by any script in the origin), and a BFF in test now (cost without matching benefit while the data is synthetic).
+Rejected: tokens in `localStorage` (survives the tab, readable by any script in the origin), and a BFF for the portal, workspace and console in test now (cost without matching benefit while the data is synthetic). A BFF as its own service or in each app's container: ADR 0061 puts it in the API, which already has the session store, content keys and token verifier.
 
 ## Consequences
 
@@ -34,3 +35,8 @@ Rejected: tokens in `localStorage` (survives the tab, readable by any script in 
 - Logout today removes the tokens from `sessionStorage` and ends the Ansattporten session on a deliberate logout; it does not revoke a refresh token. Unsaved input kept across re-login is stored per tab, not per person, and is cleared on a deliberate logout.
 - The ID token is used only for the display name and for logout. It grants nothing and the API never accepts it. The console checks the `nonce` like the portal and workspace do.
 - A new script source, inline script or third-party library in the apps weakens this decision until the BFF exists; review the CSP when adding one.
+- Built 2026-11-19: the assistant host (`apps/assistant`, ADR 0061) logs in in the browser on the same conditions, as a public client of the service's hosted Client, and keeps only the access token and ID token in `sessionStorage`, with no refresh and no silent renewal: when the token expires, the person logs in again. It checks `state`, `nonce` and the issuer the metadata names, returns only to a path on its own hostname, and is served with the same CSP, with the issuer's origin in `connect-src`. All of it is in `apps/assistant/src/login.ts`, which the host uses only where it serves no BFF. Tests: `apps/assistant/src/app.test.tsx` and `apps/assistant/src/login.test.ts`.
+- The BFF is built for the assistant host as ADR 0061 describes it, in `apps/api/src/bff`, with sessions in `bff_sessions`. It runs in front of the API and only for a request with a valid `GenAI-Proxy-Key`: it swaps the session for the access token as a bearer token, so the API checks the same principal, issuer and `sub` as for a browser token, and drops the cookie, the proxy key and any credential or `genai-acting-for` the page sent. Tests: `apps/api/src/bff/bff.test.ts` and `bff-postgres.test.ts`.
+- Decided here where ADR 0061 is silent: `GET /auth/me` answers the name and organisations, never a token. The non-simple header for a state-changing call without a JSON body is `GenAI-CSRF`. `GET /auth/logout` is refused unless `Sec-Fetch-Dest` is `document` and `Sec-Fetch-Site` is same-origin or none, when the browser sends them, so an image in an answer cannot log anyone out. The login cookie is sealed with the tenant's content key. A refused refresh deletes the session and answers 401; an issuer that does not answer gives 503 and keeps it.
+- The assistant host signs in through the BFF wherever the host serves it: it asks `GET /auth/me`, and a JSON answer means the BFF is there. It then sends the person to `/auth/login?next=<path>`, calls genki through `/api/` with the session cookie and `GenAI-CSRF`, opens a cited document's site path through the same proxy, and logs out with `/auth/logout`, which ends the Ansattporten session with `id_token_hint`. The page holds no token. Where `/auth/me` answers the host's page instead, as without the proxy key, it keeps the browser login above. Tests: "calls genki through the BFF with its CSRF header and no token once the host has signed the person in" in `apps/assistant/src/app.test.tsx`, and `apps/assistant/src/bff.test.ts`.
+- The proxy key is set in `infra/env/test.bicepparam` (`assistantBffEnabled`), with the same `genai-proxy-key` in genki's and the host's Key Vault; `infra/README.md`, "Turning on the assistant host", has the order. Prod has it off. The portal, workspace and console still keep tokens in `sessionStorage`.

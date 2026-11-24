@@ -29,12 +29,8 @@ export const saverName = (t: T, saver: Saver) =>
   saver.self ? t('serviceDraft.you') : (saver.name ?? t('serviceDraft.unknownSaver'));
 
 export interface DraftBarProps {
-  state: SaveState;
-  version: number;
-  changes: number;
+  state: 'failed' | 'conflict';
   hasDraft: boolean;
-  savedAt?: string | undefined;
-  savedBy?: Saver | undefined;
   failedAt?: string | undefined;
   conflictBy?: { saver: Saver | undefined; at: string } | undefined;
   conflictDiff?: ReactNode;
@@ -46,11 +42,7 @@ export interface DraftBarProps {
 
 export const DraftBar = ({
   state,
-  version,
-  changes,
   hasDraft,
-  savedAt,
-  savedBy,
   failedAt,
   conflictBy,
   conflictDiff,
@@ -61,54 +53,26 @@ export const DraftBar = ({
 }: DraftBarProps) => {
   const t = useT();
   const [diffOpen, setDiffOpen] = useState(false);
-  const other = savedBy && !savedBy.self ? savedBy : undefined;
   const view =
-    state === 'unsaved'
-      ? { tone: 'unsaved', title: t('serviceDraft.unsaved'), text: t('serviceDraft.unsavedText') }
-      : state === 'saving'
-        ? { tone: 'draft', title: t('serviceDraft.saving'), text: t('serviceDraft.savingText') }
-        : state === 'failed'
-          ? {
-              tone: 'failed',
-              title: t('serviceDraft.failed'),
-              text: t('serviceDraft.failedText', { time: failedAt ?? '' }),
-            }
-          : state === 'conflict'
-            ? {
-                tone: 'failed',
-                title: t('serviceDraft.conflict'),
-                text: conflictBy
-                  ? t('serviceDraft.conflictBy', {
-                      name: conflictBy.saver
-                        ? saverName(t, conflictBy.saver)
-                        : t('serviceDraft.unknownSaver'),
-                      time: conflictBy.at,
-                    })
-                  : t('serviceDraft.conflictText'),
-              }
-            : !hasDraft
-              ? {
-                  tone: 'clean',
-                  title: t('serviceDraft.noChanges'),
-                  text: t('serviceDraft.noChangesText', { n: version }),
-                }
-              : {
-                  tone: 'draft',
-                  title: savedAt
-                    ? t('serviceDraft.savedAt', { time: savedAt })
-                    : t('serviceDraft.saved'),
-                  text: [
-                    changes
-                      ? t('serviceDraft.changesSince', { count: changes, n: version })
-                      : t('serviceDraft.noChangesSince', { n: version }),
-                    other ? t('serviceDraft.savedBy', { name: saverName(t, other) }) : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' '),
-                };
+    state === 'failed'
+      ? {
+          title: t('serviceDraft.failed'),
+          text: t('serviceDraft.failedText', { time: failedAt ?? '' }),
+        }
+      : {
+          title: t('serviceDraft.conflict'),
+          text: conflictBy
+            ? t('serviceDraft.conflictBy', {
+                name: conflictBy.saver
+                  ? saverName(t, conflictBy.saver)
+                  : t('serviceDraft.unknownSaver'),
+                time: conflictBy.at,
+              })
+            : t('serviceDraft.conflictText'),
+        };
   const actions = canEdit && hasDraft && state !== 'conflict';
   return (
-    <div role="region" aria-label={t('serviceDraft.region')} className={`draft-bar ${view.tone}`}>
+    <div role="region" aria-label={t('serviceDraft.region')} className="draft-bar failed">
       <span aria-hidden="true" className="draft-bar-dot" />
       <div className="draft-bar-text" aria-live="polite">
         <strong>{view.title}</strong> <span>{view.text}</span>

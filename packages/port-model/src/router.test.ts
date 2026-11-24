@@ -397,11 +397,34 @@ describe('model router', () => {
       {
         usage: { inputTokens: 3, outputTokens: 2, requests: 1 },
         model: { kind: 'model', id: 'a/small' },
+        end: { finishReason: 'stop' },
       },
       {
         usage: { inputTokens: 3, outputTokens: 2, requests: 1 },
         model: { kind: 'model', id: 'a/small' },
+        end: { finishReason: 'stop' },
       },
+    ]);
+  });
+
+  it('meters a call with its finish reason and the category of a refusal', async () => {
+    const a = recording('proto-a', async () => ({
+      ...answer(''),
+      finishReason: 'content_filter' as const,
+      stopDetail: { category: 'reasoning_extraction' },
+    }));
+    const router = new ModelRouter({
+      catalog,
+      adapters: [a.adapter, recording('proto-b').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+    });
+    const { ctx, metered } = testContext();
+
+    await open(router, 'a/small', ctx).chat({ messages: [] });
+
+    expect(metered.map((m) => m.end)).toEqual([
+      { finishReason: 'content_filter', refusalCategory: 'reasoning_extraction' },
     ]);
   });
 
@@ -1824,5 +1847,406 @@ result: { answer: $response.text }
     const healthy = provider();
     await routerFor(true, healthy.egress, objects).removeProviderObject(left as never);
     expect(healthy.seen).toEqual(['DELETE /v1/notes/note-a1']);
+  });
+});
+
+describe('learning what a discovered model can do', () => {
+  type Behaviour = 'able' | 'plain' | 'down' | 'refuses' | 'broken' | 'cut' | 'own-refusal';
+  const at = new Date('2026-11-19T08:00:00Z');
+
+  const answering = (behaviour: Behaviour, request: ChatRequest): ChatResult => {
+    if (behaviour === 'plain') return answer('Blue.');
+    if (request.tools?.length)
+      return {
+        ...answer(''),
+        toolCalls: [{ id: 'c1', name: 'record_answer', arguments: '{"answer":"blue"}' }],
+      };
+    return answer(request.jsonSchema ? '{"colour":"blue"}' : 'Blue.');
+  };
+
+  const fake = (behaviours: Record<string, Behaviour>) => {
+    const calls: { deployment: string; request: ChatRequest }[] = [];
+    const respond = (deployment: string, request: ChatRequest): ChatResult => {
+      calls.push({ deployment, request });
+      const behaviour = behaviours[deployment] ?? 'able';
+      if (behaviour === 'down') throw new ModelError('unavailable', 'the model is down');
+      if (behaviour === 'broken')
+        throw new ModelError('bad_request', 'no such deployment', { status: 404 });
+      if (behaviour === 'own-refusal') throw new ModelError('bad_request', 'refused by genki');
+      if (behaviour === 'cut') return { ...answer(''), finishReason: 'length' as const };
+      if (behaviour === 'refuses' && (request.jsonSchema || request.tools?.length))
+        throw new ModelError('bad_request', 'response_format is not supported', { status: 400 });
+      return answering(behaviour, request);
+    };
+    const adapter: ModelAdapter = {
+      apis: [
+        {
+          id: 'proto-a/chat@1',
+          kind: 'chat',
+          family: 'proto-a',
+          modelOptions: z.strictObject({}),
+          default: true,
+        },
+      ],
+      connect: () => ({
+        chat: async (model, request) => respond(model.deployment, request),
+        chatStream: async function* (model, request) {
+          const result = respond(model.deployment, request);
+          yield { kind: 'delta', text: result.content };
+          yield { kind: 'done', result };
+        },
+      }),
+    };
+    return { adapter, calls };
+  };
+
+  const setup = (
+    found: { deployment: string; capabilities?: ('stream' | 'tools' | 'json-schema')[] }[],
+    behaviours: Record<string, Behaviour> = {},
+    options: { capabilities?: string[]; saved?: Record<string, unknown>; now?: Date } = {},
+  ) => {
+    const saved = options.saved ?? {};
+    const { adapter, calls } = fake(behaviours);
+    const router = new ModelRouter({
+      catalog: {
+        endpoints: {
+          gw: {
+            baseURL: 'https://gw.example',
+            auth: { kind: 'api-key', secret: 'secret://env/key-a' },
+            families: { 'proto-a': '/v1' },
+            discovery: [
+              {
+                source: 'stub-listing',
+                ...(options.capabilities ? { capabilities: options.capabilities } : {}),
+              },
+            ],
+          },
+        },
+        models: [],
+      },
+      adapters: [adapter],
+      secrets: envSecrets({ KEY_A: 'k' }),
+      sources: [{ kind: 'stub-listing', list: async () => found }],
+      classifications: {
+        load: async () => structuredClone(saved) as Record<string, never>,
+        save: async (id, c) => {
+          saved[id] = structuredClone(c);
+        },
+      },
+      now: () => options.now ?? at,
+    });
+    return { router, calls, saved };
+  };
+
+  const capabilitiesOf = (router: ModelRouter, id: string) =>
+    router.describe().find((m) => m.id === id)?.capabilities;
+
+  it('a model that answers in the JSON shape, calls the tool and streams learns all three, with when', async () => {
+    const { router } = setup([{ deployment: 'borealis' }], {}, { capabilities: [] });
+    await router.refresh();
+
+    const result = await router.learn(testContext().ctx);
+
+    expect(capabilitiesOf(router, 'gw/borealis')).toEqual(['json-schema', 'tools', 'stream']);
+    expect(router.models().get('gw/borealis')?.capabilities).toEqual([
+      'json-schema',
+      'tools',
+      'stream',
+    ]);
+    expect(router.describe()[0]?.learned).toEqual({
+      'json-schema': { has: true, at: at.toISOString(), by: 'call' },
+      tools: { has: true, at: at.toISOString(), by: 'call' },
+      stream: { has: true, at: at.toISOString(), by: 'call' },
+    });
+    expect(result).toMatchObject({ calls: 3, deferred: 0, usage: { requests: 3 } });
+  });
+
+  it('a model that ignores the schema does not get json-schema, and the live map names the check', async () => {
+    const { router } = setup([{ deployment: 'plain' }], { plain: 'plain' }, { capabilities: [] });
+    await router.refresh();
+
+    await router.learn(testContext().ctx);
+
+    expect(capabilitiesOf(router, 'gw/plain')).toEqual(['stream']);
+    expect(router.models().get('gw/plain')?.checked).toEqual({ 'json-schema': at.toISOString() });
+  });
+
+  it('a tool left uncalled settles nothing, since no request can force a model to call it', async () => {
+    const { router } = setup([{ deployment: 'plain' }], { plain: 'plain' });
+    await router.refresh();
+
+    const result = await router.learn(testContext().ctx);
+
+    expect(result.checked.map((c) => c.capability)).toEqual(['json-schema']);
+    expect(router.describe()[0]?.learned?.tools).toBeUndefined();
+  });
+
+  it('an answer cut off at the token limit settles nothing, but its usage is counted', async () => {
+    const { router } = setup([{ deployment: 'borealis' }], { borealis: 'cut' });
+    await router.refresh();
+
+    const result = await router.learn(testContext().ctx);
+
+    expect(result).toMatchObject({ checked: [], calls: 2, usage: { requests: 2 } });
+  });
+
+  it('a provider refusal counts as lacking only when the model answers a plain request', async () => {
+    const { router } = setup([{ deployment: 'borealis' }], { borealis: 'broken' });
+    await router.refresh();
+
+    const result = await router.learn(testContext().ctx);
+
+    expect(result).toMatchObject({ checked: [], calls: 4 });
+  });
+
+  it('a refusal by genki itself, not by the provider, settles nothing', async () => {
+    const { router } = setup([{ deployment: 'borealis' }], { borealis: 'own-refusal' });
+    await router.refresh();
+
+    const result = await router.learn(testContext().ctx);
+
+    expect(result).toMatchObject({ checked: [], calls: 2 });
+  });
+
+  it('runs one check round at a time, so a refresh during the boot round spends no calls twice', async () => {
+    const { router, calls } = setup([{ deployment: 'borealis' }]);
+    await router.refresh();
+
+    const [first, second] = await Promise.all([
+      router.learn(testContext().ctx),
+      router.learn(testContext().ctx),
+    ]);
+
+    expect(second).toBe(first);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("keeps what another replica stored for the model, such as an operator's residency, when it records a check", async () => {
+    const saved: Record<string, unknown> = {};
+    const { router } = setup([{ deployment: 'borealis' }], {}, { saved });
+    await router.refresh();
+    saved['gw/borealis'] = { residency: 'eu' };
+
+    await router.learn(testContext().ctx);
+
+    expect(saved['gw/borealis']).toMatchObject({
+      residency: 'eu',
+      learned: { 'json-schema': { has: true }, tools: { has: true } },
+    });
+  });
+
+  it('forgets learned capabilities when an operator binds another chat API, so they are checked again', async () => {
+    const { router } = setup([{ deployment: 'borealis' }]);
+    await router.refresh();
+    await router.learn(testContext().ctx);
+
+    await router.classify('gw/borealis', { apis: { chat: 'proto-a/chat@1' } });
+
+    expect(router.describe()[0]?.learned).toBeUndefined();
+    expect(capabilitiesOf(router, 'gw/borealis')).toEqual(['stream']);
+  });
+
+  it('checks only what the discovery rule does not already give', async () => {
+    const { router, calls } = setup([{ deployment: 'borealis' }]);
+    await router.refresh();
+
+    await router.learn(testContext().ctx);
+
+    expect(calls.map((c) => (c.request.jsonSchema ? 'json-schema' : 'tools'))).toEqual([
+      'json-schema',
+      'tools',
+    ]);
+  });
+
+  it('takes what the listing says before spending a call', async () => {
+    const { router, calls } = setup(
+      [{ deployment: 'borealis', capabilities: ['json-schema', 'tools'] }],
+      {},
+      { capabilities: ['stream'] },
+    );
+    await router.refresh();
+
+    await router.learn(testContext().ctx);
+
+    expect(calls).toEqual([]);
+    expect(router.describe()[0]?.learned).toEqual({
+      'json-schema': { has: true, at: at.toISOString(), by: 'listing' },
+      tools: { has: true, at: at.toISOString(), by: 'listing' },
+    });
+  });
+
+  it('does not check again while a result is fresh, and checks a missing capability again once stale', async () => {
+    const saved: Record<string, unknown> = {};
+    const first = setup([{ deployment: 'plain' }], { plain: 'plain' }, { saved });
+    await first.router.refresh();
+    await first.router.learn(testContext().ctx);
+
+    const soon = setup(
+      [{ deployment: 'plain' }],
+      { plain: 'plain' },
+      {
+        saved,
+        now: new Date('2026-11-20T08:00:00Z'),
+      },
+    );
+    await soon.router.refresh();
+    await soon.router.learn(testContext().ctx);
+    const later = setup(
+      [{ deployment: 'plain' }],
+      { plain: 'plain' },
+      {
+        saved,
+        now: new Date('2026-12-01T08:00:00Z'),
+      },
+    );
+    await later.router.refresh();
+    await later.router.learn(testContext().ctx);
+
+    expect([first.calls.length, soon.calls.length, later.calls.length]).toEqual([2, 1, 2]);
+  });
+
+  it('stops at the cap of calls per refresh, checking free models first', async () => {
+    const { adapter, calls } = fake({});
+    const router = new ModelRouter({
+      catalog: {
+        endpoints: {
+          gw: {
+            baseURL: 'https://gw.example',
+            auth: { kind: 'api-key', secret: 'secret://env/key-a' },
+            families: { 'proto-a': '/v1' },
+            discovery: [{ source: 'stub-listing' }],
+          },
+        },
+        models: [],
+      },
+      adapters: [adapter],
+      secrets: envSecrets({ KEY_A: 'k' }),
+      sources: [
+        {
+          kind: 'stub-listing',
+          list: async () => [{ deployment: 'a-paid' }, { deployment: 'b-free' }],
+        },
+      ],
+      priceOf: (id) =>
+        id === 'gw/b-free'
+          ? { chat: { 'input-token': 0, 'output-token': 0 } }
+          : { chat: { 'input-token': 0.001, 'output-token': 0.002 } },
+      now: () => at,
+    });
+    await router.refresh();
+
+    const result = await router.learn(testContext().ctx, { maxCalls: 3 });
+
+    expect(calls.map((c) => c.deployment)).toEqual(['b-free', 'b-free']);
+    expect(result).toMatchObject({ calls: 2, deferred: 2 });
+  });
+
+  it('keeps a capability that passed and does not check it again, even when the model would now refuse', async () => {
+    const saved: Record<string, unknown> = {};
+    const first = setup([{ deployment: 'borealis' }], {}, { saved });
+    await first.router.refresh();
+    await first.router.learn(testContext().ctx);
+
+    const after = setup(
+      [{ deployment: 'borealis' }],
+      { borealis: 'refuses' },
+      {
+        saved,
+        now: new Date('2027-01-19T08:00:00Z'),
+      },
+    );
+    await after.router.refresh();
+    await after.router.learn(testContext().ctx);
+
+    expect(capabilitiesOf(after.router, 'gw/borealis')).toEqual(['stream', 'json-schema', 'tools']);
+    expect(after.calls).toEqual([]);
+  });
+
+  it('records nothing when the model is down, so the next refresh checks again', async () => {
+    const { router } = setup([{ deployment: 'borealis' }], { borealis: 'down' });
+    await router.refresh();
+
+    const result = await router.learn(testContext().ctx);
+
+    expect(result.checked).toEqual([]);
+    expect(router.describe()[0]?.learned).toBeUndefined();
+  });
+
+  it('records a capability the provider refuses as missing when the model answers a plain request', async () => {
+    const { router } = setup([{ deployment: 'borealis' }], { borealis: 'refuses' });
+    await router.refresh();
+
+    const result = await router.learn(testContext().ctx);
+
+    expect(capabilitiesOf(router, 'gw/borealis')).toEqual(['stream']);
+    expect(router.describe()[0]?.learned).toMatchObject({
+      'json-schema': { has: false },
+      tools: { has: false },
+    });
+    expect(result.calls).toBe(4);
+  });
+
+  it("an operator's capabilities win over learned ones, and such a model is not checked", async () => {
+    const { router, calls } = setup([{ deployment: 'borealis' }]);
+    await router.refresh();
+    await router.classify('gw/borealis', { capabilities: ['stream'] });
+
+    await router.learn(testContext().ctx);
+
+    expect(calls).toEqual([]);
+    expect(router.describe()[0]).toMatchObject({ capabilities: ['stream'], classified: true });
+    expect(router.describe()[0]?.learned).toBeUndefined();
+  });
+
+  it('a learned result alone does not count as classified', async () => {
+    const { router } = setup([{ deployment: 'borealis' }]);
+    await router.refresh();
+
+    await router.learn(testContext().ctx);
+
+    expect(router.describe()[0]?.classified).toBe(false);
+  });
+
+  it('checks are synthetic, so a connection without a processor record still answers them', async () => {
+    const { adapter } = fake({});
+    const router = new ModelRouter({
+      catalog: {
+        endpoints: {
+          gw: {
+            baseURL: 'https://gw.example',
+            auth: { kind: 'api-key', secret: 'secret://env/key-a' },
+            families: { 'proto-a': '/v1' },
+            discovery: [{ source: 'stub-listing' }],
+          },
+        },
+        models: [],
+      },
+      adapters: [adapter],
+      secrets: envSecrets({ KEY_A: 'k' }),
+      sources: [{ kind: 'stub-listing', list: async () => [{ deployment: 'borealis' }] }],
+      typedCalls: 'enforce',
+      now: () => at,
+    });
+    await router.refresh();
+
+    const result = await router.learn(testContext().ctx);
+
+    expect(result.checked).toHaveLength(2);
+    await expect(
+      open(router, 'gw/borealis').chat({ messages: [{ role: 'user', content: 'Hei' }] }),
+    ).rejects.toMatchObject({ code: 'refused' });
+  });
+
+  it('checks go through the gate as synthetic calls, audited and metered', async () => {
+    const { router } = setup([{ deployment: 'borealis' }]);
+    await router.refresh();
+    const audited: unknown[] = [];
+    const { ctx, metered } = testContext();
+
+    await router.learn({ ...ctx, audit: async (record) => void audited.push(record) });
+
+    expect(audited).toHaveLength(2);
+    expect(audited[0]).toMatchObject({ model: 'gw/borealis', operation: 'chat', outcome: 'ok' });
+    expect(metered).toHaveLength(2);
   });
 });

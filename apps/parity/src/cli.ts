@@ -11,12 +11,7 @@ import {
   runBaseline,
   writeBaselines,
 } from './baseline.js';
-import { envSecrets } from '@genai/kernel';
-import { KnowledgeRouter } from '@genai/port-knowledge';
-import { typesense } from '@genai/providers-typesense';
-import { parse as parseYaml } from 'yaml';
 import { startPlayback } from './playback.js';
-import { measureProfiles } from './profiles.js';
 import { autoFilterDetections, compareToggle, renderScore, scoreRetrieval } from './bench.js';
 import {
   debugAccessFromEnv,
@@ -87,7 +82,6 @@ const usage = `usage:
   parity playback --mode record|replay [--cassette <file>] [--port 8790]
   parity sweep --questions <file> [--model <platform agent>] [--repeats 3]
   parity quality [--testset <file>] [--kinds retrieval,answer] [--repeats 3] [--concurrency 4] [--limit N]
-  parity quality-profiles [--testset <file>]
   parity quality-report [--testset <file>]
   parity retrieval-score [--testset <file>] [--target old|new|both] [--rerank true|false] [--auto-filter true|false]
   parity rerank-benchmark [--testset <file>] [--target old|new|both] [--max-acceptable-rank 10] [--fail-on-gate]
@@ -284,7 +278,6 @@ if (command === 'record' || command === 'compare') {
   process.exit(report.valid ? 0 : 1);
 } else if (
   command === 'quality' ||
-  command === 'quality-profiles' ||
   command === 'quality-report' ||
   command === 'agent-budget-benchmark'
 ) {
@@ -373,35 +366,9 @@ if (command === 'record' || command === 'compare') {
       );
     const gate = values['fail-on-gate'] && (summary.paired?.ci[1] ?? 0) < 0;
     process.exit(gate ? 1 : 0);
-  } else if (command === 'quality-profiles') {
-    const local = join(root, '.env.local');
-    if (existsSync(local)) process.loadEnvFile(local);
-    const raw = (
-      await readFile(join(root, 'apps', 'api', 'config', 'local', 'knowledge.yaml'), 'utf8')
-    ).replace(/\$\{([A-Z0-9_]+)\}/g, (m, name: string) => process.env[name] ?? m);
-    const knowledge = new KnowledgeRouter({
-      catalog: parseYaml(raw),
-      adapters: [typesense],
-      secrets: envSecrets(),
-    }).open(
-      { kind: 'dataset', id: testSet.profile.new.dataset ?? testSet.profile.corpus },
-      {
-        tenant: '991825827',
-        principal: { kind: 'operator', issuer: 'parity', subject: 'quality' },
-        task: 'parity-quality',
-        signal: new AbortController().signal,
-        meter: async () => undefined,
-      },
-    );
-    const summary = await measureProfiles(cases, knowledge, ['phrase', 'metadata', 'content'], 30);
-    await writeJson(join(reports, 'quality-profiles.json'), summary);
-    console.log(
-      JSON.stringify({ recall: summary.recall, union: summary.union, cases: summary.cases }),
-    );
   } else {
     const records = await loadRecords(runs);
     const targets: [string, string] = ['old', 'new'];
-    const profilesFile = join(reports, 'quality-profiles.json');
     const repeats = Math.max(0, ...records.map((r) => r.repeat + 1));
     const report: QualityReport = {
       provisional: testSet.provisional,
@@ -429,15 +396,11 @@ if (command === 'record' || command === 'compare') {
       ...(records.some((r) => r.kind === 'answer')
         ? { answers: summarizeAnswers(cases, records, targets) }
         : {}),
-      ...(existsSync(profilesFile)
-        ? { profiles: JSON.parse(await readFile(profilesFile, 'utf8')) }
-        : {}),
       notes: [
         'Neither system reports token usage over MCP, so cost per answer is not compared here.',
         'headless-rag returns its top chunks after reranking (often 3 to 5); the platform returns up to 10, which limits overlap and favours the platform on recall at 10.',
         'Both systems plan queries with a language model, so retrieval varies between repeats; stability shows how much. retrieval-score gives the deterministic fixed-query comparison.',
         'Refusal rates use a keyword heuristic and undercount refusals worded in other ways; the judge scores on the not-covered tag are the better signal.',
-        'Search profile recall uses the raw question with no planner and no auto-filters, so it measures the profiles alone, not the full pipeline.',
         'Stage attribution (search pool, displayed, read) comes from the platform task log through the operator diagnostics; headless-rag exposes no stages over HTTP, so its column stays empty.',
       ],
     };

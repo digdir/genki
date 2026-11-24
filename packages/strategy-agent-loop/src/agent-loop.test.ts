@@ -13,6 +13,7 @@ import {
   capability,
   chunk,
   decision,
+  harnessCard,
   kari,
   models,
   readSignal,
@@ -29,10 +30,10 @@ import {
   answerInstructionsLead,
   createAgentLoop,
   cutOffToolCallNudge,
-  exhaustionDefault,
+  exhaustionDefaults,
   evaluatorSystemPrompt,
   exhaustionNudge,
-  noToolCallHonestMiss,
+  honestMisses,
   noToolCallNudge,
   toolsOnlySystemPrompt,
   readEvaluatorSystemPrompt,
@@ -68,7 +69,7 @@ describe('agent-loop strategy', () => {
     expect(out.sources[0]).toMatchObject({ chunkId: 'attached:abc:0', title: 'brev.txt' });
   });
 
-  it('finalizes by synthesis as soon as read signals cover every claim, citing what it read', async () => {
+  it('finalizes by synthesis as soon as read signals cover every claim, numbering markers by the cited sources', async () => {
     const out = await run({
       scripts: {
         primary: {
@@ -86,15 +87,14 @@ describe('agent-loop strategy', () => {
 
     expect(out.task.status).toBe('completed');
     expect(out.loops).toHaveLength(2);
-    expect(out.text).toBe('Digdir skal digitalisere [3] og samordne [3][2].');
+    expect(out.text).toBe('Digdir skal digitalisere [2] og samordne [2][1].');
     expect(out.meta).toEqual({
       citations: [
-        { index: 2, chunkId: 'c2' },
-        { index: 3, chunkId: 'c3' },
+        { index: 1, chunkId: 'c2' },
+        { index: 2, chunkId: 'c3' },
       ],
     });
     expect(out.sources.map((s) => [s.chunkId, s.title, s.url])).toEqual([
-      ['c1', 'Rapport 1', 'https://kudos.dfo.no/d1'],
       ['c2', 'Rapport 2', 'https://kudos.dfo.no/d2'],
       ['c3', 'Rapport 3', 'https://kudos.dfo.no/d3'],
     ]);
@@ -106,7 +106,7 @@ describe('agent-loop strategy', () => {
     );
     const synth = out.seen.find((s) => s.kind === 'synth')?.request;
     expect(synth?.messages[0]?.content).toBe(
-      `You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\n${untrustedDataNotes.nb}`,
+      `You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\n${harnessCard(true, true)}\n\n${untrustedDataNotes.nb}`,
     );
     expect(synth?.messages[1]?.content).toContain(
       'Question: Hva sier tildelingsbrevet til Digdir for 2025?',
@@ -132,7 +132,7 @@ describe('agent-loop strategy', () => {
     expect(retrieved[0]).toMatchObject({ queries: expect.arrayContaining([expect.any(String)]) });
   });
 
-  it('runs the LLM sufficiency gate on a generated answer, sends its hint back, and validates the next answer', async () => {
+  it('a rejected draft stays visible to the model', async () => {
     const out = await run({
       scripts: {
         primary: {
@@ -143,34 +143,34 @@ describe('agent-loop strategy', () => {
             () => result('', [call('generate_response', { query: 'x' })]),
           ],
           read: [() => readSignal('gap-remaining', { scope_assessment: 'ambiguous' })],
-          sufficiency: [
-            () => decision('insufficient', 're-search'),
-            () => decision('sufficient', 'finalize'),
-            () => decision('sufficient', 'finalize'),
-          ],
+          sufficiency: [() => decision('insufficient', 're-search')],
           synth: [() => 'Første utkast [1].', () => 'Bedre svar [1].'],
         },
       },
     });
 
     const gates = out.seen.filter((s) => s.kind === 'sufficiency');
-    expect(gates).toHaveLength(3);
+    expect(gates).toHaveLength(1);
     expect(gates[0]?.request.messages[0]?.content).toBe(evaluatorSystemPrompt);
     expect(gates[0]?.request.temperature).toBe(0);
     expect(gates[0]?.request.messages[1]?.content).toMatch(
       /^User query:\nHva sier tildelingsbrevet til Digdir for 2025\?\n\nEvidence summary JSON:\n\{/,
     );
+    expect(gates[0]?.request.messages[1]?.content).toContain('Første utkast [1].');
     const fourth = out.loops[3];
     const hint =
       '[SYSTEM: Sufficiency gate rejected the current evidence. insufficient by test Missing info: the requested figure. Avoid repeating the latest queries verbatim: ("x"). Start a more targeted search and then read the new hits before finalizing.]';
-    expect(toolMessages(fourth).at(-1)).toBe(hint);
+    expect(toolMessages(fourth).at(-1)).toBe(`Første utkast [1].\n\n${hint}`);
     expect(systemMessages(fourth).at(-1)).toBe(hint);
     expect(out.text).toBe('Bedre svar [1].');
   });
 
   it('forces finalize at the retry limit of five rejections', async () => {
     const out = await run({
-      config: { ...baseConfig, strategy: { ...baseConfig.strategy, maxIterations: 10 } },
+      config: {
+        ...baseConfig,
+        strategy: { ...baseConfig.strategy, maxIterations: 10, ablate: ['grounding-gate'] },
+      },
       scripts: {
         primary: {
           loop: [
@@ -180,7 +180,7 @@ describe('agent-loop strategy', () => {
           ],
           read: [() => readSignal('gap-remaining', { scope_assessment: 'ambiguous' })],
           sufficiency: [() => decision('insufficient', 'read-more')],
-          synth: [() => 'Svar med forbehold [1].'],
+          synth: [() => 'Svar med forbehold.'],
         },
       },
     });
@@ -193,7 +193,7 @@ describe('agent-loop strategy', () => {
       'read-more',
       'finalize',
     ]);
-    expect(out.text).toBe('Svar med forbehold [1].');
+    expect(out.text).toBe('Svar med forbehold.');
   });
 
   it('rejects an uncited answer through the grounding floor even when the evaluator accepts it', async () => {
@@ -213,7 +213,7 @@ describe('agent-loop strategy', () => {
     });
 
     expect(toolMessages(out.loops[3]).at(-1)).toMatch(
-      /^\[SYSTEM: Grounding gate rejected the answer\. The generated answer cites no retrieved source \(0 reference\(s\), 0 valid\)/,
+      /^Paris\.\n\n\[SYSTEM: Grounding gate rejected the answer\. The generated answer cites no retrieved source \(0 reference\(s\), 0 valid\)/,
     );
     expect(out.notices).toContainEqual(
       expect.objectContaining({ stage: 'gate', source: 'grounding-gate' }),
@@ -350,9 +350,12 @@ describe('agent-loop strategy', () => {
     });
 
     const text = toolMessages(out.loops[1])[0] ?? '';
-    expect(text).toMatch(/Showing top 2 by rank; 1 lower-ranked chunks omitted\./);
-    expect(text.split('\n')[1]).toBe('<untrusted_data kind="search-results">');
-    expect(text.split('\n')[2]).toMatch(/^1\. chunk_id=c2 .* title_match=2$/);
+    const lines = text.split('\n');
+    expect(text).toContain('Showing documents 1 to 2 of 3; more available');
+    expect(lines[2]).toBe('<untrusted_data kind="search-results">');
+    expect(lines[3]).toMatch(/^1\. doc_num=d2 title="Tildelingsbrev Digdir 2025"/);
+    expect(lines[4]).toMatch(/^ {3}chunk_id=c2 .* title_match=2$/);
+    expect(text).not.toContain('chunk_id=c3');
   });
 
   const guarded = (extra: Record<string, unknown> = {}) => ({
@@ -389,7 +392,7 @@ describe('agent-loop strategy', () => {
 
     expect(systemMessages(out.loops.at(-1)).filter((m) => m === noToolCallNudge)).toHaveLength(2);
     expect(out.seen.filter((s) => s.kind === 'small-talk')).toHaveLength(1);
-    expect(out.text).toBe(noToolCallHonestMiss);
+    expect(out.text).toBe(honestMisses.nb);
     expect(out.meta).toMatchObject({ noAnswer: true });
     expect(own.text).toBe('Kildene i Kudos dekker ikke dette.');
     expect(own.meta).toMatchObject({ noAnswer: true });
@@ -478,7 +481,7 @@ describe('agent-loop strategy', () => {
     });
 
     expect(out.notices).toContainEqual(expect.objectContaining({ stage: 'exhausted' }));
-    expect(out.text).toBe(exhaustionDefault);
+    expect(out.text).toBe(exhaustionDefaults.nb);
   });
 
   it('answers small talk without a search, also when a search is required', async () => {
@@ -514,7 +517,7 @@ describe('agent-loop strategy', () => {
       2,
     );
     expect(out.seen.filter((s) => s.kind === 'small-talk')).toHaveLength(0);
-    expect(out.text).toBe(noToolCallHonestMiss);
+    expect(out.text).toBe(honestMisses.nb);
   });
 
   it('only counts a search as looking in the sources, not another tool', async () => {
@@ -533,7 +536,7 @@ describe('agent-loop strategy', () => {
     });
 
     expect(systemMessages(out.loops.at(-1)).filter((m) => m === noToolCallNudge)).toHaveLength(2);
-    expect(out.text).toBe(noToolCallHonestMiss);
+    expect(out.text).toBe(honestMisses.nb);
   });
 
   it('keeps the guard after a call to a tool that does not exist', async () => {
@@ -550,7 +553,7 @@ describe('agent-loop strategy', () => {
     });
 
     expect(toolMessages(out.loops[1])[0]).toMatch(/^Unknown tool: search_documents\./);
-    expect(out.text).toBe(noToolCallHonestMiss);
+    expect(out.text).toBe(honestMisses.nb);
   });
 
   it('says that the sources do not cover a question in the words the service chose', async () => {
@@ -621,7 +624,7 @@ describe('agent-loop strategy', () => {
     });
 
     expect(followUp.text).toBe('Samordning styrkes.');
-    expect(pretend.text).toBe(noToolCallHonestMiss);
+    expect(pretend.text).toBe(honestMisses.nb);
   });
 
   it('gives the call that writes the answer the service instructions too, when the service asks', async () => {
@@ -661,10 +664,10 @@ describe('agent-loop strategy', () => {
     const system = (o: typeof out) =>
       o.seen.find((s) => s.kind === 'synth')?.request.messages[0]?.content;
     expect(system(out)).toBe(
-      `You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\n${answerInstructionsLead}\n\nIkke fyll ut med egen kunnskap.\n\n${untrustedDataNotes.nb}`,
+      `You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\n${harnessCard(true, true)}\n\n${answerInstructionsLead}\n\nIkke fyll ut med egen kunnskap.\n\n${untrustedDataNotes.nb}`,
     );
     expect(system(plain)).toBe(
-      `You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\n${untrustedDataNotes.nb}`,
+      `You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\n${harnessCard(true, true)}\n\n${untrustedDataNotes.nb}`,
     );
   });
 
@@ -992,6 +995,11 @@ describe('agent-loop strategy', () => {
   });
 });
 
+const readSources = {
+  ...baseConfig,
+  strategy: { ...baseConfig.strategy, sources: 'read' as const },
+};
+
 describe('agent-loop sources, as headless-rag publishes them', () => {
   it("a source carries its chunk's page, page range, PDF address and heading path", async () => {
     const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
@@ -1063,7 +1071,7 @@ describe('agent-loop sources, as headless-rag publishes them', () => {
 
   it('keeps the read chunks as sources when the loop runs out and the fallback answers', async () => {
     const out = await run({
-      config: { ...baseConfig, strategy: { ...baseConfig.strategy, maxIterations: 2 } },
+      config: { ...baseConfig, strategy: { ...baseConfig.strategy, maxIterations: 3 } },
       scripts: {
         primary: {
           loop: [
@@ -1082,6 +1090,7 @@ describe('agent-loop sources, as headless-rag publishes them', () => {
   it('publishes a chunk the reranker added once the answer was numbered against it', async () => {
     const r = retrieval();
     const out = await run({
+      config: readSources,
       retrieval: {
         ...r.impl,
         rerank: async (_query, chunks) => [...chunks, chunk(5)],

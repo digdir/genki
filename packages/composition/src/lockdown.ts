@@ -101,11 +101,6 @@ export const lockdownEntraProblems = (env: Env): string[] => {
           `LOCKDOWN_SERVICE_CLIENT_IDS must name registered service clients, not platform clients, got "${platformClientsAsService.join(', ')}"`,
         ]
       : []),
-    ...(isLockdown(env) && serviceGroups(env).length > 0 && serviceClientIds(env).length === 0
-      ? [
-          'LOCKDOWN_SERVICE_GROUPS needs LOCKDOWN_SERVICE_CLIENT_IDS, the registered service clients whose Entra logins count',
-        ]
-      : []),
   ];
 };
 

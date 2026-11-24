@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { normaliseCitationMarkers } from '@genai/port-model';
 import { dropUnknownMarkers, stripSourceLists } from './citations.js';
+import { keepsTheDraft, soundsLikeRefusal } from './citation-backfill.js';
 import { stripCodeFences } from './structured.js';
+import { questionLanguage } from './prompts.js';
 import { searchFailures } from './tools.js';
 
 const quickly = (run: () => unknown) => {
@@ -30,6 +32,25 @@ describe('answer cleanup on adversarial input', () => {
     expect(quickly(() => dropUnknownMarkers(' ['.repeat(50_000), index))).toBeLessThan(1000);
     expect(quickly(() => dropUnknownMarkers(` [${'1'.repeat(100_000)}`, index))).toBeLessThan(1000);
     expect(dropUnknownMarkers('Svar [1] og [7].', index)).toBe('Svar [1] og.');
+  });
+
+  it('compares a cited answer with its draft in linear time', () => {
+    expect(
+      quickly(() => keepsTheDraft(' ['.repeat(50_000), ` [${'1'.repeat(100_000)}`)),
+    ).toBeLessThan(1000);
+    expect(keepsTheDraft('Svar [1] og mer [2].', 'Svar og mer.')).toBe(true);
+  });
+
+  it('hears a bokmål, nynorsk or English refusal in linear time', () => {
+    expect(quickly(() => soundsLikeRefusal('fann eg '.repeat(30_000)))).toBeLessThan(1000);
+    expect(quickly(() => soundsLikeRefusal('kan ikkje '.repeat(30_000)))).toBeLessThan(1000);
+    expect(quickly(() => soundsLikeRefusal(`har ${'ikkje '.repeat(30_000)}`))).toBeLessThan(1000);
+    expect(soundsLikeRefusal('Eg fann ikkje noko om dette.')).toBe(true);
+  });
+
+  it('guesses the language of a question in linear time', () => {
+    expect(quickly(() => questionLanguage('kva '.repeat(100_000)))).toBeLessThan(1000);
+    expect(questionLanguage('Kva er nytt?')).toBe('nn');
   });
 
   it('strips code fences in linear time', () => {

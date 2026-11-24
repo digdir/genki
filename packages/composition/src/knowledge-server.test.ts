@@ -11,11 +11,13 @@ import {
 
 const catalog = {
   endpoints: {
-    'platform-pg': { engine: 'pgvector', options: {} },
+    'kudos-typesense': { engine: 'typesense', baseURL: 'https://typesense.example' },
+    kunnskapsserveren: { engine: 'pgvector' },
     'knowledge-pg': { engine: 'pgvector', options: { connection: 'knowledge' } },
   },
   datasets: [
-    { id: 'digdir/genki-docs', endpoint: 'platform-pg' },
+    { id: 'digdir/public-docs', endpoint: 'kudos-typesense' },
+    { id: 'digdir/genki-docs', endpoint: 'kunnskapsserveren' },
     { id: 'digdir/kudos', endpoint: 'knowledge-pg' },
   ],
 };
@@ -24,14 +26,14 @@ describe('the knowledge server at boot', () => {
   it('an endpoint set to `knowledge` without a knowledge server is left out with a warning in development mode', () => {
     const warnings: string[] = [];
     expect(withoutKnowledgeServer(catalog, (m) => warnings.push(m))).toEqual({
-      endpoints: { 'platform-pg': catalog.endpoints['platform-pg'] },
+      endpoints: { 'kudos-typesense': catalog.endpoints['kudos-typesense'] },
       datasets: [catalog.datasets[0]],
     });
-    expect(warnings).toEqual([expect.stringContaining('knowledge-pg')]);
+    expect(warnings).toEqual([expect.stringContaining('kunnskapsserveren, knowledge-pg')]);
     expect(knowledgeServerProblems({ GENAI_DEV_MODE: 'true' }, catalog)).toEqual([]);
   });
 
-  it('the shipped catalog starts an API without a knowledge server outside development mode', () => {
+  it('the shipped catalog stops the API without a knowledge server outside development mode', () => {
     // A deployed image loads apps/api/config/local unless CONFIG_DIR says otherwise.
     const shipped: unknown = parse(
       readFileSync(
@@ -39,7 +41,12 @@ describe('the knowledge server at boot', () => {
         'utf8',
       ),
     );
-    expect(knowledgeServerProblems({ NODE_ENV: 'production' }, shipped)).toEqual([]);
+    expect(knowledgeServerProblems({ NODE_ENV: 'production' }, shipped)).toEqual([
+      expect.stringContaining('kunnskapsserveren'),
+    ]);
+    expect(
+      knowledgeServerProblems({ NODE_ENV: 'production', KNOWLEDGE_PGHOST: 'kunnskap' }, shipped),
+    ).toEqual([]);
   });
 
   it('the egress allow-lists include the knowledge hosts', () => {
@@ -69,9 +76,10 @@ describe('the knowledge server at boot', () => {
         deleted: true,
       },
       { id: 'annen-pg', spec: { engine: 'pgvector' } },
+      { id: 'kudos-typesense', spec: { engine: 'typesense' } },
     ]);
     expect(knowledgeServerProblems({ DATABASE_URL: 'postgres://db/genai' }, saved)).toEqual([
-      expect.stringContaining('kunnskap-pg'),
+      expect.stringContaining('kunnskap-pg, annen-pg'),
     ]);
     expect(knowledgeServerProblems({ GENAI_DEV_MODE: 'true' }, saved)).toEqual([]);
   });

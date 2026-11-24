@@ -20,8 +20,8 @@ export const services = {
   platformStrategyOnly: 'Only the platform can publish services with this strategy.',
   rightUseServices: 'Use services',
   rightManageServices: 'Manage services',
-  rightManageDatasets: 'Manage datasets',
-  rightRegisterBuildingBlocks: 'Register building blocks',
+  rightManageDatasets: 'Manage document collections',
+  rightRegisterBuildingBlocks: 'Add to the catalogue',
   rightViewUsage: 'View usage and cost',
   blockNeedsApproval: '"{name}" must be approved before the organisation can use it.',
   notAllowedHere: '{id} is not allowed in your organisation.',
@@ -59,7 +59,10 @@ export const services = {
   connectorName: 'Connector for {service}',
   seedReason: 'Loaded from the local configuration',
   archivedByTenant: 'The service is archived and cannot be run.',
+  archiveBeforeDelete: 'Only an archived service can be deleted. Archive the service first.',
   archivedReadOnly: 'The service is archived and can only be read. Restore it to change it.',
+  reactivateOutdated:
+    'The latest version no longer validates: {problems}. Pause the service, publish a version that fixes this, then activate it.',
   pausedByTenant: 'The service is paused. Reason: {reason}',
   variantAnswer: 'Answers with sources',
   variantDefault: 'Default',
@@ -74,16 +77,18 @@ export const services = {
     'The environment name must use lowercase letters, digits and dashes and start with a letter.',
   environmentExists: 'The service already has the environment {environment}.',
   environmentDescription: 'The description is text of at most {max} characters.',
-  environmentProdFixed: 'prod always exists and cannot be added or removed.',
+  environmentProdFixed: 'The edition in use always exists and cannot be added or removed.',
   environmentTooMany: 'A service can have at most {max} environments.',
   environmentSame: 'An environment cannot be promoted to itself.',
+  environmentMoved:
+    'The environment {environment} now runs version {version}, not version {expected}. Check the versions and try again.',
   environmentNoVersion: 'The service has no published version {version}.',
   environmentNoEarlier: 'The environment {environment} has no earlier version to roll back to.',
   environmentProdBehind:
-    'prod runs version {version}, not the latest. Promote or roll back prod to the latest version before you remove the last environment.',
+    'Edition {version} is in use, not the latest. Publish the latest edition before you remove the last test edition.',
   environmentNotPublished: 'The service is not published.',
   environmentOnlyProd:
-    'The service has only prod. Publish an earlier version again instead of promoting or rolling back.',
+    'The service has only the edition in use. Publish an earlier edition again instead of publishing from the test edition or undoing publishing.',
   environmentPinNotAllowed:
     'Version {version} does not run in any environment this key or frontend may use.',
   costBasisRecentRuns: "the average of the owner's runs in the last 30 days, rounded",

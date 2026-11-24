@@ -1,0 +1,27 @@
+apiVersion: genai/v1
+kind: Block
+metadata:
+  tenant: '991825827'
+  id: document-view
+  name: Dokumentvisning
+spec:
+  tier: built-in
+  builtIn: document-view
+  title:
+    nb: Dokumentvisning
+    en: Document view
+  summary:
+    nb: Dokumentet åpnet på utdraget svaret bygger på
+    en: The document opened at the excerpt the answer builds on
+  zones:
+    - secondary
+    - main
+  sharing: everyone
+  props:
+    type: object
+    properties:
+      file:
+        type: boolean
+        default: true
+        x-label: builder.documentViewFile
+        x-widget: switch

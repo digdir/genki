@@ -48,8 +48,6 @@ jobs:
       CUSTOM_DOMAINS_STAGE: ${{ vars.CUSTOM_DOMAINS_STAGE }}
       FOUNDRY_OPENAI_BASE_URL: ${{ vars.FOUNDRY_OPENAI_BASE_URL }}
       FOUNDRY_CLAUDE_BASE_URL: ${{ vars.FOUNDRY_CLAUDE_BASE_URL }}
-      TYPESENSE_URL: ${{ vars.TYPESENSE_URL }}
-      COLBERT_API_URL: ${{ vars.COLBERT_API_URL }}
       LANGFUSE_BASE_URL: ${{ vars.LANGFUSE_BASE_URL }}
       LANGFUSE_INSTANCE_RECEIVES_CONTENT: ${{ vars.LANGFUSE_INSTANCE_RECEIVES_CONTENT }}
       TRACES_ENDPOINT: ${{ vars.TRACES_ENDPOINT }}
@@ -111,9 +109,20 @@ jobs:
           RG: ${{ vars.AZURE_RESOURCE_GROUP }}
           ENVIRONMENT: ${{ inputs.environment }}
         run: scripts/infra-state.sh "infra/env/$ENVIRONMENT.bicepparam" "$RG" true | grep '^fingerprint=' >> "$GITHUB_OUTPUT"
+      - name: stop the worker before its new revision starts
+        if: ${{ !inputs.what-if }}
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+        run: scripts/worker-revisions.sh "$RG" stop
       - run: |
           az deployment group ${{ inputs.what-if && 'what-if' || 'create' }} \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "infra-${{ github.run_id }}-${{ github.run_attempt }}" \
             --parameters infra/env/${{ inputs.environment }}.bicepparam \
             --parameters apiImage="${{ steps.current.outputs.api }}" workerImage="${{ steps.current.outputs.worker }}" appsImage="${{ steps.current.outputs.apps }}" doclingImage="${{ steps.current.outputs.docling }}" appVersion="${{ steps.current.outputs.version }}" workerVersion="${{ steps.current.outputs.worker_version }}" apiRevisionSuffix="${{ steps.current.outputs.suffix }}" apiLiveRevision="${{ steps.current.outputs.live }}" apiPreviousRevision="${{ steps.current.outputs.previous }}" infraFingerprint="${{ steps.fingerprint.outputs.fingerprint }}"
+      - name: start the worker's newest revision
+        if: ${{ always() && !inputs.what-if }}
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          DEPLOYMENT: infra-${{ github.run_id }}-${{ github.run_attempt }}
+        run: scripts/worker-revisions.sh "$RG" start "$DEPLOYMENT"

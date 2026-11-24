@@ -429,6 +429,16 @@ export const serviceEnvironmentsModule: PlatformModuleFactory = (deps) => {
         const named = pointerOf(before, name);
         const current = named?.version ?? latest;
         const version = source.version ?? latest;
+        const expected = input.version;
+        if (expected !== undefined && !(typeof expected === 'number' && Number.isInteger(expected)))
+          return failed(target, 'version', t('services.environmentNoVersion', { version: '?' }));
+        if (expected !== undefined && expected !== version)
+          return failed(
+            target,
+            'state',
+            t('services.environmentMoved', { environment: from, version, expected }),
+            true,
+          );
         return { ...before, [name]: { ...named, version, previousVersion: current } };
       },
     ),
@@ -605,10 +615,11 @@ export const serviceEnvironmentsModule: PlatformModuleFactory = (deps) => {
       );
 
       app.post('/tenants/:tenant/services/:id/environments/:environment/promote', async (c) => {
-        const from = (await body(c)).from;
+        const { from, version } = await body(c);
         return perform(c, 'platform.service.environments.promote', {
           environment: c.req.param('environment') ?? '',
           ...(from === undefined ? {} : { from }),
+          ...(version === undefined ? {} : { version }),
         });
       });
 

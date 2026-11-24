@@ -4,6 +4,15 @@ body {
   color: var(--ds-color-neutral-text-default);
   font-family: 'Inter', var(--ds-font-family), sans-serif;
   font-feature-settings: 'cv05' 1;
+  overflow-wrap: break-word;
+}
+
+.ds-heading {
+  overflow-wrap: anywhere;
+}
+
+.ds-toggle-group {
+  position: relative;
 }
 
 a:not([class^='ds-'], [class*=' ds-']) {
@@ -32,6 +41,10 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   :root {
     --page-pad: 16px;
   }
+
+  .main h1.ds-heading {
+    font-size: var(--ds-heading-sm-font-size);
+  }
 }
 
 :root .ds-dialog {
@@ -45,10 +58,13 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   max-width: var(--read-max);
 }
 
-:focus-visible {
-  outline: 3px solid var(--ds-color-focus-outer);
-  outline-offset: 3px;
-  box-shadow: 0 0 0 3px var(--ds-color-focus-inner);
+/* Under Designsystemet's and the blocks' own focus, so a block can turn it off. */
+@layer ds.base {
+  :focus-visible {
+    outline: 3px solid var(--ds-color-focus-outer);
+    outline-offset: 3px;
+    box-shadow: 0 0 0 3px var(--ds-color-focus-inner);
+  }
 }
 
 [aria-disabled='true'] {
@@ -242,7 +258,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 
 .sidebar {
   flex: none;
-  width: 256px;
+  width: 288px;
   box-sizing: border-box;
   padding: 20px 12px;
   display: flex;
@@ -253,6 +269,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   align-self: flex-start;
   height: calc(100vh - var(--header-offset));
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sidebar + .main {
@@ -291,8 +308,18 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 }
 
 .narrow-nav {
+  position: relative;
   border-top: 1px solid var(--ds-color-neutral-border-subtle);
   padding: 8px 12px 12px;
+  max-height: calc(100dvh - var(--header-height));
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.narrow-account {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
 }
 
 .narrow-nav a {
@@ -520,6 +547,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 .dev-tools-page pre {
   margin: 0;
   overflow-x: auto;
+  position: relative;
 }
 
 @media (max-width: 900px) {
@@ -534,7 +562,8 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 }
 
 /* Fixed, so the sidebar's scroll area does not clip it; Shell places it above the button. */
-.sidebar-account .popover {
+.sidebar-account .popover,
+.narrow-account .popover {
   position: fixed;
   top: auto;
   right: auto;
@@ -551,6 +580,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 }
 
 .main-inner {
+  container: page / inline-size;
   max-width: var(--page-max);
   margin: 0;
   display: flex;
@@ -584,6 +614,12 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   color: var(--ds-color-neutral-text-default);
   text-decoration: none;
   border-bottom: 3px solid transparent;
+}
+
+.link-tabs a.link-tab-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .link-tabs a:hover {
@@ -639,6 +675,10 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+}
+
+.screen-loading {
+  display: contents;
 }
 
 .stack {
@@ -764,6 +804,14 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   border: none;
 }
 
+.table-scroll > table > * > tr > :is(th, td):not([aria-sort]):first-child {
+  padding-inline-start: var(--ds-size-3);
+}
+
+.table-scroll > table > * > tr > :is(th, td):not([aria-sort]):last-child {
+  padding-inline-end: var(--ds-size-3);
+}
+
 .state {
   padding: 24px 0;
 }
@@ -776,6 +824,12 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 
 .state.loading:empty {
   padding: 0;
+}
+
+.loading-label {
+  margin: 0;
+  font-size: var(--ds-font-size-3);
+  color: var(--ds-color-neutral-text-subtle);
 }
 
 .loading-slow {
@@ -966,6 +1020,7 @@ pre.code {
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
   white-space: pre;
+  position: relative;
 }
 
 code {
@@ -1042,6 +1097,8 @@ code {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  position: relative;
+  overscroll-behavior: contain;
 }
 
 .side-panel-foot {
@@ -1191,15 +1248,6 @@ code {
 @media (max-width: 559px) {
   .header-bar {
     gap: 8px;
-  }
-
-  .header-bar .brand .brand-text {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
   }
 
   .header-bar .popover-anchor:has(.org-button) {

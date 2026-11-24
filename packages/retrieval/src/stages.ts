@@ -248,17 +248,26 @@ const reportOf = (c: Chunk): ReportInfo | undefined => {
 
 /** Records whose page counts differ by more than this are kept apart, whatever their key. */
 const reportPageTolerance = 0.05;
-/** Two hits are the same page when this share of their words is shared. */
-const samePageOverlap = 0.8;
+/** Two hits are the same page when this share of the shorter hit's words is in the longer one. */
+const samePageShorterShare = 0.8;
+/** The shared words are also this share of the longer hit, so a much longer hit stays apart. */
+const samePageLongerShare = 0.75;
+/** Below this many words one word is a large share, so 0.8 of both hits' words together is needed. */
+const samePageShareMinWords = 20;
 /** Fewer words than this, such as a footer, are compared by page instead. */
 const samePageMinWords = 5;
 
 const closePages = (a: number, b: number) =>
   Math.abs(a - b) <= reportPageTolerance * Math.max(a, b);
 
-const overlap = (a: Set<string>, b: Set<string>) => {
-  if (a.size === 0 || b.size === 0) return 0;
-  return intersect(a, b).size / new Set([...a, ...b]).size;
+const sameWords = (a: Set<string>, b: Set<string>) => {
+  const shared = intersect(a, b).size;
+  const shorter = Math.min(a.size, b.size);
+  const longer = Math.max(a.size, b.size);
+  if (shorter === 0) return false;
+  if (shorter < samePageShareMinWords)
+    return shared / (a.size + b.size - shared) >= samePageShorterShare;
+  return shared >= samePageShorterShare * shorter && shared >= samePageLongerShare * longer;
 };
 
 /** The agency's own record first, then the latest publish date. */
@@ -284,7 +293,7 @@ export const collapseReportCopies = (
   const samePage = (a: Member, b: Member) => {
     const aLong = a.words.size >= samePageMinWords;
     const bLong = b.words.size >= samePageMinWords;
-    if (aLong && bLong) return overlap(a.words, b.words) >= samePageOverlap;
+    if (aLong && bLong) return sameWords(a.words, b.words);
     // A short hit, such as a footer, only matches another short one on the same page.
     return (
       !aLong && !bLong && a.info.pages === b.info.pages && a.page !== undefined && a.page === b.page
@@ -304,8 +313,7 @@ export const collapseReportCopies = (
     const slot = slots.find(
       (s) =>
         !s.documents.has(document) &&
-        s.members.every((m) => closePages(m.info.pages, info.pages)) &&
-        s.members.some((m) => samePage(m, member)),
+        s.members.every((m) => closePages(m.info.pages, info.pages) && samePage(m, member)),
     );
     if (!slot) {
       const fresh = {

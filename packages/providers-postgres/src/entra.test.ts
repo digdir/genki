@@ -76,6 +76,31 @@ describe('Postgres with Entra ID', () => {
   });
 });
 
+describe('the platform database pool size', () => {
+  const tokens: TokenSource = async () => ({ token: 'entra', expiresOnTimestamp: minutes(60) });
+
+  it('caps each pool at DATABASE_POOL_MAX, with Entra ID or a connection string', () => {
+    expect(
+      postgresSourceFromEnv({ PGHOST: 'pg.example', DATABASE_POOL_MAX: '4' }, tokens),
+    ).toMatchObject({ host: 'pg.example', max: 4 });
+    expect(
+      postgresSourceFromEnv(
+        { DATABASE_URL: 'postgres://db/genai', DATABASE_POOL_MAX: '4' },
+        tokens,
+      ),
+    ).toEqual({ connectionString: 'postgres://db/genai', max: 4 });
+    expect(postgresSourceFromEnv({ PGHOST: 'pg.example' }, tokens)).not.toHaveProperty('max');
+  });
+
+  it('refuses a pool size the two listening connections would fill, or one that is not a whole number', () => {
+    for (const value of ['2', '0', '-5', '4.5', 'ten'])
+      expect(
+        () => postgresSourceFromEnv({ PGHOST: 'pg.example', DATABASE_POOL_MAX: value }, tokens),
+        value,
+      ).toThrow('DATABASE_POOL_MAX');
+  });
+});
+
 describe('knowledge server settings', () => {
   const tokens: TokenSource = async () => ({
     token: 'entra',
@@ -152,5 +177,25 @@ describe('knowledge server settings', () => {
       'worker/pw',
     ]);
     expect(api.host).toBe('127.0.0.1:55433');
+  });
+
+  it("the API's knowledge pools hold 20 connections unless KNOWLEDGE_DATABASE_POOL_MAX says otherwise", () => {
+    const identity = () => tokens;
+    expect(knowledgeSourceFromEnv(azure, 'api', identity)?.max).toBe(20);
+    expect(
+      knowledgeSourceFromEnv({ ...azure, KNOWLEDGE_DATABASE_POOL_MAX: '8' }, 'api', identity)?.max,
+    ).toBe(8);
+    expect(
+      knowledgeReadSourceFromEnv(
+        { ...azure, KNOWLEDGE_READ_PGHOST: 'replica.example', KNOWLEDGE_DATABASE_POOL_MAX: '8' },
+        identity,
+      )?.max,
+    ).toBe(8);
+    expect(knowledgeSourceFromEnv(azure, 'worker', identity)?.max).toBeUndefined();
+    for (const value of ['0', '4.5', 'ten'])
+      expect(
+        () => knowledgeSourceFromEnv({ ...azure, KNOWLEDGE_DATABASE_POOL_MAX: value }, 'api'),
+        value,
+      ).toThrow('KNOWLEDGE_DATABASE_POOL_MAX');
   });
 });

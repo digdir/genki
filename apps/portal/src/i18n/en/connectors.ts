@@ -21,7 +21,7 @@ export const connectors = {
   readsHead: 'Table <code>{table}</code>: title from <code>{title}</code>, text from',
   readsWhere: ', only where',
   readsAnd: 'and',
-  readsEnd: '. Fills the dataset “{dataset}”.',
+  readsEnd: '. Fills the document collection “{dataset}”.',
   ruleReadOnly: 'The platform only reads. It never sends INSERT, UPDATE or DELETE.',
   ruleLimits: 'Each read has a time limit of 15 seconds and at most 10,000 rows.',
   ruleSync: 'Synchronised when you ask for it.',
@@ -77,7 +77,7 @@ export const connectors = {
   retry: 'Try again',
   syncNow: 'Synchronise now',
   changePassword: 'Change password',
-  rightManageDatasets: 'Manage datasets',
+  rightManageDatasets: 'Manage document collections',
   pollFailing:
     'We cannot update the status right now. We keep trying by ourselves, less often each time.',
   listHeading: 'Connections',
@@ -86,7 +86,7 @@ export const connectors = {
     'No private networks are open. Databases on private networks must be opened by Digdir.',
   listEmpty:
     'No connections yet. The build assistant proposes a connection when a service needs data from a database.',
-  summaryHeading: 'Connections to your own databases',
+  summaryHeading: 'Connections',
   summaryPending: {
     one: '{count} new connection is waiting for approval.',
     other: '{count} new connections are waiting for approval.',
@@ -101,11 +101,11 @@ export const connectors = {
   },
   summaryLinkPending: 'View and approve the connections',
   summaryLink: 'View the connections',
-  pageBlocks: 'Building blocks',
+  pageBlocks: 'Catalogue',
   pageCrumb: 'Connections',
-  pageHeading: 'Connections to your own databases',
+  pageHeading: 'Connections',
   pageLead:
-    'The platform reads tables in the databases of {tenantName} and fills datasets with them. It never writes.',
+    'The platform reads tables in the databases of {tenantName} and fills document collections with them. It never writes.',
   pageLoading: 'Loading the connections',
 } satisfies Translation<typeof source>;
 
@@ -125,7 +125,7 @@ export const connectorApproval = {
   readFailed: 'Could not read from the database',
   defaultName: 'Connection for {service}',
   approved:
-    'The connection is approved. The first synchronisation is running. The data becomes the dataset “{name}”, which {service} can search.',
+    'The connection is approved. The first synchronisation is running. The data becomes the document collection “{name}”, which {service} can search.',
   rejected:
     'The proposal is rejected. The build assistant is notified, and nothing has been put to use.',
   addressUnusable: 'The address cannot be used',

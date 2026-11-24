@@ -31,9 +31,57 @@
   margin: 0;
 }
 
-.service-meta {
+.service-status {
   margin: 0;
-  min-height: 1.5em;
+  font-size: 15px;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.edition-switch {
+  display: inline-flex;
+  border: 1px solid var(--ds-color-neutral-border-default);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.edition-switch a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 0 16px;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--ds-color-neutral-text-default);
+  background: var(--ds-color-neutral-background-default);
+}
+
+.edition-switch a:focus-visible {
+  outline: 3px solid var(--ds-color-focus-outer);
+  outline-offset: -3px;
+}
+
+.edition-switch a[data-edition='test'][aria-current='page'] {
+  background: #0b5a53;
+  color: #ffffff;
+}
+
+.edition-switch a[data-edition='in-use'][aria-current='page'] {
+  background: #2c3a4d;
+  color: #ffffff;
+}
+
+.edition-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  background: #e6eaf0;
+  color: #1e2b3c;
 }
 
 .service-actions {
@@ -106,6 +154,7 @@
 
 .service-page .scroll-x {
   overflow-x: auto;
+  position: relative;
 }
 
 .service-page .body-sm {
@@ -233,13 +282,15 @@
 .service-subnav a {
   display: block;
   padding: 9px 12px;
+  border-bottom: 0;
   border-radius: var(--ds-border-radius-md);
   color: var(--ds-color-neutral-text-default);
   text-decoration: none;
 }
 
+/* Like the active item in the side menu: a background, no line under it. */
 .service-subnav a:hover {
-  background: var(--ds-color-neutral-background-tinted);
+  background: var(--ds-color-neutral-surface-hover);
 }
 
 .service-subnav a[aria-selected='true'] {
@@ -253,7 +304,7 @@
   outline-offset: 2px;
 }
 
-@media (max-width: 759px) {
+@container page (max-width: 1179px) {
   .service-sub {
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;

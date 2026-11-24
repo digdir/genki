@@ -420,7 +420,7 @@ describe('dataset Innhold tab', () => {
     const bar = screen.getByRole('region', { name: 'Valgte dokumenter' });
     expect(within(bar).getByText('1 valgt')).toBeTruthy();
     expect(within(bar).getByRole('button', { name: 'Last ned originalfilene' })).toBeTruthy();
-    expect(within(bar).queryByRole('button', { name: 'Fjern fra datasettet' })).toBeNull();
+    expect(within(bar).queryByRole('button', { name: 'Fjern fra dokumentsamlingen' })).toBeNull();
   });
 
   it('downloads the original of each chosen file', async () => {
@@ -455,8 +455,10 @@ describe('dataset Innhold tab', () => {
     fireEvent.click(
       within(table).getByRole('checkbox', { name: 'Velg alle opplastede filer på siden' }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Fjern fra datasettet' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Fjerne 3 filer fra datasettet?' });
+    fireEvent.click(screen.getByRole('button', { name: 'Fjern fra dokumentsamlingen' }));
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Fjerne 3 filer fra dokumentsamlingen?',
+    });
     expect(writes(calls).filter((w) => w.startsWith('DELETE'))).toEqual([]);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Fjern 3 filer' }));
     await waitFor(() => expect(calls.filter((c) => c.method === 'DELETE').length).toBe(3));
@@ -482,8 +484,10 @@ describe('dataset Innhold tab', () => {
     await renderLive(veiledere, fetch);
     const table = await docsTable();
     fireEvent.click(within(table).getByRole('checkbox', { name: 'Velg Veileder for tilsyn' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Fjern fra datasettet' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Fjerne 1 fil fra datasettet?' });
+    fireEvent.click(screen.getByRole('button', { name: 'Fjern fra dokumentsamlingen' }));
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Fjerne 1 fil fra dokumentsamlingen?',
+    });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Fjern 1 fil' }));
     expect((await screen.findByRole('alert')).textContent).toBe(
       'Vi fikk ikke fjernet Veileder for tilsyn.pdf.',
@@ -559,7 +563,7 @@ describe('dataset Innhold tab', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Veileder for tilsyn' }));
     const panel = await screen.findByRole('dialog', { name: 'Veileder for tilsyn' });
     expect(
-      await within(panel).findByText('Datasettet har ikke dette dokumentet lenger.'),
+      await within(panel).findByText('Dokumentsamlingen har ikke dette dokumentet lenger.'),
     ).toBeTruthy();
   });
 
@@ -605,7 +609,7 @@ describe('dataset Innhold tab', () => {
       fetch,
     );
     expect((await screen.findByRole('alert')).textContent).toContain(
-      'Datasettet kan ikke filtreres på «type».',
+      'Dokumentsamlingen kan ikke filtreres på «type».',
     );
   });
 
@@ -788,7 +792,7 @@ describe('dataset Innstillinger', () => {
 
 describe('new dataset from the design', () => {
   const fillName = async (name: string) => {
-    await screen.findByRole('heading', { level: 1, name: 'Nytt datasett' });
+    await screen.findByRole('heading', { level: 1, name: 'Ny dokumentsamling' });
     fireEvent.change(screen.getByLabelText('Navn'), { target: { value: name } });
   };
 
@@ -815,7 +819,7 @@ describe('new dataset from the design', () => {
       target: { value: 'x-api-key' },
     });
     fireEvent.click(screen.getByRole('radio', { name: 'Alle virksomheter på genki' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag dokumentsamlingen og les inn' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Saksarkivet' })).toBeTruthy();
     expect(writes(calls)).toEqual(['POST /tenants/999888777/datasets']);
     const post = calls.find((c) => c.method === 'POST');
@@ -851,7 +855,7 @@ describe('new dataset from the design', () => {
     fireEvent.change(screen.getByLabelText('Header for nøkkelen', { exact: false }), {
       target: { value: 'x api key' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag dokumentsamlingen og les inn' }));
     expect(
       await screen.findByRole('link', {
         name: 'Bruk bare bokstaver, tall og bindestrek, høyst 64 tegn.',
@@ -867,12 +871,12 @@ describe('new dataset from the design', () => {
     fireEvent.change(screen.getByLabelText('Hvordan logger vi inn?'), {
       target: { value: 'none' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag dokumentsamlingen og les inn' }));
     expect(await screen.findByText(/Vi kaller ikke denne adressen/)).toBeTruthy();
   });
 
   it.each([
-    [409, 'Det finnes allerede en tilkobling eller en nøkkel for dette datasettet.'],
+    [409, 'Det finnes allerede en tilkobling eller en nøkkel for denne dokumentsamlingen.'],
     [403, 'Du kan ikke lagre en API-nøkkel.'],
   ])('explains a %i from the endpoint create in words', async (status, text) => {
     const { fetch } = answering(
@@ -884,7 +888,7 @@ describe('new dataset from the design', () => {
     fireEvent.change(screen.getByLabelText('API-nøkkel', { exact: false }), {
       target: { value: 'hemmelig-nokkel' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag dokumentsamlingen og les inn' }));
     expect(await screen.findByText(new RegExp(text))).toBeTruthy();
   });
 
@@ -901,7 +905,7 @@ describe('new dataset from the design', () => {
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Nettsidene skal kunne søkes i' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag dokumentsamlingen og les inn' }));
     await screen.findByRole('heading', { level: 1, name: 'Nettsidene våre' });
     expect(writes(calls)).toEqual([
       'PUT /tenants/999888777/catalog/dataset/nettsidene-vare',
@@ -919,7 +923,7 @@ const theirs: DatasetDetailView = {
   scope: '111222333',
   editable: true,
   residency: 'global',
-  index: { endpoint: 'platform-pg' },
+  index: { endpoint: 'kunnskapsserveren' },
   facets: [],
   searchScope: 'all',
   source: 'website',
@@ -960,7 +964,7 @@ describe("another organisation's dataset", () => {
   it('shows its source and last run as unknown in the list, never as no source or never run', async () => {
     const { fetch } = recorded({ datasets: [...exampleLiveDatasets, theirs] });
     await renderLive('#/datasets', fetch);
-    const table = await screen.findByRole('table', { name: 'Datasett' });
+    const table = await screen.findByRole('table', { name: 'Dokumentsamlinger' });
     const row = within(table)
       .getByText('Interne sider hos Annenetaten')
       .closest('tr') as HTMLElement;
@@ -978,7 +982,7 @@ describe("another organisation's dataset", () => {
     );
     await screen.findByRole('heading', { level: 1, name: 'Interne sider hos Annenetaten' });
     const lead = document.querySelector('.page-head .meta')?.textContent ?? '';
-    expect(lead).toBe('Delt med dere av en annen virksomhet · 40 dokumenter lest inn');
+    expect(lead).toBe('Delt med dere av en annen virksomhet · 40 dokumenter i søkemotoren');
     expect(screen.queryByRole('button', { name: 'Les inn på nytt' })).toBeNull();
   });
 });
@@ -987,9 +991,9 @@ describe('dataset header and tabs', () => {
   it('keeps the back link and the tab row while the dataset loads', async () => {
     const fetch: typeof globalThis.fetch = () => new Promise<Response>(() => undefined);
     renderDetail(fetch, ['manage-datasets']);
-    expect(screen.getByRole('link', { name: 'Datasett' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Dokumentsamlinger' })).toBeTruthy();
     expect(
-      within(screen.getByRole('tablist', { name: 'Datasettet' }))
+      within(screen.getByRole('tablist', { name: 'Dokumentsamlingen' }))
         .getAllByRole('tab')
         .map((tab) => tab.textContent),
     ).toEqual(['Innhold', 'Innlesinger', 'Innstillinger', 'Brukes av']);
@@ -998,7 +1002,7 @@ describe('dataset header and tabs', () => {
   it('orders the tabs Innhold, Innlesinger, Innstillinger, Brukes av', async () => {
     const { fetch } = recorded();
     await renderLive(veiledere, fetch);
-    const tabs = await screen.findByRole('tablist', { name: 'Datasettet' });
+    const tabs = await screen.findByRole('tablist', { name: 'Dokumentsamlingen' });
     expect(
       within(tabs)
         .getAllByRole('tab')
@@ -1103,11 +1107,11 @@ describe('dataset list toolbar', () => {
   it('shows the filters as pressed buttons and the search with a placeholder', async () => {
     const { fetch } = recorded();
     await renderLive('#/datasets', fetch);
-    await screen.findByRole('table', { name: 'Datasett' });
+    await screen.findByRole('table', { name: 'Dokumentsamlinger' });
     expect(screen.getByRole('button', { name: 'Alle', pressed: true })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Testetatens egne' }));
     expect(screen.getByRole('button', { name: 'Testetatens egne', pressed: true })).toBeTruthy();
-    expect(screen.getByRole('searchbox', { name: 'Søk i datasett' })).toHaveProperty(
+    expect(screen.getByRole('searchbox', { name: 'Søk i dokumentsamlinger' })).toHaveProperty(
       'placeholder',
       'Søk i navn og kildetype',
     );
@@ -1118,18 +1122,21 @@ describe('deleting an endpoint dataset', () => {
   it('says the connection to the endpoint goes with it, before and after', async () => {
     const { calls, fetch } = recorded({ datasets: [...exampleLiveDatasets, endpointDataset] });
     await renderLive(`#/datasets/${encodeURIComponent('999888777/saksarkivet')}/source`, fetch);
-    fireEvent.click(await screen.findByRole('button', { name: 'Slett datasettet' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Slett dokumentsamlingen' }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog.textContent).toContain(
       'Tilkoblingen til endepunktet og API-nøkkelen slettes også.',
     );
-    fireEvent.change(within(dialog).getByLabelText('Skriv navnet på datasettet for å bekrefte'), {
-      target: { value: 'Saksarkivet' },
-    });
+    fireEvent.change(
+      within(dialog).getByLabelText('Skriv navnet på dokumentsamlingen for å bekrefte'),
+      {
+        target: { value: 'Saksarkivet' },
+      },
+    );
     fireEvent.change(within(dialog).getByLabelText('Begrunnelse'), {
       target: { value: 'Trengs ikke lenger' },
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Slett datasettet' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Slett dokumentsamlingen' }));
     expect(await screen.findByText(/Tilkoblingen endpoint-saksarkivet er fjernet\./)).toBeTruthy();
     expect(writes(calls)).toEqual(['DELETE /tenants/999888777/datasets/saksarkivet']);
   });

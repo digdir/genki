@@ -39,7 +39,7 @@
             </p>
             <dl class="facts">
               <dt>UI name</dt>
-              <dd>«Chat»</dd>
+              <dd>«Samtale»</dd>
               <dt>Sits in</dt>
               <dd>Main area</dd>
               <dt>Code</dt>
@@ -137,6 +137,22 @@
                 <code>sticky</code>. Docked with <code>sticky</code>, the block keeps its own height
                 clear under whatever the browser scrolls to in the same column, so the field never
                 hides the focus (WCAG 2.4.11), as kunnskapsassistenten does.
+              </li>
+              <li>
+                <code>variant</code>: <code>stacked</code>, the default, puts the field over its
+                buttons with a paperclip and a paper plane. <code>inline</code> is the dev-chat
+                boards' (dev-chat-ny-trad and dev-chat-samtale), which the next look of
+                <code>ui-assembly</code> draws: one row with «+» (Aksel <code>Plus</code>) to upload
+                at the start and send, an arrow up (Aksel <code>ArrowUp</code>), at the end, on a
+                frame with a shadow. Its send button is neutral and quiet until there is something
+                to send, then the action's primary button. A question longer than a line goes over
+                the buttons in full width, «+» left and send right, and the field scrolls after six
+                lines. Inline, nothing is drawn for an upload that is coming but not there.
+              </li>
+              <li>
+                <code>label</code>: the field's accessible name, for a host that names it itself, as
+                the next look names it «Still et spørsmål» on a new thread and «Spør videre» in a
+                conversation. «Spørsmål til» the assistant unless given.
               </li>
               <li>
                 <code>note</code>: a line right under the field, docked with it, such as the
@@ -261,7 +277,7 @@
                 </tr>
                 <tr>
                   <td><code>--genai-composer-field-max-block-size</code></td>
-                  <td>274 px</td>
+                  <td>274 px; inline, six lines (<code>7lh</code> with the padding)</td>
                   <td>how tall the field grows before it scrolls</td>
                 </tr>
                 <tr>
@@ -281,12 +297,15 @@
                 </tr>
                 <tr>
                   <td><code>--genai-composer-field-padding-block</code></td>
-                  <td><code>--ds-size-1</code></td>
+                  <td><code>--ds-size-1</code>; <code>--ds-size-3</code> inline</td>
                   <td>field padding, top and bottom</td>
                 </tr>
                 <tr>
                   <td><code>--genai-composer-field-padding-inline-start</code></td>
-                  <td><code>--ds-size-3</code></td>
+                  <td>
+                    <code>--ds-size-3</code>; inline <code>--ds-size-1</code> after «+», else
+                    <code>--ds-size-2</code>
+                  </td>
                   <td>where the text starts, in line with the paperclip's icon</td>
                 </tr>
                 <tr>
@@ -331,8 +350,13 @@
                 </tr>
                 <tr>
                   <td><code>--genai-composer-frame-gap</code></td>
-                  <td><code>--ds-size-2</code></td>
+                  <td><code>--ds-size-2</code>; <code>--ds-size-1</code> inline</td>
                   <td>gap between the field and its buttons</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-frame-shadow</code></td>
+                  <td><code>--ds-shadow-md</code></td>
+                  <td>shadow under the inline frame</td>
                 </tr>
                 <tr>
                   <td><code>--genai-composer-frame-padding</code></td>
@@ -376,7 +400,9 @@
                 </tr>
                 <tr>
                   <td><code>--genai-composer-send-border-radius</code></td>
-                  <td><code>--ds-border-radius-full</code></td>
+                  <td>
+                    <code>--ds-border-radius-full</code>; <code>--ds-border-radius-xl</code> inline
+                  </td>
                   <td>send and «Avbryt» border radius</td>
                 </tr>
                 <tr>
@@ -420,6 +446,11 @@
                   <td>a suggestion's text</td>
                 </tr>
                 <tr>
+                  <td><code>--genai-welcome-suggestion-radius</code></td>
+                  <td><code>--ds-border-radius-xl</code></td>
+                  <td>a suggestion's corners</td>
+                </tr>
+                <tr>
                   <td><code>--genai-welcome-suggestion-font-weight</code></td>
                   <td><code>--ds-font-weight-regular</code></td>
                   <td>a suggestion's text</td>
@@ -435,9 +466,14 @@
                   <td>a suggestion's icon</td>
                 </tr>
                 <tr>
-                  <td><code>--genai-welcome-suggestion-icon-offset</code></td>
-                  <td><code>--ds-size-1</code></td>
-                  <td>the icon's drop to the first line</td>
+                  <td><code>--genai-welcome-suggestion-line-height</code></td>
+                  <td><code>1lh</code></td>
+                  <td>the question's line, which the icon is centred on</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-icon-size</code></td>
+                  <td><code>--ds-icon-size</code></td>
+                  <td>the icon's size, to centre it on the first line</td>
                 </tr>
                 <tr>
                   <td><code>--genai-welcome-suggestion-padding-block</code></td>

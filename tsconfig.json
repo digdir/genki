@@ -77,9 +77,6 @@
       "path": "packages/port-embedding"
     },
     {
-      "path": "packages/providers-colbert"
-    },
-    {
       "path": "packages/port-tools"
     },
     {
@@ -183,6 +180,9 @@
     },
     {
       "path": "apps/workspace"
+    },
+    {
+      "path": "apps/assistant"
     },
     {
       "path": "apps/docs"

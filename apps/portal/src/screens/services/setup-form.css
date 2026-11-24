@@ -1,0 +1,164 @@
+.setup-form-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 720px);
+  gap: 32px;
+  align-items: start;
+}
+
+.setup-form-layout[data-with-chat] {
+  grid-template-columns: var(--chat-width, 400px) 16px minmax(0, 720px);
+  gap: 0 16px;
+}
+
+.setup-form {
+  min-width: 0;
+}
+
+/* Below the tab row, which stays at the top of the page (49 px). */
+.setup-form-chat {
+  position: sticky;
+  top: 64px;
+  display: flex;
+  min-width: 0;
+  min-height: 640px;
+  height: calc(100dvh - 80px);
+  border-radius: var(--ds-border-radius-lg);
+  background: var(--ds-color-neutral-background-tinted);
+}
+
+.setup-form-chat .assistant {
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 0;
+  background: none;
+  padding: 16px;
+  gap: 12px;
+}
+
+.setup-form-chat .assistant-head {
+  padding: 0;
+  border: 0;
+}
+
+.setup-form-chat .assistant-title {
+  font-size: 1.0625rem;
+}
+
+.setup-form-chat .assistant-log {
+  flex: 1 1 auto;
+  padding: 0;
+  gap: 12px;
+  min-height: 0;
+}
+
+.setup-form-chat .msg-text {
+  border: 0;
+  padding: 8px 12px;
+  border-radius: var(--ds-border-radius-lg);
+  background: var(--ds-color-neutral-background-default);
+}
+
+.setup-form-chat .msg-user .msg-text {
+  background: var(--ds-color-neutral-surface-tinted);
+}
+
+.setup-form-chat .assistant-compose {
+  border: 0;
+  padding: 0;
+  background: none;
+}
+
+/* The same writing box as the chat: rounded, the send arrow inside, no attachments. */
+.compose-chat {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 8px 8px 16px;
+  border: 1px solid var(--ds-color-neutral-border-default);
+  border-radius: var(--ds-border-radius-lg);
+  background: var(--ds-color-neutral-background-default);
+  box-shadow: var(--ds-shadow-sm);
+}
+
+.compose-chat .compose-field {
+  flex: 1 1 auto;
+}
+
+.compose-chat textarea {
+  border: 0;
+  padding: 4px 0;
+  resize: none;
+  min-height: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.compose-chat textarea:focus-visible {
+  outline: none;
+}
+
+.compose-chat:focus-within {
+  outline: 3px solid var(--ds-color-focus-outer);
+  outline-offset: 2px;
+}
+
+.setup-form-handle {
+  align-self: stretch;
+  min-height: 640px;
+  cursor: col-resize;
+  touch-action: none;
+  display: flex;
+  justify-content: center;
+}
+
+.setup-form-handle::before {
+  content: '';
+  width: 1px;
+  height: 100%;
+  background: var(--ds-color-neutral-border-subtle);
+}
+
+.setup-form-handle:hover::before,
+.setup-form-handle:focus-visible::before {
+  width: 3px;
+  background: var(--ds-color-accent-base-default);
+}
+
+.setup-form-handle:focus-visible {
+  outline: 3px solid var(--ds-color-focus-outer);
+  outline-offset: 2px;
+}
+
+.setup-form-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.own-documents-drop {
+  background: var(--ds-color-accent-surface-tinted);
+}
+
+.own-documents-drop:hover {
+  background: var(--ds-color-accent-surface-hover);
+}
+
+/* On a narrow page the chat goes under the form, at its own height. */
+@container page (max-width: 899px) {
+  .setup-form-layout[data-with-chat] {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+
+  .setup-form-handle {
+    display: none;
+  }
+
+  .setup-form-chat {
+    position: static;
+    order: 2;
+    height: auto;
+  }
+}

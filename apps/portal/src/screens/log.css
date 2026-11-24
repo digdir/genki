@@ -599,6 +599,7 @@
   word-break: break-word;
   border-radius: var(--ds-border-radius-md);
   background: var(--ds-color-neutral-background-tinted);
+  position: relative;
 }
 
 .log-filters {
@@ -734,6 +735,7 @@
 
 .log-table-wrap {
   overflow-x: auto;
+  position: relative;
 }
 
 .log-table {

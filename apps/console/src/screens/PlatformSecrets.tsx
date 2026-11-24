@@ -38,6 +38,7 @@ export const PlatformSecrets = ({ api }: { api: ApiClient }) => {
   const [state, retry] = useAsync((signal) => api.platformSecrets(signal), [api]);
   const flash = useFlash();
   const [editing, setEditing] = useState<Editing | undefined>();
+  const [deleting, setDeleting] = useState<PlatformSecret | undefined>();
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
 
@@ -68,6 +69,17 @@ export const PlatformSecrets = ({ api }: { api: ApiClient }) => {
     }
     setValue('');
     flash.show(t('platformSecrets.saved', { name: target }));
+    retry();
+  };
+
+  const remove = async (reason: string) => {
+    if (!deleting) return;
+    try {
+      await api.deleteSecret(deleting.name, reason);
+    } catch (error) {
+      throw new DialogError(problemText(error, t('platformSecrets.deleteFailed')));
+    }
+    flash.show(t('platformSecrets.deleted', { name: deleting.name }));
     retry();
   };
 
@@ -155,6 +167,20 @@ export const PlatformSecrets = ({ api }: { api: ApiClient }) => {
                     >
                       {t(secret.set ? 'platformSecrets.replace' : 'platformSecrets.set')}
                     </Button>
+                    {secret.set && secret.usedBy.length === 0 ? (
+                      <Button
+                        data-size="sm"
+                        variant="tertiary"
+                        data-color="danger"
+                        aria-label={t('platformSecrets.deleteLabel', { name: secret.name })}
+                        onClick={() => {
+                          flash.clear();
+                          setDeleting(secret);
+                        }}
+                      >
+                        {t('platformSecrets.delete')}
+                      </Button>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               ))}
@@ -162,6 +188,14 @@ export const PlatformSecrets = ({ api }: { api: ApiClient }) => {
           </Table>
         </TableRegion>
       )}
+      <ReasonDialog
+        open={deleting !== undefined}
+        title={deleting ? t('platformSecrets.deleteTitle', { name: deleting.name }) : ''}
+        text={t('platformSecrets.deleteText')}
+        confirmLabel={t('platformSecrets.delete')}
+        onClose={() => setDeleting(undefined)}
+        onConfirm={remove}
+      />
       <ReasonDialog
         open={editing !== undefined}
         title={title}

@@ -38,7 +38,7 @@ export const rrfMerge = (lists: Hit[][], k: number, limit: number): SearchResult
   };
 };
 
-// A raw statement timeout on the platform database, or the knowledge database's KnowledgeError for it.
+// A raw statement timeout from Postgres, or the knowledge database's KnowledgeError for it.
 const timedOut = (error: unknown) => {
   const code = (error as { code?: string } | null)?.code;
   return code === '57014' || code === 'timeout';

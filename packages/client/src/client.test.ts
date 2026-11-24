@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError, createClient, selection } from './index.js';
+import { ApiError, apiErrorFrom, createClient, selection } from './index.js';
 
 const sse = (chunks: unknown[], headers: Record<string, string> = {}) =>
   new Response(
@@ -421,6 +421,32 @@ describe('@genai/client requests', () => {
     expect(calls[0]?.init.method).toBe('POST');
     expect(new Headers(calls[0]?.init.headers).get('x-user-id')).toBe('ola');
     expect(cancelled).toEqual({ taskId: 'task/1', status: 'running' });
+  });
+
+  it('takes the code from a genki problem type when the body names no code', async () => {
+    const problem = {
+      type: 'urn:genai:problem:locked-environment',
+      status: 403,
+      title: 'Låst miljø',
+      detail: 'Testmiljøet er låst for denne tjenesten.',
+    };
+    const error = await apiErrorFrom(
+      new Response(JSON.stringify(problem), {
+        status: 403,
+        headers: { 'content-type': 'application/problem+json' },
+      }),
+    );
+    expect(error).toMatchObject({
+      status: 403,
+      code: 'locked-environment',
+      message: 'Testmiljøet er låst for denne tjenesten.',
+    });
+    const other = await apiErrorFrom(
+      new Response(JSON.stringify({ ...problem, type: 'https://example.no/problem' }), {
+        status: 403,
+      }),
+    );
+    expect(other.code).toBeUndefined();
   });
 
   it('throws the refusal of a cancel for a finished run as an ApiError', async () => {

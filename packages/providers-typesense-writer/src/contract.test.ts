@@ -22,12 +22,10 @@ import {
   typesenseDatasetOptions,
 } from '@genai/providers-typesense';
 import { collectionSchemas } from '@genai/providers-typesense/contract';
-import { SharedClusterRefused, typesenseIndexWriter } from './index.js';
+import { typesenseIndexWriter } from './index.js';
 
 const image = 'typesense/typesense:30.2';
 const apiKey = randomUUID();
-
-const hostOf = (url: string) => new URL(url.includes('://') ? url : `https://${url}`).hostname;
 
 let started: Promise<{ container: StartedTestContainer; baseURL: string }> | undefined;
 const throwaway = () => {
@@ -38,11 +36,6 @@ const throwaway = () => {
       .withWaitStrategy(Wait.forHttp('/health', 8108).forStatusCode(200))
       .start();
     const baseURL = `http://${container.getHost()}:${container.getMappedPort(8108)}`;
-    const shared = process.env.TYPESENSE_URL;
-    if (shared && hostOf(shared) === hostOf(baseURL)) {
-      await container.stop();
-      throw new Error('refusing to run the contract against the configured TYPESENSE_URL host');
-    }
     return { container, baseURL };
   })();
   return started;
@@ -121,7 +114,6 @@ indexWriterContract('typesense', async ({ dataset }) => {
 });
 
 describe('typesense index writer', () => {
-  const credential = { kind: 'api-key' as const, key: async () => 'unused' };
   const signal = new AbortController().signal;
 
   it('lets the reader name the generation the aliases serve after each promote', async () => {
@@ -141,40 +133,6 @@ describe('typesense index writer', () => {
       generation: 'g2',
       collections: Object.values((config.options as { collections: object }).collections),
     });
-  });
-
-  it('refuses the shared search-only host before sending anything', () => {
-    let requests = 0;
-    const adapter = typesenseIndexWriter({
-      sharedClusterUrls: ['https://search.example.no:443'],
-      fetch: async () => {
-        requests += 1;
-        return new Response('{}');
-      },
-    });
-    expect(() =>
-      adapter.connect(
-        { baseURL: 'http://SEARCH.example.no:8108', credential, options: {}, timeoutMs: 1000 },
-        { signal },
-      ),
-    ).toThrow(SharedClusterRefused);
-    expect(requests).toBe(0);
-  });
-
-  it('refuses the host in TYPESENSE_URL by default', () => {
-    const before = process.env.TYPESENSE_URL;
-    process.env.TYPESENSE_URL = 'https://shared.example.no';
-    try {
-      expect(() =>
-        typesenseIndexWriter().connect(
-          { baseURL: 'https://shared.example.no:8108', credential, options: {}, timeoutMs: 1000 },
-          { signal },
-        ),
-      ).toThrow(expect.objectContaining({ code: 'forbidden' }));
-    } finally {
-      if (before === undefined) delete process.env.TYPESENSE_URL;
-      else process.env.TYPESENSE_URL = before;
-    }
   });
 
   it('probe succeeds on a reachable endpoint and fails clearly otherwise', async () => {

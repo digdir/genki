@@ -71,13 +71,11 @@ const Editor = ({
   api,
   tenant,
   serviceId,
-  latest,
   initial,
 }: {
   api: ApiClient;
   tenant: string;
   serviceId: string;
-  latest: PublishedDefinition;
   initial: { text: string; files: Record<string, string>; revision: number };
 }) => {
   const { t, f } = usePortalFormat();
@@ -190,9 +188,7 @@ const Editor = ({
             t('serviceDev.yamlChecking')
           )}
         </span>
-        <a href={`#${servicePath(serviceId, 'versions')}`}>
-          {t('serviceDev.seeChanges', { version: latest.version })}
-        </a>
+        <a href={`#${servicePath(serviceId, 'setup', '/publish')}`}>{t('serviceDev.seeChanges')}</a>
       </div>
       {check.kind === 'invalid' ? <Errors errors={check.errors} /> : null}
       <div className="dv-yaml">
@@ -262,7 +258,6 @@ export const DefinitionEditor = ({ api, tenant, serviceId }: Props) => {
       api={api}
       tenant={tenant}
       serviceId={serviceId}
-      latest={latest}
       initial={{
         text: definitionYaml(draft?.definition ?? latest.definition),
         files: draft?.files ?? latest.files ?? {},

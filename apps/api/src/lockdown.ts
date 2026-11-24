@@ -127,7 +127,18 @@ const refusal = (title: string, detail: string) => ({
   detail,
 });
 
-const lockedProblem = (route: string, principal: Principal) => {
+const people = new Set<Principal['kind']>(['employee', 'operator', 'citizen']);
+
+/** A person who came through a service's frontend and is not let in to use it. */
+const shutOutOfService = (principal: Principal) =>
+  people.has(principal.kind) &&
+  principal.confinedTo?.client !== undefined &&
+  !mayInvokeServices(principal);
+
+const serviceRefusal = () =>
+  refusal(t('problems.serviceLocked'), t('problems.serviceLockedDetail'));
+
+const lockedFor = (route: string, principal: Principal) => {
   if (modelRunRoutes.has(route))
     return (serviceCallRoutes.has(route) ? mayInvokeServices : mayUseModels)(principal)
       ? undefined
@@ -141,6 +152,11 @@ const lockedProblem = (route: string, principal: Principal) => {
   if (secretSendingChecks.has(route) && readOnlyInLockdown(principal))
     return refusal(t('problems.secretChecksLocked'), t('problems.secretChecksLockedDetail'));
   return undefined;
+};
+
+const lockedProblem = (route: string, principal: Principal) => {
+  const found = lockedFor(route, principal);
+  return found && shutOutOfService(principal) ? serviceRefusal() : found;
 };
 
 const problemJson = { 'content-type': 'application/problem+json' };
@@ -184,17 +200,31 @@ const bearerClaims = (request: Request) => {
   }
 };
 
+const clientOf = (claims: Record<string, unknown>) =>
+  typeof claims.client_id === 'string'
+    ? claims.client_id
+    : typeof claims.azp === 'string'
+      ? claims.azp
+      : undefined;
+
+/** `platformClients` are the portal's, workspace's and console's; any other client is a service's frontend. */
 export const refuseUntrustedEntra =
-  (refusedCode: (request: Request) => Promise<string | undefined>): MiddlewareHandler =>
+  (
+    refusedCode: (request: Request) => Promise<string | undefined>,
+    platformClients: ReadonlySet<string> = new Set(),
+  ): MiddlewareHandler =>
   async (c, next) => {
-    if (bearerClaims(c.req.raw)?.acr !== 'entraid') return next();
+    const claims = bearerClaims(c.req.raw);
+    if (claims?.acr !== 'entraid') return next();
     if ((await refusedCode(c.req.raw)) !== 'entra_not_trusted') return next();
+    const client = clientOf(claims);
+    const forService = client !== undefined && !platformClients.has(client);
     return c.json(
       {
         type: entraNotTrustedType,
         status: 403,
-        title: t('problems.entraNotTrusted'),
-        detail: t('problems.entraNotTrustedDetail'),
+        title: t(forService ? 'problems.serviceLocked' : 'problems.entraNotTrusted'),
+        detail: t(forService ? 'problems.serviceLockedDetail' : 'problems.entraNotTrustedDetail'),
       },
       403,
       problemJson,

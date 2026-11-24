@@ -36,7 +36,7 @@ const decoded = (raw: string) => {
   }
 };
 
-/** Refuses every change to an archived service; restoring it through /lifecycle stays open. */
+/** Refuses every change to an archived service; restoring it through /lifecycle and deleting it stay open. */
 export const refuseWritesToArchived =
   (
     caller: (request: Request) => Promise<Principal | undefined>,
@@ -47,6 +47,7 @@ export const refuseWritesToArchived =
     if (reads.has(c.req.method)) return next();
     const match = servicePath.exec(c.req.path);
     if (!match || stillOpen.test(match[3] ?? '')) return next();
+    if (c.req.method === 'DELETE' && match[3] === undefined) return next();
     const tenant = decoded(match[1] as string);
     const service = decoded(match[2] as string);
     const principal = await caller(c.req.raw).catch(() => undefined);

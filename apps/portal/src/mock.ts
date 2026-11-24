@@ -450,6 +450,7 @@ export const exampleShared: SharedService[] = [
   version: version as number,
   riskClass: 'minimal',
   residency: 'norway',
+  dataLocation: 'norway' as const,
   model: 'aivar/borealis-27b',
   exposure: ['rest', 'mcp'],
   variants: [{ id: 'default', publicName: `${String(id)}__default`, aliases: [] }],
@@ -1026,6 +1027,9 @@ export const mockFetch = (
       });
     if (path === '/settings') return json({ data: exampleSettingsCatalog });
     if (/^\/tenants\/[^/]+\/settings\/effective$/.test(path)) return json(exampleEffective);
+    const archivedFlow = /^\/tenants\/[^/]+\/step-flows\/([^/]+)$/.exec(path);
+    if (archivedFlow && init?.method === 'DELETE')
+      return json({ id: decodeURIComponent(archivedFlow[1] ?? ''), archived: true, version: 1 });
     if (/^\/tenants\/[^/]+\/settings\/[^/]+$/.test(path) && init?.method === 'DELETE')
       return json({ task: 'mock', value: null });
     if (/^\/tenants\/[^/]+\/settings\/[^/]+$/.test(path) && init?.method === 'PUT') {
@@ -1218,6 +1222,31 @@ export const mockFetch = (
     const clientReply = clientRoutes(path, url, init, needsReason);
     if (clientReply) return clientReply;
     if (path === '/shared-services') return json({ data: shared });
+    const serviceRoute = /^\/tenants\/[^/]+\/services\/([^/]+)$/.exec(path);
+    if (serviceRoute && init?.method === 'DELETE') {
+      if (needsReason()) return missingReason();
+      const id = decodeURIComponent(serviceRoute[1] ?? '');
+      const found = current.find((s) => s.kind === 'Service' && s.id === id);
+      if (!found) return notFound();
+      if (lifecycles.get(id)?.state !== 'archived')
+        return json(
+          {
+            type: 'urn:genai:problem:service-not-archived',
+            title: 'Tjenesten er ikke arkivert',
+            status: 409,
+            errors: [
+              {
+                path: 'lifecycle',
+                message: 'Bare en arkivert tjeneste kan slettes. Arkiver tjenesten først.',
+              },
+            ],
+          },
+          409,
+        );
+      current = current.filter((s) => s !== found);
+      lifecycles.delete(id);
+      return json({ id, deleted: true, versions: found.versions.length, stepFlows: [] });
+    }
     const lifecycleRoute = /^\/tenants\/[^/]+\/services\/([^/]+)\/lifecycle$/.exec(path);
     if (lifecycleRoute) {
       const id = decodeURIComponent(lifecycleRoute[1] ?? '');

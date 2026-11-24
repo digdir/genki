@@ -22,7 +22,7 @@ let slowCases = false;
 
 const editor = '?view=testsets';
 
-const openTechnical = async () => fireEvent.click(await screen.findByText('Teknisk'));
+const openTechnical = async () => fireEvent.click(await screen.findByText('Tekniske detaljer'));
 
 const openLive = async (
   tab = editor,
@@ -54,7 +54,7 @@ const openLive = async (
   render(<App auth={auth} fetch={fetch} live />);
   await screen.findByRole('tab', { name: 'Kvalitet', selected: true });
   const writes = () => calls.filter((c) => c.method !== 'GET');
-  return { calls, writes };
+  return { calls, writes, fetch };
 };
 
 beforeEach(() => {
@@ -97,7 +97,7 @@ describe('live Testsett', () => {
     expect(screen.getByText('genki/rapportassistenten/rapport-kjerne')).toBeTruthy();
     expect(
       screen.getByText(
-        'Testkjøringer som sendes til Langfuse, knyttes til datasettet i koblingen digdir. Velg datasettet i filteret til en dommer i Langfuse for å la den vurdere testsettet:',
+        'Testkjøringer som sendes til Langfuse, knyttes til datasettet i koblingen digdir. Velg datasettet i filteret til en automatisk vurdering i Langfuse for å la den vurdere testsettet:',
       ),
     ).toBeTruthy();
     expectAccessible();
@@ -155,7 +155,7 @@ describe('live Testsett', () => {
   it('runs the test set on the published version and shows the history and per-case detail', async () => {
     const { writes } = await openLive();
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
-    fireEvent.click(screen.getByRole('radio', { name: 'Publisert versjon' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Publisert utgave' }));
     fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Start kjøringen' }));
     const history = await screen
@@ -167,7 +167,7 @@ describe('live Testsett', () => {
       body: { testSet: 'rapport-kjerne', version: 'published' },
     });
     const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
-    expect(within(row).getByText('Publisert versjon')).toBeTruthy();
+    expect(within(row).getByText('Publisert utgave')).toBeTruthy();
     expect(within(history).getByRole('columnheader', { name: 'Språkmodell' })).toBeTruthy();
     expect(within(row).getByText('gpt-4o-2m-tps')).toBeTruthy();
     expect(within(row).getByText('2 av 3')).toBeTruthy();
@@ -185,7 +185,9 @@ describe('live Testsett', () => {
     expect(within(metrics).getByText('Oppfyller kriteriene')).toBeTruthy();
     expect(within(metrics).getByText('47 % – 77 %')).toBeTruthy();
     expect(
-      within(detail).getByText('Dommer: judge:criteria@1+foundry-openai/gpt-41-dommer'),
+      within(detail).getByText(
+        'Automatisk vurdering: judge:criteria@1+foundry-openai/gpt-41-dommer',
+      ),
     ).toBeTruthy();
     expectAccessible();
   });
@@ -429,14 +431,14 @@ describe('live Testsett', () => {
       1,
     ) as HTMLElement[];
 
-    expect(within(stale as HTMLElement).getByText('Eldre dommer')).toBeTruthy();
-    expect(within(current as HTMLElement).queryByText('Eldre dommer')).toBeNull();
+    expect(within(stale as HTMLElement).getByText('Eldre automatisk vurdering')).toBeTruthy();
+    expect(within(current as HTMLElement).queryByText('Eldre automatisk vurdering')).toBeNull();
     fireEvent.click(
       within(stale as HTMLElement).getByRole('button', { name: /^Vis resultatet fra/ }),
     );
     expect(
       await screen.findByText(
-        `Vurdert av en eldre versjon av ${older} enn den som brukes nå, så poengene kan ikke sammenlignes med kjøringer vurdert av den nåværende.`,
+        `Vurdert av en eldre utgave av ${older} enn den som brukes nå, så poengene kan ikke sammenlignes med kjøringer vurdert av den nåværende.`,
       ),
     ).toBeTruthy();
     expectAccessible();
@@ -586,8 +588,51 @@ describe('live Testsett', () => {
     slowCases = false;
   });
 
-  it('runs only the test cases marked in the list, and clears the marks', async () => {
+  it('runs marked test cases on the published version when the service has no saved draft', async () => {
     const { writes } = await openLive();
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hvor mange tilsyn hadde vi i 2025?' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør det merkede testtilfellet' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start kjøringen' }));
+    await waitFor(() =>
+      expect(writes().at(-1)).toMatchObject({
+        method: 'POST',
+        path: '/tenants/999888777/services/rapportassistenten/eval-runs',
+        body: { testSet: 'rapport-kjerne', version: 'published', cases: ['tc-1'] },
+      }),
+    );
+    expect(screen.queryByText('Tjenesten har ikke noe lagret utkast')).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'Utkastet' })).toBeNull();
+  });
+
+  it('runs marked test cases on the published version when the draft is published after the page opened', async () => {
+    const { writes, fetch } = await openLive(editor, {
+      drafts: { rapportassistenten: { definition: { kind: 'Service' } } },
+    });
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    await screen.findByRole('radio', { name: 'Utkastet' });
+    await fetch('/api/tenants/999888777/services/rapportassistenten/draft', {
+      method: 'DELETE',
+      headers: { 'change-reason': 'Publisert' },
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hvor mange tilsyn hadde vi i 2025?' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør det merkede testtilfellet' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start kjøringen' }));
+    await waitFor(() =>
+      expect(writes().at(-1)).toMatchObject({
+        method: 'POST',
+        path: '/tenants/999888777/services/rapportassistenten/eval-runs',
+        body: { testSet: 'rapport-kjerne', version: 'published', cases: ['tc-1'] },
+      }),
+    );
+    expect(screen.queryByText('Tjenesten har ikke noe lagret utkast')).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('radio', { name: 'Utkastet' })).toBeNull());
+  });
+
+  it('runs only the test cases marked in the list, and clears the marks', async () => {
+    const { writes } = await openLive(editor, {
+      drafts: { rapportassistenten: { definition: { kind: 'Service' } } },
+    });
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
     expect(screen.queryByRole('button', { name: /merkede testtilfellene/ })).toBeNull();
     expect(screen.getByText('Kryss av testtilfeller for å kjøre bare dem.')).toBeTruthy();
@@ -870,7 +915,7 @@ describe('latestRunFact', () => {
   });
 });
 
-describe('live Testsett: Langfuse-dommere', () => {
+describe('live Testsett: automatiske vurderinger i Langfuse', () => {
   const rule = 'svar_oppfyller_kriteriene-eksperimenter';
   const judge = `langfuse:lokal/${rule}`;
   const connections = (path: string) =>
@@ -1019,13 +1064,11 @@ describe('live Testsett: Langfuse-dommere', () => {
 
     await openTechnical();
     const judges = await screen.findByRole('list', {
-      name: 'Dommere i Langfuse som når testsettet',
+      name: 'Automatiske vurderinger i Langfuse som når testsettet',
     });
-    expect(within(judges).getByText(`${rule} – i bruk`)).toBeTruthy();
-    expect(
-      within(judges).getByText('tone-eksperimenter – ikke tatt i bruk under Byggeklosser'),
-    ).toBeTruthy();
-    expect(within(judges).getByText('alle_spenn – stopper sendte kjøringer')).toBeTruthy();
+    expect(within(judges).getByText(`${rule}: i bruk`)).toBeTruthy();
+    expect(within(judges).getByText('tone-eksperimenter: ikke tatt i bruk i Katalog')).toBeTruthy();
+    expect(within(judges).getByText('alle_spenn: stopper sendte kjøringer')).toBeTruthy();
     expect(calls.some((c) => /\/eval-runs\/sending\?testSet=rapport-kjerne$/.test(c.path))).toBe(
       true,
     );
@@ -1051,12 +1094,12 @@ describe('live Testsett: Langfuse-dommere', () => {
 
     expect(
       await screen.findByText(
-        'Dommerne i prosjektet til koblingen lokal kunne ikke leses (HTTP 503), så genki vet ikke hvilke som når testsettet.',
+        'De automatiske vurderingene i prosjektet til koblingen lokal kunne ikke leses (HTTP 503), så genki vet ikke hvilke som når testsettet.',
       ),
     ).toBeTruthy();
     expect(screen.getByText('genki/rapportassistenten/rapport-kjerne')).toBeTruthy();
     expect(
-      screen.queryByRole('list', { name: 'Dommere i Langfuse som når testsettet' }),
+      screen.queryByRole('list', { name: 'Automatiske vurderinger i Langfuse som når testsettet' }),
     ).toBeNull();
   });
 
@@ -1065,9 +1108,9 @@ describe('live Testsett: Langfuse-dommere', () => {
 
     await openTechnical();
     const judges = await screen.findByRole('list', {
-      name: 'Dommere i Langfuse som når testsettet',
+      name: 'Automatiske vurderinger i Langfuse som når testsettet',
     });
-    expect(within(judges).getByText(`${rule} – i bruk`)).toBeTruthy();
+    expect(within(judges).getByText(`${rule}: i bruk`)).toBeTruthy();
     expect(calls.some((c) => /\/eval-runs\/sending\?version=draft/.test(c.path))).toBe(false);
   });
 
@@ -1092,9 +1135,9 @@ describe('live Testsett: Langfuse-dommere', () => {
 
     await openTechnical();
     const judges = await screen.findByRole('list', {
-      name: 'Dommere i Langfuse som når testsettet',
+      name: 'Automatiske vurderinger i Langfuse som når testsettet',
     });
-    expect(within(judges).getByText(`${rule} – i bruk`)).toBeTruthy();
+    expect(within(judges).getByText(`${rule}: i bruk`)).toBeTruthy();
     expect(screen.queryByText(/kunne ikke leses/)).toBeNull();
   });
 
@@ -1114,11 +1157,9 @@ describe('live Testsett: Langfuse-dommere', () => {
 
     await openTechnical();
     const judges = await screen.findByRole('list', {
-      name: 'Dommere i Langfuse som når testsettet',
+      name: 'Automatiske vurderinger i Langfuse som når testsettet',
     });
-    expect(
-      within(judges).getByText('tone-eksperimenter – ikke tatt i bruk under Byggeklosser'),
-    ).toBeTruthy();
+    expect(within(judges).getByText('tone-eksperimenter: ikke tatt i bruk i Katalog')).toBeTruthy();
   });
 
   it('lists judges for other test sets collapsed on the test set', async () => {
@@ -1133,7 +1174,7 @@ describe('live Testsett: Langfuse-dommere', () => {
       ),
     );
 
-    const summary = await screen.findByText('Dommere for andre testsett (1)');
+    const summary = await screen.findByText('Automatiske vurderinger for andre testsett (1)');
     const details = summary.closest('details') as HTMLDetailsElement;
     expect(details.open).toBe(false);
     expect(within(details).getByText('vedtak-eksperimenter')).toBeTruthy();
@@ -1145,7 +1186,9 @@ describe('live Testsett: Langfuse-dommere', () => {
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
     fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
 
-    await screen.findByText(`Langfuse-dommerne vurderer bare kjøringer som sendes: ${rule}.`);
+    await screen.findByText(
+      `De automatiske vurderingene i Langfuse vurderer bare kjøringer som sendes: ${rule}.`,
+    );
     expect(calls.some((c) => /\/eval-runs\/sending\?.*testSet=rapport-kjerne/.test(c.path))).toBe(
       true,
     );
@@ -1160,7 +1203,9 @@ describe('live Testsett: Langfuse-dommere', () => {
     })) as HTMLInputElement;
     const runs = () => writes().filter((w) => w.method === 'POST' && /eval-runs$/.test(w.path));
 
-    await screen.findByText(`Langfuse-dommerne vurderer bare kjøringer som sendes: ${rule}.`);
+    await screen.findByText(
+      `De automatiske vurderingene i Langfuse vurderer bare kjøringer som sendes: ${rule}.`,
+    );
     expect(send.checked).toBe(false);
     expect(send.disabled || send.getAttribute('aria-disabled') === 'true').toBe(false);
     expectAccessible();
@@ -1188,10 +1233,12 @@ describe('live Testsett: Langfuse-dommere', () => {
 
     expect(
       await within(detail).findByText(
-        `Ikke sendt til Langfuse, så Langfuse-dommerne (${rule}) vurderte ikke denne kjøringen.`,
+        `Ikke sendt til Langfuse, så de automatiske vurderingene i Langfuse (${rule}) vurderte ikke denne kjøringen.`,
       ),
     ).toBeTruthy();
-    expect(within(detail).queryByRole('region', { name: 'Langfuse-dommere' })).toBeNull();
+    expect(
+      within(detail).queryByRole('region', { name: 'Automatiske vurderinger i Langfuse' }),
+    ).toBeNull();
     expectAccessible();
   });
 
@@ -1221,7 +1268,9 @@ describe('live Testsett: Langfuse-dommere', () => {
 
   it("shows a Langfuse judge's scores apart from genki's metrics, marked advisory, with judge changed, not-applicable counts, missing scores and a link to the experiment", async () => {
     const detail = await openResult();
-    const langfuse = await within(detail).findByRole('region', { name: 'Langfuse-dommere' });
+    const langfuse = await within(detail).findByRole('region', {
+      name: 'Automatiske vurderinger i Langfuse',
+    });
     const metrics = within(detail).getAllByRole('table')[0] as HTMLElement;
 
     expect(within(metrics).getByText('Oppfyller kriteriene')).toBeTruthy();
@@ -1235,7 +1284,9 @@ describe('live Testsett: Langfuse-dommere', () => {
     expect(
       within(langfuse).getByText(`Ingen vurdering fra ${rule} for 2 av 10 tilfeller.`),
     ).toBeTruthy();
-    expect(within(langfuse).getByText('Dommeren er endret siden kjøringen startet.')).toBeTruthy();
+    expect(
+      within(langfuse).getByText('Den automatiske vurderingen er endret siden kjøringen startet.'),
+    ).toBeTruthy();
     expect(
       within(langfuse)
         .getByRole('link', { name: 'Se eksperimentet i Langfuse' })
@@ -1271,7 +1322,7 @@ describe('live Testsett: Langfuse-dommere', () => {
       await screen.findByRole('checkbox', { name: /Send kjøringen til Langfuse \(lokal\)/ }),
     );
     await screen.findByText(
-      `Kjøringen kan ikke starte. Langfuse-dommerne (${rule}) har ingenting å vurdere, fordi koblingen lokal ikke får svartekst. Slå på «Send tekst» for koblingen, eller slutt å bruke dommerne.`,
+      `Kjøringen kan ikke starte. De automatiske vurderingene i Langfuse (${rule}) har ingenting å vurdere, fordi koblingen lokal ikke får svartekst. Slå på «Send tekst» for koblingen, eller slutt å bruke vurderingene.`,
     );
     const start = screen.getByRole('button', { name: 'Start kjøringen' });
 
@@ -1296,7 +1347,9 @@ describe('live Testsett: Langfuse-dommere', () => {
       .then((found) => found[0] as HTMLElement);
     const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
     fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
-    const langfuse = await screen.findByRole('region', { name: 'Langfuse-dommere' });
+    const langfuse = await screen.findByRole('region', {
+      name: 'Automatiske vurderinger i Langfuse',
+    });
     return within(langfuse).getByText(/^Kostnad rapportert av Langfuse/).textContent;
   };
 
@@ -1329,14 +1382,16 @@ describe('live Testsett: Langfuse-dommere', () => {
         .then((found) => found[0] as HTMLElement);
       const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
       fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
-      const langfuse = await screen.findByRole('region', { name: 'Langfuse-dommere' });
+      const langfuse = await screen.findByRole('region', {
+        name: 'Automatiske vurderinger i Langfuse',
+      });
       return within(langfuse).getByText(/etiketter/).textContent;
     };
 
     expect(
       await agreementOf({ n: 34, kappa: 0.72, observed: 0.85, otherVersions: 20, unpaired: 3 }),
     ).toMatch(
-      /^Samsvar med godkjente etiketter: κ 0,72 · 85\s% like · 34 etiketter \(20 fra andre versjoner av dommeren\) · 3 uten dommerscore$/,
+      /^Samsvar med godkjente etiketter: κ 0,72 · 85\s% like · 34 etiketter \(20 fra andre utgaver av den automatiske vurderingen\) · 3 uten score fra automatisk vurdering$/,
     );
     expect(
       await agreementOf({ n: 12, kappa: 0.5, observed: 0.75, otherVersions: 0, unpaired: 0 }),
@@ -1345,7 +1400,7 @@ describe('live Testsett: Langfuse-dommere', () => {
       'Ingen godkjente etiketter ennå',
     );
     expect(await agreementOf({ n: 0, otherVersions: 0, unpaired: 2 })).toBe(
-      'Ingen godkjente etiketter ennå · 2 uten dommerscore',
+      'Ingen godkjente etiketter ennå · 2 uten score fra automatisk vurdering',
     );
   });
 
@@ -1369,10 +1424,15 @@ describe('live Testsett: Langfuse-dommere', () => {
       .then((found) => found[0] as HTMLElement);
     const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
     fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
-    const langfuse = await screen.findByRole('region', { name: 'Langfuse-dommere' });
+    const langfuse = await screen.findByRole('region', {
+      name: 'Automatiske vurderinger i Langfuse',
+    });
 
-    expect(within(langfuse).getByText(/^Andre dommere i Langfuse-prosjektet/).textContent).toMatch(
-      /^Andre dommere i Langfuse-prosjektet vurderte de samme testtilfellene: 0,09\skr \(0,0100 USD med kurs 9,2826 fra 29\.\soktober 2026\), 1\s000 tokens\. Langfuse hadde ikke rapportert kostnaden for 2 kall da kjøringen ble lagret, så beløpet er minst dette\.$/,
+    expect(
+      within(langfuse).getByText(/^Andre automatiske vurderinger i Langfuse-prosjektet/)
+        .textContent,
+    ).toMatch(
+      /^Andre automatiske vurderinger i Langfuse-prosjektet vurderte de samme testtilfellene: 0,09\skr \(0,0100 USD med kurs 9,2826 fra 29\.\soktober 2026\), 1\s000 tokens\. Langfuse hadde ikke rapportert kostnaden for 2 kall da kjøringen ble lagret, så beløpet er minst dette\.$/,
     );
   });
 
@@ -1400,7 +1460,7 @@ describe('live Testsett: Langfuse-dommere', () => {
 
     fireEvent.click(send);
     const refusal = await screen.findByText(
-      `Kjøringen kan ikke starte. Langfuse kjører alle aktive dommere i prosjektet til koblingen lokal på kjøringen, også dem genki ikke leser. Ta i bruk under Byggeklosser, eller slå av i Langfuse: ${rule}. Slå av i Langfuse, fordi genki ikke kan lese dem: verktøy-eksperimenter.`,
+      `Kjøringen kan ikke starte. Langfuse kjører alle aktive automatiske vurderinger i prosjektet til koblingen lokal på kjøringen, også dem genki ikke leser. Ta i bruk i Katalog, eller slå av i Langfuse: ${rule}. Slå av i Langfuse, fordi genki ikke kan lese dem: verktøy-eksperimenter.`,
     );
     const start = screen.getByRole('button', { name: 'Start kjøringen' });
     expect(refusal.closest('.ds-alert')?.getAttribute('data-color')).toBe('danger');
@@ -1436,7 +1496,7 @@ describe('live Testsett: Langfuse-dommere', () => {
 
     fireEvent.click(send);
     const refusal = await screen.findByText(
-      'Kjøringen kan ikke starte. Dommerne i prosjektet til koblingen lokal kunne ikke leses (HTTP 404), så genki vet ikke hvilke dommere Langfuse ville kjørt på kjøringen.',
+      'Kjøringen kan ikke starte. De automatiske vurderingene i prosjektet til koblingen lokal kunne ikke leses (HTTP 404), så genki vet ikke hvilke vurderinger Langfuse ville kjørt på kjøringen.',
     );
     const start = screen.getByRole('button', { name: 'Start kjøringen' });
     expect(refusal.closest('.ds-alert')?.getAttribute('data-color')).toBe('danger');

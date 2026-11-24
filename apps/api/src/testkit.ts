@@ -11,8 +11,9 @@ import {
   type PluginSchemas,
   type SettingDefinition,
 } from '@genai/definitions';
-import { createAdmin } from './admin.js';
+import { createAdmin, type ModelAdmin } from './admin.js';
 import { createApp, type PlatformOptions } from './app.js';
+import { environmentsOf } from './service-environments.js';
 import type { Authenticator } from './http.js';
 import {
   altinnPolicy,
@@ -24,7 +25,8 @@ import {
 } from '@genai/identity';
 import type { EnvironmentTier } from '@genai/composition';
 import type { BlobStore } from '@genai/port-blob';
-import type { ProcessorRecordCheck } from '@genai/port-model';
+import type { DiscoveredModelStore, ProcessorRecordCheck } from '@genai/port-model';
+import type { FederatedTokens } from '@genai/kernel';
 import type { TriggerRunStore } from '@genai/jobs';
 import type { EgressOptions } from '@genai/providers-mcp-client';
 import type { DescriptorRegistry } from '@genai/operations';
@@ -274,12 +276,16 @@ export interface BootOptions {
   blobStore?: BlobStore;
   fakeKey?: string;
   demoRecorderKeyDigest?: string;
+  configEntries?: InMemoryConfigEntryStore;
+  federatedTokens?: FederatedTokens;
+  onWarning?: (message: string) => void;
+  discoveredModels?: DiscoveredModelStore;
   policy?: (inner: PolicyDecisionPoint, configEntries: ConfigEntryStore) => PolicyDecisionPoint;
 }
 
 export const bootPlatform = async (options: BootOptions = {}) => {
   const people = options.people ?? {};
-  const configEntries = new InMemoryConfigEntryStore();
+  const configEntries = options.configEntries ?? new InMemoryConfigEntryStore();
   const settings = new SettingsRegistry(platformSettings);
   const authenticator = createAuthenticator(options.verifier ? { verifier: options.verifier } : {});
   const admit = admitMaskinportenClients(
@@ -307,6 +313,9 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     ...(options.mediaOutput ? { mediaOutput: options.mediaOutput } : {}),
     ...(options.processorRecords ? { processorRecords: options.processorRecords } : {}),
     ...(options.blobStore ? { blobStore: options.blobStore } : {}),
+    ...(options.federatedTokens ? { federatedTokens: options.federatedTokens } : {}),
+    ...(options.onWarning ? { onWarning: options.onWarning } : {}),
+    ...(options.discoveredModels ? { discoveredModels: options.discoveredModels } : {}),
     ...(options.demoRecorderKeyDigest
       ? { demoRecorderKeyDigest: options.demoRecorderKeyDigest }
       : {}),
@@ -328,25 +337,35 @@ export const bootPlatform = async (options: BootOptions = {}) => {
   });
   for (const id of options.services ?? [])
     await platform.definitions.publish(testService(id), 'test', 'test', files);
+  const modelAdmin: ModelAdmin = {
+    describe: () => platform.models.describe(),
+    refresh: () => platform.models.refresh(),
+    learnCapabilities: platform.learnModelCapabilities,
+    classify: platform.models.classify.bind(platform.models),
+  };
   const admin = createAdmin({
     store: platform.definitions,
     plugins: platform.plugins,
     settings,
     extensions: platform.extensions,
-    models: platform.models,
+    models: modelAdmin,
     tenants: () => platform.directory.list(),
     lifecycle: platform.lifecycle,
   });
   const app = createApp('test', {
+    modelDiscovery: platform.modelDiscovery.state,
+    discoveryConnections: platform.modelDiscovery.connections,
     platform: {
       store: platform.definitions,
       plugins: platform.plugins,
       settings,
       admin,
+      models: modelAdmin,
       tenantGate: platform.tenantGate,
       registered: platform.registered,
       caller: platform.caller,
       unmaskedInput: platform.unmaskedInput,
+      environments: (tenant, service) => environmentsOf(configEntries, tenant, service),
       tasks: kernelTaskReader(platform.kernel, {
         kind: 'operator',
         issuer: 'platform',

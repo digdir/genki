@@ -556,7 +556,7 @@ const osloHour = (at: Date) =>
     }).format(at),
   );
 
-export const summaryHour = 13;
+export const summaryHour = 12;
 
 const lateAllowance = 2 * 60 * 60 * 1000;
 const earlyAllowance = 60 * 1000;
@@ -612,7 +612,7 @@ export const weeklyDecision = async (deps: {
     return {
       due: false,
       reason:
-        'This schedule is not the one for 13:00 in Oslo today, or it started more than two hours late; nothing to do.',
+        'This schedule is not the one for 12:00 in Oslo today, or it started more than two hours late; nothing to do.',
     };
   try {
     if (await weeklyPostedThisWeek(deps.api, deps.repo, deps.runId, at))

@@ -56,6 +56,7 @@ import { digdir, files, klarsprak, plugins, settingDefinitions } from './testkit
 
 const model = (id: string, residency: ModelDescription['residency']): ModelDescription => ({
   id,
+  kind: 'chat',
   endpoint: 'foundry',
   deployment: id.split('/')[1] ?? id,
   residency,
@@ -161,6 +162,7 @@ const setup = async ({
   tools = [] as string[],
   guardrails = [] as string[],
   governed = false,
+  extraModels = [] as ModelDescription[],
 } = {}) => {
   const runs = new InMemoryEvalRunStore();
   const blockSet = new Set(blockRefs);
@@ -224,6 +226,7 @@ const setup = async ({
         { ...model('foundry/gpt-4o', 'norway'), maker: 'OpenAI' },
         model('azure/gpt-41', 'eu'),
         model('openai/gpt-5', 'global'),
+        ...extraModels,
       ],
     },
     knowledge: { resolve: () => undefined },
@@ -345,6 +348,24 @@ describe('building blocks API', () => {
     expect(res.status).toBe(200);
     expect(asked).toBe(0);
     expect(runLists).toBe(1);
+  });
+
+  it('names model blocks readably, deciding colliding names only among the models the tenant sees', async () => {
+    const catalog = {
+      visibleTo: () => [],
+      list: () => [],
+      get: (_kind: string, id: string) =>
+        id === 'annen/gpt-41' ? { id, kind: 'model', scope: '405003309', spec: {} } : undefined,
+      history: async () => [],
+    } as unknown as CatalogRegistry;
+    const { send } = await setup({ catalog, extraModels: [model('annen/gpt-41', 'eu')] });
+
+    const list = await json<BuildingBlockList>(await send(`${base}?kind=model`, 'kari'));
+
+    expect(list.data.find((b) => b.id === 'azure/gpt-41')).toMatchObject({
+      name: 'GPT-41',
+    });
+    expect(list.data.some((b) => b.id === 'annen/gpt-41')).toBe(false);
   });
 
   it('a model outside the tenant residencies is not_allowed with the policy text', async () => {
@@ -1191,7 +1212,7 @@ describe('search engines in the catalogue', () => {
     });
     const items = [
       endpoint('kudos-typesense', 'typesense'),
-      endpoint('platform-pg', 'pgvector', { tenants: '*' }),
+      endpoint('kunnskapsserveren', 'pgvector', { tenants: '*' }),
       {
         kind: 'dataset' as const,
         id: 'digdir/kudos',
@@ -1202,7 +1223,9 @@ describe('search engines in the catalogue', () => {
     ];
     const catalog = {
       visibleTo: (tenant: string) =>
-        items.filter((i) => i.kind !== 'knowledge-endpoint' || i.id === 'platform-pg' || !tenant),
+        items.filter(
+          (i) => i.kind !== 'knowledge-endpoint' || i.id === 'kunnskapsserveren' || !tenant,
+        ),
       list: ({ kind }: { kind?: string } = {}) => items.filter((i) => !kind || i.kind === kind),
       get: (kind: string, id: string) => items.find((i) => i.kind === kind && i.id === id),
       history: async () => [],
@@ -1219,13 +1242,13 @@ describe('search engines in the catalogue', () => {
 
     const list = await json<BuildingBlockList>(await send(`${base}?kind=search_engine`, 'kari'));
 
-    expect(list.data.map((b) => b.id).sort()).toEqual(['kudos-typesense', 'platform-pg']);
+    expect(list.data.map((b) => b.id).sort()).toEqual(['kudos-typesense', 'kunnskapsserveren']);
     expect(list.data.find((b) => b.id === 'kudos-typesense')).toMatchObject({
       version: '3',
       kind: 'search_engine',
       usedBy: [{ id: 'ka' }],
     });
-    expect(list.data.find((b) => b.id === 'platform-pg')?.usedBy).toEqual([]);
+    expect(list.data.find((b) => b.id === 'kunnskapsserveren')?.usedBy).toEqual([]);
   });
 });
 
@@ -1266,6 +1289,52 @@ describe('platform building block texts', () => {
         name: 'Min flyt',
         description: 'Skrevet av oss',
       });
+  });
+
+  it("keeps a platform Block definition out of another tenant's building blocks and counts", async () => {
+    const { send, store } = await setup({ blockRefs: ['retrieve@1'] });
+    await store.publish(flow('basic-rag', 'Basic RAG', 'Plan queries'), 'test', 'første versjon');
+    const listOf = async () =>
+      json<BuildingBlockList>(await send('/tenants/999888777/building-blocks', 'ola'));
+    const before = await listOf();
+
+    const published = await store.publish(
+      {
+        apiVersion: 'genai/v1',
+        kind: 'Block',
+        metadata: { tenant: digdir, id: 'chat' },
+        spec: {
+          tier: 'built-in',
+          builtIn: 'chat',
+          title: { nb: 'Chat' },
+          zones: ['main'],
+          sharing: 'everyone',
+        },
+      },
+      'test',
+      'genkis chat',
+    );
+    const after = await listOf();
+
+    expect(published.ok).toBe(true);
+    expect(after.data.map((b) => b.id)).toEqual(before.data.map((b) => b.id));
+    expect(after.data.some((b) => b.id === 'chat')).toBe(false);
+    expect(after.counts).toEqual(before.counts);
+  });
+
+  it("calls the platform organisation's own step flows its own, and the flows shipped with genki Digdir's", async () => {
+    const { send, store } = await setup({ blockRefs: ['retrieve@1'] });
+    await store.publish(flow('basic-rag', 'Basic RAG', 'Plan queries'), 'test', 'første versjon');
+    await store.publish(flow('egen-flyt', 'Min flyt', 'Skrevet av oss'), 'test', 'første versjon');
+
+    const list = (await json<BuildingBlockList>(await send(`${base}?kind=step_flow`, 'kari'))).data;
+
+    expect(list.find((b) => b.id === 'egen-flyt')?.publisher).toEqual({
+      type: 'own',
+      name: digdir,
+    });
+    expect(list.find((b) => b.id === 'basic-rag')?.publisher.type).toBe('digdir');
+    expect(list.find((b) => b.id === 'retrieve@1')?.publisher.type).toBe('digdir');
   });
 });
 
@@ -1553,7 +1622,7 @@ describe('building-block settings at run time', () => {
     await expect(atRun).rejects.toMatchObject({
       code: 'forbidden',
       message:
-        'Byggeklossen «foundry/gpt-4o» er slått av for virksomheten. Slå den på igjen under Byggeklosser, eller fjern den fra tjenesten.',
+        'Delen «foundry/gpt-4o» er slått av for virksomheten. Slå den på igjen under Katalog, eller fjern den fra tjenesten.',
     });
     expect(seen).toHaveLength(1);
     expect(seen[0]).not.toHaveProperty(runtimeBlocksKey);
@@ -1802,7 +1871,7 @@ describe('facts a building block page shows', () => {
     );
 
     expect(recorded.processor).toEqual({ recorded: false });
-    expect(recorded.maker).toBeUndefined();
+    expect(recorded.maker).toBe('OpenAI');
     expect(recorded.operations).toEqual([
       { operation: 'chat', api: 'openai/chat-completions@1', builtIn: true, maturity: 'test' },
     ]);

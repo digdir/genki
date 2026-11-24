@@ -103,7 +103,7 @@ export const about = {
   dhWhereGlobal: 'Global processing, can be outside the EU/EEA',
   dhStoredWhere: 'Azure, the Netherlands',
   dhHowLongStandard: '90 days (standard)',
-  dhHowLongDataset: 'Until the dataset is deleted',
+  dhHowLongDataset: 'Until the document collection is deleted',
   dhStoredHeading: 'What is stored, and for how long',
   dhStoredLede:
     'Questions, answers and the sources an answer is based on are stored in Azure in the Netherlands, so the organisation can see what its services answered and correct mistakes.',
@@ -111,13 +111,14 @@ export const about = {
     'The standard is 90 days. The organisation can choose 7 days or 1 year under Settings.',
   dhStored2:
     'High-risk services keep it for at least 183 days, limited-risk services for at least 30 days.',
-  dhStored3: 'The documents in datasets are kept until the organisation deletes the dataset.',
+  dhStored3:
+    'The documents in document collections are kept until the organisation deletes the collection.',
   dhSubprocessorsHeading: 'Sub-processors',
   dhMicrosoft: 'Microsoft (Azure)',
   dhMicrosoftText:
-    'Runs the platform and the models in Azure AI Foundry. Stores questions, answers and datasets in the Netherlands.',
+    'Runs the platform and the models in Azure AI Foundry. Stores questions, answers and document collections in the Netherlands.',
   dhMicrosoftRuns:
-    'Runs {models} in {regions}. Stores questions, answers and datasets in the Netherlands.',
+    'Runs {models} in {regions}. Stores questions, answers and document collections in the Netherlands.',
   dhGateway: 'The AI gateway in Norway',
   dhGatewayText: 'Runs {models}. Data does not leave Norway.',
   siteName: 'Genki',

@@ -47,8 +47,9 @@ export const apiCall = {
 
 export const runFailure = {
   hintMisconfigured: 'Fix the setup of the step in the builder, and try again.',
-  hintForbidden: 'Check that the service has access to the datasets and building blocks it uses.',
-  hintSmaller: 'Try with less input, or raise the limit for the service under Settings.',
+  hintForbidden:
+    'Check that the service has access to the document collections and the catalogue parts it uses.',
+  hintSmaller: 'Try with less input, or raise the limit for the service under Limits and logging.',
   hintDeadline: 'Try with less input, or split the job up.',
   defaultTitle: 'The service failed while running.',
   stepFailed: 'The step "{step}" failed.',
@@ -59,41 +60,56 @@ export const runFailure = {
 } satisfies Translation<typeof runFailureSource>;
 
 export const publish = {
+  leftHeading: 'This is left before you can publish',
+  leftProblem: '{area}: {problem}',
+  leftConfirmRisk: 'Confirm the risk level',
+  leftForbidden: 'Remove what the AI Act forbids, under Risk and the AI Act',
+  leftUnmasked: 'Give a reason for the content sent unmasked',
+  leftChecking: 'Wait until the draft has been checked',
+  testsetHeading: 'Recommended: make a test set',
+  testsetFirst:
+    'Without a test set you cannot see whether changes make the results worse. Test sets are made under Quality once the service is published. It does not stop publishing.',
+  colWhat: 'What',
+  colVersion: 'Edition {next}',
+  confirmed: 'Confirmed',
+  notConfirmed: 'Not confirmed',
+  cannotYet:
+    'You cannot publish yet. Do what is listed under «This is left before you can publish» first.',
   lockedByGate:
     'Publishing is locked because a quality requirement is not met. See the explanation above.',
-  publishedFirst: 'Version {next} is published and in use.',
+  publishedFirst: 'Edition {next} is published and in use.',
   publishedNext:
-    'Version {next} is published and in use. Version {current} can be restored under Versions.',
+    'Edition {next} is published and in use. You can undo the publishing under History.',
   failed: 'Publishing failed. Nothing has changed. Try again.',
-  publishedToTest:
-    'Version {next} is published to test. It is only available in the test environment.',
+  publishedToTest: 'Edition {next} is now the test edition. It is not in use yet.',
   updateAvailable: 'Update available',
   fromDigdir: 'From Digdir',
   updateIntro:
-    'Digdir has made new versions available. The service does not switch on its own. Your test set has been run with the new versions.',
+    'Digdir has made new editions available. The service does not switch on its own. Your test set has been run with the new editions.',
   testSet: 'Test set {score}',
   include: 'Include in v{next}',
   changes: 'Changes',
-  firstVersion: 'Version {next}, first version',
-  changedSince: 'Version {next}, changed since version {current}',
-  changedSinceInTest: 'Version {next} in test, changed since version {current}',
+  firstVersion: 'Edition {next}, the first edition',
+  changedSince: 'Edition {next}, changed since edition {current}',
+  changedSinceInTest: 'Test edition {next}, changed since edition {current}',
   updateFromDigdir: 'Update from Digdir: {name}',
   gates: 'Quality requirements',
   passed: 'Passed',
   notPassed: 'Not passed',
   cannotPublishYet: 'Cannot be published yet',
   gatesNotMet: {
-    one: '{failed} of {count} quality requirement is not met. The requirement "{name}" is set by {tenant} and cannot be overridden here. You can still publish to test.',
+    one: '{failed} of {count} quality requirement is not met. The requirement "{name}" is set by {tenant} and cannot be overridden here.',
     other:
-      '{failed} of {count} quality requirements are not met. The requirement "{name}" is set by {tenant} and cannot be overridden here. You can still publish to test.',
+      '{failed} of {count} quality requirements are not met. The requirement "{name}" is set by {tenant} and cannot be overridden here.',
   },
+  gatesNotMetTest: 'You can still publish as a test edition.',
   reasonLabel: 'What changed, and why?',
-  reasonHelp: 'Required. Shown in the version history and in Log under Changes.',
+  reasonHelp: 'Required. Shown in History and in Log under Changes.',
   previousStays:
-    'Version {current} stays in place. You can roll back to it at any time under Versions.',
+    'Edition {current} stays in place. You can undo the publishing at any time under History.',
   publish: 'Publish',
-  publishToTest: 'Publish to test',
-  statusPublished: 'Version {next} is published.',
+  publishToTest: 'Publish as test edition',
+  statusPublished: 'Edition {next} is published.',
   statusLocked: 'Publishing is locked until all requirements are passed.',
   statusAllPassed: 'All requirements are passed.',
 } satisfies Translation<typeof publishSource>;

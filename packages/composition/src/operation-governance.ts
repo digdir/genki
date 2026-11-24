@@ -29,8 +29,8 @@ export const maturityState = (
   environment: EnvironmentTier,
   history: readonly ConfigEntry<MaturityRecord>[],
 ): MaturityState => {
-  const last = history.filter((e) => !e.deleted).at(-1);
-  if (!last) return { kind, environment, maturity: 'test' };
+  const last = history.at(-1);
+  if (!last || last.deleted) return { kind, environment, maturity: 'test' };
   return { kind, environment, maturity: last.spec.maturity, by: last.by, at: last.at };
 };
 
@@ -92,7 +92,9 @@ export const operationGovernance = (
     maturity: async (kind) => (await maturityOf(kind)).maturity,
     maturities: async () =>
       Promise.all(
-        (await store.latest({ kind: maturityEntryKind, scope: tier })).map((e) => maturityOf(e.id)),
+        (await store.latest({ kind: maturityEntryKind, scope: tier }))
+          .filter((e) => !e.deleted)
+          .map((e) => maturityOf(e.id)),
       ),
     processorRecord,
     processorRecorded: async (endpoint) => (await processorRecord(endpoint)) !== undefined,

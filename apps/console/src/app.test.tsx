@@ -128,17 +128,17 @@ describe('operator shell', () => {
         .map((l) => l.getAttribute('aria-labelledby')),
     ).toEqual(['gruppe-customers', 'gruppe-platform', 'gruppe-support']);
     for (const label of [
-      'Byggeklosser',
+      'Tillegg',
       'Søkemotorer',
       'Innstillinger',
       'Kvalitet',
-      'Kvalitetsmatrise og dommere',
+      'Kvalitet i alle tjenester',
       'Sporing og evaluering',
     ])
       expect(within(menu).getByRole('link', { name: label })).toBeTruthy();
     expect(within(menu).queryByRole('link', { name: 'Dommere' })).toBeNull();
     expect(
-      within(menu).getByRole('link', { name: 'Fellestjenester' }).getAttribute('aria-current'),
+      within(menu).getByRole('link', { name: 'Delte tjenester' }).getAttribute('aria-current'),
     ).toBe('page');
     expect(await within(menu).findByRole('link', { name: /3 feil/ })).toBeTruthy();
     expect(await within(menu).findByRole('link', { name: /venter på beslutning/ })).toBeTruthy();

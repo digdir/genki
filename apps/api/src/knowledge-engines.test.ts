@@ -22,7 +22,7 @@ type Schema = {
   [key: string]: unknown;
 };
 
-const pgvector = pgvectorEngine({ pool: {} as Parameters<typeof pgvectorEngine>[0]['pool'] });
+const pgvector = pgvectorEngine();
 
 const drift: Principal = { kind: 'operator', issuer: 'test', subject: 'drift' };
 
@@ -91,7 +91,7 @@ describe('knowledge engine descriptions', () => {
         writer: { needsVectors: true },
       }),
     ]);
-    expect(describeEngines([pgvector.adapter], [])[0]).not.toHaveProperty('dataLocation');
+    expect(describeEngines([pgvector.adapter], [])[0]?.dataLocation).toBe('eu');
   });
 
   it('secret fields carry x-secret in the engine JSON Schema', () => {
@@ -128,7 +128,7 @@ describe('knowledge engine descriptions', () => {
 
     expect((pg.endpoint as Schema).properties).not.toHaveProperty('auth');
     expect((pg.endpointOptions as Schema).properties?.connection).toMatchObject({
-      enumTitles: ['Plattformens database', 'Kunnskapsserveren'],
+      enumTitles: ['Kunnskapsserveren'],
     });
     const profile = (pg.datasetOptions as Schema).properties?.profiles?.additionalProperties;
     expect(profile?.properties?.mode).toMatchObject({

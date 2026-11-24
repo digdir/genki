@@ -166,7 +166,9 @@ export const endpointView = (
   const description = engineOf(deps, item.spec.engine);
   const builtin = description?.builtin ?? false;
   const embeddingModel = embeddingModelOf(datasets);
-  const skipped = deps.catalog.skipped().includes(`knowledge-endpoint ${item.id}`);
+  const skipped = deps.catalog
+    .skipped()
+    .some((s) => s.kind === 'knowledge-endpoint' && s.id === item.id);
   return {
     id: item.id,
     name: typeof item.spec.name === 'string' ? item.spec.name : item.id,

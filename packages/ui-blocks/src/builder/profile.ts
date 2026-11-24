@@ -22,26 +22,29 @@ export interface YearBounds {
   last?: number | undefined;
 }
 
+/** A text in one wording for every language, or one per language of the platform. */
+export type ProfileText = string | Readonly<{ nb: string; en: string }>;
+
 /** One filter field as the reader sees it. Whether its values are integers is the dataset's. */
-export interface ProfileField {
+export interface ProfileField<T extends ProfileText = ProfileText> {
   id: string;
-  label: string;
+  label: T;
   /** The field's name over its row in the next look's filter, singular: «Dokumenttype». */
-  heading?: string | undefined;
+  heading?: T | undefined;
   kind?: FieldKind | undefined;
   /** For a field of `kind: 'year'`, the years it offers. Without it, 1900 up to this year. */
   years?: YearBounds | undefined;
 }
 
 /** One collection as the reader sees it. */
-export interface ProfileCorpus {
+export interface ProfileCorpus<T extends ProfileText = ProfileText> {
   /** The collection's name in the page, «Kudos». */
-  label?: string | undefined;
-  description?: string | undefined;
+  label?: T | undefined;
+  description?: T | undefined;
   /** The fields offered and their order; the rest of the collection's fields are not. */
-  fields?: readonly ProfileField[] | undefined;
+  fields?: readonly ProfileField<T>[] | undefined;
   /** The plural of each document type, for «Leser fra 45 778 årsrapporter». */
-  typePlurals?: Readonly<Record<string, string>> | undefined;
+  typePlurals?: Readonly<Record<string, T>> | undefined;
   /** The field the document type is in, for the line above. */
   typeField?: string | undefined;
   /** Where a document lives: an https address per kind of number, `{id}` where it goes. */
@@ -54,29 +57,88 @@ export interface ProfileCorpus {
 }
 
 /** A trial the reader may turn on in «Innstillinger», «Eksperimenter». */
-export interface ProfileExperiment {
+export interface ProfileExperiment<T extends ProfileText = ProfileText> {
   id: string;
-  title: string;
-  description?: string | undefined;
+  title: T;
+  description?: T | undefined;
   /** Where it is discussed, such as its issue, with the link's words. */
   href?: string | undefined;
-  hrefLabel?: string | undefined;
+  hrefLabel?: T | undefined;
 }
 
 /** The profile as data: JSON only, stored with a layout, and filled in by a host's own profile. */
-export interface ProfileData {
+export interface ProfileData<T extends ProfileText = ProfileText> {
   /** Who answers, in the page and for a screen reader. */
-  assistantName?: string | undefined;
+  assistantName?: T | undefined;
   /** The questions offered under the greeting. */
-  suggestions?: readonly string[] | undefined;
+  suggestions?: readonly T[] | undefined;
   /** The follow-ups offered over the field after an answer (the current look). */
-  followUps?: readonly string[] | undefined;
+  followUps?: readonly T[] | undefined;
   /** Per collection, by its key, as `/v1/models` gives it in `dataset-config-key`. */
-  corpora?: Readonly<Record<string, ProfileCorpus>> | undefined;
-  experiments?: readonly ProfileExperiment[] | undefined;
+  corpora?: Readonly<Record<string, ProfileCorpus<T>>> | undefined;
+  experiments?: readonly ProfileExperiment<T>[] | undefined;
   /** The note at the foot of «Innstillinger». */
-  settingsNote?: string | undefined;
+  settingsNote?: T | undefined;
 }
+
+/** A profile with every text in one language, as an assistant draws it. */
+export type DrawnProfile = ProfileData<string>;
+
+export type ProfileLanguage = 'nb' | 'en';
+
+/** The text in the language, or the one wording it has. */
+export const textIn = (text: ProfileText, language: ProfileLanguage): string =>
+  typeof text === 'string' ? text : text[language];
+
+/** The text with the language's wording changed; one wording for every language stays one. */
+export const withTextIn = (
+  text: ProfileText | undefined,
+  value: string,
+  language: ProfileLanguage,
+): ProfileText =>
+  text === undefined || typeof text === 'string' ? value : { ...text, [language]: value };
+
+const definedOnly = <T extends object>(value: T): T =>
+  Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T;
+
+/** The profile with every text in the language. */
+export const profileIn = (profile: ProfileData, language: ProfileLanguage): DrawnProfile => {
+  const one = (text: ProfileText | undefined) =>
+    text === undefined ? undefined : textIn(text, language);
+  const all = (texts: readonly ProfileText[] | undefined) =>
+    texts?.map((text) => textIn(text, language));
+  const corpus = (c: ProfileCorpus): ProfileCorpus<string> =>
+    definedOnly({
+      ...c,
+      label: one(c.label),
+      description: one(c.description),
+      fields: c.fields?.map((f) =>
+        definedOnly({ ...f, label: textIn(f.label, language), heading: one(f.heading) }),
+      ),
+      typePlurals:
+        c.typePlurals &&
+        Object.fromEntries(
+          Object.entries(c.typePlurals).map(([type, plural]) => [type, textIn(plural, language)]),
+        ),
+    });
+  return definedOnly({
+    assistantName: one(profile.assistantName),
+    suggestions: all(profile.suggestions),
+    followUps: all(profile.followUps),
+    corpora:
+      profile.corpora &&
+      Object.fromEntries(Object.entries(profile.corpora).map(([key, c]) => [key, corpus(c)])),
+    experiments: profile.experiments?.map((e) =>
+      definedOnly({
+        ...e,
+        title: textIn(e.title, language),
+        description: one(e.description),
+        hrefLabel: one(e.hrefLabel),
+      }),
+    ),
+    settingsNote: one(profile.settingsNote),
+  });
+};
 
 // ── The shape ──
 
@@ -86,6 +148,10 @@ const optional = (value: unknown, test: (value: unknown) => boolean) =>
   value === undefined || test(value);
 const isString = (value: unknown): value is string => typeof value === 'string';
 const isStrings = (value: unknown) => Array.isArray(value) && value.every(isString);
+const isLanguageMap = (value: unknown) =>
+  isRecord(value) && Object.keys(value).length === 2 && isString(value.nb) && isString(value.en);
+const isText = (value: unknown): value is ProfileText => isString(value) || isLanguageMap(value);
+const isTexts = (value: unknown) => Array.isArray(value) && value.every(isText);
 const isYear = (value: unknown) => typeof value === 'number' && Number.isInteger(value);
 
 const isKind = (value: unknown): value is FieldKind =>
@@ -96,8 +162,8 @@ const isPattern = (value: string): value is DocumentIdPattern =>
 const isField = (value: unknown) =>
   isRecord(value) &&
   isString(value.id) &&
-  isString(value.label) &&
-  optional(value.heading, isString) &&
+  isText(value.label) &&
+  optional(value.heading, isText) &&
   optional(value.kind, isKind) &&
   optional(
     value.years,
@@ -106,12 +172,12 @@ const isField = (value: unknown) =>
 
 const isCorpus = (value: unknown) =>
   isRecord(value) &&
-  optional(value.label, isString) &&
-  optional(value.description, isString) &&
+  optional(value.label, isText) &&
+  optional(value.description, isText) &&
   optional(value.fields, (fields) => Array.isArray(fields) && fields.every(isField)) &&
   optional(
     value.typePlurals,
-    (plurals) => isRecord(plurals) && Object.values(plurals).every(isString),
+    (plurals) => isRecord(plurals) && Object.values(plurals).every(isText),
   ) &&
   optional(value.typeField, isString) &&
   optional(
@@ -128,10 +194,10 @@ const isCorpus = (value: unknown) =>
 const isExperiment = (value: unknown) =>
   isRecord(value) &&
   isString(value.id) &&
-  isString(value.title) &&
-  optional(value.description, isString) &&
+  isText(value.title) &&
+  optional(value.description, isText) &&
   optional(value.href, isString) &&
-  optional(value.hrefLabel, isString);
+  optional(value.hrefLabel, isText);
 
 /**
  * A profile read from JSON, when it is one: each field of the type it should be, a field's kind and
@@ -140,9 +206,9 @@ const isExperiment = (value: unknown) =>
  */
 export const isProfileData = (value: unknown): value is ProfileData =>
   isRecord(value) &&
-  optional(value.assistantName, isString) &&
-  optional(value.suggestions, isStrings) &&
-  optional(value.followUps, isStrings) &&
+  optional(value.assistantName, isText) &&
+  optional(value.suggestions, isTexts) &&
+  optional(value.followUps, isTexts) &&
   optional(
     value.corpora,
     (corpora) => isRecord(corpora) && Object.values(corpora).every(isCorpus),
@@ -151,7 +217,7 @@ export const isProfileData = (value: unknown): value is ProfileData =>
     value.experiments,
     (experiments) => Array.isArray(experiments) && experiments.every(isExperiment),
   ) &&
-  optional(value.settingsNote, isString);
+  optional(value.settingsNote, isText);
 
 // ── The limits ──
 
@@ -205,6 +271,19 @@ export const isHttpsLink = (link: string) => {
   }
 };
 
+/** A path on the host's own site, `/` first and never `//`, so it opens under whatever hostname draws it. */
+export const isSitePath = (link: string) => {
+  if (!/^\/(?![/\\])[^\\\s]*$/.test(link)) return false;
+  try {
+    return new URL(link.split('{id}').join('0'), 'https://host.invalid').host === 'host.invalid';
+  } catch {
+    return false;
+  }
+};
+
+/** Where a document lives: an https link whose host comes before `{id}`, or a path on the host's own site. */
+export const isDocumentLink = (link: string) => isHttpsLink(link) || isSitePath(link);
+
 /**
  * Every limit a profile breaks, each with its path in the layout: its size, each text's length,
  * each list's length, links that are not https, and a field kind the assembly does not know.
@@ -214,19 +293,20 @@ export const profileProblems = (profile: ProfileData, at = 'profile'): ProfilePr
   const bytes = new TextEncoder().encode(JSON.stringify(profile)).length;
   if (bytes > PROFILE_MAX_BYTES)
     problems.push({ rule: 'profile-too-large', bytes, max: PROFILE_MAX_BYTES });
-  const text = (value: string | undefined, path: string, max: number) => {
-    if (value !== undefined && value.length > max)
-      problems.push({ rule: 'text-too-long', path, max });
+  const text = (value: ProfileText | undefined, path: string, max: number) => {
+    if (value === undefined) return;
+    const wordings = typeof value === 'string' ? [value] : [value.nb, value.en];
+    if (wordings.some((w) => w.length > max)) problems.push({ rule: 'text-too-long', path, max });
   };
   const count = (length: number, path: string, max: number) => {
     if (length > max) problems.push({ rule: 'too-many', path, max });
   };
-  const link = (value: string | undefined, path: string) => {
+  const link = (value: string | undefined, path: string, allowed = isHttpsLink) => {
     if (value === undefined) return;
     text(value, path, profileLimits.url);
-    if (!isHttpsLink(value)) problems.push({ rule: 'link-not-https', path });
+    if (!allowed(value)) problems.push({ rule: 'link-not-https', path });
   };
-  const texts = (list: readonly string[] | undefined, path: string, max: number) => {
+  const texts = (list: readonly ProfileText[] | undefined, path: string, max: number) => {
     if (!list) return;
     count(list.length, path, profileLimits.questions);
     list.forEach((value, i) => text(value, `${path}[${i}]`, max));
@@ -263,7 +343,7 @@ export const profileProblems = (profile: ProfileData, at = 'profile'): ProfilePr
       text(plural, `${path}.typePlurals.${type}`, profileLimits.id);
     }
     for (const [pattern, url] of Object.entries(corpus.documentLinks ?? {}))
-      link(url, `${path}.documentLinks.${pattern}`);
+      link(url, `${path}.documentLinks.${pattern}`, isDocumentLink);
     if (corpus.about) {
       text(corpus.about.idField, `${path}.about.idField`, profileLimits.id);
       count(corpus.about.fields.length, `${path}.about.fields`, profileLimits.aboutFields);

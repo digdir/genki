@@ -4,9 +4,11 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import {
+  assessCatalog,
   assessCompletion,
   assessFacets,
   assessHealth,
+  assessInternal,
   assessKeyAdmission,
   assessModels,
   assessOpenapi,
@@ -204,12 +206,22 @@ export const main = async () => {
   const skip = (group: string, tier: Tier, id: string, reason: SkipReason, detail: string) =>
     checks.push(skipped(group, tier, id, reason, detail));
 
-  let health = assessHealth(await call(`${api}/health`, { timeout: freeTimeout }), expected);
+  let healthResult = await call(`${api}/health`, { timeout: freeTimeout });
+  let health = assessHealth(healthResult, expected);
   for (let i = 1; i < 10 && !health.ok && expected; i++) {
     await sleep(15_000);
-    health = assessHealth(await call(`${api}/health`, { timeout: freeTimeout }), expected);
+    healthResult = await call(`${api}/health`, { timeout: freeTimeout });
+    health = assessHealth(healthResult, expected);
   }
   record('platform', 'free', 'health', health);
+  record(
+    'platform',
+    'free',
+    'catalog',
+    key
+      ? assessCatalog(await client.get('/operator/catalog/entries'), 'entries')
+      : assessCatalog(healthResult, 'health'),
+  );
   const sha = expected ?? health.version ?? '';
   const tiers = health.ok ? wantedTiers : wantedTiers.filter((t) => t === 'free');
   if (tiers.length < wantedTiers.length)
@@ -618,21 +630,39 @@ export const main = async () => {
       }
     }
 
+    if (needsGrant('definitions', 'free', 'internal:smoke'))
+      record(
+        'definitions',
+        'free',
+        'internal:smoke',
+        assessInternal(
+          await client.get(`/tenants/${plan.tenant}/definitions/services/${plan.service}`),
+          plan.service,
+        ),
+      );
+
     const published: string[] = [];
     try {
       if (needsGrant('definitions', 'free', 'lifecycle:throwaway')) {
         const yaml = withId(serviceYaml(), plan.service, plan.throwaway);
+        // An archived version that no longer validates refuses to restore (409); pausing lets the publish through.
         const restored = await client.lifecycle(plan.throwaway, 'active');
+        const reopened =
+          restored.status === 409 ? await client.lifecycle(plan.throwaway, 'paused') : restored;
         const publish = await client.publish(yaml);
-        if (restored.status === 200 || publish.status < 300) published.push(plan.throwaway);
+        if (reopened.status === 200 || publish.status < 300) published.push(plan.throwaway);
         const active =
           publish.status < 300 ? await client.lifecycle(plan.throwaway, 'active') : publish;
         const read = await client.get(
           `/tenants/${plan.tenant}/services/${plan.throwaway}/lifecycle`,
         );
+        const reopening =
+          restored === reopened
+            ? `restore ${restored.status}`
+            : `restore ${restored.status}, paused ${reopened.status}`;
         record('definitions', 'free', 'lifecycle:throwaway', {
           ok: publish.status < 300 && active.status === 200 && read.status === 200,
-          detail: `publish ${publish.status}, activate ${active.status}, read ${read.status}`,
+          detail: `${reopening}; publish ${publish.status}, activate ${active.status}, read ${read.status}`,
         });
       }
       if (needsGrant('access', 'free', 'access:outside-prefix')) {

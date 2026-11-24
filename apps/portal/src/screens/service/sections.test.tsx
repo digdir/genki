@@ -1,15 +1,14 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { ReactNode } from 'react';
 import { createApiClient } from '../../api';
 import { RightsProvider } from '../../Shell';
 import { LiveChanges } from '../changes/LiveChanges';
-import { LiveNewService } from '../services/LiveNewService';
 import { LiveTransfer } from '../settings/LiveTransfer';
 import { DefinitionEditor } from './DefinitionEditor';
 import { TestRun } from './TestRun';
-import { Versions } from './Versions';
+import { History } from './History';
 
 const asManager = (ui: ReactNode) => (
   <RightsProvider value={['manage-services']}>{ui}</RightsProvider>
@@ -17,6 +16,14 @@ const asManager = (ui: ReactNode) => (
 
 document.getAnimations ??= () => [];
 afterEach(cleanup);
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+    this.open = false;
+  };
+});
 
 const tenant = '991825827';
 const definition = (instructions: string, version: number) => ({
@@ -79,6 +86,9 @@ const platform = (routes: Record<string, (call: Call) => unknown>) => {
 };
 
 const service = `/tenants/${tenant}/definitions/services/klarsprak`;
+const prodOnly = () => ({
+  environments: [{ name: 'prod', version: 2, followsPublishes: true }],
+});
 const history = () => ({
   kind: 'Service',
   tenant,
@@ -117,7 +127,7 @@ describe('service definition sections', () => {
     });
     render(<DefinitionEditor api={api} tenant={tenant} serviceId="klarsprak" />);
 
-    const editor = (await screen.findByLabelText('Definisjonen')) as HTMLTextAreaElement;
+    const editor = (await screen.findByLabelText('Teknisk tekst')) as HTMLTextAreaElement;
     expect(editor.value).toContain('instructions: Svar kort.');
     expect(editor.value).not.toMatch(/version: 2/);
     fireEvent.change(editor, {
@@ -147,41 +157,45 @@ describe('service definition sections', () => {
       }),
     });
     render(<DefinitionEditor api={api} tenant={tenant} serviceId="klarsprak" />);
-    const editor = await screen.findByLabelText('Definisjonen');
+    const editor = await screen.findByLabelText('Teknisk tekst');
     fireEvent.change(editor, { target: { value: 'kind: Service' } });
 
     expect(await screen.findByText('spec.riskClass', {}, { timeout: 3000 })).toBeTruthy();
     expect(calls.some((c) => c.method === 'PUT' || c.path === '/definitions')).toBe(false);
   });
 
-  it('lists the version history and republishes an earlier version as a new one', async () => {
+  it('restores an earlier edition by publishing its content again, without asking for a reason or promising the test edition keeps its changes', async () => {
     const { api, calls } = platform({
       [`GET ${service}`]: history,
       [`GET ${service}/versions/1`]: () => ({
         ...published(1),
         definition: definition('Svar langt.', 1),
       }),
+      [`GET /tenants/${tenant}/services/klarsprak/environments`]: prodOnly,
       'POST /definitions': () => published(3),
     });
-    render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
+    render(asManager(<History api={api} tenant={tenant} serviceId="klarsprak" />));
 
-    expect(await screen.findByText('«Kortere»')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /^Versjon 1\b/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Ta i bruk igjen/ }));
-    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
-      target: { value: 'Tilbake til lange svar' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser som versjon 3' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Gjenopprett denne utgaven' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('heading').textContent).toMatch(/^Gjenopprette utgaven fra /);
+    expect(within(dialog).queryByText(/Testutgaven beholder/)).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Gjenopprett denne utgaven' }));
 
-    expect(await screen.findByText('Versjon 1 er publisert på nytt som versjon 3.')).toBeTruthy();
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === 'POST' && c.path === '/definitions')).toBe(true),
+    );
     const publish = calls.find((c) => c.method === 'POST' && c.path === '/definitions');
     const sent = (publish?.body as { definition: { metadata: Record<string, unknown> } })
       .definition;
     expect(sent.metadata.version).toBeUndefined();
     expect(JSON.stringify(sent)).toContain('Svar langt.');
+    expect(decodeURIComponent(publish?.headers.get('change-reason') ?? '')).toMatch(
+      /^Gjenopprettet utgaven fra /,
+    );
   });
 
-  it('restores an earlier version with the sharing of the version in use', async () => {
+  it('restores an earlier edition with the sharing of the edition in use', async () => {
     const withSharing = (version: number, availableTo: string[]) => {
       const d = definition('Svar langt.', version);
       return { ...d, spec: { ...d.spec, availableTo } };
@@ -195,19 +209,18 @@ describe('service definition sections', () => {
         ...published(1),
         definition: withSharing(1, ['111222333']),
       }),
+      [`GET /tenants/${tenant}/services/klarsprak/environments`]: prodOnly,
       'POST /definitions': () => published(3),
     });
-    render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
+    render(asManager(<History api={api} tenant={tenant} serviceId="klarsprak" />));
 
-    await screen.findByText('«Kortere»');
-    fireEvent.click(screen.getByRole('button', { name: /^Versjon 1\b/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Ta i bruk igjen/ }));
-    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
-      target: { value: 'Tilbake til lange svar' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser som versjon 3' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Gjenopprett denne utgaven' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Gjenopprett denne utgaven' }));
 
-    await screen.findByText('Versjon 1 er publisert på nytt som versjon 3.');
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === 'POST' && c.path === '/definitions')).toBe(true),
+    );
     const publish = calls.find((c) => c.method === 'POST' && c.path === '/definitions');
     const sent = (publish?.body as { definition: { spec: { availableTo?: unknown } } }).definition;
     expect(sent.spec.availableTo).toEqual(['999888777']);
@@ -282,80 +295,6 @@ describe('a test run that fails', () => {
   });
 });
 
-describe('creating a service in live mode', () => {
-  it('preselects the model the platform picks for new services, not the first in the list', async () => {
-    window.location.hash = '#/services/new';
-    const { api } = platform({
-      'GET /models': () => ({
-        data: [
-          { id: 'foundry-claude/claude-fable-5', residency: 'eu', capabilities: [] },
-          { id: 'foundry-openai/gpt-4o-mini', residency: 'eu', capabilities: [] },
-        ],
-      }),
-      [`GET /tenants/${tenant}/definitions/template`]: () => ({
-        definition: {
-          spec: { model: { primary: 'foundry-openai/gpt-4o-mini', residency: 'eu' } },
-        },
-      }),
-    });
-    render(<LiveNewService api={api} tenant={tenant} />);
-
-    await waitFor(() =>
-      expect((screen.getByLabelText('Modell') as HTMLSelectElement).value).toBe(
-        'foundry-openai/gpt-4o-mini',
-      ),
-    );
-  });
-
-  it('publishes a real definition from the form and opens the new service', async () => {
-    window.location.hash = '#/services/new';
-    const { api, calls } = platform({
-      'GET /models': () => ({
-        data: [{ id: 'foundry-openai/gpt-4o', residency: 'global', capabilities: [] }],
-      }),
-      'POST /definitions/validate': () => ({ valid: true }),
-      'POST /definitions': () => ({ ...published(1), id: 'svarbrev' }),
-    });
-    render(<LiveNewService api={api} tenant={tenant} />);
-
-    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Svarbrev' } });
-    fireEvent.change(screen.getByLabelText('Formål'), { target: { value: 'Utkast til svarbrev' } });
-    fireEvent.change(screen.getByLabelText('Instruksjoner til modellen'), {
-      target: { value: 'Skriv høflig.' },
-    });
-    await screen.findByRole('option', { name: /gpt-4o/ });
-    fireEvent.click(screen.getByRole('button', { name: 'Opprett og publiser' }));
-
-    await waitFor(() => expect(window.location.hash).toBe('#/services/svarbrev'));
-    const publish = calls.find((c) => c.method === 'POST' && c.path === '/definitions');
-    expect(publish?.body).toMatchObject({
-      definition: {
-        metadata: { tenant, id: 'svarbrev', name: 'Svarbrev' },
-        spec: {
-          purpose: 'Utkast til svarbrev',
-          strategy: { id: 'single-call', config: { instructions: 'Skriv høflig.' } },
-          model: { primary: 'foundry-openai/gpt-4o', residency: 'global' },
-        },
-      },
-    });
-    expect(decodeURIComponent(publish?.headers.get('change-reason') ?? '')).toBe('Ny tjeneste');
-  });
-
-  it('refuses to publish without a name, purpose and instructions', async () => {
-    const { api, calls } = platform({
-      'GET /models': () => ({
-        data: [{ id: 'foundry-openai/gpt-4o', residency: 'global', capabilities: [] }],
-      }),
-    });
-    render(<LiveNewService api={api} tenant={tenant} />);
-    await screen.findByRole('option', { name: /gpt-4o/ });
-    fireEvent.click(screen.getByRole('button', { name: 'Opprett og publiser' }));
-
-    expect(await screen.findByText('Gi tjenesten et navn.')).toBeTruthy();
-    expect(calls.some((c) => c.method === 'POST')).toBe(false);
-  });
-});
-
 describe('tenant export and import in live mode', () => {
   const bundle = {
     format: 'genai-tenant-export/v1',
@@ -396,7 +335,7 @@ describe('tenant export and import in live mode', () => {
     const file = new File([JSON.stringify(bundle)], 'eksport.json', { type: 'application/json' });
     fireEvent.change(screen.getByLabelText('Eksportfil (JSON)'), { target: { files: [file] } });
     await screen.findByText('eksport.json');
-    await screen.findByText('Tjenester og stegflyter');
+    await screen.findByText('Tjenester og arbeidsflyter');
     fireEvent.click(screen.getByRole('button', { name: 'Kjør prøvekjøring' }));
 
     expect(await screen.findByText('Prøvekjøring: ingenting er endret ennå')).toBeTruthy();
@@ -482,8 +421,8 @@ describe('the change log in live mode', () => {
     render(asManager(<LiveChanges api={api} tenant={tenant} />));
 
     const items = await screen.findAllByRole('listitem');
-    expect(items[0]?.textContent).toMatch(/^Digdir publiserte versjon 3 av klarsprak/);
-    expect(items[1]?.textContent).toMatch(/^Kari Nordmann lagret testsettet kjerne, versjon 2/);
+    expect(items[0]?.textContent).toMatch(/^Digdir publiserte utgave 3 av klarsprak/);
+    expect(items[1]?.textContent).toMatch(/^Kari Nordmann lagret testsettet kjerne, utgave 2/);
     expect(screen.queryByText(/Ansatt i virksomheten/)).toBeNull();
   });
 });

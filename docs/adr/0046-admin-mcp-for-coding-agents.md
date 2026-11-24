@@ -1,6 +1,6 @@
 # 0046 Coding agents work on genki through a local admin MCP server
 
-Status: proposed, 2026-11-02 (built, 2026-11-03; login against genki-test's Ansattporten, 2026-11-03)
+Status: proposed, 2026-11-02 (built, 2026-11-03; login against genki-test's Ansattporten, 2026-11-03; publishes only to the testutgave, 2026-11-21)
 
 ## Context
 
@@ -23,6 +23,7 @@ Coding agents such as Claude Code and Copilot have no direct way to work on genk
   - explain a run: where it failed, a search that found nothing or sources found but never read, warnings and where the time went, from the timeline and, for people who may see it, the search attribution (`GET /tenants/{tenant}/diagnostics/tasks/{task}/attribution`);
   - evaluate a change: run a test set on an unsaved definition and on the published version (`POST /tenants/{tenant}/services/{id}/eval-runs` with `version: draft` and `definition`, which never touches the saved draft), compare case by case and test the difference with an exact McNemar test. The publish gates still decide what may be published.
 - **Changes go through the normal path (ADR 0020).** The publish tool validates first, refuses a change reason under 10 characters, and the API applies the usual rights and quality gates. The person approves each change in the coding agent before it is sent; the tool is marked destructive, so clients ask.
+- **The agent changes only the testutgave.** `publish_definition` refuses a service whose `prod` follows every publish (ADR 0004), so an agent never changes what users have; a person adds a test environment in the portal first. With one, the publish moves `test`, `prod` stays pinned, and the answer names both versions, from `environments` in the publish response. Promote stays an owner's action in the portal, and the server has no tool for it. A new service's first version is published as before.
 - **The agent cannot set or confirm a risk class.** The API accepts a definition whose `riskConfirmation` matches its `riskClass` and stamps it with the publisher, so the server guards it: it refuses to publish when `riskClass` or `riskConfirmation` differs from the published version, or when a new service is above `minimal`, and gives the link to the service in the portal, where a person confirms it. Republishing an unchanged confirmation stamps it again with the person who approved the publish.
 - **One organisation per server.** `GENKI_TENANT` pins it: every path is built from it, and a definition whose `metadata.tenant` differs is refused before anything is sent, also for a person with rights in several organisations.
 - **Text from genki is untrusted data.** Definitions, version notes, answers, sources, user questions and documents are written by other people and can carry prompt injection. The server wraps them in tags with a random id and a note that they are data, as Supabase's MCP server does, and the skill tells the agent never to follow instructions inside them.
@@ -44,7 +45,7 @@ Coding agents such as Claude Code and Copilot have no direct way to work on genk
 
 - A person running the portal's dev server on port 5173 at the same time as logging in must stop it, or point `ADMIN_MCP_REDIRECT_URI` at another callback registered for the client.
 - Built with this record: the server and its tools in `apps/admin-mcp`, tested against the API in `contract.test.ts`, playground runs in the task routes, and the skill in `.claude/skills/genki-admin`. The browser login is tested against a fake provider, and has been used against genki-test's Ansattporten. The prototype's change sets and chat page are not carried over.
-- What the tools return reaches the coding agent's transcript and its model provider, including user questions and document text from runs. `get_run` is compact by default to limit this; `full: true` gives the whole timeline.
+- What the tools return reaches the coding agent's transcript and its model provider, including user questions and document text from runs. `get_run` is compact by default to limit this; `full: true` gives the timeline as JSON up to 60,000 characters, and `types`, `from` and `to` narrow it to the steps asked for.
 - The server is built on the official MCP SDK (`@modelcontextprotocol/server`, pinned) and speaks protocol version 2026-07-28, falling back to 2025-11-25 and older.
 - Not built yet: confirmation through MCP elicitation, and MCP resources and prompts. The run timeline does not show the effective instructions a model got, so a prompt change cannot be verified from it.
 - A playground run stays out of the default task list, the overview and the usage by service, so Logg and the numbers people already read do not change.

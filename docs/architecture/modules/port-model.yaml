@@ -11,7 +11,8 @@ summary: One port for model calls; a router owns the catalog, capabilities, oper
 description: Adapters implement APIs, not vendors (ADR 0021). A connection offers API families, a
   model binds one API per kind, and the API registry lists built-in implementations and descriptors
   under one id each (ADR 0048). Models are discovered from connections such as Azure AI Foundry,
-  start with residency global and are classified by an operator.
+  start with residency global and are classified by an operator; genki checks what a discovered
+  model can do itself, with a few small synthetic calls through the gate (ADR 0021, #860).
 responsibilities:
   - Model catalog and discovery
   - Operations on the catalogue (chat, decide and every kind a registered descriptor defines) and
@@ -29,6 +30,9 @@ responsibilities:
     reports; embedding and rerank models bind APIs other ports implement (ADR 0048)
   - Prices per model, kind and unit; typed chat and decide calls carry the connection's processor
     record and production maturity (ADR 0048, #325)
+  - Learning the capabilities of discovered models from the listing and from small synthetic calls
+  - Serving discovered models from the last good listing in a store every replica reads, keeping a
+    model a listing leaves out for a grace period, and reporting per connection what it found
   - Credential resolution
 files:
   - packages/port-model/src/port.ts
@@ -39,6 +43,8 @@ files:
   - packages/port-model/src/decision.ts
   - packages/port-model/src/operation.ts
   - packages/port-model/src/instructions.ts
+  - packages/port-model/src/capability-checks.ts
+  - packages/port-model/src/discovery.ts
 input: Generic chat request
 output: Completion, deltas, decision answers, usage
 replaces:

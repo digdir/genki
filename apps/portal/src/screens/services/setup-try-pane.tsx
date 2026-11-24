@@ -22,6 +22,7 @@ export const TryPane = ({
   datasets,
   files,
   version,
+  inUse = false,
   playgroundHref,
 }: {
   api: ApiClient;
@@ -32,6 +33,7 @@ export const TryPane = ({
   datasets: string[];
   files: Record<string, string>;
   version: number;
+  inUse?: boolean;
   playgroundHref: string;
 }) => {
   const t = useT();
@@ -73,7 +75,11 @@ export const TryPane = ({
   return (
     <div className="setup-try">
       <Paragraph data-size="sm" className="meta">
-        {t('setupList.tryNote', { n: version })}
+        {inUse
+          ? t('setupList.tryNoteInUse', { n: version })
+          : version > 0
+            ? t('setupList.tryNote', { n: version })
+            : t('setupList.tryNoteFirst')}
       </Paragraph>
       <div className="try-log" aria-live="polite">
         {turns.map((turn, i) => (

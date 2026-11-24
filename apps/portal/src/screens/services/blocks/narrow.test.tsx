@@ -22,7 +22,7 @@ const Harness = ({ narrow }: { narrow: boolean }) => (
   />
 );
 
-const switcher = () => screen.getByRole('group', { name: 'Byggeklosser og maler' });
+const switcher = () => screen.getByRole('group', { name: 'Designelementer og maler' });
 const wraps = '.blocks-left[data-narrow] .blocks-switcher';
 
 describe('the Grensesnitt tab on a narrow screen', () => {
@@ -45,7 +45,7 @@ describe('the Grensesnitt tab on a narrow screen', () => {
     const { rerender } = render(<Harness narrow />);
     rerender(<Harness narrow={false} />);
     const handle = screen.getByRole('separator', {
-      name: 'Endre bredden på klossene ved siden av forhåndsvisningen',
+      name: 'Endre bredden på designelementene ved siden av forhåndsvisningen',
     });
     expect(handle.getAttribute('aria-valuemin')).toBe('400');
   });

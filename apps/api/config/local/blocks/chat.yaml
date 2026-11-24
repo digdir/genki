@@ -1,0 +1,62 @@
+apiVersion: genai/v1
+kind: Block
+metadata:
+  tenant: '991825827'
+  id: chat
+  name: Samtale
+spec:
+  tier: built-in
+  builtIn: chat
+  title:
+    nb: Samtale
+    en: Chat
+  summary:
+    nb: Spørsmålsfeltet og samtalen
+    en: The question field and the conversation
+  zones:
+    - main
+    - secondary
+  sharing: everyone
+  props:
+    type: object
+    properties:
+      footnotes:
+        type: boolean
+        default: true
+        x-label: builder.chatFootnotes
+        x-widget: switch
+      suggestions:
+        type: boolean
+        default: true
+        x-label: builder.chatSuggestions
+        x-widget: switch
+      followUps:
+        type: boolean
+        default: true
+        x-label: builder.chatFollowUps
+        x-widget: switch
+      disclaimer:
+        type: boolean
+        default: true
+        x-label: builder.chatDisclaimer
+        x-widget: switch
+      copy:
+        type: boolean
+        default: true
+        x-label: builder.chatCopy
+        x-widget: switch
+      feedback:
+        type: boolean
+        default: false
+        x-label: builder.chatFeedback
+        x-widget: switch
+      variantPicker:
+        type: boolean
+        default: true
+        x-label: builder.chatVariantPicker
+        x-widget: switch
+      attachments:
+        type: boolean
+        default: false
+        x-label: builder.chatAttachments
+        x-widget: switch

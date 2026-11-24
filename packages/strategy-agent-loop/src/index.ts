@@ -5,6 +5,7 @@ import {
   defaultMaxOutputTokens,
   instructionsConfig,
   languageInstructionsConfig,
+  maxInstructionChars,
   ModelError,
   type ChatMessage,
   type ChatRequest,
@@ -24,17 +25,25 @@ import {
   agentTools,
   cutOffToolCallNudge,
   answerInstructionsLead,
-  defaultSystemPrompt,
+  composeSystemPrompt,
+  promptSectionIds,
+  searchPromptSections,
   type ActiveFilter,
-  exhaustionDefault,
+  answerTurnGaps,
+  exhaustionDefaults,
   exhaustionNudge,
-  noToolCallHonestMiss,
+  honestMisses,
+  modelRefusals,
+  questionLanguage,
+  remainingBudgetNote,
   noToolCallNudge,
+  readBeforeAnswerNudge,
   searchScaffold,
   smallTalkCheck,
   systemPromptWithDate,
-  toolsOnlySystemPrompt,
+  toolsOnlyPromptSections,
 } from './prompts.js';
+import { cardFactsCache, collectCardFacts, serviceCardText } from './service-card.js';
 import { executionMetadata, judgedInsufficient } from './execution.js';
 import { evaluateRead } from './read-signals.js';
 import {
@@ -48,6 +57,7 @@ import {
   chunkIdsToMarkers,
   documentKey,
   dropUnknownMarkers,
+  numberByPublished,
   parseCitations,
   sourcesFirst,
   stripPageMarkers,
@@ -63,11 +73,19 @@ import {
   gateSystemHint,
   groundingDecision,
   responseValidationHint,
+  confidentReadSignalFinalize,
   shadowGateDecision,
   shouldRunResponseValidation,
+  standsWhenUnsure,
   type ClarificationRequest,
   type SufficiencyDecision,
 } from './sufficiency.js';
+import {
+  isServiceFactsRef,
+  runServiceFacts,
+  serviceFactsTool,
+  type ServiceFactsLookup,
+} from './service-facts.js';
 import { isSourceFactsRef, runSourceFacts, sourceFactsTool } from './source-facts.js';
 import {
   defaultSearchSettings,
@@ -97,8 +115,10 @@ export * from './citations.js';
 export * from './execution.js';
 export * from './intent.js';
 export * from './prompts.js';
+export * from './service-card.js';
 export * from './read-signals.js';
 export * from './skills.js';
+export * from './service-facts.js';
 export * from './source-facts.js';
 export * from './sources.js';
 export * from './structured.js';
@@ -119,6 +139,23 @@ export const modelRoles = z.looseObject({
   judge: z.string().min(1).optional(),
 });
 
+interface Refusal {
+  category?: string;
+}
+
+/** A blank answer the provider filtered: the model refused, and asking again gets the same. */
+const refusalOf = (result: ChatResult): Refusal | undefined =>
+  result.finishReason === 'content_filter' && result.toolCalls.length === 0 && blank(result.content)
+    ? result.stopDetail?.category
+      ? { category: result.stopDetail.category }
+      : {}
+    : undefined;
+
+const refusedNotice = (refusal: Refusal, iteration: number): Emitted => ({
+  type: 'kernel.notice',
+  data: { stage: 'model-refused', iteration, ...refusal },
+});
+
 export const sessionFor = (
   ctx: InvocationContext,
   model: AgentLoopRuntimeConfig['model'],
@@ -132,6 +169,9 @@ export const sessionFor = (
 
 export const agentLoopConfig = z.strictObject({
   instructions: instructionsConfig.optional(),
+  promptSections: z
+    .partialRecord(z.enum(promptSectionIds), z.string().max(maxInstructionChars))
+    .optional(),
   languageInstructions: languageInstructionsConfig.optional(),
   generationPrompt: z.string().min(1).optional(),
   budget: z
@@ -139,6 +179,8 @@ export const agentLoopConfig = z.strictObject({
       searches: z.number().int().positive().optional(),
       reads: z.number().int().positive().optional(),
       readChars: z.number().int().positive().optional(),
+      chunksPerRead: z.number().int().min(1).max(50).optional(),
+      seconds: z.number().int().min(10).max(600).optional(),
     })
     .optional(),
   maxIterations: z.number().int().min(1).max(30).optional(),
@@ -150,6 +192,7 @@ export const agentLoopConfig = z.strictObject({
   noAnswerText: z.string().min(1).max(500).optional(),
   instructionsInAnswer: z.boolean().optional(),
   citeBy: z.enum(['document', 'excerpt']).optional(),
+  sources: z.enum(['cited', 'read']).optional(),
   search: z
     .strictObject({
       titleOverlapWeight: z.number().min(0).max(20).optional(),
@@ -196,6 +239,7 @@ const withoutDataset: AgentRetrieval = {
   readRange: noDataset,
   plan: noDataset,
   rerank: noDataset,
+  reranks: false,
   filterFields: noDataset,
   facets: noDataset,
 };
@@ -225,6 +269,8 @@ export const activeFiltersOf = (request: RetrievalRequest): ActiveFilter[] => {
 export interface AgentLoopOptions {
   retrieval: RetrievalFactory;
   now?: () => Date;
+  /** Looks up what service-facts@1 tells that the run itself does not know. */
+  serviceFacts?: ServiceFactsLookup;
 }
 
 const inputSchema = z.looseObject({
@@ -381,6 +427,26 @@ const onlySaysNothingFound = (text: string) =>
     .split(/(?<=[.!?])\s+/)
     .filter((s) => s.length > 0).length <= 1;
 
+export const answersFromSnippets = (workspace: Workspace, text: string) => {
+  if (blank(text) || soundsLikeRefusal(text)) return false;
+  if (workspace.attached.length || workspace.sourceFactsRead) return false;
+  if (workspace.searches.length === 0 || workspace.readChunkIds().size > 0) return false;
+  const budget = workspace.budget();
+  return (
+    !budget.readsExhausted &&
+    !budget.readCharsExhausted &&
+    workspace.searches.some((s) => s.chunkIds.length > 0)
+  );
+};
+
+export const citedOnly = (chunks: Chunk[], workspace: Workspace): Chunk[] => {
+  if (workspace.citations.length === 0) return chunks;
+  const cited = new Set(
+    workspace.citations.map((c) => documentKey(workspace.chunks.get(c.chunkId) ?? c)),
+  );
+  return chunks.filter((c) => cited.has(documentKey(c)));
+};
+
 interface ExtraTool {
   spec: ToolSpec;
   port: ToolPort;
@@ -390,7 +456,9 @@ const openExtraTools = async (
   ctx: InvocationContext,
   config: AgentLoopRuntimeConfig,
 ): Promise<ExtraTool[]> => {
-  const refs = (config.tools ?? []).filter((r) => !r.startsWith('rag@') && !isSourceFactsRef(r));
+  const refs = (config.tools ?? []).filter(
+    (r) => !r.startsWith('rag@') && !isSourceFactsRef(r) && !isServiceFactsRef(r),
+  );
   const tools: ExtraTool[] = [];
   for (const ref of refs) {
     const at = ref.lastIndexOf('@');
@@ -402,7 +470,8 @@ const openExtraTools = async (
     if (
       isBuiltinTool(definition.name) ||
       definition.name === useSkillTool.name ||
-      definition.name === sourceFactsTool.name
+      definition.name === sourceFactsTool.name ||
+      definition.name === serviceFactsTool.name
     )
       throw new Error(`tool ${ref} collides with the built-in tool ${definition.name}`);
     tools.push({
@@ -429,8 +498,27 @@ const gateRelevant = (results: ToolCallResult[]) =>
       r.name === 'read_chunks' || r.name === 'rerank_results' || r.name === 'generate_response',
   );
 
-const replaceGenerateResult = (results: ToolCallResult[], text: string) =>
-  results.map((r) => (r.name === 'generate_response' ? { ...r, content: text } : r));
+const cardCaches = new WeakMap<AgentLoopOptions, ReturnType<typeof cardFactsCache>>();
+
+const cardCacheFor = (options: AgentLoopOptions) => {
+  const found = cardCaches.get(options) ?? cardFactsCache(options.now ?? (() => new Date()));
+  cardCaches.set(options, found);
+  return found;
+};
+
+const withGateHint = (results: ToolCallResult[], hint: string) =>
+  results.map((r) =>
+    r.name === 'generate_response' ? { ...r, content: `${r.content}\n\n${hint}` } : r,
+  );
+
+const latestGaps = (workspace: Workspace) =>
+  [
+    ...new Set(
+      [...workspace.sufficiencyDecisions, ...workspace.responseValidations]
+        .filter((d) => d.status !== 'sufficient')
+        .flatMap((d) => d.missingInfo),
+    ),
+  ].slice(-5);
 
 export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRuntimeConfig> => ({
   id: 'agent-loop',
@@ -448,6 +536,9 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       searches: settings.budget?.searches ?? 4,
       reads: settings.budget?.reads ?? 6,
       readChars: settings.budget?.readChars ?? 12000,
+      ...(settings.budget?.chunksPerRead === undefined
+        ? {}
+        : { chunksPerRead: settings.budget.chunksPerRead }),
     });
     workspace.queryIntent = inferQueryIntent(query, history);
     workspace.attached = attachedChunks(input);
@@ -460,14 +551,31 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     const synthesisSession = sessionFor(ctx, config.model, 'synthesis', session);
     const judgeSession = sessionFor(ctx, config.model, 'judge', session);
     const maxIterations = settings.maxIterations ?? 10;
+    const toolRounds = Math.max(1, maxIterations - 1);
+    const clock = options.now ?? (() => new Date());
+    const startedAt = clock().getTime();
+    const seconds = settings.budget?.seconds;
+    const secondsLeft = () =>
+      seconds === undefined
+        ? undefined
+        : Math.max(0, seconds - Math.floor((clock().getTime() - startedAt) / 1000));
+    const language = questionLanguage(
+      query,
+      Array.isArray(config.languages) ? config.languages[0] : undefined,
+    );
     const temperature = settings.temperature ?? 0.1;
     const skills = config.skills ?? [];
     const sourceFactsOn = Boolean(
       searchable?.sourceFacts && (config.tools ?? []).some(isSourceFactsRef),
     );
+    const serviceFactsLookup = options.serviceFacts;
+    const serviceFactsOn = Boolean(
+      serviceFactsLookup && (config.tools ?? []).some(isServiceFactsRef),
+    );
     const toolSpecs = [
       ...(searchable ? agentTools : []),
       ...(sourceFactsOn ? [sourceFactsTool] : []),
+      ...(serviceFactsOn ? [serviceFactsTool] : []),
       ...(skills.length ? [useSkillTool] : []),
       ...extra.map((t) => t.spec),
     ];
@@ -479,15 +587,39 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       displayLimit: settings.search?.displayLimit ?? defaultSearchSettings.displayLimit,
       showSnippets: settings.search?.snippets ?? defaultSearchSettings.showSnippets,
     };
+    const cardFacts = searchable
+      ? await cardCacheFor(options)(
+          JSON.stringify([
+            ctx.tenant,
+            ctx.principal,
+            ctx.capability.id,
+            ctx.capability.version,
+            config['knowledge'] ?? null,
+            retrievalRequest.overrides?.['retrieve-filter-by'] ?? null,
+          ]),
+          () => collectCardFacts(searchable, ctx.signal),
+        )
+      : { sources: [], filterFields: [], complete: true };
+    const card = {
+      ...cardFacts,
+      name: ctx.capability.title,
+      ...(ctx.capability.description ? { purpose: ctx.capability.description } : {}),
+      searchable: Boolean(searchable),
+      languages: Array.isArray(config.languages) ? (config.languages as string[]) : [],
+      filtered: activeFilters.length > 0,
+      today: clock(),
+    };
+    const serviceCard = serviceCardText(card);
     const initialMessages: ChatMessage[] = [
       {
         role: 'system',
         content:
-          (settings.instructions
-            ? baseInstructions(settings.instructions)
-            : searchable
-              ? defaultSystemPrompt
-              : toolsOnlySystemPrompt) +
+          `${serviceCard}\n\n` +
+          composeSystemPrompt(
+            searchable ? searchPromptSections : toolsOnlyPromptSections,
+            settings.promptSections,
+            settings.instructions ? baseInstructions(settings.instructions) : undefined,
+          ) +
           skillCatalog(skills) +
           (activeFilters.length ? `\n\n${activeFiltersInstruction(activeFilters)}` : '') +
           attachedNote(workspace.attached, Boolean(searchable)) +
@@ -525,14 +657,15 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       signal: ctx.signal,
       // The untrusted-data note comes last, as in the agent's prompt.
       systemPrompt:
-        systemPromptWithDate((options.now ?? (() => new Date()))()) +
+        systemPromptWithDate(clock()) +
+        `\n\n${serviceCardText(card, true)}` +
         (settings.instructionsInAnswer && settings.instructions
           ? `\n\n${answerInstructionsLead}\n\n${baseInstructions(settings.instructions)}`
           : '') +
         `\n\n${untrustedDataNote(config.languages)}`,
       search: searchSettings,
-      synthesize: (system, user) =>
-        synthesisSession.text(
+      synthesize: async (system, user) => {
+        const written = await synthesisSession.chat(
           {
             purpose: 'answer',
             messages: [
@@ -546,7 +679,11 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             onStream();
             push(text);
           },
-        ),
+        );
+        const refused = refusalOf(written);
+        refusal ??= refused;
+        return refused ? undefined : written.content;
+      },
       ...(settings.generationPrompt ? { generationPrompt: settings.generationPrompt } : {}),
       ...(settings.citeBy ? { citeBy: settings.citeBy } : {}),
     });
@@ -556,12 +693,41 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     let fallbackMessages: ChatMessage[] = initialMessages;
     let phase: 'default' | 'finalize' = 'default';
     let finalized = false;
+    let refusal: Refusal | undefined;
     let iteration = 0;
     let lastIteration = 0;
+    let readNudges = 0;
+    let draftRepairs = 0;
     const reactStarted = Date.now();
+    const budgetNote = () => {
+      const b = workspace.budget();
+      return remainingBudgetNote([
+        ['rounds', Math.max(0, toolRounds - iteration - 1), toolRounds],
+        ...(searchable
+          ? ([
+              ['searches', b.searchesRemaining, b.maxSearches],
+              ['reads', b.readsRemaining, b.maxReads],
+              ['characters', b.readCharsRemaining, b.maxReadChars],
+            ] as const)
+          : []),
+        ...(seconds === undefined ? [] : ([['seconds', secondsLeft() ?? 0, seconds]] as const)),
+      ]);
+    };
+    const judgesOff = () => {
+      const b = workspace.budget();
+      return (
+        iteration >= toolRounds - 1 ||
+        secondsLeft() === 0 ||
+        (b.searchExhausted && (b.readsExhausted || b.readCharsExhausted))
+      );
+    };
 
-    for (; iteration < maxIterations && !finalized; iteration += 1) {
+    for (; iteration < toolRounds && !finalized; iteration += 1) {
       if (ctx.signal.aborted) throw new Error('cancelled');
+      if (secondsLeft() === 0) {
+        yield { type: 'kernel.notice', data: { stage: 'time-budget', seconds, iteration } };
+        break;
+      }
       const tools =
         phase === 'finalize' ? agentTools.filter((t) => t.name === 'generate_response') : toolSpecs;
       lastIteration = iteration;
@@ -583,6 +749,13 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         ...(turn.continuation === undefined ? {} : { continuation: turn.continuation }),
       };
 
+      // A refusal is not asked again: the same messages get the same refusal.
+      refusal ??= refusalOf(turn);
+      if (refusal) {
+        yield refusedNotice(refusal, iteration);
+        break;
+      }
+
       if (
         turn.toolCalls.length === 0 ||
         !(turn.finishReason === 'tool_calls' || turn.finishReason === 'stop')
@@ -594,6 +767,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           Boolean(searchable) &&
           workspace.searches.length === 0 &&
           !workspace.sourceFactsRead &&
+          !workspace.serviceFactsRead &&
           (cutOff || !(await isSmallTalk(query)));
         if (guard && workspace.noToolCallRetries < 2) {
           workspace.noToolCallRetries += 1;
@@ -602,9 +776,19 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             : [...messages, assistant, { role: 'system', content: noToolCallNudge }];
           continue;
         }
+        if (
+          !cutOff &&
+          readNudges < 2 &&
+          iteration < toolRounds - 1 &&
+          answersFromSnippets(workspace, turn.content)
+        ) {
+          readNudges += 1;
+          messages = [...messages, assistant, { role: 'system', content: readBeforeAnswerNudge }];
+          continue;
+        }
         answer =
           guard && (history.length === 0 || searchScaffold.test(turn.content))
-            ? (settings.noAnswerText ?? noToolCallHonestMiss)
+            ? (settings.noAnswerText ?? honestMisses[language])
             : turn.content;
         if (!blank(answer)) yield { type: 'kernel.part.delta', data: { text: answer } };
         fallbackMessages = initialMessages;
@@ -620,6 +804,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       let results: ToolCallResult[] = [];
       const toolCalls: Record<string, unknown>[] = [];
       let generated = false;
+      let drafted: string | undefined;
       let streamed = false;
       for (const call of turn.toolCalls) {
         const args = parseArguments(call.arguments);
@@ -666,11 +851,21 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             };
           if (outcome.read)
             yield { type: 'kernel.notice', data: { kind: 'read', ...outcome.read } };
-          if (call.name === 'generate_response') generated = true;
+          if (call.name === 'generate_response') {
+            generated = true;
+            drafted = outcome.generated;
+          }
         } else if (sourceFactsOn && call.name === sourceFactsTool.name) {
           const facts = await runSourceFacts(retrieval, args.value, ctx.signal);
           content = facts.content;
           if (facts.ok) workspace.sourceFactsRead = true;
+        } else if (serviceFactsLookup && serviceFactsOn && call.name === serviceFactsTool.name) {
+          const facts = await runServiceFacts(ctx, serviceFactsLookup, {
+            model: config.model.primary,
+            languages: Array.isArray(config.languages) ? (config.languages as string[]) : [],
+          });
+          content = facts.content;
+          if (facts.ok) workspace.serviceFactsRead = true;
         } else if (skills.length && call.name === useSkillTool.name) {
           content = useSkill(skills, args.value, workspace.loadedSkills);
         } else {
@@ -706,8 +901,13 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         type: 'kernel.notice',
         data: { event: 'agent/turn-completed', iteration, 'tool-calls': toolCalls },
       };
+      if (refusal) {
+        yield refusedNotice(refusal, iteration);
+        break;
+      }
 
-      if (!ablated.has('read-signal-eval')) {
+      const spent = judgesOff();
+      if (!ablated.has('read-signal-eval') && !spent) {
         const pending = workspace.drainPendingEval();
         if (pending.length) {
           const signal = await evaluateRead({
@@ -731,14 +931,26 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       }
 
       const relevant = gateRelevant(results);
-      const shadowRaw = relevant ? shadowGateDecision(workspace) : undefined;
-      const shadow =
+      const draft = blank(drafted) ? undefined : drafted;
+      const citedDraft = draft !== undefined && Boolean(workspace.citationValidation?.grounded);
+      const draftJudged =
+        generated &&
+        !spent &&
+        (citedDraft ? draftRepairs === 0 : draft === undefined || ablated.has('grounding-gate'));
+      const shadowRaw = relevant && !spent ? shadowGateDecision(workspace) : undefined;
+      const shadowCounted =
         shadowRaw &&
         (generated ||
           shadowRaw.status === 'sufficient' ||
           shadowRaw.suggestedStrategy === 're-search' ||
           shadowRaw.suggestedStrategy === 'ask-clarification')
-          ? shadowRaw
+          ? enforceSufficiencyLimit(workspace, shadowRaw)
+          : undefined;
+      const weakSufficient =
+        shadowCounted?.status === 'sufficient' && !confidentReadSignalFinalize(workspace);
+      const shadow =
+        shadowCounted && !weakSufficient && !(citedDraft && shadowCounted.status !== 'sufficient')
+          ? shadowCounted
           : undefined;
       const lastStatus = workspace.lastReadSignal?.status;
       if (
@@ -754,20 +966,26 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         }
       }
 
-      const summary = relevant && !shadow ? buildEvidenceSummary(workspace, query) : undefined;
+      const summary =
+        relevant && !shadow && !spent ? buildEvidenceSummary(workspace, query) : undefined;
       const hasUnread = Boolean(
         summary && (summary['unread-chunk-ids'].length || summary['unread-range']),
       );
       const keepable =
-        Boolean(summary) && !ablated.has('sufficiency-gate') && (generated || !hasUnread);
+        Boolean(summary) &&
+        !ablated.has('sufficiency-gate') &&
+        (generated ? draftJudged : !hasUnread);
       let sufficiency: SufficiencyDecision | undefined = shadow;
       if (!sufficiency && keepable && summary) {
+        const judged = await evaluateSufficiency(query, summary, evaluator, ctx.signal, draft);
+        workspace.gateVerdicts.push(judged);
         const decision = enforceSufficiencyLimit(workspace, {
-          ...(await evaluateSufficiency(query, summary, evaluator, ctx.signal)),
+          ...(generated ? standsWhenUnsure(judged) : judged),
           source: 'llm-sufficiency-gate',
         });
         if (generated || (decision.status === 'sufficient' && !hasUnread)) sufficiency = decision;
       }
+      const draftRead = generated && sufficiency !== undefined && sufficiency !== shadow;
       const grounding =
         generated && !ablated.has('grounding-gate') ? groundingDecision(workspace) : undefined;
       const effective = grounding ?? sufficiency;
@@ -775,7 +993,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         ? gateSystemHint(query, effective, summary ?? buildEvidenceSummary(workspace, query))
         : undefined;
       if (effective && effective.status !== 'sufficient' && generated && hint !== undefined)
-        results = replaceGenerateResult(results, hint);
+        results = withGateHint(results, hint);
       if (effective)
         workspace.sufficiencyDecisions.push({
           ...effective,
@@ -786,23 +1004,29 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       let validationHint: string | undefined;
       if (
         !ablated.has('response-validation') &&
-        generated &&
+        draftJudged &&
+        !draftRead &&
         (!effective || effective.status === 'sufficient') &&
         shouldRunResponseValidation(workspace)
       ) {
         const s2 = buildEvidenceSummary(workspace, query);
         validation = enforceSufficiencyLimit(workspace, {
-          ...(await evaluateSufficiency(query, s2, evaluator, ctx.signal)),
+          ...standsWhenUnsure(await evaluateSufficiency(query, s2, evaluator, ctx.signal, draft)),
           source: 'response-validation',
         });
         validationHint = responseValidationHint(query, validation, s2);
-        if (validation.status !== 'sufficient')
-          results = replaceGenerateResult(results, validationHint);
+        if (validation.status !== 'sufficient') results = withGateHint(results, validationHint);
         workspace.responseValidations.push({ ...validation, message: validationHint });
       }
 
       const active = validation ?? grounding ?? sufficiency;
       const activeHint = validationHint ?? hint;
+      const overriddenReadStatus =
+        active?.status === 'sufficient' &&
+        lastStatus !== undefined &&
+        lastStatus !== 'support-found'
+          ? lastStatus
+          : undefined;
       if (active)
         yield {
           type: 'kernel.notice',
@@ -811,16 +1035,18 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             source: active.source,
             status: active.status,
             strategy: active.suggestedStrategy,
+            ...(overriddenReadStatus ? { overriddenReadStatus } : {}),
           },
         };
 
+      const remaining = budgetNote();
       messages = [
         ...messages,
         assistant,
         ...results.map((r): ChatMessage => ({
           role: 'tool',
           toolCallId: r.callId,
-          content: r.content,
+          content: `${r.content}\n\n${remaining}`,
         })),
       ];
       fallbackMessages = messages;
@@ -834,6 +1060,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         workspace.lastGenerateInsufficient =
           needsRetry || Boolean(active && active.status !== 'sufficient');
       const rejected = generated && Boolean(active && active.status !== 'sufficient');
+      if (rejected && citedDraft) draftRepairs += 1;
       if (rejected && streamed)
         yield { type: 'kernel.notice', data: { stage: 'answer-discarded', iteration } };
 
@@ -852,6 +1079,10 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             { query },
           ),
         );
+        if (refusal) {
+          yield refusedNotice(refusal, iteration);
+          break;
+        }
         const usable =
           workspace.lastGeneratedResponse?.trim() && !workspace.lastGenerateInsufficient
             ? workspace.lastGeneratedResponse
@@ -884,28 +1115,39 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       const stored = workspace.lastGeneratedResponse?.trim()
         ? workspace.lastGeneratedResponse
         : undefined;
-      const usable = stored && !workspace.lastGenerateInsufficient ? stored : undefined;
+      const cited = Boolean(stored && workspace.citationValidation?.grounded);
+      const usable = stored && (cited || !workspace.lastGenerateInsufficient) ? stored : undefined;
       if (usable) answer = usable;
-      else {
+      else if (refusal) {
+        answer = modelRefusals[language];
+        yield { type: 'kernel.part.delta', data: { text: answer } };
+      } else {
         yield {
           type: 'kernel.notice',
           data: { stage: finalized ? 'recovered-empty' : 'exhausted', iterations: iteration },
         };
+        const gaps = answerTurnGaps(latestGaps(workspace));
         try {
           const fallback = yield* withDeltas((push) =>
-            session.text(
+            session.chat(
               {
                 purpose: 'answer',
                 messages: [
                   ...withLoadedSkills(fallbackMessages, workspace.loadedSkills),
-                  { role: 'user', content: exhaustionNudge },
+                  ...(gaps ? [{ role: 'system' as const, content: gaps }] : []),
+                  { role: 'system', content: exhaustionNudge },
                 ],
                 temperature,
               },
               push,
             ),
           );
-          answer = blank(fallback) ? exhaustionDefault : fallback;
+          refusal = refusalOf(fallback);
+          if (refusal) {
+            yield refusedNotice(refusal, iteration);
+            answer = modelRefusals[language];
+            yield { type: 'kernel.part.delta', data: { text: answer } };
+          } else answer = blank(fallback.content) ? exhaustionDefaults[language] : fallback.content;
         } catch (error) {
           if (!stored || ctx.signal.aborted) throw error;
           answer = stored;
@@ -930,7 +1172,11 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       }
     }
 
-    if (!clarification && answer !== undefined) {
+    if (
+      !clarification &&
+      answer !== undefined &&
+      !(refusal && answer === modelRefusals[language])
+    ) {
       const settlement = settleCitations(answer, workspace);
       let settled: string | undefined;
       if (settlement.action === 'carry-through') settled = workspace.lastGeneratedResponse;
@@ -943,6 +1189,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             ),
             settlement.readFirst,
             settlement.refusal,
+            answer,
           );
         } catch (error) {
           if (ctx.signal.aborted) throw error;
@@ -986,7 +1233,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       foundNothing &&
       settings.noAnswerText &&
       answer !== settings.noAnswerText &&
-      answer !== exhaustionDefault &&
+      answer !== exhaustionDefaults[language] &&
       onlySaysNothingFound(answer ?? '') &&
       workspace.searches.length > 0
     ) {
@@ -1019,7 +1266,21 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         if (ctx.signal.aborted) throw error;
       }
     }
-    const published = outputChunks().map(sourceRecord);
+    const publishedChunks =
+      settings.sources === 'read' ? outputChunks() : citedOnly(outputChunks(), workspace);
+    if (!clarification && citeBy !== 'excerpt' && answer && workspace.citations.length) {
+      const numbered = numberByPublished(answer, workspace.citations, publishedChunks, (id) =>
+        workspace.chunks.get(id),
+      );
+      workspace.citations = numbered.citations;
+      workspace.citationIndex = numbered.index;
+      if (numbered.text !== answer) {
+        yield { type: 'kernel.notice', data: { stage: 'answer-discarded', reason: 'renumbered' } };
+        yield { type: 'kernel.part.delta', data: { text: numbered.text } };
+        answer = numbered.text;
+      }
+    }
+    const published = publishedChunks.map(sourceRecord);
     yield {
       type: 'kernel.notice',
       data: {

@@ -7,7 +7,7 @@ import { KnowledgeRouter } from '@genai/port-knowledge';
 import { fixtureFilters, memoryEngine, seedCorpus } from '@genai/port-knowledge/testing';
 import type { ModelPort } from '@genai/port-model';
 import { tenantAccess } from './access.js';
-import { mountDiagnostics } from './diagnostics.js';
+import { mountDiagnostics, stageAttribution } from './diagnostics.js';
 
 const tenant = '991825827';
 const other = '889640782';
@@ -261,7 +261,7 @@ describe('operator diagnostics', () => {
       rerank: { enabled: true, candidateK: 12 },
     });
     const trace = changed.body.trace as { expansion: { rerank: { status: string } } };
-    expect(trace.expansion.rerank.status).toBe('unconfigured');
+    expect(trace.expansion.rerank.status).toBe('off');
   });
 
   it("resolution shows the service's retrieval settings without calling a model", async () => {
@@ -295,7 +295,7 @@ describe('operator diagnostics', () => {
     expect(modelCalls.length).toBeGreaterThan(0);
   });
 
-  it('attribution splits a run into search pool, displayed and read chunks', async () => {
+  it('attribution splits a run into search pool, the chunks of the first page of documents and read chunks', async () => {
     const { send } = await boot();
     const res = await send('GET', `/tenants/${tenant}/diagnostics/tasks/t1/attribution`, {
       session,
@@ -305,7 +305,7 @@ describe('operator diagnostics', () => {
     expect(res.body.service).toBe('svar');
     expect(res.body.displayLimit).toBe(2);
     expect(ids('pool')).toEqual(['a', 'b', 'c', 'd', 'e']);
-    expect(ids('displayed')).toEqual(['a', 'b', 'd']);
+    expect(ids('displayed')).toEqual(['a', 'b', 'c', 'd']);
     expect(ids('read')).toEqual(['a', 'e']);
     expect(res.body.reads).toEqual([
       { chunks: [{ chunkId: 'a', document: 'd1', position: 0 }], auto: true },
@@ -319,5 +319,19 @@ describe('operator diagnostics', () => {
       session,
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('stage attribution', () => {
+  it('counts the page of documents a search showed as displayed', () => {
+    const notice = (data: Record<string, unknown>) => ({ type: 'kernel.notice', data }) as Event;
+    const hits = ['d1', 'd2', 'd3'].map((d) => ({ id: `${d}-c`, document: d }));
+
+    const attribution = stageAttribution(
+      [notice({ kind: 'retrieval', queries: ['x'], page: 2, hits })],
+      2,
+    );
+
+    expect(attribution.displayed.map((h) => h.chunkId)).toEqual(['d3-c']);
   });
 });

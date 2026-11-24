@@ -33,7 +33,7 @@ export interface ChangeFollowers {
   catalog: { refresh(): Promise<void> };
   descriptors?: { refresh(): Promise<void> };
   definitions: { sync(): Promise<void> };
-  models: { refresh(): Promise<unknown> };
+  models: { loadDiscovered(): Promise<unknown> };
   toolConnections: { reload(): Promise<void> };
 }
 
@@ -47,7 +47,7 @@ export const followChanges = (feed: ChangeFeed, followers: ChangeFollowers): (()
     },
     definitions: () => followers.definitions.sync(),
     'model-classifications': async () => {
-      await followers.models.refresh();
+      await followers.models.loadDiscovered();
     },
     'tool-connections': () => followers.toolConnections.reload(),
   };

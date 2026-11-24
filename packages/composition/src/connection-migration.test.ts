@@ -305,7 +305,12 @@ describe('moving model connections to the shape of ADR 0048', () => {
 describe('folding the embedding and rerank catalogues into the model catalogue (ADR 0048)', () => {
   const portApis = [
     { id: 'openai/embeddings@1', kind: 'embed', family: 'openai', modelOptions: z.object({}) },
-    { id: 'colbert/rerank@1', kind: 'rerank', family: 'colbert', modelOptions: z.object({}) },
+    {
+      id: 'omrangering/rerank@1',
+      kind: 'rerank',
+      family: 'omrangering',
+      modelOptions: z.object({}),
+    },
   ];
   const withPorts = apiRegistry([openAiChat], undefined, portApis);
   const chatCatalog = {
@@ -346,17 +351,17 @@ describe('folding the embedding and rerank catalogues into the model catalogue (
   };
   const rerank = {
     endpoints: {
-      colbert: {
-        engine: 'colbert',
-        baseURL: 'https://colbert.example',
-        auth: { kind: 'api-key', header: 'x-api-key', secret: 'secret://env/colbert-key' },
+      omrangering: {
+        engine: 'omrangering',
+        baseURL: 'https://omrangering.example',
+        auth: { kind: 'api-key', header: 'x-api-key', secret: 'secret://env/omrangering-key' },
       },
     },
-    rerankers: [{ id: 'colbert', endpoint: 'colbert', residency: 'norway' }],
+    rerankers: [{ id: 'omrangering', endpoint: 'omrangering', residency: 'norway' }],
   };
   const fold = () => {
     const folded = withLegacyCatalogs(chatCatalog, embeddings, rerank, {
-      colbert: { id: 'colbert/rerank@1', family: 'colbert' },
+      omrangering: { id: 'omrangering/rerank@1', family: 'omrangering' },
     });
     return { ...folded, models: migratedCatalog(folded.models, registryApiFor(withPorts)) };
   };
@@ -367,7 +372,7 @@ describe('folding the embedding and rerank catalogues into the model catalogue (
     const embedder = modelsOf(models).find((m) => m.id === 'foundry/text-embedding-3-small');
 
     expect(Object.keys((models as { endpoints: object }).endpoints)).toEqual([
-      'colbert',
+      'omrangering',
       'foundry',
     ]);
     expect(embedder).toMatchObject({
@@ -381,8 +386,8 @@ describe('folding the embedding and rerank catalogues into the model catalogue (
   it('a reranker whose engine has an API becomes a model with the same id and leaves the rerank catalogue', () => {
     const folded = fold();
 
-    expect(modelsOf(folded.models).find((m) => m.id === 'colbert')).toMatchObject({
-      apis: { rerank: 'colbert/rerank@1' },
+    expect(modelsOf(folded.models).find((m) => m.id === 'omrangering')).toMatchObject({
+      apis: { rerank: 'omrangering/rerank@1' },
       rerank: { onFailure: 'degrade' },
     });
     expect(folded.rerank).toMatchObject({ endpoints: {}, rerankers: [] });

@@ -14,8 +14,9 @@ import type {
   RunCounts,
   RunPlan,
 } from '@genai/port-knowledge';
-import type { ChunkDocumentConfig } from './chunk-document.js';
-import { placeChunks } from './chunk-places.js';
+import type { Chunk, ChunkDocumentConfig } from './chunk-document.js';
+import { placeChunks, placePartsChunks, type PlacedPartsChunk } from './chunk-places.js';
+import { partsUnitChunks } from './parts-unit.js';
 import { ConversionPending, type DocumentFile } from './converter.js';
 import { copiedDocument, type CopiedSource } from './copy-listing.js';
 import { embedIndexDocument, toIndexDocument } from './index-writer.js';
@@ -175,8 +176,11 @@ export interface IndexRecordOptions {
   generation: string;
   chunking: ChunkDocumentConfig;
   embedder?: EmbeddingPort;
-  /** Called with the chunks a stored document wrote, so the run counts them toward the heavy threshold. */
-  onStored?: (chunks: number) => void;
+  /**
+   * Called with the chunks a stored document wrote, so the run counts them toward the heavy
+   * threshold, and the derivations of the parts its files were chunked from (issue 635).
+   */
+  onStored?: (chunks: number, partsFrom?: string[]) => void;
   /**
    * Files with no stored conversion yet: the record waits on their convert jobs and the job writes
    * nothing (ADR 0042). Without it, such a file fails the job.
@@ -302,18 +306,63 @@ const writeRecord = async (
     );
     return 'skipped';
   }
-  const prepared = await prepareDocument(document, options.chunking, 'pipeline');
+  const strategy = options.chunking.strategy;
+  const parts = strategy.kind === 'parts-unit' ? partsChunksOf(document, strategy) : undefined;
+  const prepared = parts ?? (await prepareDocument(document, options.chunking, 'pipeline'));
   // Each chunk names its file and pages, and takes its id from them (ADR 0042, "Identity and chunks").
   const indexed = toIndexDocument(record.id, prepared.doc, prepared.chunks, prepared.phrases);
   // The listed url stands when the stored fields name none, as Kudos's page does (issue 651).
-  const doc = placeChunks(
-    indexed.url || !document.url ? indexed : { ...indexed, url: document.url },
-    listedNames(document, record),
-  );
-  const written = options.embedder ? await embedIndexDocument(doc, options.embedder) : doc;
+  const withUrl = indexed.url || !document.url ? indexed : { ...indexed, url: document.url };
+  const named = listedNames(document, record);
+  // A chunk from parts takes its place from its parts, not from matching its lines (issue 635).
+  const doc = parts
+    ? placePartsChunks(withUrl, named.files ?? [], parts.placed)
+    : placeChunks(withUrl, named);
+  // Chunks whose text the generation already holds for the document keep their vectors (issue 749).
+  const written = options.embedder
+    ? await embedIndexDocument(
+        doc,
+        options.embedder,
+        undefined,
+        await options.records.heldVectors(record, options.generation),
+      )
+    : doc;
   applied(await options.records.replace(record, options.generation, { document: written }));
-  options.onStored?.(written.chunks.length);
+  options.onStored?.(
+    written.chunks.length,
+    parts ? (document.files ?? []).flatMap((file) => file.parts?.derivation ?? []) : undefined,
+  );
   return 'stored';
+};
+
+/**
+ * A document's chunks from its files' stored parts (ADR 0055, "Chunks and reads"): no length filter
+ * drops one, and no search phrases are made. Every file must have parts: a parts chunking reads no
+ * pages.
+ */
+const partsChunksOf = (document: SourceDocument, strategy: { splitMaxLength: number }) => {
+  const chunks: Chunk[] = [];
+  const placed: PlacedPartsChunk[] = [];
+  (document.files ?? []).forEach((file, index) => {
+    if (!file.parts) throw new Error('a parts chunking read a file with no stored parts');
+    for (const chunk of partsUnitChunks(file.parts.units, strategy)) {
+      chunks.push({
+        chunk_id: `${document.docNum}#${chunks.length}`,
+        content_markdown: chunk.text,
+        doc_num: document.docNum,
+        chunk_index: chunks.length,
+        content_length: chunk.text.length,
+        ...(document.location ? { [document.location.key]: document.location.value } : {}),
+      });
+      placed.push({ file: index, chunk });
+    }
+  });
+  return {
+    doc: document.stored(chunks),
+    chunks: document.storedChunks(chunks),
+    phrases: [],
+    placed,
+  };
 };
 
 export interface IngestListingOptions {

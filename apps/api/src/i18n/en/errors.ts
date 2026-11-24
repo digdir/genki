@@ -57,6 +57,7 @@ export const catalogErrors = {
   noDataset: 'no dataset {dataset}',
   onlyTenantTestSets: 'only the tenant or an operator changes its test sets',
   onlyTenantChangesServiceState: 'only the tenant changes the state of its services',
+  onlyTenantDeletesServices: 'only the tenant deletes its services',
   onlyTenantChangesEnvironments: 'only the tenant changes the environments of its services',
   serviceStateValues: 'state must be active, paused or archived',
   indexRequired: 'an index is required',
@@ -78,6 +79,7 @@ export const catalogErrors = {
   onlyTenantApprovesTools: 'only the tenant or an operator approves tool changes',
   onlyTenantRevokesTools: 'only the tenant or an operator revokes tools',
   onlyOperatorsPlatformSecrets: 'only operators set platform secrets',
+  onlyOperatorsDeletePlatformSecrets: 'only operators delete platform secrets',
   invalidSecretName: 'not a valid secret name',
   onlyTenantSecrets: 'only the tenant or an operator sets its secrets',
   onlyTenantSecretsRemoved: 'only the tenant or an operator removes its secrets',
@@ -97,6 +99,38 @@ export const catalogErrors = {
   onlyTenantRemovesClients: 'only the tenant or an operator removes its clients',
   noSuchClient: 'no such client',
   noClientFor: 'no client {client} for {service}',
+  hostedInLockdown: 'in lockdown only a platform operator marks a client hosted',
+  hostedClientIdInLockdown:
+    'in lockdown only a platform operator changes the client id of a hosted client',
+  onlyOperatorHosts: 'only a platform operator marks a client hosted',
+  hostnameNotOpen: '{hostnameNotAllowed}: {hostname} is not open to this organisation',
+  hostnameTaken: '{hostname} belongs to the client {id}',
+  hostOwnBlockHosted:
+    "{block} is a host's own block, and genki's assistant host draws only catalogue blocks",
+  unknownInterfaceBlock: 'unknown interface block {block}',
+  noUsableBlock: 'no published block {publisher}/{id} that this organisation may use',
+  noUsableBlockVersion:
+    'block {publisher}/{id} has no version {version} that this organisation may use',
+  blockRefDrawnAs: '{ref} is drawn as {drawn}, so its block must be {drawn}',
+  blockRefNotDrawn: '{ref} is a {tier} block, so its block must be ref',
+  refBlockNeedsRef: 'ref as a block needs a ref to the block it draws',
+  blockRefZone: '{ref} cannot stand in {zone}; it may stand in {zones}',
+  previewShowsBlock: 'a preview shows a Block',
+  pinVersion: 'version is a published edition of the block',
+  pinZone: 'zone is primary, main or secondary',
+  codeBlockNotDrawn:
+    'code blocks are not drawn by any host yet; only built-in blocks can be published',
+  declarativeBlockNotDrawn:
+    'declarative blocks are not drawn by any host yet; only built-in blocks can be published',
+  blockFileNotCode: 'a file under block/ belongs only to a code block',
+  pinNoLayout: 'the service has no layout to pin a block into',
+  pinSettings: 'settings map names to true, false or a text',
+  blockRefNoSetting: '{ref} has no setting {key}',
+  blockRefSettingBoolean: 'setting {key} of {ref} must be true or false',
+  blockRefSettingText: 'setting {key} of {ref} must be a text',
+  blockRefSettingEnum: 'setting {key} of {ref} must be one of {allowed}',
+  hostedServiceOwnBlock:
+    "the service's interface has a host's own block ({block}), which genki's assistant host does not draw",
   riskConfirm:
     'risk class {riskClass} must be confirmed by a person with the publish right before publishing',
   riskConfirmMismatch:
@@ -241,6 +275,7 @@ export const knowledgeErrors = {
   engineNotUsed: 'The search engine could not be put into use',
   onlyActiveBack: 'Only a search engine that is in use can be switched back.',
   previousGone: 'The previous search engine is no longer kept.',
+  previousEndpointGone: 'The previous search engine no longer exists.',
   datasetChangedEngine: 'The dataset has changed since the search engine was put into use.',
   previousNotRestored: 'The previous search engine could not be put back into use',
   pipelineOff: 'the pipeline is turned off',
@@ -636,6 +671,8 @@ export const definitionErrors = {
   modelNoTools: 'model {id} cannot call tools',
   unknownModel: 'unknown model {id}',
   modelLacks: 'model {id} lacks {capabilities}, which {strategy} needs',
+  modelLacksChecked:
+    'model {id} lacks {capabilities}, which {strategy} needs; checked {checked} on {date}',
   tooManyEvents: 'task emitted more than {count} events',
   firstVariantChat: 'the first variant is the default and must be a chat variant',
   onlyFlowTable: 'only a step flow can produce a table',

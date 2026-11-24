@@ -1559,6 +1559,87 @@
             schemas: [],
           },
           {
+            id: 'assistant-host',
+            plane: 'consumers',
+            name: 'Assistant host',
+            note: "A hosted service's assistant",
+            icon: 'chat',
+            color: '#74a7ff',
+            status: 'React app',
+            packages: ['@genai/assistant'],
+            summary:
+              "genki's generic host for a service's assistant, drawn from the service's interface by hostname.",
+            description:
+              "A React app that looks up the hostname it is served on, draws the service's name, menu and pages, and after login the assistant the service's layout describes through ui-assembly. It runs no code from the service owner. Where the host serves the API's BFF it signs in through it (bffSignIn in bff.ts, a host-only session cookie, no token in the page); elsewhere it logs in in the browser with the authorization code flow and PKCE against the issuer and client the host route names (login.ts).",
+            responsibilities: [
+              'Look up the hostname and draw the hosted service, or say there is none',
+              "Draw the menu and the service's Markdown pages",
+              "Draw the assistant from the layout in the reader's language",
+              'Sign the person in through the BFF, or in the browser where the host serves none',
+            ],
+            files: [
+              'apps/assistant/src/App.tsx',
+              'apps/assistant/src/host.ts',
+              'apps/assistant/src/login.ts',
+              'apps/assistant/src/bff.ts',
+            ],
+            input: "The hostname and the person's questions",
+            output: 'Host lookups, chat requests',
+            edges: [
+              {
+                to: 'i18n',
+                label: 'Language state and catalogues',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'apps/assistant/src/i18n.ts', imports: '@genai/i18n' },
+              },
+              {
+                to: 'ui-assembly',
+                label: 'Draws the assistant from the layout',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'apps/assistant/src/App.tsx', imports: '@genai/ui-assembly' },
+              },
+              {
+                to: 'ui-blocks',
+                label: "Draws a page's Markdown",
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'apps/assistant/src/App.tsx', imports: '@genai/ui-blocks' },
+              },
+              {
+                to: 'api',
+                label: 'The hosted service and its pages by hostname',
+                kind: 'http',
+                target: 'http',
+                witness: { file: 'apps/assistant/src/host.ts', contains: '/api/v1/hosts/' },
+              },
+              {
+                to: 'api',
+                label: 'Sign-in through the BFF, with no token in the page',
+                kind: 'http',
+                target: 'http',
+                witness: { file: 'apps/assistant/src/bff.ts', contains: '/auth/me' },
+              },
+              {
+                to: 'adapter-openai',
+                label: "The service's interface after login",
+                kind: 'http',
+                target: 'http',
+                witness: { file: 'apps/assistant/src/host.ts', contains: '/interface' },
+              },
+              {
+                to: 'ansattporten',
+                label: 'Browser login with PKCE',
+                kind: 'http',
+                target: 'http',
+                witness: { file: 'apps/assistant/src/login.ts', contains: 'authorization_code' },
+              },
+            ],
+            keywords: 'assistant host hosted hostname menu pages frontend react designsystemet',
+            schemas: [],
+          },
+          {
             id: 'portal',
             plane: 'consumers',
             name: 'Portal',
@@ -1959,6 +2040,7 @@
               "Pair an answer's footnotes with the excerpts they cite, both ways",
               "Narrow the documents by the dataset's facets, and show the collection and its documents",
               "Every token a block's stylesheet reads can be changed through its own CSS variable",
+              "Draw a declarative block's template with Designsystemet components, data only as text (`@genai/ui-blocks/declarative`)",
             ],
             files: [
               'packages/ui-blocks/src/approach/Approach.tsx',
@@ -1968,6 +2050,7 @@
               'packages/ui-blocks/src/filter/Filter.tsx',
               'packages/ui-blocks/src/corpus/Corpus.tsx',
               'packages/ui-blocks/src/documents/Documents.tsx',
+              'packages/ui-blocks/src/declarative/Render.tsx',
               'packages/ui-blocks/src/i18n.ts',
             ],
             input: 'Steps, sources, footnotes, counts, facets, documents and state as props',
@@ -1981,9 +2064,19 @@
                 target: 'call',
                 witness: { file: 'packages/ui-blocks/src/i18n.ts', imports: '@genai/i18n' },
               },
+              {
+                to: 'kernel',
+                label: "The ids of genki's built-in blocks, shared with the definitions",
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/ui-blocks/src/builder/catalogue.ts',
+                  imports: '@genai/contracts',
+                },
+              },
             ],
             keywords:
-              'ui blocks building blocks components approach fremgangsmåte sources kilder footnotes document view dokumentvisning filter utvalg corpus documents dokumenter facets designsystemet react',
+              'ui blocks declarative template designelement uten kode building blocks components approach fremgangsmåte sources kilder footnotes document view dokumentvisning filter utvalg corpus documents dokumenter facets designsystemet react',
             schemas: [],
           },
           {
@@ -2001,12 +2094,21 @@
               'A React package beside the UI blocks. It holds the state the blocks share and the events that change it, places each block of a layout in its zone of the shell, and calls genki through one interface, so the blocks themselves never fetch. It decides what happens when a block a partner needs is off, such as footnotes without the sources.',
             responsibilities: [
               'Draw any layout the block catalogue allows, live against a service',
+              "Resolve each layout entry, by id or by a Block definition's ref, to a built-in block through the registry, and draw a placeholder for a ref it has no component for",
+              {
+                'Pick a `block':
+                  "ref` entry's edition and only the fields it reads from what the interface serves, draw a declarative edition with its template and send its events to the assistant, and draw a placeholder for a code edition until its sandbox is built",
+              },
               'Keep the state the blocks share and link their events',
               'Call genki for models, threads, facets and answers through one interface',
             ],
             files: [
               'packages/ui-assembly/src/useAssistant.ts',
               'packages/ui-assembly/src/Assistant.tsx',
+              'packages/ui-assembly/src/registry.tsx',
+              'packages/ui-assembly/src/ref-block.tsx',
+              'packages/ui-assembly/src/block-data.ts',
+              'packages/ui-assembly/src/declarative-block.tsx',
               'packages/ui-assembly/src/api.ts',
               'packages/ui-assembly/src/i18n.ts',
             ],
@@ -2038,6 +2140,16 @@
                 kind: 'call',
                 target: 'call',
                 witness: { file: 'packages/ui-assembly/src/api.ts', imports: '@genai/client' },
+              },
+              {
+                to: 'kernel',
+                label: 'The field list a block reads and the payload of a pinned block',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/ui-assembly/src/block-data.ts',
+                  imports: '@genai/contracts',
+                },
               },
             ],
             keywords: 'ui assembly app builder layout wiring assistant preview byggeklosser',
@@ -2287,11 +2399,17 @@
               'Compose ports, providers and strategies into a kernel',
               'Mount MCP, /v1, REST, conversation, portal and console routes',
               'Authenticate callers and choose stores',
+              {
+                'Run the BFF for the assistant host':
+                  'login as a confidential client, sessions in Postgres, and a session swapped for a bearer token (ADR 0061)',
+              },
+              "Run genki's platform login on login.apps.\u003czone> and hand its session to a hosted hostname with a one-time code (ADR 0061)",
               'Run a published service over a document set, with a cost estimate, a cost cap and a retry list',
               'Keep projects of document selections, and subscriptions that run a service on new documents under a monthly cost cap',
               "Let operators set the maturity of operation kinds and the processor records of model endpoints, and refuse a service's call-operation step at publish unless both allow it (ADR 0047)",
               'Let operators upload operation descriptors with their fixtures, checked by the loader rules and operation@1 before they are stored, record fixtures from their synthetic tries in test, and move or withdraw them, audited (ADR 0047)',
               'List the operations a step may call in a tenant, with their typed input and the models that offer each kind',
+              'List the interface blocks an organisation may use across publishers, preview one, pin an edition in a service draft, and serve each pinned edition with the interface (ADR 0067)',
             ],
             files: [
               'apps/api/src/main.ts',
@@ -2301,11 +2419,15 @@
               'apps/api/src/routes/console-routes.ts',
               'apps/api/src/batch-runs.ts',
               'apps/api/src/session-upgrade.ts',
+              'apps/api/src/bff/bff.ts',
+              'apps/api/src/bff/acting.ts',
               'apps/api/src/projects.ts',
               'apps/api/src/task-export.ts',
               'apps/api/src/operation-governance.ts',
               'apps/api/src/operation-descriptors.ts',
               'apps/api/src/step-operations.ts',
+              'apps/api/src/block-catalogue.ts',
+              'apps/api/src/interface-blocks.ts',
             ],
             input: 'Environment and catalogs at boot; HTTP at runtime',
             output: 'A running platform on :8080',
@@ -2559,16 +2681,6 @@
                 },
               },
               {
-                to: 'providers-colbert',
-                label: 'Composes ColBERT adapter',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'apps/api/src/composition.ts',
-                  imports: '@genai/providers-colbert',
-                },
-              },
-              {
                 to: 'providers-documents',
                 label: 'Composes the local document converter',
                 kind: 'call',
@@ -2719,9 +2831,9 @@
               'Fire schedules from one worker at a time through a Postgres advisory lock',
               'Install the knowledge job queues on both servers and reconcile knowledge runs every minute (ADR 0042)',
               'Work knowledge.ingest on the platform server and knowledge.index on the knowledge server, behind admission on the run and the knowledge binding',
-              "Work knowledge.convert, KNOWLEDGE_CONVERT_CONCURRENCY at once (2 by default), with Docling when DOCLING_URL is set and else the text layer - fetch the file through its record, write native output to the native output store, store its pages or the converter's refusal, read a file Docling refuses with the text layer, and send the waiting records' index jobs (ADR 0042)",
+              "Work knowledge.convert, KNOWLEDGE_CONVERT_CONCURRENCY at once (2 by default), with Docling when DOCLING_URL is set and else the text layer - fetch the file through its record, write native output to the native output store, store its parts and pages or the converter's refusal, read a file Docling refuses with the text layer, and send the waiting records' index jobs (ADR 0042)",
               "Send a replacement run when a run ends with text-layer files, and work knowledge.replace - make the pipeline's records wait on Docling, with convert jobs for the night window (ADR 0042)",
-              'Work knowledge.seed - store a conversion for each native output in Blob under one sha256 prefix that has none, with pages from its derivation, skipping files it cannot read (ADR 0042)',
+              'Work knowledge.seed - store a conversion for each native output in Blob under one sha256 prefix that has none, with pages from its derivation or, for a parts batch, its parts, skipping files it cannot read (ADR 0042, ADR 0055)',
               'Count records waiting on a conversion as open work of their runs, and hand a shared conversion to a waiting run when its sender is cancelled',
               'Work KNOWLEDGE_INDEX_CONCURRENCY knowledge.index and knowledge.fill jobs at once (8 by default), with knowledge pools sized to hold them',
               'Wait out a throttled embedding model in knowledge.index and knowledge.fill, pausing every job on the model, for up to 20 minutes a try',
@@ -2915,17 +3027,20 @@
               'Keep uploaded operation descriptors as config entries and serve the bundled ones and the uploads as one registry, read again at every descriptor call, in the API and the worker (ADR 0047)',
               'Apply catalogs, guardrail rules, hooks and skills stored as config entries',
               'Move stored model connections, models, processor records and classifications once to connections with API families and models with API bindings (ADR 0048)',
-              'Fold an embedding catalogue and ColBERT rerankers from before ADR 0048 into the model catalogue, keeping ids, and move stored per-1,000-token prices to prices per kind and unit',
+              'Fold an embedding catalogue and rerankers on an engine with an API from before ADR 0048 into the model catalogue, keeping ids, and move stored per-1,000-token prices to prices per kind and unit',
               'Log the model connections without a processor record at start, and warn or refuse typed calls on them by GENAI_PROCESSOR_RECORDS',
               'Compile published services into capabilities and quarantine invalid ones',
               'Apply per-agency building-block settings (on/off, timeouts) to every service run, in the API and the worker',
               'Keep the config entry store, tenant secret vault and change feed contracts',
+              'List the model connections again on one replica per interval, claimed in the store, and load what another replica listed when the change feed says so',
             ],
             files: [
               'packages/composition/src/runtime.ts',
               'packages/composition/src/block-settings.ts',
               'packages/composition/src/catalog-registry.ts',
               'packages/composition/src/prices.ts',
+              'packages/composition/src/model-relist.ts',
+              'packages/composition/src/discovery-retry.ts',
               'packages/composition/src/config-store.ts',
               'packages/composition/src/hook-runtime.ts',
               'packages/composition/src/settings-runtime.ts',
@@ -3119,16 +3234,6 @@
                 },
               },
               {
-                to: 'providers-colbert',
-                label: 'Composes the ColBERT reranker',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/composition/src/runtime.ts',
-                  imports: '@genai/providers-colbert',
-                },
-              },
-              {
                 to: 'providers-openai',
                 label: 'Composes the OpenAI adapter and embeddings',
                 kind: 'call',
@@ -3296,27 +3401,6 @@
             replaces: [],
             edges: [
               {
-                to: 'kernel',
-                label: 'Kernel SPI: tasks, events, principals, capabilities',
-                kind: 'call',
-                target: 'call',
-                witness: { file: 'apps/parity/src/cli.ts', imports: '@genai/kernel' },
-              },
-              {
-                to: 'port-knowledge',
-                label: 'Search and fetch through the knowledge port',
-                kind: 'call',
-                target: 'call',
-                witness: { file: 'apps/parity/src/cli.ts', imports: '@genai/port-knowledge' },
-              },
-              {
-                to: 'providers-typesense',
-                label: 'Typesense adapter for live runs',
-                kind: 'call',
-                target: 'call',
-                witness: { file: 'apps/parity/src/cli.ts', imports: '@genai/providers-typesense' },
-              },
-              {
                 to: 'headless-rag',
                 label: 'Records the reference behaviour',
                 kind: 'http',
@@ -3399,6 +3483,8 @@
               'Validate and compile service definitions',
               'Resolve settings with provenance and locks',
               'Definition store interface',
+              'The Block kind, with the seams for the declarative template and the code bundle',
+              'Check a declarative template in linear time against the element set, the field list and the limits',
             ],
             files: [
               'packages/definitions/src/schema.ts',
@@ -3406,6 +3492,8 @@
               'packages/definitions/src/settings.ts',
               'packages/definitions/src/store.ts',
               'packages/definitions/src/settings-catalogue.ts',
+              'packages/definitions/src/block-template.ts',
+              'packages/definitions/src/block-code.ts',
             ],
             input: 'Service definition YAML',
             output: 'Compiled capabilities, resolved config',
@@ -4070,6 +4158,482 @@
                           },
                           additionalProperties: false,
                         },
+                        interface: {
+                          type: 'object',
+                          properties: {
+                            layout: {
+                              type: 'object',
+                              properties: {
+                                version: { type: 'number', const: 1 },
+                                template: { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
+                                look: { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
+                                zones: {
+                                  type: 'object',
+                                  properties: {
+                                    primary: {
+                                      maxItems: 16,
+                                      type: 'array',
+                                      items: {
+                                        type: 'object',
+                                        properties: {
+                                          block: {
+                                            type: 'string',
+                                            pattern: '^[a-z][a-z0-9-]{0,63}$',
+                                          },
+                                          ref: {
+                                            type: 'string',
+                                            pattern:
+                                              '^(\\d{9})\\/([a-z0-9][a-z0-9-]{0,62})@([1-9]\\d{0,8})$',
+                                          },
+                                          settings: {
+                                            type: 'object',
+                                            propertyNames: {
+                                              type: 'string',
+                                              pattern: '^[a-zA-Z][a-zA-Z0-9-]{0,63}$',
+                                            },
+                                            additionalProperties: {
+                                              anyOf: [
+                                                { type: 'boolean' },
+                                                { type: 'string', maxLength: 1000 },
+                                              ],
+                                            },
+                                          },
+                                        },
+                                        required: ['block'],
+                                        additionalProperties: false,
+                                      },
+                                    },
+                                    main: {
+                                      maxItems: 16,
+                                      type: 'array',
+                                      items: {
+                                        type: 'object',
+                                        properties: {
+                                          block: {
+                                            type: 'string',
+                                            pattern: '^[a-z][a-z0-9-]{0,63}$',
+                                          },
+                                          ref: {
+                                            type: 'string',
+                                            pattern:
+                                              '^(\\d{9})\\/([a-z0-9][a-z0-9-]{0,62})@([1-9]\\d{0,8})$',
+                                          },
+                                          settings: {
+                                            type: 'object',
+                                            propertyNames: {
+                                              type: 'string',
+                                              pattern: '^[a-zA-Z][a-zA-Z0-9-]{0,63}$',
+                                            },
+                                            additionalProperties: {
+                                              anyOf: [
+                                                { type: 'boolean' },
+                                                { type: 'string', maxLength: 1000 },
+                                              ],
+                                            },
+                                          },
+                                        },
+                                        required: ['block'],
+                                        additionalProperties: false,
+                                      },
+                                    },
+                                    secondary: {
+                                      maxItems: 16,
+                                      type: 'array',
+                                      items: {
+                                        type: 'object',
+                                        properties: {
+                                          block: {
+                                            type: 'string',
+                                            pattern: '^[a-z][a-z0-9-]{0,63}$',
+                                          },
+                                          ref: {
+                                            type: 'string',
+                                            pattern:
+                                              '^(\\d{9})\\/([a-z0-9][a-z0-9-]{0,62})@([1-9]\\d{0,8})$',
+                                          },
+                                          settings: {
+                                            type: 'object',
+                                            propertyNames: {
+                                              type: 'string',
+                                              pattern: '^[a-zA-Z][a-zA-Z0-9-]{0,63}$',
+                                            },
+                                            additionalProperties: {
+                                              anyOf: [
+                                                { type: 'boolean' },
+                                                { type: 'string', maxLength: 1000 },
+                                              ],
+                                            },
+                                          },
+                                        },
+                                        required: ['block'],
+                                        additionalProperties: false,
+                                      },
+                                    },
+                                  },
+                                  required: ['primary', 'main', 'secondary'],
+                                  additionalProperties: false,
+                                },
+                                profile: {
+                                  type: 'object',
+                                  properties: {
+                                    assistantName: {
+                                      anyOf: [
+                                        { type: 'string', maxLength: 80 },
+                                        {
+                                          type: 'object',
+                                          properties: {
+                                            nb: { type: 'string', maxLength: 80 },
+                                            en: { type: 'string', maxLength: 80 },
+                                          },
+                                          required: ['nb', 'en'],
+                                          additionalProperties: false,
+                                        },
+                                      ],
+                                    },
+                                    suggestions: {
+                                      maxItems: 6,
+                                      type: 'array',
+                                      items: {
+                                        anyOf: [
+                                          { type: 'string', maxLength: 200 },
+                                          {
+                                            type: 'object',
+                                            properties: {
+                                              nb: { type: 'string', maxLength: 200 },
+                                              en: { type: 'string', maxLength: 200 },
+                                            },
+                                            required: ['nb', 'en'],
+                                            additionalProperties: false,
+                                          },
+                                        ],
+                                      },
+                                    },
+                                    followUps: {
+                                      maxItems: 6,
+                                      type: 'array',
+                                      items: {
+                                        anyOf: [
+                                          { type: 'string', maxLength: 200 },
+                                          {
+                                            type: 'object',
+                                            properties: {
+                                              nb: { type: 'string', maxLength: 200 },
+                                              en: { type: 'string', maxLength: 200 },
+                                            },
+                                            required: ['nb', 'en'],
+                                            additionalProperties: false,
+                                          },
+                                        ],
+                                      },
+                                    },
+                                    corpora: {
+                                      type: 'object',
+                                      propertyNames: { type: 'string', maxLength: 128 },
+                                      additionalProperties: {
+                                        type: 'object',
+                                        properties: {
+                                          label: {
+                                            anyOf: [
+                                              { type: 'string', maxLength: 80 },
+                                              {
+                                                type: 'object',
+                                                properties: {
+                                                  nb: { type: 'string', maxLength: 80 },
+                                                  en: { type: 'string', maxLength: 80 },
+                                                },
+                                                required: ['nb', 'en'],
+                                                additionalProperties: false,
+                                              },
+                                            ],
+                                          },
+                                          description: {
+                                            anyOf: [
+                                              { type: 'string', maxLength: 500 },
+                                              {
+                                                type: 'object',
+                                                properties: {
+                                                  nb: { type: 'string', maxLength: 500 },
+                                                  en: { type: 'string', maxLength: 500 },
+                                                },
+                                                required: ['nb', 'en'],
+                                                additionalProperties: false,
+                                              },
+                                            ],
+                                          },
+                                          fields: {
+                                            maxItems: 30,
+                                            type: 'array',
+                                            items: {
+                                              type: 'object',
+                                              properties: {
+                                                id: { type: 'string', maxLength: 128 },
+                                                label: {
+                                                  anyOf: [
+                                                    { type: 'string', maxLength: 80 },
+                                                    {
+                                                      type: 'object',
+                                                      properties: {
+                                                        nb: { type: 'string', maxLength: 80 },
+                                                        en: { type: 'string', maxLength: 80 },
+                                                      },
+                                                      required: ['nb', 'en'],
+                                                      additionalProperties: false,
+                                                    },
+                                                  ],
+                                                },
+                                                heading: {
+                                                  anyOf: [
+                                                    { type: 'string', maxLength: 80 },
+                                                    {
+                                                      type: 'object',
+                                                      properties: {
+                                                        nb: { type: 'string', maxLength: 80 },
+                                                        en: { type: 'string', maxLength: 80 },
+                                                      },
+                                                      required: ['nb', 'en'],
+                                                      additionalProperties: false,
+                                                    },
+                                                  ],
+                                                },
+                                                kind: { type: 'string', enum: ['year'] },
+                                                years: {
+                                                  type: 'object',
+                                                  properties: {
+                                                    first: {
+                                                      type: 'integer',
+                                                      minimum: -9007199254740991,
+                                                      maximum: 9007199254740991,
+                                                    },
+                                                    last: {
+                                                      type: 'integer',
+                                                      minimum: -9007199254740991,
+                                                      maximum: 9007199254740991,
+                                                    },
+                                                  },
+                                                  additionalProperties: false,
+                                                },
+                                              },
+                                              required: ['id', 'label'],
+                                              additionalProperties: false,
+                                            },
+                                          },
+                                          typePlurals: {
+                                            type: 'object',
+                                            propertyNames: { type: 'string', maxLength: 128 },
+                                            additionalProperties: {
+                                              anyOf: [
+                                                { type: 'string', maxLength: 128 },
+                                                {
+                                                  type: 'object',
+                                                  properties: {
+                                                    nb: { type: 'string', maxLength: 128 },
+                                                    en: { type: 'string', maxLength: 128 },
+                                                  },
+                                                  required: ['nb', 'en'],
+                                                  additionalProperties: false,
+                                                },
+                                              ],
+                                            },
+                                          },
+                                          typeField: { type: 'string', maxLength: 128 },
+                                          documentLinks: {
+                                            type: 'object',
+                                            properties: {
+                                              digits: { type: 'string', maxLength: 500 },
+                                              uuid: { type: 'string', maxLength: 500 },
+                                              any: { type: 'string', maxLength: 500 },
+                                            },
+                                            additionalProperties: false,
+                                          },
+                                          about: {
+                                            type: 'object',
+                                            properties: {
+                                              idField: { type: 'string', maxLength: 128 },
+                                              fields: {
+                                                maxItems: 10,
+                                                type: 'array',
+                                                items: { type: 'string', maxLength: 128 },
+                                              },
+                                            },
+                                            required: ['idField', 'fields'],
+                                            additionalProperties: false,
+                                          },
+                                        },
+                                        additionalProperties: false,
+                                      },
+                                    },
+                                    experiments: {
+                                      maxItems: 10,
+                                      type: 'array',
+                                      items: {
+                                        type: 'object',
+                                        properties: {
+                                          id: { type: 'string', maxLength: 128 },
+                                          title: {
+                                            anyOf: [
+                                              { type: 'string', maxLength: 80 },
+                                              {
+                                                type: 'object',
+                                                properties: {
+                                                  nb: { type: 'string', maxLength: 80 },
+                                                  en: { type: 'string', maxLength: 80 },
+                                                },
+                                                required: ['nb', 'en'],
+                                                additionalProperties: false,
+                                              },
+                                            ],
+                                          },
+                                          description: {
+                                            anyOf: [
+                                              { type: 'string', maxLength: 500 },
+                                              {
+                                                type: 'object',
+                                                properties: {
+                                                  nb: { type: 'string', maxLength: 500 },
+                                                  en: { type: 'string', maxLength: 500 },
+                                                },
+                                                required: ['nb', 'en'],
+                                                additionalProperties: false,
+                                              },
+                                            ],
+                                          },
+                                          href: { type: 'string', maxLength: 500 },
+                                          hrefLabel: {
+                                            anyOf: [
+                                              { type: 'string', maxLength: 80 },
+                                              {
+                                                type: 'object',
+                                                properties: {
+                                                  nb: { type: 'string', maxLength: 80 },
+                                                  en: { type: 'string', maxLength: 80 },
+                                                },
+                                                required: ['nb', 'en'],
+                                                additionalProperties: false,
+                                              },
+                                            ],
+                                          },
+                                        },
+                                        required: ['id', 'title'],
+                                        additionalProperties: false,
+                                      },
+                                    },
+                                    settingsNote: {
+                                      anyOf: [
+                                        { type: 'string', maxLength: 1000 },
+                                        {
+                                          type: 'object',
+                                          properties: {
+                                            nb: { type: 'string', maxLength: 1000 },
+                                            en: { type: 'string', maxLength: 1000 },
+                                          },
+                                          required: ['nb', 'en'],
+                                          additionalProperties: false,
+                                        },
+                                      ],
+                                    },
+                                  },
+                                  additionalProperties: false,
+                                },
+                              },
+                              required: ['version', 'zones'],
+                              additionalProperties: false,
+                            },
+                            icon: { type: 'string', maxLength: 24576 },
+                            menu: {
+                              maxItems: 12,
+                              type: 'array',
+                              items: {
+                                anyOf: [
+                                  {
+                                    type: 'object',
+                                    properties: {
+                                      label: {
+                                        anyOf: [
+                                          { type: 'string', maxLength: 80 },
+                                          {
+                                            type: 'object',
+                                            properties: {
+                                              nb: { type: 'string', maxLength: 80 },
+                                              en: { type: 'string', maxLength: 80 },
+                                            },
+                                            required: ['nb', 'en'],
+                                            additionalProperties: false,
+                                          },
+                                        ],
+                                      },
+                                      page: { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
+                                    },
+                                    required: ['label', 'page'],
+                                    additionalProperties: false,
+                                  },
+                                  {
+                                    type: 'object',
+                                    properties: {
+                                      label: {
+                                        anyOf: [
+                                          { type: 'string', maxLength: 80 },
+                                          {
+                                            type: 'object',
+                                            properties: {
+                                              nb: { type: 'string', maxLength: 80 },
+                                              en: { type: 'string', maxLength: 80 },
+                                            },
+                                            required: ['nb', 'en'],
+                                            additionalProperties: false,
+                                          },
+                                        ],
+                                      },
+                                      href: { type: 'string', maxLength: 500 },
+                                    },
+                                    required: ['label', 'href'],
+                                    additionalProperties: false,
+                                  },
+                                ],
+                              },
+                            },
+                            pages: {
+                              maxItems: 12,
+                              type: 'array',
+                              items: {
+                                type: 'object',
+                                properties: {
+                                  id: { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
+                                  title: {
+                                    anyOf: [
+                                      { type: 'string', maxLength: 80 },
+                                      {
+                                        type: 'object',
+                                        properties: {
+                                          nb: { type: 'string', maxLength: 80 },
+                                          en: { type: 'string', maxLength: 80 },
+                                        },
+                                        required: ['nb', 'en'],
+                                        additionalProperties: false,
+                                      },
+                                    ],
+                                  },
+                                  body: {
+                                    anyOf: [
+                                      { type: 'string' },
+                                      {
+                                        type: 'object',
+                                        properties: {
+                                          nb: { type: 'string' },
+                                          en: { type: 'string' },
+                                        },
+                                        required: ['nb', 'en'],
+                                        additionalProperties: false,
+                                      },
+                                    ],
+                                  },
+                                },
+                                required: ['id', 'title', 'body'],
+                                additionalProperties: false,
+                              },
+                            },
+                          },
+                          additionalProperties: false,
+                        },
                       },
                       required: ['purpose', 'riskClass', 'input', 'output', 'strategy', 'model'],
                       additionalProperties: false,
@@ -4374,6 +4938,145 @@
                   },
                 },
               },
+              {
+                name: 'Block',
+                file: 'packages/definitions/src/schema.ts',
+                export: 'blockDefinition',
+                schema: {
+                  $schema: 'https://json-schema.org/draft/2020-12/schema',
+                  type: 'object',
+                  properties: {
+                    apiVersion: { type: 'string', const: 'genai/v1' },
+                    kind: { type: 'string', const: 'Block' },
+                    metadata: {
+                      type: 'object',
+                      properties: {
+                        tenant: { type: 'string', pattern: '^\\d{9}$' },
+                        id: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,62}$' },
+                        name: { type: 'string', minLength: 1 },
+                        version: {
+                          type: 'integer',
+                          exclusiveMinimum: 0,
+                          maximum: 9007199254740991,
+                        },
+                      },
+                      required: ['tenant', 'id'],
+                      additionalProperties: false,
+                    },
+                    spec: {
+                      type: 'object',
+                      properties: {
+                        tier: { type: 'string', enum: ['built-in', 'declarative', 'code'] },
+                        builtIn: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,62}$' },
+                        title: {
+                          type: 'object',
+                          propertyNames: { type: 'string', enum: ['nb', 'nn', 'en'] },
+                          additionalProperties: { type: 'string', minLength: 1, maxLength: 80 },
+                        },
+                        summary: {
+                          type: 'object',
+                          propertyNames: { type: 'string', enum: ['nb', 'nn', 'en'] },
+                          additionalProperties: { type: 'string', minLength: 1, maxLength: 500 },
+                        },
+                        zones: {
+                          minItems: 1,
+                          type: 'array',
+                          items: { type: 'string', enum: ['primary', 'main', 'secondary'] },
+                        },
+                        sharing: {
+                          default: 'private',
+                          type: 'string',
+                          enum: ['private', 'organisation', 'everyone'],
+                        },
+                        props: {
+                          type: 'object',
+                          properties: {
+                            type: { type: 'string', const: 'object' },
+                            properties: {
+                              type: 'object',
+                              propertyNames: {
+                                type: 'string',
+                                pattern: '^[a-zA-Z][a-zA-Z0-9-]{0,63}$',
+                              },
+                              additionalProperties: {
+                                type: 'object',
+                                propertyNames: { type: 'string' },
+                                additionalProperties: {},
+                              },
+                            },
+                            required: {
+                              type: 'array',
+                              items: { type: 'string', pattern: '^[a-zA-Z][a-zA-Z0-9-]{0,63}$' },
+                            },
+                          },
+                          required: ['type', 'properties'],
+                          additionalProperties: false,
+                        },
+                        events: {
+                          default: [],
+                          type: 'array',
+                          items: {
+                            type: 'string',
+                            enum: [
+                              'ask',
+                              'open-document',
+                              'set-filter',
+                              'open-page',
+                              'notify',
+                              'resize',
+                            ],
+                          },
+                        },
+                        states: {
+                          default: [],
+                          type: 'array',
+                          items: {
+                            type: 'string',
+                            enum: ['empty', 'loading', 'error', 'partial', 'disabled', 'filled'],
+                          },
+                        },
+                        texts: {
+                          type: 'object',
+                          propertyNames: { type: 'string', enum: ['nb', 'nn', 'en'] },
+                          additionalProperties: {
+                            type: 'object',
+                            propertyNames: {
+                              type: 'string',
+                              pattern: '^[a-zA-Z][a-zA-Z0-9.-]{0,63}$',
+                            },
+                            additionalProperties: { type: 'string', maxLength: 1000 },
+                          },
+                        },
+                        template: {},
+                        code: {
+                          type: 'object',
+                          properties: {
+                            sha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+                            bytes: {
+                              type: 'integer',
+                              exclusiveMinimum: 0,
+                              maximum: 9007199254740991,
+                            },
+                            reads: {
+                              default: [],
+                              maxItems: 32,
+                              type: 'array',
+                              items: { type: 'string', maxLength: 160 },
+                            },
+                            height: { type: 'integer', minimum: 40, maximum: 2000 },
+                          },
+                          required: ['sha256', 'bytes'],
+                          additionalProperties: false,
+                        },
+                      },
+                      required: ['tier', 'title', 'zones'],
+                      additionalProperties: false,
+                    },
+                  },
+                  required: ['apiVersion', 'kind', 'metadata', 'spec'],
+                  additionalProperties: false,
+                },
+              },
             ],
           },
           {
@@ -4661,6 +5364,14 @@
                         },
                       ],
                     },
+                    promptSections: {
+                      type: 'object',
+                      propertyNames: {
+                        type: 'string',
+                        enum: ['role', 'reasoning', 'workflow', 'gate'],
+                      },
+                      additionalProperties: { type: 'string', maxLength: 65536 },
+                    },
                     languageInstructions: {
                       type: 'object',
                       propertyNames: { type: 'string', enum: ['nb', 'nn', 'en'] },
@@ -4681,6 +5392,8 @@
                           exclusiveMinimum: 0,
                           maximum: 9007199254740991,
                         },
+                        chunksPerRead: { type: 'integer', minimum: 1, maximum: 50 },
+                        seconds: { type: 'integer', minimum: 10, maximum: 600 },
                       },
                       additionalProperties: false,
                     },
@@ -4697,6 +5410,7 @@
                     noAnswerText: { type: 'string', minLength: 1, maxLength: 500 },
                     instructionsInAnswer: { type: 'boolean' },
                     citeBy: { type: 'string', enum: ['document', 'excerpt'] },
+                    sources: { type: 'string', enum: ['cited', 'read'] },
                     search: {
                       type: 'object',
                       properties: {
@@ -5740,7 +6454,7 @@
               'Conversion and chunking: converters return pages, and chunks on the knowledge database name their file, pages and heading path, with ids from document, file, page and position (ADR 0042)',
               'Pages from a DoclingDocument (doclingPages, derivation docling-pages 1), with heading levels from section numbers',
               "Parts from a DoclingDocument (doclingParts, derivation docling-parts 1) - every item with its regions and its span of the conversion's text, one row a page (ADR 0055); both derivations share one walk (docling-walk.ts)",
-              "The Docling server's client (doclingConverter) - one request per file, its refusals by Docling's failure categories, and the DoclingDocument kept as native output (ADR 0042)",
+              "The Docling server's client (doclingConverter) - one task per file on the async route, polled on one connection, found again or submitted again when lost, its refusals by Docling's failure categories, and the DoclingDocument kept as native output (ADR 0042)",
               'Read stored conversions in index jobs instead of converting, and fetch one file of a record for a convert job (storedConverter, Listing.file)',
               'Phrase extraction with a model',
               'The pipeline spec and its sources, shared by the API and the worker',
@@ -5753,6 +6467,7 @@
                   "plan a run against a pipeline's records, write its changes, and index one document (ADR 0042)",
               },
               "Wait out a throttled embedding model in an index job, with one pause per model shared by the worker's jobs (throttledEmbedder)",
+              "Chunk a file's stored conversion parts a page a chunk, with no furniture and each chunk's span of the conversion's text (partsUnitChunks, ADR 0055)",
             ],
             files: [
               'packages/ingest/src/throttled-embedder.ts',
@@ -5767,6 +6482,9 @@
               'packages/ingest/src/stored-converter.ts',
               'packages/ingest/src/docling-pages.ts',
               'packages/ingest/src/docling-parts.ts',
+              'packages/ingest/src/docling-output.ts',
+              'packages/ingest/src/text-layer-parts.ts',
+              'packages/ingest/src/parts-unit.ts',
               'packages/ingest/src/docling-walk.ts',
               'packages/ingest/src/docling.ts',
             ],
@@ -5907,36 +6625,6 @@
                 kind: 'call',
                 target: 'call',
                 witness: { file: 'packages/eval/src/evaluators.ts', imports: '@genai/port-model' },
-              },
-              {
-                to: 'port-knowledge',
-                label: 'Search and fetch through the knowledge port',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/eval/src/scripts/kudos-live.ts',
-                  imports: '@genai/port-knowledge',
-                },
-              },
-              {
-                to: 'providers-typesense',
-                label: 'Typesense adapter for live runs',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/eval/src/scripts/kudos-live.ts',
-                  imports: '@genai/providers-typesense',
-                },
-              },
-              {
-                to: 'ingest',
-                label: 'Kudos client and the earlier-ids check for the id map script',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/eval/src/scripts/kudos-earlier-ids.ts',
-                  imports: '@genai/ingest',
-                },
               },
             ],
             keywords: 'eval evaluation judge gate test set score feedback',
@@ -6754,7 +7442,7 @@
                           properties: {
                             kind: { type: 'string', const: 'webhook' },
                             url: { type: 'string', format: 'uri' },
-                            secret: { type: 'string', pattern: '^[a-z0-9][a-z0-9._-]*$' },
+                            secret: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,62}$' },
                           },
                           required: ['kind', 'url', 'secret'],
                           additionalProperties: false,
@@ -6886,7 +7574,7 @@
             summary:
               'One port for model calls; a router owns the catalog, capabilities, operations, credentials and routing, the kernel gate governs every call.',
             description:
-              'Adapters implement APIs, not vendors (ADR 0021). A connection offers API families, a model binds one API per kind, and the API registry lists built-in implementations and descriptors under one id each (ADR 0048). Models are discovered from connections such as Azure AI Foundry, start with residency global and are classified by an operator.',
+              'Adapters implement APIs, not vendors (ADR 0021). A connection offers API families, a model binds one API per kind, and the API registry lists built-in implementations and descriptors under one id each (ADR 0048). Models are discovered from connections such as Azure AI Foundry, start with residency global and are classified by an operator; genki checks what a discovered model can do itself, with a few small synthetic calls through the gate (ADR 0021,',
             responsibilities: [
               'Model catalog and discovery',
               'Operations on the catalogue (chat, decide and every kind a registered descriptor defines) and capability checks',
@@ -6896,6 +7584,8 @@
               'Calls through the kernel gate, which checks admission (lockdown, ADR 0033), enabled, sharing and residency, holds the request and the answer to their closed shapes, runs the payload guard and meters (ADR 0047); the router itself only routes',
               'The API registry and the binding of each model kind to an API, with the units each API reports; embedding and rerank models bind APIs other ports implement (ADR 0048)',
               "Prices per model, kind and unit; typed chat and decide calls carry the connection's processor record and production maturity (ADR 0048,",
+              'Learning the capabilities of discovered models from the listing and from small synthetic calls',
+              'Serving discovered models from the last good listing in a store every replica reads, keeping a model a listing leaves out for a grace period, and reporting per connection what it found',
               'Credential resolution',
             ],
             files: [
@@ -6907,6 +7597,8 @@
               'packages/port-model/src/decision.ts',
               'packages/port-model/src/operation.ts',
               'packages/port-model/src/instructions.ts',
+              'packages/port-model/src/capability-checks.ts',
+              'packages/port-model/src/discovery.ts',
             ],
             input: 'Generic chat request',
             output: 'Completion, deltas, decision answers, usage',
@@ -7068,6 +7760,46 @@
                                     format: 'date',
                                     pattern:
                                       '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$',
+                                  },
+                                },
+                                residency: { type: 'string', enum: ['norway', 'eu', 'global'] },
+                                models: {
+                                  type: 'object',
+                                  propertyNames: { type: 'string', minLength: 1, maxLength: 200 },
+                                  additionalProperties: {
+                                    type: 'object',
+                                    properties: {
+                                      kind: { type: 'string', pattern: '^[a-z][a-z0-9-]*$' },
+                                      embed: {
+                                        type: 'object',
+                                        properties: {
+                                          dimensions: {
+                                            type: 'integer',
+                                            exclusiveMinimum: 0,
+                                            maximum: 9007199254740991,
+                                          },
+                                          maxBatch: {
+                                            type: 'integer',
+                                            exclusiveMinimum: 0,
+                                            maximum: 9007199254740991,
+                                          },
+                                        },
+                                        required: ['dimensions'],
+                                        additionalProperties: false,
+                                      },
+                                      rerank: {
+                                        type: 'object',
+                                        properties: {
+                                          onFailure: {
+                                            default: 'degrade',
+                                            type: 'string',
+                                            enum: ['degrade', 'fail'],
+                                          },
+                                        },
+                                        additionalProperties: false,
+                                      },
+                                    },
+                                    additionalProperties: false,
                                   },
                                 },
                               },
@@ -9117,7 +9849,7 @@
             summary:
               'Reranks candidate passages with the rerank models of the model catalogue and the rerank catalogue.',
             description:
-              "Same router shape as the model and knowledge ports; ColBERT is the first adapter. A reranker is a model in the model catalogue that binds an API for rerank, such as colbert/rerank@1 (ADR 0048); engines without an API, such as plug-ins, stay in the rerank catalogue. Every rerank call goes through the kernel's gate (ADR 0047), so it is admitted in lockdown, checked against tenant sharing and every residency ceiling, held to its closed shape, masked and metered. The router itself only routes and degrades.",
+              "Same router shape as the model and knowledge ports. A reranker is a model in the model catalogue that binds an API for rerank, such as the typed descriptor compatible/rerank@1 (ADR 0048, ADR 0049); genki runs no reranker of its own, so a service that names no reranker runs with rerank off. Engines without an API, such as plug-ins, would stay in the rerank catalogue; none is built in. Every rerank call goes through the kernel's gate (ADR 0047), so it is admitted in lockdown, checked against tenant sharing and every residency ceiling, held to its closed shape, masked and metered. The router itself only routes and degrades.",
             responsibilities: [
               'Rerank models from the model catalogue, and the rerank catalogue for engines without an API',
               'Rerank with timeouts and warnings',
@@ -9131,8 +9863,20 @@
             ],
             input: 'Query + candidates',
             output: 'Scores',
-            replaces: [{ module: 'rag', how: 'ColBERT rerank call' }],
+            replaces: [
+              { module: 'rag', how: 'Rerank call, behind a port with no built-in adapter' },
+            ],
             edges: [
+              {
+                to: 'operations',
+                label: 'Descriptor executor and registry',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/port-rerank/src/router.ts',
+                  imports: '@genai/operations',
+                },
+              },
               {
                 to: 'plugins',
                 label: 'Rerank contract suite',
@@ -9151,7 +9895,7 @@
                 witness: { file: 'packages/port-rerank/src/adapter.ts', imports: '@genai/kernel' },
               },
             ],
-            keywords: 'rerank port colbert',
+            keywords: 'rerank port',
             schemas: [
               {
                 name: 'catalog',
@@ -9621,7 +10365,7 @@
             packages: ['@genai/providers-typesense'],
             summary: 'Knowledge adapter for Typesense that refuses anything but search.',
             description:
-              'Searches and fetches documents with a timeout and asserts the client is search-only, because the shared cluster serves production.',
+              'Searches and fetches documents with a timeout and asserts the client is search-only.',
             responsibilities: ['Search and fetch', 'Search-only guard'],
             files: [
               'packages/providers-typesense/src/index.ts',
@@ -9661,16 +10405,6 @@
                   imports: '@genai/port-knowledge',
                 },
               },
-              {
-                to: 'typesense-cluster',
-                label: 'multi_search and document fetch',
-                kind: 'http',
-                target: 'http',
-                witness: {
-                  file: 'packages/providers-typesense/src/client.ts',
-                  contains: 'await fetch(url',
-                },
-              },
             ],
             keywords: 'typesense search provider',
             schemas: [],
@@ -9679,20 +10413,15 @@
             id: 'providers-typesense-writer',
             plane: 'providers',
             name: 'Typesense writer',
-            note: 'Generations · refuses shared',
+            note: 'Generations',
             icon: 'database',
             color: '#8fa8b3',
             status: 'Provider',
             packages: ['@genai/providers-typesense-writer'],
-            summary:
-              'Writes ingest output to Typesense in generations, and refuses the shared cluster.',
+            summary: 'Writes ingest output to Typesense in generations.',
             description:
-              'Creates collections, upserts documents and swaps generations. It throws SharedClusterRefused against the shared production cluster; writing there needs a separate key and a decision.',
-            responsibilities: [
-              'Collection generations',
-              'Upsert and delete',
-              'Refuse the shared cluster',
-            ],
+              "Creates collections, upserts documents and swaps generations, with the Typesense endpoint's own key, which must be allowed to write.",
+            responsibilities: ['Collection generations', 'Upsert and delete'],
             files: [
               'packages/providers-typesense-writer/src/writer.ts',
               'packages/providers-typesense-writer/src/adapter.ts',
@@ -9731,80 +10460,8 @@
                   imports: '@genai/kernel',
                 },
               },
-              {
-                to: 'typesense-cluster',
-                label: 'Collection and document writes (own cluster only)',
-                kind: 'http',
-                target: 'http',
-                witness: {
-                  file: 'packages/providers-typesense-writer/src/writer.ts',
-                  contains: '/documents/import',
-                },
-              },
             ],
             keywords: 'typesense writer index collections generation',
-            schemas: [],
-          },
-          {
-            id: 'providers-colbert',
-            plane: 'providers',
-            name: 'ColBERT adapter',
-            note: 'Rerank over HTTP',
-            icon: 'chart',
-            color: '#8fa8b3',
-            status: 'Provider',
-            packages: ['@genai/providers-colbert'],
-            summary: 'Rerank adapter for the ColBERT service.',
-            description:
-              'Posts query and candidates to the ColBERT endpoint, with a timeout (ADR 0017).',
-            responsibilities: ['ColBERT rerank call, the built-in API colbert/rerank@1'],
-            files: ['packages/providers-colbert/src/index.ts'],
-            input: 'Query + candidates',
-            output: 'Scores',
-            replaces: [{ module: 'rag', how: 'ColBERT client' }],
-            edges: [
-              {
-                to: 'plugins',
-                label: 'Manifest and contract fixture',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/providers-colbert/src/contract.ts',
-                  imports: '@genai/plugins',
-                },
-              },
-              {
-                to: 'kernel',
-                label: 'Kernel SPI: tasks, events, principals, capabilities',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/providers-colbert/src/index.ts',
-                  imports: '@genai/kernel',
-                },
-              },
-              {
-                to: 'port-rerank',
-                label: 'Rerank through the rerank port',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/providers-colbert/src/index.ts',
-                  imports: '@genai/port-rerank',
-                },
-              },
-              {
-                to: 'colbert-service',
-                label: 'Rerank request',
-                kind: 'http',
-                target: 'http',
-                witness: {
-                  file: 'packages/providers-colbert/src/index.ts',
-                  contains: '(endpoint.fetch ?? fetch)(endpoint.baseURL',
-                },
-              },
-            ],
-            keywords: 'colbert rerank provider',
             schemas: [],
           },
           {
@@ -10397,17 +11054,20 @@
             responsibilities: [
               'Event log, tasks and state',
               'Definitions, conversations, identities, API keys',
-              'Tenancy, RLS and content keys',
+              'Tenancy, RLS and content keys, wrapped by versioned master keys (ADR 0070)',
               'Rate-limit windows shared by every API replica',
+              'The last good model listing per connection and the claim on the next re-list',
             ],
             files: [
               'packages/providers-postgres/src/event-log.ts',
               'packages/providers-postgres/src/schema.ts',
               'packages/providers-postgres/src/tenancy.ts',
               'packages/providers-postgres/src/crypto.ts',
+              'packages/providers-postgres/src/rewrap.ts',
               'packages/providers-postgres/src/retention.ts',
               'packages/providers-postgres/src/provider-objects.ts',
               'packages/providers-postgres/src/job-runs.ts',
+              'packages/providers-postgres/src/models.ts',
             ],
             input: 'Store calls',
             output: 'SQL',
@@ -10556,22 +11216,20 @@
             color: '#8fa8b3',
             status: 'Provider',
             packages: ['@genai/providers-pgvector'],
-            summary:
-              "Built-in search engine and index writer in the platform's own Postgres or on the knowledge server.",
+            summary: 'Built-in search engine and index writer on the knowledge server.',
             description:
-              "Hybrid search with Norwegian full text and pgvector, as two statements fused with RRF in TypeScript, so a slow text half keeps the vector hits. Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay invisible until promoted. It runs in the platform database (ADR 0023), or, for an endpoint set to `connection` knowledge, on the knowledge server through the API's reader pool or the worker's writer and owner pools, never the platform database (ADR 0042). Its setup creates the three knowledge roles, stores the platform server's id there and lets only its two logins connect to the database. On the knowledge server each generation is its own partition with its own HNSW and filter indexes, built standalone and attached; the catalog names the active one. There the API reads only through seven SECURITY DEFINER read functions that refuse a dataset the router did not allow, on a read pool that falls back to the primary when a server lacks the generation or does not answer.",
+              "Hybrid search with Norwegian full text and pgvector, as two statements fused with RRF in TypeScript, so a slow text half keeps the vector hits. Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay invisible until promoted. It runs only on the knowledge server, through the API's reader pool or the worker's writer and owner pools, never the platform database (ADR 0042); the platform database's shared kn_ tables went with issue 151. Its setup creates the three knowledge roles, stores the platform server's id there and lets only its two logins connect to the database. On the knowledge server each generation is its own partition with its own HNSW and filter indexes, built standalone and attached; the catalog names the active one. There the API reads only through seven SECURITY DEFINER read functions that refuse a dataset the router did not allow, on a read pool that falls back to the primary when a server lacks the generation or does not answer.",
             responsibilities: [
               'Text, vector and hybrid search',
               'Filters, facets, fetch and range',
               'Index writer with generations',
-              'Autovacuum off and a VACUUM after each run with no write open (pgvector 0.8.2)',
               'A per-generation advisory lock that writers take shared and VACUUM exclusively',
               'Heavy work for the worker - builds, VACUUM, REINDEX, pg_prewarm, freeze ages and a recall sample',
               'Stored conversions on the knowledge server - pages per file, converter and derivation, and the records waiting on them (ADR 0042)',
             ],
             files: [
               'packages/providers-pgvector/src/engine.ts',
-              'packages/providers-pgvector/src/schema.ts',
+              'packages/providers-pgvector/src/transaction.ts',
               'packages/providers-pgvector/src/sql.ts',
               'packages/providers-pgvector/src/hybrid.ts',
               'packages/providers-pgvector/src/knowledge-setup.ts',
@@ -10599,10 +11257,13 @@
               },
               {
                 to: 'postgres-db',
-                label: 'SQL over the platform pool',
+                label: 'SQL on the knowledge server',
                 kind: 'sql',
                 target: 'sql',
-                witness: { file: 'packages/providers-pgvector/src/schema.ts', contains: 'vector' },
+                witness: {
+                  file: 'packages/providers-pgvector/src/partitions.ts',
+                  contains: 'vector',
+                },
               },
             ],
             keywords: 'pgvector postgres hybrid search vectors writer',
@@ -10745,48 +11406,6 @@
             replaces: [],
             edges: [],
             keywords: 'azure-foundry azure ai foundry external',
-            schemas: [],
-          },
-          {
-            id: 'typesense-cluster',
-            plane: 'external',
-            name: 'Typesense',
-            note: 'Shared search cluster',
-            icon: 'search',
-            color: '#607b88',
-            status: 'External',
-            external: true,
-            summary:
-              'The existing Typesense instance headless-rag also uses. The platform only searches it.',
-            description:
-              'The existing Typesense instance headless-rag also uses. The platform only searches it.',
-            responsibilities: [],
-            files: [],
-            input: '',
-            output: '',
-            replaces: [],
-            edges: [],
-            keywords: 'typesense-cluster typesense external',
-            schemas: [],
-          },
-          {
-            id: 'colbert-service',
-            plane: 'external',
-            name: 'ColBERT',
-            note: 'Rerank service',
-            icon: 'chart',
-            color: '#607b88',
-            status: 'External',
-            external: true,
-            summary: 'The ColBERT rerank service, called with a timeout.',
-            description: 'The ColBERT rerank service, called with a timeout.',
-            responsibilities: [],
-            files: [],
-            input: '',
-            output: '',
-            replaces: [],
-            edges: [],
-            keywords: 'colbert-service colbert external',
             schemas: [],
           },
           {
@@ -11443,7 +12062,7 @@
           `<p class="lead">Every edge whose kind today differs from its target. Each row is an integration that runs against a fake now and must be switched to the real national service.</p>` +
             `<div class="edge-list">${changingEdges.map((e) => edgeRow(e, `<span>${link(e.from)} → ${link(e.to)}</span>`)).join('')}</div>` +
             `<div class="detail-section"><h3>Not in this set</h3><ul class="bullets">
-          <li><b>${counts('http')}</b> HTTP edges already reach real systems: Azure AI Foundry, Typesense, ColBERT, Langfuse, tenant MCP servers and the frontends.</li>
+          <li><b>${counts('http')}</b> HTTP edges already reach real systems: Azure AI Foundry, Typesense, Langfuse, tenant MCP servers and the frontends.</li>
           <li><b>${counts('sql')}</b> SQL edge to Postgres, used when DATABASE_URL is set; memory stores otherwise.</li>
           <li><b>${counts('call')}</b> in-process imports between workspace packages, each matched to a real import by the atlas test.</li>
         </ul></div>`,

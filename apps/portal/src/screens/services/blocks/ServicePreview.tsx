@@ -13,7 +13,7 @@ import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useT, type PlainKey } from '../../../i18n';
 import { blockLabel } from './BlocksPanel';
-import { previewScale, previewWidth } from './preview-size';
+import { previewDrawWidth, previewScale } from './preview-size';
 import { describeProblem } from '../../service/publish';
 import type { TryRun } from './TryView';
 import { KeepTryView, useKeptTryView } from './TryViewKeeper';
@@ -193,7 +193,7 @@ const Preview = ({
           className="service-preview-frame"
           data-mode={mode}
           style={{
-            width: `${previewWidth}px`,
+            width: `${previewDrawWidth(available)}px`,
             zoom: scale,
             ['--preview-scale' as string]: scale,
             ...(height ? { height: `${height / scale}px` } : {}),

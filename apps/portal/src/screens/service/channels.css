@@ -129,6 +129,7 @@
   border-radius: var(--ds-border-radius-md);
   background: var(--ds-color-neutral-background-tinted);
   font-size: 13px;
+  position: relative;
 }
 
 @media (max-width: 759px) {

@@ -5,6 +5,7 @@ import {
   adminTools,
   compareRuns,
   diagnose,
+  fullRunLimit,
   mcnemar,
   runTool,
   untrusted,
@@ -525,5 +526,135 @@ describe('searching a dataset', () => {
     );
 
     expect(found.text).toContain('No hits in digdir/kudos (content) in 5 ms.');
+  });
+});
+
+describe('reading a run', () => {
+  const searchStep = (n: number) => ({
+    type: 'search',
+    title: `Søk ${n}`,
+    summary: '100 treff',
+    blocks: [],
+    raw: {
+      retrieval: {
+        hits: Array.from({ length: 100 }, (_, i) => ({
+          id: `s${n}-c${i}`,
+          title: 'x'.repeat(200),
+        })),
+      },
+    },
+  });
+  const readStep = {
+    type: 'read',
+    title: 'Leste kilder',
+    summary: '2 tekstbiter fra 1 dokument',
+    blocks: [],
+    reads: [
+      {
+        chunks: [
+          { id: 'c7', document: 'd1', position: 0, page: 1, title: 'Rapport' },
+          { id: 'c8', document: 'd1', position: 1, page: 2, title: 'Rapport' },
+        ],
+      },
+    ],
+  };
+  const run = (steps: unknown[]) => ({
+    status: 'completed',
+    service: 's',
+    startedAt: '2026-11-02T10:00:00Z',
+    durationSeconds: 10,
+    steps,
+  });
+  const reader = (timeline: unknown, asked: unknown[] = []): GenkiClient => ({
+    tenant,
+    request: async <T>(_method: string, path: string, init?: unknown) => {
+      if (path.endsWith('/timeline')) {
+        asked.push(init);
+        return timeline as T;
+      }
+      return { id: 'run-1' } as T;
+    },
+  });
+  const read = (timeline: unknown, args: Record<string, unknown>, asked: unknown[] = []) =>
+    runTool(
+      adminTools,
+      'get_run',
+      { id: 'run-1', ...args },
+      { client: reader(timeline, asked), spend: { budgetNok: 5, spentNok: 0 } },
+    );
+  const json = (text: string) =>
+    JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)) as {
+      steps: { title: string; raw?: { retrieval: { hits: unknown[]; hitsOmitted?: number } } }[];
+      omittedSteps?: number;
+    };
+
+  it('get_run is compact by default, asks for every step and names the chunks a read step read', async () => {
+    const asked: unknown[] = [];
+
+    const got = await read(run([readStep]), {}, asked);
+
+    expect(asked).toEqual([undefined]);
+    expect(got.text).toContain('1. read: Leste kilder. 2 tekstbiter fra 1 dokument');
+    expect(got.text).toContain(
+      'read c7 (Rapport, position 0, page 1); c8 (Rapport, position 1, page 2)',
+    );
+    expect(got.text).not.toContain('"steps"');
+  });
+
+  it('get_run full returns valid JSON when the timeline is longer than the limit', async () => {
+    const steps = Array.from({ length: 30 }, (_, i) => searchStep(i));
+
+    const got = await read(run(steps), { full: true, allHits: true });
+    const parsed = json(got.text);
+
+    expect(got.text.length).toBeLessThan(fullRunLimit + 1000);
+    expect(parsed.steps.length).toBeGreaterThan(0);
+    expect(parsed.omittedSteps).toBe(30 - parsed.steps.length);
+    expect(got.text).toContain(
+      `${parsed.omittedSteps} steps after step ${parsed.steps.length} were left out`,
+    );
+  });
+
+  it('get_run full counts the steps it left out from the step the range starts at', async () => {
+    const steps = Array.from({ length: 31 }, (_, i) => searchStep(i));
+
+    const got = await read(run(steps), { full: true, allHits: true, from: 2 });
+    const parsed = json(got.text);
+
+    expect(got.text).toContain(`steps after step ${parsed.steps.length + 1} were left out`);
+  });
+
+  it('get_run compact numbers steps from the range asked for and says how many it left out', async () => {
+    const got = await read(run([readStep, readStep, readStep]), { from: 2 });
+
+    expect(got.text).toContain('2. read: Leste kilder');
+    expect(got.text).toContain('3. read: Leste kilder');
+    expect(got.text).not.toContain('1. read:');
+    expect(got.text).toContain('1 steps left out by types, from or to.');
+  });
+
+  it('get_run full keeps the top 20 hits of a search step unless all hits are asked for', async () => {
+    const top = json((await read(run([searchStep(1)]), { full: true })).text);
+    const all = json((await read(run([searchStep(1)]), { full: true, allHits: true })).text);
+
+    expect(top.steps[0]?.raw?.retrieval.hits).toHaveLength(20);
+    expect(top.steps[0]?.raw?.retrieval.hitsOmitted).toBe(80);
+    expect(all.steps[0]?.raw?.retrieval.hits).toHaveLength(100);
+  });
+
+  it('get_run returns only the steps of the types asked for, and the step range asked for', async () => {
+    const asked: unknown[] = [];
+    const filtered = { ...run([readStep, readStep, readStep]), omittedSteps: 4 };
+
+    const got = await read(
+      filtered,
+      { full: true, types: ['read', 'model'], from: 2, to: 2 },
+      asked,
+    );
+    const parsed = json(got.text);
+
+    expect(asked).toEqual([{ query: { types: 'read,model' } }]);
+    expect(parsed.steps).toHaveLength(1);
+    expect(parsed.omittedSteps).toBe(6);
   });
 });

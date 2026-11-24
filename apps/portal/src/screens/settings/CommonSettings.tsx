@@ -12,6 +12,7 @@ import {
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
+import { BusyButton } from '../../components/BusyButton';
 import { reasonProblem } from '../../components/ReasonField';
 import type { SettingRow } from '../../data/settings';
 import { useAsync } from '../../hooks';
@@ -487,9 +488,14 @@ export const CommonSettings = ({
             <Button variant="secondary" onClick={discard}>
               {t('settings.commonDiscard')}
             </Button>
-            <Button variant="primary" loading={busy} onClick={() => void save()}>
+            <BusyButton
+              variant="primary"
+              busy={busy}
+              busyLabel={t('settings.commonSaving')}
+              onClick={() => void save()}
+            >
               {t('settings.commonSave')}
-            </Button>
+            </BusyButton>
           </div>
         </section>
       ) : null}

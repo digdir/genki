@@ -33,8 +33,12 @@ import {
 } from '@genai/eval';
 import {
   defaultPlatformTenant,
+  maxTenantSecretBytes,
+  maxTenantSecrets,
   sameHosts,
+  secretBytes,
   secretHosts,
+  tenantSecretNamePattern,
   TenantSecretVault,
 } from '@genai/composition';
 
@@ -56,7 +60,7 @@ import {
   type TenantSecrets,
 } from '@genai/providers-mcp-client';
 import type { Context, Env, Hono, Schema } from 'hono';
-import { enterTenant, supportSessionHeader, tenantAccess } from './access.js';
+import { enterTenant, refusedRight, supportSessionHeader, tenantAccess } from './access.js';
 import { adminKeysOnly } from './tenant-gate.js';
 import type { ActorNames } from './actor-names.js';
 import {
@@ -68,7 +72,7 @@ import {
   type AdminHandler,
   type AdminOutcome,
 } from './admin.js';
-import { rightRefused, seesUsage, type Right } from './rights.js';
+import { rightRefused, rightsOf, seesUsage, type Right } from './rights.js';
 import { backgroundLeases } from './background-lease.js';
 import { interruptedIfAbandoned, shownRun } from './service-eval.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
@@ -441,6 +445,13 @@ export const adminExtensions = (deps: {
       audit: { scope: 'platform', name },
     };
   },
+  'platform.platform-secret.delete': async (input, principal) => {
+    const name = String(input.name ?? '');
+    const target = `secret:platform/${name}`;
+    if (principal.kind !== 'operator')
+      return refused(target, 'only operators delete platform secrets');
+    return { ok: true, value: { removed: name }, target, audit: { scope: 'platform', name } };
+  },
   'platform.secrets.set': async (input, principal) => {
     const name = String(input.name ?? '');
     const target = `secret:${input.tenant}/${name}`;
@@ -478,6 +489,8 @@ export const adminExtensions = (deps: {
   },
 });
 
+export const platformSecretInUseType = 'urn:genai:problem:platform-secret-in-use';
+
 export interface EvalDeps {
   kernel: Kernel;
   evalCapability: string;
@@ -501,6 +514,8 @@ export interface ExtensionRouteDeps {
   platformTenant?: string;
   hiddenService?: (tenant: string, service: string) => Promise<boolean>;
   names?: Pick<ActorNames, 'namesOf'>;
+  secretUses?: (tenant: string, name: string) => Promise<{ kind: string; id: string }[]>;
+  platformSecretUses?: (name: string) => Promise<{ kind: string; id: string }[]>;
 }
 
 const param = (c: Context, name: string) => c.req.param(name) ?? '';
@@ -516,11 +531,23 @@ const textOf = (value: unknown) => (typeof value === 'string' && value.trim() ? 
 
 const problem = (
   c: Context,
-  status: 400 | 401 | 403 | 404 | 409,
+  status: 400 | 401 | 403 | 404 | 409 | 503,
   title: string,
   errors: unknown[] = [],
 ) =>
   c.json({ type: 'about:blank', title, status, errors }, status, {
+    'content-type': 'application/problem+json',
+  });
+
+const secretRightRefused = (c: Context, principal: Principal, tenant: string) => {
+  const held = rightsOf(principal, tenant);
+  return held.has('manage-services') || held.has('register-building-blocks')
+    ? undefined
+    : refusedRight(c, principal, tenant, 'manage-services');
+};
+
+const tooLarge = (c: Context) =>
+  c.json({ type: 'about:blank', title: 'The request is too large', status: 413, errors: [] }, 413, {
     'content-type': 'application/problem+json',
   });
 
@@ -711,38 +738,95 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
   };
   app.post('/tenants/:tenant/tool-connections/:id/approve', toolDecision('approve'));
   app.post('/tenants/:tenant/tool-connections/:id/revoke', toolDecision('revoke'));
-  app.put('/tenants/:tenant/secrets/:name', async (c) => {
+  app.put(
+    '/tenants/:tenant/secrets/:name',
+    bodyLimit({ maxSize: maxTenantSecretBytes * 4, onError: tooLarge }),
+    async (c) => {
+      const principal = await who(c);
+      if (!principal) return problem(c, 401, 'Unauthorized');
+      const tenant = param(c, 'tenant');
+      const name = param(c, 'name');
+      const body = (await c.req.json().catch(() => ({}))) as {
+        value?: unknown;
+        allowedHosts?: unknown;
+      };
+      if (typeof body.value !== 'string' || body.value.length === 0)
+        return problem(c, 400, 'Invalid request', [
+          { path: 'value', message: 'a value is required' },
+        ]);
+      const value = body.value;
+      if (!/^\d{9}$/.test(tenant)) return problem(c, 404, 'Not found');
+      const entered = enterTenant(c, access, principal, tenant);
+      if ('response' in entered) return entered.response;
+      const lacking = secretRightRefused(c, entered.principal, tenant);
+      if (lacking) return lacking;
+      const names = await deps.vault.names(tenant);
+      const exists = names.includes(name);
+      if (!exists && !tenantSecretNamePattern.test(name))
+        return problem(c, 400, 'Invalid request', [
+          { path: 'name', message: t('blocks.secretNameInvalid') },
+        ]);
+      if (secretBytes(value) > maxTenantSecretBytes)
+        return problem(c, 400, 'Invalid request', [
+          { path: 'value', message: t('blocks.secretTooLarge', { max: maxTenantSecretBytes }) },
+        ]);
+      if (!exists && names.length >= maxTenantSecrets)
+        return problem(c, 409, 'Conflict', [
+          { path: 'name', message: t('blocks.secretLimit', { max: maxTenantSecrets }) },
+        ]);
+      const parsed = body.allowedHosts === undefined ? undefined : secretHosts(body.allowedHosts);
+      if (parsed && !parsed.ok) return hostsProblem(c, parsed.invalid);
+      if (!parsed && !exists) return hostsProblem(c, '');
+      const hosts = parsed?.ok ? parsed.hosts : undefined;
+      const hostsChange =
+        exists && hosts !== undefined && !sameHosts(hosts, await deps.vault.hosts(tenant, name));
+      return performed(
+        c,
+        entered.principal,
+        'platform.secrets.set',
+        { tenant, name, ...(hosts ? { allowedHosts: hosts } : {}), hostsChange },
+        async () => {
+          await deps.vault.set(tenant, name, value, hosts);
+        },
+      );
+    },
+  );
+
+  app.delete('/tenants/:tenant/secrets/:name', async (c) => {
     const principal = await who(c);
     if (!principal) return problem(c, 401, 'Unauthorized');
     const tenant = param(c, 'tenant');
     const name = param(c, 'name');
-    const body = (await c.req.json().catch(() => ({}))) as {
-      value?: unknown;
-      allowedHosts?: unknown;
-    };
-    if (typeof body.value !== 'string' || body.value.length === 0)
-      return problem(c, 400, 'Invalid request', [
-        { path: 'value', message: 'a value is required' },
-      ]);
-    const value = body.value;
+    if (!/^\d{9}$/.test(tenant)) return problem(c, 404, 'Not found');
     const entered = enterTenant(c, access, principal, tenant);
     if ('response' in entered) return entered.response;
+    const lacking = secretRightRefused(c, entered.principal, tenant);
+    if (lacking) return lacking;
     const exists = (await deps.vault.names(tenant)).includes(name);
-    const parsed = body.allowedHosts === undefined ? undefined : secretHosts(body.allowedHosts);
-    if (parsed && !parsed.ok) return hostsProblem(c, parsed.invalid);
-    if (!parsed && !exists) return hostsProblem(c, '');
-    const hosts = parsed?.ok ? parsed.hosts : undefined;
-    const hostsChange =
-      exists && hosts !== undefined && !sameHosts(hosts, await deps.vault.hosts(tenant, name));
-    return performed(
+    const uses = exists ? ((await deps.secretUses?.(tenant, name)) ?? []) : [];
+    if (uses.length > 0)
+      return c.json(
+        {
+          type: 'about:blank',
+          title: 'Conflict',
+          status: 409,
+          errors: uses.map((use) => ({
+            path: 'name',
+            message: t('blocks.secretInUse', { name, kind: use.kind, id: use.id }),
+          })),
+          usedBy: uses,
+        },
+        409,
+        { 'content-type': 'application/problem+json' },
+      );
+    const response = await performed(
       c,
       entered.principal,
-      'platform.secrets.set',
-      { tenant, name, ...(hosts ? { allowedHosts: hosts } : {}), hostsChange },
-      async () => {
-        await deps.vault.set(tenant, name, value, hosts);
-      },
+      'platform.secrets.delete',
+      { tenant, name },
+      exists ? () => deps.vault.delete(tenant, name) : undefined,
     );
+    return response.status === 200 ? c.body(null, 204) : response;
   });
 
   app.put('/tenants/:tenant/secrets/:name/hosts', async (c) => {
@@ -773,17 +857,7 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
 
   app.put(
     '/operator/secrets/:name',
-    bodyLimit({
-      maxSize: maxPlatformSecretLength * 4,
-      onError: (c) =>
-        c.json(
-          { type: 'about:blank', title: 'The request is too large', status: 413, errors: [] },
-          413,
-          {
-            'content-type': 'application/problem+json',
-          },
-        ),
-    }),
+    bodyLimit({ maxSize: maxPlatformSecretLength * 4, onError: tooLarge }),
     async (c) => {
       const principal = await who(c);
       if (!principal) return problem(c, 401, 'Unauthorized');
@@ -798,9 +872,9 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
         return problem(c, 400, 'Invalid request', [
           { path: 'value', message: 'a value is required' },
         ]);
-      if (body.value.length > maxPlatformSecretLength)
+      if (secretBytes(body.value) > maxPlatformSecretLength)
         return problem(c, 400, 'Invalid request', [
-          { path: 'value', message: 'at most 16384 characters' },
+          { path: 'value', message: t('blocks.secretTooLarge', { max: maxPlatformSecretLength }) },
         ]);
       const acting = { ...principal, tenant: deps.platformTenant ?? defaultPlatformTenant };
       const value = body.value;
@@ -815,6 +889,46 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
       );
     },
   );
+
+  app.delete('/operator/secrets/:name', async (c) => {
+    const principal = await who(c);
+    if (!principal) return problem(c, 401, 'Unauthorized');
+    if (principal.kind !== 'operator') return problem(c, 403, 'Forbidden');
+    const name = param(c, 'name');
+    if (!(await deps.vault.names('platform')).includes(name))
+      return problem(c, 404, 'Not found', [
+        { path: 'name', message: t('problems.platformSecretNotFound', { name }) },
+      ]);
+    if (!deps.platformSecretUses)
+      return problem(c, 503, t('problems.platformSecretUsesUnknown'), [
+        { path: 'name', message: t('problems.platformSecretUsesUnknown') },
+      ]);
+    const uses = await deps.platformSecretUses(name);
+    if (uses.length > 0)
+      return c.json(
+        {
+          type: platformSecretInUseType,
+          title: t('problems.platformSecretInUseTitle'),
+          status: 409,
+          errors: uses.map((use) => ({
+            path: 'name',
+            message: t('problems.platformSecretUsedBy', { kind: use.kind, id: use.id }),
+          })),
+          usedBy: uses,
+        },
+        409,
+        { 'content-type': 'application/problem+json' },
+      );
+    const acting = { ...principal, tenant: deps.platformTenant ?? defaultPlatformTenant };
+    const response = await performed(
+      c,
+      acting,
+      'platform.platform-secret.delete',
+      { tenant: acting.tenant, name },
+      () => deps.vault.delete('platform', name),
+    );
+    return response.status === 200 ? c.body(null, 204) : response;
+  });
 
   app.post('/operator/tenants', async (c) => {
     const principal = await who(c);

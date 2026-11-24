@@ -43,8 +43,8 @@ const processedLabel = (t: T, r: Residency | undefined) =>
 
 const residencies: readonly string[] = ['norway', 'eu', 'global'];
 
-export const serviceResidency = (s: Pick<SharedService, 'residency'>) =>
-  s.residency && residencies.includes(s.residency) ? (s.residency as Residency) : undefined;
+export const serviceDataLocation = (s: Pick<SharedService, 'dataLocation'>) =>
+  s.dataLocation && residencies.includes(s.dataLocation) ? s.dataLocation : undefined;
 
 export const sharedBlockId = (s: Pick<SharedService, 'tenant' | 'id'>) => `${s.tenant}/${s.id}`;
 
@@ -86,7 +86,7 @@ const merge = (
   live: boolean,
 ): Entry[] =>
   services.map((s) => {
-    const residency = serviceResidency(s);
+    const residency = serviceDataLocation(s);
     const location = residencyLabel(t, residency);
     const design = live ? undefined : findCapability(s.id);
     const api = fromApi(t, s, location, models.status === 'ready' ? models.data : []);

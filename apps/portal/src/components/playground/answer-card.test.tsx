@@ -311,7 +311,7 @@ describe('source excerpts in Prøveområde', () => {
       .getByRole('region', { name: 'Tekst fra Evaluering' })
       .closest('section') as HTMLElement;
     expect(within(detail).getByText('Side')).toBeTruthy();
-    expect(within(detail).getByText('12–13')).toBeTruthy();
+    expect(within(detail).getByText('12 til 13')).toBeTruthy();
     const link = within(detail).getByRole('link', { name: /^Les side 12/ });
     expect(link.getAttribute('href')).toBe(`${pdf}#page=12`);
     expect(link.getAttribute('target')).toBe('_blank');

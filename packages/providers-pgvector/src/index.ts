@@ -1,5 +1,4 @@
 export * from './engine.js';
-export { migrateKnowledge } from './schema.js';
 export {
   boundPlatformId,
   knowledgeRoles,
@@ -10,6 +9,7 @@ export {
   type KnowledgeSetupOptions,
 } from './knowledge-setup.js';
 export {
+  addChunkColumns,
   attachGeneration,
   dropGeneration,
   migrateKnowledgeServer,

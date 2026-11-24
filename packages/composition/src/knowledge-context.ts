@@ -69,27 +69,19 @@ const withoutEndpoints = (
   };
 };
 
-export const withoutEngines = (
-  catalog: unknown,
-  engines: string[],
-  warn?: (message: string) => void,
-) =>
-  withoutEndpoints(
-    catalog,
-    (e) => engines.includes(String(e.engine)),
-    'knowledge endpoints skipped, their engine needs a database',
-    warn,
-  );
+/** Every pgvector endpoint is on the knowledge server: `connection` takes only `knowledge` (issue 151). */
+export const onKnowledgeServer = (endpoint: { engine?: unknown } | undefined) =>
+  endpoint?.engine === 'pgvector';
 
 export const knowledgeServerEndpoints = (catalog: unknown) =>
   Object.entries((catalog as RawCatalog | undefined)?.endpoints ?? {})
-    .filter(([, e]) => e.options?.connection === 'knowledge')
+    .filter(([, e]) => onKnowledgeServer(e))
     .map(([name]) => name);
 
 export const withoutKnowledgeServer = (catalog: unknown, warn?: (message: string) => void) =>
   withoutEndpoints(
     catalog,
-    (e) => e.options?.connection === 'knowledge',
+    (e) => onKnowledgeServer(e),
     'knowledge endpoints skipped, no knowledge server is configured',
     warn,
   );

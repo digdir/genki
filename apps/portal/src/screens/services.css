@@ -141,6 +141,12 @@ a.ds-button {
   height: auto;
 }
 
+@media (max-width: 1599px) {
+  .services-row-model {
+    display: none;
+  }
+}
+
 .services-row-usage {
   flex: 0 1 190px;
   display: flex;
@@ -162,94 +168,6 @@ a.ds-button {
   padding: 24px 20px;
   border: 1px solid var(--ds-color-neutral-border-subtle);
   border-radius: var(--ds-border-radius-lg);
-}
-
-.new-service {
-  max-width: 1180px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 36px;
-}
-
-.new-service-lead {
-  margin: 0;
-  max-width: 640px;
-}
-
-.make-with-ai {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 28px;
-  border-radius: var(--ds-border-radius-xl);
-  background: var(--ds-color-accent-background-tinted);
-  border: 1px solid var(--ds-color-accent-border-subtle);
-}
-
-.make-with-ai textarea {
-  font-size: 17px;
-  line-height: 1.5;
-  background: var(--ds-color-neutral-background-default);
-}
-
-.job-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
-  gap: 12px;
-}
-
-.template-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
-  gap: 12px;
-}
-
-.job-card,
-.template-card {
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 20px;
-  border-radius: var(--ds-border-radius-lg);
-  border: 1px solid var(--ds-color-neutral-border-subtle);
-  background: var(--ds-color-neutral-background-default);
-  color: inherit;
-}
-
-.template-card {
-  gap: 8px;
-  padding: 18px;
-  background: var(--ds-color-neutral-background-tinted);
-}
-
-.job-card:hover,
-.template-card:hover {
-  border-color: var(--ds-color-accent-border-default);
-}
-
-.job-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--ds-border-radius-lg);
-  background: var(--ds-color-accent-surface-tinted);
-  color: var(--ds-color-accent-text-default);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.job-label,
-.template-name {
-  font-size: 18px;
-  font-weight: 500;
-}
-
-.template-name {
-  font-size: 17px;
 }
 
 .builder {
@@ -323,6 +241,21 @@ a.ds-button {
   min-width: 0;
 }
 
+@container page (max-width: 859px) {
+  .builder-split {
+    flex-direction: column;
+  }
+
+  .builder-split > .assistant,
+  .builder-assistant-off {
+    flex: none;
+    position: relative;
+    max-height: 50vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+  }
+}
+
 .builder-tabs {
   position: sticky;
   top: 0;
@@ -335,11 +268,6 @@ a.ds-button {
   max-width: 880px;
   margin: 0 auto;
   padding: 20px 20px 64px;
-}
-
-.publish-dialog {
-  max-width: 640px;
-  width: calc(100vw - 32px);
 }
 
 .assistant {
@@ -371,6 +299,8 @@ a.ds-button {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  position: relative;
+  overscroll-behavior: contain;
 }
 
 .msg {
@@ -983,6 +913,7 @@ a.ds-button {
   overflow-x: auto;
   resize: vertical;
   tab-size: 2;
+  position: relative;
 }
 
 .version-list {

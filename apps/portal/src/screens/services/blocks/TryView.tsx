@@ -1,6 +1,6 @@
 import { Assistant, profileOf, type AssistantApi, type AssistantProfile } from '@genai/ui-assembly';
 import '@genai/ui-assembly/styles.css';
-import type { AssistantLayout } from '@genai/ui-blocks/builder';
+import { profileIn, type AssistantLayout } from '@genai/ui-blocks/builder';
 import '@genai/ui-blocks/styles.css';
 import { useEffect, useMemo, useState } from 'react';
 import type { ApiClient } from '../../../api';
@@ -69,16 +69,20 @@ export const TryView = ({
   onThreadChange?: ((thread: string | undefined) => void) | undefined;
 }) => {
   const t = useT();
+  const language = t.locale === 'en' ? 'en' : 'nb';
   const service = draftServiceOf(run.source);
   const entry = draftApiFor(run, service, t('playground.pageTitle'));
   entry.source = run.source;
   // What the person typed, drawn: an empty text draws nothing.
   const drawn = useMemo(
-    () => (layout.profile ? { ...layout, profile: drawnProfile(layout.profile) } : layout),
-    [layout],
+    () =>
+      layout.profile
+        ? { ...layout, profile: drawnProfile(profileIn(layout.profile, language)) }
+        : layout,
+    [layout, language],
   );
   // The portal has no profile of its own for a draft: the layout's is the one it is drawn with.
-  entry.profile = profileOf(drawn);
+  entry.profile = profileOf(drawn, undefined, language);
   // The assistant reads a collection's fields and names once per api: a change of them is read
   // again when the typing settles, on the same draft API and so the same threads.
   const corpora = JSON.stringify(drawn.profile?.corpora ?? null);

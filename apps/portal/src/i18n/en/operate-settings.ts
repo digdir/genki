@@ -4,7 +4,7 @@ import type { settingsArea as source } from '../nb/operate-settings';
 const settings = {
   titleTenant: 'Settings for {name}',
   introTenant:
-    'What you set here applies to all services and datasets in {name} that have not set anything themselves.',
+    'What you set here applies to all services and document collections in {name} that have not set anything themselves.',
   introOrganisation: 'Applies to all services in {name}, unless a service says otherwise.',
   loadFailedTitle: 'We could not load your settings',
   loadFailedNoForm:
@@ -12,7 +12,7 @@ const settings = {
   introLayered:
     'Each setting can be inherited from the layer to the left or set here. The value furthest to the right applies.',
   targetService: 'Service',
-  targetDataset: 'Dataset',
+  targetDataset: 'Document collection',
   goToPublish: 'Go to Publish',
   tabsLabel: 'Settings',
   tabGrid: 'Settings',
@@ -74,6 +74,7 @@ const settings = {
   commonReason: 'Why are you changing this?',
   commonReasonHelp: 'Shown in the log with the change.',
   commonSave: 'Save the changes',
+  commonSaving: 'Saving ...',
   commonDiscard: 'Discard',
   commonRefused: 'The changes were not saved: you lack "{right}". What you chose is still here.',
   commonFailed: 'Try again in a moment.',
@@ -96,7 +97,7 @@ const settings = {
   layerP: 'Platform default',
   layerV: 'Organisation',
   layerT: 'Service',
-  layerD: 'Dataset',
+  layerD: 'Document collection',
   digdir: 'Digdir',
   sensLow: 'Low',
   sensMedium: 'Medium',
@@ -119,7 +120,7 @@ const settings = {
   srcTenantSet: 'Set by the organisation',
   srcTenantOverride: 'Overridden by the organisation',
   srcService: 'Set on the service',
-  srcDataset: 'Set on the dataset',
+  srcDataset: 'Set on the document collection',
   srcNone: 'Not set',
 
   errNumber: 'Enter a number.',
@@ -227,20 +228,20 @@ const settings = {
   panelPreviewReason: 'Preview',
   panelPreviewFailed: 'Could not show what the change does. Try again in a moment.',
   panelSaveFailed: 'The change was not saved. Try again in a moment.',
-  panelNewVersion: 'New version of the service ({version})',
+  panelNewVersion: 'New edition of the service ({version})',
   panelPinChanged: 'Pin changed for the organisation',
   panelChangedTenant: 'Changed for the organisation',
   panelPlatformDefault: 'Platform default v{version}: {value}',
   panelResetInherited: 'Reset to inherited',
   panelResetPlatform: 'Reset to platform default',
-  panelPin: 'Pin to this version (v12)',
+  panelPin: 'Pin to this edition (v12)',
   panelUnpin: 'Remove pin',
   panelWhatReset: 'reset to inherited',
   panelWhatPin: 'pinned to v12',
   panelWhatUnpin: 'pin removed',
   panelWhatSecret: 'secret replaced',
   panelLogLine: '{label}: {what}',
-  panelPublishCall: 'Publish a new version with "{label}"',
+  panelPublishCall: 'Publish a new edition with "{label}"',
   panelDraftCall: 'Add "{label}" to the draft of v{version}',
   panelChangeCall: 'Change "{label}"',
   panelResetCall: 'Reset "{label}"',
@@ -279,7 +280,7 @@ const settings = {
   panelAfter: 'After',
   panelReasonHelp: 'Stored in the audit log.',
   panelSaveDraft: 'Add to the draft',
-  panelNoDatasetApi: 'Settings per dataset cannot be saved through the API yet.',
+  panelNoDatasetApi: 'Settings per document collection cannot be saved through the API yet.',
   panelDraftHint: 'Added to the draft of v{version}. Takes effect when you publish.',
   panelChanges: 'Changes here',
 
@@ -295,6 +296,8 @@ const settings = {
   nextDownload: 'Download',
   nextDryRun: 'Run dry run',
   nextApply: 'Apply the changes',
+  applying: 'Applying ...',
+  dryRunning: 'Running a dry run ...',
   prev: 'Previous',
   restart: 'Start over',
   secretsNeverExported:
@@ -304,14 +307,14 @@ const settings = {
   fileMustBeYaml: 'The file must be a YAML file exported from the platform.',
   downloaded: 'The file has been downloaded. The export is logged.',
   fileYaml: 'Configuration file (YAML)',
-  useExample: 'Use the example file from the test environment',
+  useExample: 'Use the example file from genki-test',
   include: 'Include',
   itemTenant: 'Organisation settings',
   itemTenantDesc: '{count} settings set, of which {secrets} secrets (reference only)',
   itemService: 'Service: {name}',
   itemServiceSet: '{count} settings set on the service',
   itemInheritsAll: 'Inherits everything',
-  itemDataset: 'Dataset: {name}',
+  itemDataset: 'Document collection: {name}',
   itemDatasetSet: '{count} settings set. The documents are not included.',
   itemDatasetInherits: 'Inherits everything. The documents are not included.',
   exportCount: '{count} settings',
@@ -350,7 +353,7 @@ const settings = {
   liveInfo:
     'The file contains service definitions, prompt files and settings. Secrets are never exported, only the reference to them.',
   liveLoadingExport: 'Loading the export',
-  liveServicesAndFlows: 'Services and step flows',
+  liveServicesAndFlows: 'Services and workflows',
   liveSettings: 'Settings',
   liveSettingsDesc: '{count} settings set. Secrets are included only as a reference.',
   liveDefinitionsCount: '{definitions} definitions, {settings} settings',
@@ -365,9 +368,9 @@ const settings = {
   liveDoneText:
     '{changed} changed or created, {skipped} skipped. The change is logged in the audit log.',
   liveWhereService: 'Service',
-  liveWhereFlow: 'Step flow',
+  liveWhereFlow: 'Workflow',
   liveWhereSetting: 'Setting',
-  liveWherePin: 'Pinned version',
+  liveWherePin: 'Pinned edition',
 
   wsLevelTenant: 'Organisation',
   wsLevelService: 'Service: {name}',
@@ -397,11 +400,11 @@ const settingDefs = {
   cat_Sok: 'Search',
   cat_Svar: 'Answers',
   cat_Modell: 'Model',
-  cat_Vern: 'Protection',
+  cat_Vern: 'Guardrails',
   cat_Innlesing: 'Ingestion',
   cat_Grenser: 'Limits',
   cat_Assistent: 'Assistant',
-  cat_Ferdigheter: 'Skills',
+  cat_Ferdigheter: 'Work instructions',
   cat_Proveomrade: 'Playground',
   cat_Forbruk: 'Usage',
   group_planner: 'Search planning',
@@ -490,7 +493,7 @@ const settingDefs = {
     'How large the pieces are that the documents are split into. Smaller pieces give more precise hits, larger ones give more context.',
   ingest_ocr_label: 'Text recognition',
   ingest_ocr_desc: 'Reads scanned documents. About 1 øre per page.',
-  ingest_schedule_label: 'Update dataset',
+  ingest_schedule_label: 'Update the document collection',
   ingest_schedule_desc: 'How often the source is read in again.',
   ingest_schedule_opt_natt: 'Every night',
   ingest_schedule_opt_uke: 'Every week',
@@ -529,7 +532,7 @@ const settingDefs = {
   retrieval_autoFilter_rules_label: 'Rules for the automatic filter',
   retrieval_autoFilter_aliases_label: 'Other names for values',
   retrieval_autoFilter_aliases_desc:
-    'Names that mean the same as a value in the dataset, such as an abbreviation. Each entry is a group of names. When the search names one of them, it counts as the value as stored in the dataset.',
+    'Names that mean the same as a value in the document collection, such as an abbreviation. Each entry is a group of names. When the search names one of them, it counts as the value as stored in the document collection.',
   retrieval_docTitle_fanout_label: 'Text chunks per title hit',
   retrieval_merge_mode_label: 'Way of merging the searches',
   retrieval_merge_rrfK_label: 'Smoothing when merging (RRF k)',
@@ -576,15 +579,15 @@ const settingDefs = {
   answers_languageInstructions_en_desc:
     'Added after the service instructions when the answer is in English.',
   services_defaultModel_label: 'Default model for new services',
-  skills_defaultPassThreshold_label: 'Requirement for publishing skills',
+  skills_defaultPassThreshold_label: 'Requirement for publishing work instructions',
   skills_defaultPassThreshold_desc:
     'Share of test cases that must pass when the test set has no requirement of its own.',
-  skills_testModel_label: 'Model for test runs of skills',
-  skills_judgeModel_label: 'Model that judges test answers',
+  skills_testModel_label: 'Model for test runs of work instructions',
+  skills_judgeModel_label: 'Model that assesses test answers',
   playground_enabled_label: 'The playground is on',
   usage_monthlyTokens_label: 'Tokens per month',
   usage_tenantCallsPerMinute_label: 'Calls per minute for the organisation',
-  batch_approvalLimitNok_label: 'Limit per batch job before approval (kr)',
+  batch_approvalLimitNok_label: 'Limit per batch run before approval (kr)',
   planner_prompt_desc: 'Replacement planner prompt. Empty uses the built-in prompt.',
   retrieval_queryAwareBoost_desc: 'Boost results that share words with the question.',
   retrieval_autoFilter_rules_desc:
@@ -606,29 +609,30 @@ const settingDefs = {
   synthesis_generationPrompt_desc:
     'Replacement prompt for writing the answer. Empty uses the built-in prompt.',
   synthesis_instructions_desc:
-    'Replacement system prompt for the answering model. Empty uses the built-in prompt.',
+    'System prompt for the answering model. It replaces the built-in prompt; for an agent it is added after the built-in sections. Empty uses only the built-in prompt.',
   knowledge_nightWindow_desc:
     'Hours (Norwegian time) in which index builds, large fills and VACUUM run, written as 01:00-06:00, or "always" to let them run at any hour, as before a launch.',
   knowledge_heavyThreshold_desc:
     'Chunks an index build, a fill or a VACUUM must go over to wait for the night window.',
   knowledge_switchRetentionDays_desc:
-    'Days the previous search engine copy is kept after a dataset switches engine.',
+    'Days the previous search engine copy is kept after a document collection switches engine.',
   assistant_enabled_desc: 'Offer the builder assistant in the service builder.',
   assistant_model_desc:
     'The model the builder assistant uses. Empty picks the first enabled model with tools within the allowed data location.',
   services_defaultModel_desc:
     'The model new services start with. Empty picks the cheapest priced model the organisation may use.',
   skills_testModel_desc:
-    'The model that runs skill test sets. Empty picks the cheapest model the organisation may use.',
+    'The model that runs test sets for work instructions. Empty picks the cheapest model the organisation may use.',
   skills_judgeModel_desc:
-    'The model that judges skill test answers. Empty picks the cheapest model from another model family.',
-  playground_enabled_desc: 'Offer the playground for trying services, skills and building blocks.',
+    'The model that assesses test answers for work instructions. Empty picks the cheapest model from another model family.',
+  playground_enabled_desc:
+    'Offer the playground for trying services, work instructions and other parts from the catalogue.',
   usage_monthlyTokens_desc:
     'Tokens the organisation may use per calendar month. The playground refuses runs once they are used up.',
   usage_tenantCallsPerMinute_desc:
-    'Calls per minute the organisation may make, across all its keys and people.',
+    'Calls per minute the organisation may make, across all its API keys and people.',
   batch_approvalLimitNok_desc:
-    'Kroner a batch job may be estimated to cost before someone who manages services must approve it with a reason. 0 turns approval off.',
+    'Kroner a batch run may be estimated to cost before someone who manages services must approve it with a reason. 0 turns approval off.',
   cat_Oppbevaring: 'Retention',
   retention_class_label: 'How long content is kept',
   retention_class_desc:
@@ -638,7 +642,7 @@ const settingDefs = {
   retention_class_opt_case: 'Case work (365 days)',
   retention_auditDays_label: 'Days the audit trail is kept',
   retention_auditDays_desc:
-    'Days the audit trail of a run (ids, type, who, usage, versions and times) is kept after it ends. Never shorter than the content.',
+    'Days the audit trail of a run (ids, type, who, usage, editions and times) is kept after it ends. Never shorter than the content.',
 };
 
 export const settingsArea = { settings, settingDefs } satisfies Translation<typeof source>;

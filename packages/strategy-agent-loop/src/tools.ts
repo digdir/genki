@@ -27,6 +27,8 @@ import {
   expandShortDocReads,
   nextReadSuggestions,
   planRangeRead,
+  rangeCutNote,
+  readPositions,
   readBudgetNote,
   selectChunkIdsWithinBudget,
   trimChunksToBudget,
@@ -43,7 +45,8 @@ import {
   type Workspace,
 } from './workspace.js';
 
-export type Synthesize = (systemPrompt: string, userPrompt: string) => Promise<string>;
+/** Writes a draft; undefined when the model refused to write one. */
+export type Synthesize = (systemPrompt: string, userPrompt: string) => Promise<string | undefined>;
 
 export interface SearchSettings {
   titleOverlapWeight: number;
@@ -78,8 +81,17 @@ export interface RetrievalHit {
   id: string;
   document?: string;
   position?: number;
+  page?: number;
+  /** The last page of a chunk that runs over several. */
+  pageEnd?: number;
   score?: number;
   title?: string;
+}
+
+export interface ReadRequest {
+  chunkIds?: string[];
+  document?: string;
+  chunkRange?: { from?: number | undefined; to?: number | undefined };
 }
 
 export type SearchFailureReason =
@@ -92,6 +104,7 @@ export interface SearchFailure {
 
 export interface SearchMade {
   queries: string[];
+  page?: number;
   filters?: FilterField[];
   fellBack?: boolean;
   detections?: SearchDetection[];
@@ -159,7 +172,7 @@ export interface ToolOutcome {
   generated?: string;
   retrieved?: RetrievalHit[];
   search?: SearchMade;
-  read?: { chunks: RetrievalHit[]; auto?: boolean };
+  read?: { chunks: RetrievalHit[]; auto?: boolean; request?: ReadRequest };
   planned?: { queries: string[]; userIntent?: string };
   /** The engine's message when the whole search threw: for the audit log only, never the model. */
   searchError?: string;
@@ -170,12 +183,15 @@ export const retrievalHits = (chunks: ChunkSummary[]): RetrievalHit[] =>
     id: c.chunkId,
     ...(c.document === undefined ? {} : { document: c.document }),
     ...(c.position === undefined ? {} : { position: c.position }),
+    ...(c.page === undefined ? {} : { page: c.page }),
+    ...(c.pageEnd === undefined ? {} : { pageEnd: c.pageEnd }),
     ...(c.score === undefined ? {} : { score: c.score }),
     ...(c.title === undefined ? {} : { title: c.title }),
   }));
 
 const searchArgs = z.object({
   queries: z.array(z.string()).min(1),
+  page: z.coerce.number().int().min(1).max(1000).optional(),
   filter_by: z
     .object({
       fields: z.array(
@@ -286,6 +302,10 @@ const pageText = (c: ChunkSummary) => {
   return page ? ` ${page[0]}=${page[1]}` : '';
 };
 
+/** Whose document a chunk is, so same-title documents such as each ministry's Prop. 1 S tell apart (issue 754). */
+const publisherText = (c: ChunkSummary) =>
+  c.publisher ? ` publisher=${JSON.stringify(c.publisher)}` : '';
+
 const detectionHint = (d: SearchDetection) => {
   const names = d.values.map((v) => JSON.stringify(v)).join(', ');
   const them = d.values.length > 1 ? 'them' : 'it';
@@ -298,61 +318,166 @@ const detectionHint = (d: SearchDetection) => {
   return `The query ${what}; ${d.field} can filter on ${them}.`;
 };
 
+const ownDocumentHint = (hints: SearchDetection[]) => {
+  const organisation = hints.find((d) => d.kind === 'organisation');
+  return organisation
+    ? ` For an organisation's own documents, filter ${organisation.field} with ${organisation.values.map((v) => JSON.stringify(v)).join(' or ')}.`
+    : '';
+};
+
 const searchHints = (attribution: SearchAttribution | undefined): string => {
   const hints = (attribution?.detections ?? []).filter((d) => d.use === 'hint');
   return hints.length
-    ? `\nHint, no filter applied: ${hints.map(detectionHint).join(' ')} Add filter_by only if the question asks for nothing else; a question about an organisation also needs other organisations' documents.`
+    ? `\nHint, no filter applied: ${hints.map(detectionHint).join(' ')} Use filter_by when the question is only about these; search without it when the question also needs other documents.${ownDocumentHint(hints)}`
     : '';
+};
+
+export interface SearchPage {
+  pass: number;
+  newCount: number;
+  totalSeen: number;
+  page?: number;
+  displayLimit?: number;
+  showSnippets?: boolean;
+  filters?: FilterField[];
+}
+
+const hitsShownPerDocument = 3;
+
+const publishedText = (publishedAt: string | undefined) => {
+  if (!publishedAt) return '';
+  const day = /^\d{4}-\d{2}-\d{2}/.exec(publishedAt)?.[0];
+  return ` published=${day ?? JSON.stringify(publishedAt)}`;
+};
+
+export const groupByDocument = <T extends { chunkId: string; document?: string }>(
+  chunks: T[],
+): T[][] => {
+  const groups = new Map<string, T[]>();
+  for (const c of chunks) {
+    const key = c.document ?? c.chunkId;
+    const group = groups.get(key);
+    if (group) group.push(c);
+    else groups.set(key, [c]);
+  }
+  return [...groups.values()];
+};
+
+export const shownOnPage = <T extends { chunkId: string; document?: string }>(
+  hits: T[],
+  displayLimit: number,
+  page = 1,
+): T[] => {
+  const offset = Number.isFinite(displayLimit) ? (Math.max(1, page) - 1) * displayLimit : 0;
+  return groupByDocument(hits)
+    .slice(offset, offset + displayLimit)
+    .flatMap((group) => group.slice(0, hitsShownPerDocument));
+};
+
+const filterClause = (field: string, options: string[], type?: string) =>
+  `${field} ${type === 'not-in-set' ? 'is none of' : 'is one of'} ${options.join(', ')}`;
+
+export const activeFiltersText = (
+  attribution: SearchAttribution | undefined,
+  filters: FilterField[] | undefined,
+): string => {
+  const caller = (attribution?.callerFilter ?? []).map((f) =>
+    filterClause(f.field, f['selected-options'], f.type),
+  );
+  const own = (filters ?? []).map((f) => filterClause(f.field, f.selectedOptions));
+  const auto =
+    attribution?.autoFilter && !attribution.autoFilterFallback ? [attribution.autoFilter] : [];
+  const parts = [
+    ...(caller.length ? [`set by the service or caller: ${caller.join('; ')}`] : []),
+    ...(own.length ? [`set by your filter_by: ${own.join('; ')}`] : []),
+    ...auto.map((f) => `added from the query: ${filterClause(f.field, f.options)}`),
+  ];
+  return `Filters: ${parts.length ? parts.join('. ') : 'none'}.`;
+};
+
+const hitLine = (c: ChunkSummary & { titleOverlapBonus?: number }, showSnippets: boolean) => {
+  const matched = (c.matchedQuestions ?? []).filter((q) => q.trim() !== '').slice(0, 2);
+  return (
+    `   chunk_id=${c.chunkId} chunk_index=${c.position ?? ''}/${c.totalChunks ?? '?'}` +
+    pageText(c) +
+    (c.contentLength === undefined ? '' : ` content_length=${c.contentLength}`) +
+    (c.headers?.length ? ` headers=${JSON.stringify(c.headers)}` : '') +
+    (c.rerankScore === undefined ? '' : ` rerank=${fixed(c.rerankScore, 2)}`) +
+    (c.score === undefined ? '' : ` score=${fixed(c.score, 3)}`) +
+    (c.rank === undefined ? '' : ` rank=${c.rank}`) +
+    (c.titleOverlapBonus ? ` title_match=${c.titleOverlapBonus}` : '') +
+    (matched.length ? ` matched_q=${matched.map((q) => JSON.stringify(q)).join(' | ')}` : '') +
+    (showSnippets && c.snippet && c.snippet.trim() !== ''
+      ? ` snippet=${JSON.stringify(c.snippet)}`
+      : '')
+  );
+};
+
+const documentBlock = (
+  hits: (ChunkSummary & { titleOverlapBonus?: number })[],
+  n: number,
+  showSnippets: boolean,
+) => {
+  const first = hits[0] as ChunkSummary;
+  const shown = hits.slice(0, hitsShownPerDocument);
+  const more = hits.length - shown.length;
+  return [
+    `${n}. doc_num=${first.document ?? ''}` +
+      (first.title ? ` title="${first.title}"` : '') +
+      publisherText(first) +
+      publishedText(first.publishedAt) +
+      (first.url ? ` url=${first.url}` : '') +
+      ` hits=${hits.length}`,
+    ...shown.map((c) => hitLine(c, showSnippets)),
+    ...(more > 0
+      ? [
+          `   ${more} more hit${more === 1 ? '' : 's'} in this document: read it by doc_num and chunk_range`,
+        ]
+      : []),
+  ].join('\n');
 };
 
 export const formatSearchMetadataResults = (
   chunks: (ChunkSummary & { titleOverlapBonus?: number })[],
-  newCount: number,
-  totalSeen: number,
-  pass: number,
   attribution: SearchAttribution | undefined,
-  displayLimit = defaultSearchDisplayLimit,
-  showSnippets = false,
+  view: SearchPage,
 ): string => {
-  const shown = chunks.slice(0, displayLimit);
-  const omitted = Math.max(0, chunks.length - shown.length);
-  const lines = shown.map((c, i) => {
-    const matched = (c.matchedQuestions ?? []).filter((q) => q.trim() !== '').slice(0, 2);
-    return (
-      `${i + 1}. chunk_id=${c.chunkId} doc_num=${c.document ?? ''} chunk_index=${c.position ?? ''}/${c.totalChunks ?? '?'}` +
-      pageText(c) +
-      (c.contentLength === undefined ? '' : ` content_length=${c.contentLength}`) +
-      (c.title ? ` title="${c.title}"` : '') +
-      (c.url ? ` url=${c.url}` : '') +
-      (c.headers?.length ? ` headers=${JSON.stringify(c.headers)}` : '') +
-      (c.rerankScore === undefined ? '' : ` rerank=${fixed(c.rerankScore, 2)}`) +
-      (c.score === undefined ? '' : ` score=${fixed(c.score, 3)}`) +
-      (c.rank === undefined ? '' : ` rank=${c.rank}`) +
-      (c.titleOverlapBonus ? ` title_match=${c.titleOverlapBonus}` : '') +
-      (matched.length ? ` matched_q=${matched.map((q) => JSON.stringify(q)).join(' | ')}` : '') +
-      (showSnippets && c.snippet && c.snippet.trim() !== ''
-        ? ` snippet=${JSON.stringify(c.snippet)}`
-        : '')
-    );
-  });
+  const limit = view.displayLimit ?? defaultSearchDisplayLimit;
+  const documents = groupByDocument(chunks);
+  const pages = Math.max(1, Math.ceil(documents.length / limit));
+  const page = Math.max(1, view.page ?? 1);
+  const offset = (page - 1) * limit;
+  const shown = documents.slice(offset, offset + limit);
+  const more = offset + shown.length < documents.length;
+  const window =
+    documents.length === 0
+      ? ''
+      : shown.length === 0
+        ? ` Page ${page} is past the last page: this search has ${pages} page${pages === 1 ? '' : 's'} of ${limit} documents.`
+        : ` Showing documents ${offset + 1} to ${offset + shown.length} of ${documents.length}${
+            more
+              ? `; more available: search again with the same queries and filter_by and page=${page + 1}`
+              : '; that is all this search found'
+          }.`;
   const af = attribution?.autoFilter;
   return (
-    `Search pass ${pass}: found ${chunks.length} chunks (${newCount} new). ${totalSeen} total seen.` +
-    (af ? ` Auto-filtered by ${af.field}: ${af.options.join(', ')}.` : '') +
-    (attribution?.autoFilterFallback
-      ? ' (filter returned 0 results, fell back to unfiltered)'
+    `Search pass ${view.pass}: found ${chunks.length} hits in ${documents.length} documents (${view.newCount} new hits). ${view.totalSeen} hits seen in all searches.` +
+    window +
+    ' Search returns only the best-matching passages, so the collection may hold more documents that match than these: narrow the search with filter_by or other words to reach them.' +
+    `\n${activeFiltersText(attribution, view.filters)}` +
+    (af && attribution?.autoFilterFallback
+      ? ` A filter on ${af.field} from the query found nothing, so the search ran without it.`
       : '') +
     (attribution?.rerankError
-      ? ` ColBERT rerank failed (${attribution.rerankError}) — original ranking preserved.`
+      ? ` Rerank failed (${attribution.rerankError}), original ranking preserved.`
       : attribution?.rerankEnabled
-        ? ` Ranking: ColBERT semantic rerank${attribution.rerankMs === undefined ? '' : ` (${attribution.rerankMs}ms)`}. Higher rerank= means more semantically relevant to the query.`
+        ? ` Ranking: semantic rerank${attribution.rerankMs === undefined ? '' : ` (${attribution.rerankMs}ms)`}. Higher rerank= means more semantically relevant to the query.`
         : '') +
-    (omitted > 0
-      ? ` Showing top ${shown.length} by rank; ${omitted} lower-ranked chunks omitted. Refine the query or read from the visible set.`
-      : '') +
     searchHints(attribution) +
     searchWarning(searchFailures(attribution)) +
-    `\n${untrustedData('search-results', lines.join('\n'))}`
+    (shown.length
+      ? `\n${untrustedData('search-results', shown.map((hits, i) => documentBlock(hits, offset + i + 1, view.showSnippets ?? false)).join('\n'))}`
+      : '')
   );
 };
 
@@ -368,6 +493,7 @@ export const formatReadResult = (
       `--- chunk_id=${c.chunkId} doc_num=${c.document ?? ''} chunk_index=${c.position ?? ''}` +
       pageText(c) +
       (c.title ? ` title="${c.title}"` : '') +
+      publisherText(c) +
       (c.url ? ` url=${c.url}` : '') +
       ` ---\n${c.content}`,
   );
@@ -482,6 +608,13 @@ const autoReadTopK = async (
 /** Org-number filters that find nothing are kept, or a search returns others' documents as theirs. */
 const keptWhenEmpty = new Set(['owner_orgnr', 'recipient_orgnr']);
 
+const detectionsOf = (error: unknown): SearchDetection[] | undefined => {
+  const detections = (error as { detections?: unknown } | null)?.detections;
+  return Array.isArray(detections) && detections.length > 0
+    ? (detections as SearchDetection[])
+    : undefined;
+};
+
 /** A search that threw: the agent hears why, and the search step shows that every search failed. */
 const thrown = (
   queries: string[],
@@ -490,19 +623,26 @@ const thrown = (
   lead: string,
 ): ToolOutcome => {
   const reason = thrownReason(error);
+  const detections = detectionsOf(error);
   return {
-    content: `${lead}every search ${failureText[reason]}. Try again later, or say that search is failing.`,
+    content: `${lead}every search ${failureText[reason]}. Try again later, or say that search is failing.${searchHints(detections ? { detections } : undefined)}`,
     retrieved: [],
-    search: { queries, ...(filters?.length ? { filters } : {}), failedCompletely: reason },
+    search: {
+      queries,
+      ...(filters?.length ? { filters } : {}),
+      ...(detections ? { detections } : {}),
+      failedCompletely: reason,
+    },
     searchError: (error instanceof Error ? error.message : String(error)).slice(0, 500),
   };
 };
 
+const searchKey = (queries: string[], filters: FilterField[] | undefined) =>
+  JSON.stringify([queries, (filters ?? []).map((f) => [f.field, f.selectedOptions, f.valueType])]);
+
 const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> => {
   const { workspace, retrieval, signal } = env;
   const settings = env.search ?? defaultSearchSettings;
-  const budget = workspace.budget();
-  if (budget.searchExhausted) return { content: searchBudgetExhaustedMessage(budget) };
   const args = searchArgs.safeParse(raw);
   if (!args.success)
     return { content: 'Invalid search arguments: queries must be a non-empty list of strings.' };
@@ -511,6 +651,26 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
     selectedOptions: f.selected_options.map(String),
     ...(f.value_type ? { valueType: f.value_type } : {}),
   }));
+  const page = args.data.page ?? 1;
+  const key = searchKey(args.data.queries, filters);
+  const previous = workspace.lastSearchWindow;
+  if (page > 1 && previous?.key === key)
+    return {
+      content:
+        previous.lead +
+        formatSearchMetadataResults(previous.chunks, previous.attribution, {
+          pass: workspace.searches.length,
+          newCount: 0,
+          totalSeen: workspace.seen.size,
+          page,
+          displayLimit: settings.displayLimit,
+          showSnippets: settings.showSnippets,
+          ...(previous.filters ? { filters: previous.filters } : {}),
+        }) +
+        '\nThis page of an earlier search did not use the search budget.',
+    };
+  const budget = workspace.budget();
+  if (budget.searchExhausted) return { content: searchBudgetExhaustedMessage(budget) };
   const errors = filterErrors(filters ?? []);
   if (errors.length) return { content: `Invalid filter_by, search not run: ${errors.join(' ')}` };
   const options = workspace.lastUserIntent ? { userIntent: workspace.lastUserIntent } : {};
@@ -587,28 +747,39 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
   });
   const autoRead = await autoReadTopK(env, effective, settings.autoReadTopK);
   const failed = searchFailures(attribution);
-  const summary = formatSearchMetadataResults(
-    effective,
-    fresh,
-    workspace.seen.size,
-    workspace.searches.length,
-    attribution,
-    settings.displayLimit,
-    settings.showSnippets,
-  );
+  const shownFilters = !fellBack && searched?.length ? searched : undefined;
+  const summary = formatSearchMetadataResults(effective, attribution, {
+    pass: workspace.searches.length,
+    newCount: fresh,
+    totalSeen: workspace.seen.size,
+    page,
+    displayLimit: settings.displayLimit,
+    showSnippets: settings.showSnippets,
+    ...(shownFilters ? { filters: shownFilters } : {}),
+  });
+  const lead = fellBack
+    ? 'Filtered retrieval returned 0 chunks; retried without filters. '
+    : narrowed
+      ? `Filtered retrieval returned 0 chunks; retried with only ${kept.map((f) => f.field).join(' and ')}. `
+      : '';
+  workspace.lastSearchWindow = {
+    key,
+    chunks: effective,
+    lead,
+    ...(attribution ? { attribution } : {}),
+    ...(shownFilters ? { filters: shownFilters } : {}),
+  };
   return {
     content:
-      (fellBack
-        ? `Filtered retrieval returned 0 chunks; retried without filters. ${summary}`
-        : narrowed
-          ? `Filtered retrieval returned 0 chunks; retried with only ${kept.map((f) => f.field).join(' and ')}. ${summary}`
-          : summary) +
+      lead +
+      summary +
       (autoRead.length
         ? `\nAuto-read top ${autoRead.length} by rank into workspace: ${autoRead.map((c) => c.chunkId).join(', ')}. Do NOT re-read these via read_chunks.`
         : ''),
     retrieved: retrievalHits(effective),
     search: {
       queries: args.data.queries,
+      ...(page > 1 ? { page } : {}),
       ...(!fellBack && searched?.length ? { filters: searched } : {}),
       ...(fellBack ? { fellBack } : {}),
       ...(outcome.attribution?.detections?.length
@@ -641,6 +812,8 @@ const read = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> =>
   let suppressed: string[] = [];
   let selectedIds: string[] | undefined;
   let rangeSelected = true;
+  let rangePlan: ReturnType<typeof planRangeRead> | undefined;
+  let alreadyRead = new Set<number>();
   try {
     if (chunkIds?.length) {
       suppressed = chunkIds.filter((id) => workspace.nonSupporting.has(id));
@@ -660,6 +833,8 @@ const read = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> =>
     } else if (docNum !== undefined) {
       const plan = planRangeRead(workspace, docNum, chunkRange ?? { from: 0, to: 4 }, budget);
       prefetchSkipped = plan.prefetchSkippedCount;
+      rangePlan = plan;
+      alreadyRead = readPositions(workspace, docNum);
       rangeSelected = plan.selected !== undefined;
       if (plan.selected) {
         fetched = await retrieval.readRange(docNum, plan.selected.from, plan.selected.to, signal);
@@ -679,12 +854,34 @@ const read = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> =>
   const shaped = fetched.map((c) => truncate(c, maxContentLength));
   const { kept, consumed, trimmed } = trimChunksToBudget(shaped, remaining);
   const skippedNote = skippedNonSupportingReadNote(suppressed);
-  const budgetNote = readBudgetNote({
-    returned: kept.length,
-    prefetchSkipped,
-    postfetchTrimmed: trimmed,
-    remaining,
-  });
+  const cutNote =
+    rangePlan && docNum !== undefined
+      ? rangeCutNote({
+          document: docNum,
+          requested: rangePlan.requested,
+          returned: kept,
+          alreadyRead,
+          cappedByCount: rangePlan.cappedByCount && trimmed === 0,
+          narrowed:
+            trimmed > 0 ||
+            (rangePlan.selected !== undefined &&
+              rangePlan.selected.to - rangePlan.selected.from <
+                rangePlan.requested.to - rangePlan.requested.from),
+          chunksPerRead: budget.chunksPerRead,
+          remaining: Math.max(0, remaining - consumed),
+          readsRemaining: Math.max(0, budget.readsRemaining - 1),
+        })
+      : undefined;
+  const budgetNote =
+    cutNote ??
+    (rangePlan
+      ? undefined
+      : readBudgetNote({
+          returned: kept.length,
+          prefetchSkipped,
+          postfetchTrimmed: trimmed,
+          remaining,
+        }));
 
   if (chunkIds?.length && selectedIds?.length === 0) {
     const survivors = chunkIds.length - suppressed.length;
@@ -707,7 +904,14 @@ const read = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> =>
   );
   return {
     content: formatReadResult(kept, consumed, workspace.readCharsUsed, budgetNote, skippedNote),
-    read: { chunks: retrievalHits(kept) },
+    read: {
+      chunks: retrievalHits(kept),
+      request: {
+        ...(chunkIds?.length ? { chunkIds } : {}),
+        ...(docNum === undefined ? {} : { document: docNum }),
+        ...(chunkRange ? { chunkRange } : {}),
+      },
+    },
   };
 };
 
@@ -764,9 +968,10 @@ const rerank = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
       .slice(0, 3)
       .map((c, i) => `${i + 1}. ${c.content.slice(0, 80)}`)
       .join('; ');
-    return {
-      content: `Reranked to top ${reranked.length} chunks. Top results:\n${untrustedData('excerpts', top)}`,
-    };
+    const done = env.retrieval.reranks
+      ? `Reranked to top ${reranked.length} chunks.`
+      : `No reranker: kept the search order of ${reranked.length} chunks.`;
+    return { content: `${done} Top results:\n${untrustedData('excerpts', top)}` };
   } catch (error) {
     if (env.signal.aborted) throw error;
     return {
@@ -805,19 +1010,18 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
   } = env.citeBy === 'excerpt' ? numberByExcerpt(docs) : numberByDocument(docs);
   let text: string;
   try {
-    text = stripSourceLists(
-      normaliseCitationMarkers(
-        await env.synthesize(
-          env.systemPrompt + skillsSection([...workspace.loadedSkills.values()]),
-          generationPromptFor(
-            env.generationPrompt ?? defaultGenerationPrompt,
-            context,
-            args.data.query,
-            env.citeBy,
-          ),
-        ),
+    const written = await env.synthesize(
+      env.systemPrompt + skillsSection([...workspace.loadedSkills.values()]),
+      generationPromptFor(
+        env.generationPrompt ?? defaultGenerationPrompt,
+        context,
+        args.data.query,
+        env.citeBy,
       ),
     );
+    // A refused draft leaves the earlier draft and its citations as they were.
+    if (written === undefined) return { content: 'The model refused to write this draft.' };
+    text = stripSourceLists(normaliseCitationMarkers(written));
   } catch (error) {
     if (env.signal.aborted) throw error;
     return {

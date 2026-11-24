@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RouteConfig, z } from '@hono/zod-openapi';
 import type { Principal } from '@genai/contracts';
-import { bootPlatform, digdir } from '../testkit.js';
+import { InMemoryConfigEntryStore } from '../config-store.js';
+import { bootPlatform, digdir, type BootOptions } from '../testkit.js';
 import { datasetDocRoutes } from './datasets.js';
 
 type Operation = {
@@ -56,8 +57,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const boot = async () => {
+const boot = async (options: BootOptions = {}) => {
   const booted = await bootPlatform({
+    ...options,
     people,
     knowledge: {
       endpoints: {
@@ -189,6 +191,36 @@ describe('dataset, knowledge and catalogue API reference', () => {
       'get',
       '/tenants/{tenant}/catalog',
     );
+  });
+
+  it('the operator sees why a stored catalog entry was left out', async () => {
+    const configEntries = new InMemoryConfigEntryStore();
+    await configEntries.append({
+      kind: 'dataset',
+      scope: 'platform',
+      id: 'digdir/lost',
+      version: 1,
+      spec: { endpoint: 'gone', residency: 'norway' },
+      deleted: false,
+      by: 'drift',
+      reason,
+      at: '2026-11-17T09:22:00.000Z',
+    });
+    const { send } = await boot({ configEntries });
+
+    const listed = await conforms(
+      await send('/operator/catalog/entries', 'drift'),
+      'get',
+      '/operator/catalog/entries',
+    );
+
+    expect(listed?.skipped).toEqual([
+      {
+        kind: 'dataset',
+        id: 'digdir/lost',
+        problems: [{ path: 'datasets.1.endpoint', message: 'unknown endpoint gone' }],
+      },
+    ]);
   });
 
   it('documents datasets and their pipelines as they answer', async () => {

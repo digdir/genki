@@ -44,8 +44,10 @@ const ended = new Set<EngineSwitchState>(['active', 'rolled_back', 'cancelled'])
 
 /** A pgvector endpoint on the knowledge server: the only target this section offers (#151). */
 const onKnowledgeServer = (e: ConfigEntry) => {
-  const spec = e.spec as { engine?: string; options?: { connection?: string } };
-  return spec.engine === 'pgvector' && spec.options?.connection === 'knowledge';
+  // A pgvector endpoint runs only on the knowledge server: `connection` is 'knowledge' or left
+  // out, and the default is the knowledge server, so the engine alone decides.
+  const spec = e.spec as { engine?: string };
+  return spec.engine === 'pgvector';
 };
 
 const sidOf = (id: string) => id.slice(id.lastIndexOf(':') + 1);
@@ -79,6 +81,7 @@ const Loaded = ({
   base,
   engine,
   targets,
+  onKnowledge,
   pollMs,
   reload,
   now,
@@ -87,6 +90,8 @@ const Loaded = ({
   base: string;
   engine: DatasetEngine;
   targets: string[];
+  /** The dataset is already on a knowledge endpoint, so there is nowhere to move it. */
+  onKnowledge: boolean;
   pollMs: number;
   reload: () => void;
   now: () => Date;
@@ -369,7 +374,9 @@ const Loaded = ({
         {t('engineSwitch.rollback', { endpoint: previous.endpoint })}
       </Button>
     </div>
-  ) : !engine.canSwitch ? null : targets.length === 0 ? (
+  ) : !engine.canSwitch ? null : onKnowledge ? (
+    <Paragraph data-size="sm">{t('engineSwitch.onKnowledge')}</Paragraph>
+  ) : targets.length === 0 ? (
     <Paragraph data-size="sm">{t('engineSwitch.noTargets')}</Paragraph>
   ) : choosing ? (
     <div className="stack-sm">
@@ -499,7 +506,10 @@ export const EngineSwitchSection = ({
           (e) => onKnowledgeServer(e) && sharedWith(e, orgOf(base)) && e.id !== engine.endpoint,
         )
         .map((e) => e.id);
-      return { engine, targets };
+      const onKnowledge = endpoints.data.some(
+        (e) => e.id === engine.endpoint && onKnowledgeServer(e),
+      );
+      return { engine, targets, onKnowledge };
     },
     [api, base],
   );
@@ -518,6 +528,7 @@ export const EngineSwitchSection = ({
           base={base}
           engine={state.data.engine}
           targets={state.data.targets}
+          onKnowledge={state.data.onKnowledge}
           pollMs={pollMs}
           reload={retry}
           now={now}

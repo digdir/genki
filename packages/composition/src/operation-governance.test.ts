@@ -63,4 +63,22 @@ describe('maturity per operation kind', () => {
     expect(await operationGovernance(store, 'production').maturity('classify')).toBe('production');
     expect(await operationGovernance(store, 'test').maturity('classify')).toBe('test');
   });
+
+  it('a deleted kind is no longer listed and starts again in test', async () => {
+    const store = new InMemoryConfigEntryStore();
+    const governance = operationGovernance(store, 'production');
+    await record(store, 'production', 'operator:test:drift');
+    await appendVersion<MaturityRecord>(store, {
+      kind: maturityEntryKind,
+      scope: 'production',
+      id: 'classify',
+      spec: { maturity: 'production' },
+      deleted: true,
+      by: 'operator:test:drift',
+      reason: 'Sletter typen i testen',
+    });
+
+    expect(await governance.maturities()).toEqual([]);
+    expect(await governance.maturity('classify')).toBe('test');
+  });
 });

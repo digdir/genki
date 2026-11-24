@@ -44,6 +44,7 @@ import {
 import { storeProposal } from './proposals.js';
 import { requireRight, rightRefused, rightsOf, type Right } from './rights.js';
 import { recipesOf } from './recipes.js';
+import { datasetDataLocation } from './residency.js';
 
 export type {
   AssistantProposal,
@@ -256,7 +257,7 @@ export const createAssistantModule =
                 id,
                 name: dataset.name ?? id,
                 ...(dataset.description ? { description: dataset.description } : {}),
-                dataLocation: dataset.residency,
+                dataLocation: datasetDataLocation(deps.plugins, id) ?? dataset.residency,
               });
           for (const state of await deps.connections.list(tenant))
             for (const tool of state.tools)

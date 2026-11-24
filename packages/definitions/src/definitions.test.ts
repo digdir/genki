@@ -7,9 +7,12 @@ import fc from 'fast-check';
 import {
   flowUsesOf,
   InMemoryDefinitionStore,
+  isIconDataUrl,
+  parseBlockRef,
   platformSettings,
   resolveSetting,
   resolveSettings,
+  serviceDataLocation,
   strategyKey,
   toCapabilities,
   validateDefinition,
@@ -98,7 +101,7 @@ const plugins: PluginSchemas = {
     'model@1',
   ]),
   retrieval: z.strictObject({ maxPerDocument: z.number().int().positive().optional() }),
-  rerankers: new Set(['colbert']),
+  rerankers: new Set(['omrangering']),
   strategyResidency: (id, config) =>
     id === strategyKey('remote-agent', 1)
       ? (config as { endpoint?: { residency?: 'norway' | 'eu' | 'global' } } | null)?.endpoint
@@ -255,11 +258,104 @@ describe('service definitions', () => {
     ).toBe(true);
   });
 
+  it('a service processes data in the widest place of the models, datasets and reranker it uses', () => {
+    const specOf = (patch: Record<string, unknown>) => {
+      const result = validateDefinition(withSpec(patch), plugins);
+      if (!result.ok) throw new Error(JSON.stringify(result.errors));
+      return (result.definition as ServiceDefinition).spec;
+    };
+    const located = (stored: DatasetLocation['stored'], embedded?: DatasetLocation['stored']) => ({
+      ...plugins,
+      datasetLocation: (): DatasetLocation => ({
+        stored,
+        ...(embedded ? { embedding: { model: 'embed', residency: embedded } } : {}),
+      }),
+      rerankerResidency: () => 'norway' as const,
+    });
+    const spec = specOf({
+      model: { primary: 'foundry/gpt-4o', residency: 'global' },
+      knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'omrangering' },
+    });
+
+    expect(serviceDataLocation(spec, located('norway', 'norway'))).toBe('norway');
+    expect(serviceDataLocation(spec, located('eu', 'norway'))).toBe('eu');
+    expect(serviceDataLocation(spec, located('eu', 'global'))).toBe('global');
+    expect(
+      serviceDataLocation(
+        { ...spec, model: { ...spec.model, primary: 'foundry/claude-opus' } },
+        {
+          ...located('norway'),
+        },
+      ),
+    ).toBe('global');
+  });
+
+  it('a service has no known data location while a model it uses is not in the catalogue', () => {
+    const result = validateDefinition(
+      withSpec({
+        model: { primary: 'foundry/gpt-4o', residency: 'norway' },
+        knowledge: { datasets: [] },
+      }),
+      plugins,
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.errors));
+    const spec = (result.definition as ServiceDefinition).spec;
+
+    expect(serviceDataLocation(spec, plugins)).toBe('norway');
+    expect(
+      serviceDataLocation({ ...spec, model: { ...spec.model, primary: 'gone/model' } }, plugins),
+    ).toBeUndefined();
+  });
+
+  it('a service processes data where a content trace sink sends it', () => {
+    const result = validateDefinition(
+      withSpec({
+        model: { primary: 'foundry/gpt-4o', residency: 'global' },
+        knowledge: { datasets: [] },
+      }),
+      plugins,
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.errors));
+    const spec = (result.definition as ServiceDefinition).spec;
+
+    expect(
+      serviceDataLocation(spec, {
+        ...plugins,
+        traceSink: () => ({ residency: 'global', content: true }),
+      }),
+    ).toBe('global');
+    expect(
+      serviceDataLocation(spec, {
+        ...plugins,
+        traceSink: () => ({ residency: 'global', content: false }),
+      }),
+    ).toBe('norway');
+  });
+
+  it('a service processes data where an agent it calls runs', () => {
+    const result = validateDefinition(
+      withSpec({
+        model: { primary: 'foundry/gpt-4o', residency: 'global' },
+        knowledge: { datasets: [] },
+      }),
+      plugins,
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.errors));
+    const spec = (result.definition as ServiceDefinition).spec;
+
+    expect(serviceDataLocation(spec, { ...plugins, strategyResidency: () => 'global' })).toBe(
+      'global',
+    );
+    expect(serviceDataLocation(spec, { ...plugins, strategyResidency: () => undefined })).toBe(
+      'norway',
+    );
+  });
+
   it('refuses a reranker that processes data outside the residency the service requires', () => {
     const service = (residency: string) =>
       withSpec({
         model: { primary: 'foundry/gpt-4o', residency },
-        knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'colbert' },
+        knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'omrangering' },
       });
     const outsideEu = { ...plugins, rerankerResidency: () => 'global' as const };
 
@@ -269,7 +365,7 @@ describe('service definitions', () => {
         {
           path: 'spec.knowledge.reranker',
           message:
-            'Omrangeringen colbert behandler data utenfor EU/EØS. Tjenesten krever at data behandles i EU/EØS.',
+            'Omrangeringen omrangering behandler data utenfor EU/EØS. Tjenesten krever at data behandles i EU/EØS.',
         },
       ],
     });
@@ -519,6 +615,39 @@ describe('service definitions', () => {
         path: 'spec.variants[1].strategy',
         message: 'model aivar/borealis lacks json-schema, which single-call needs',
       },
+    ]);
+  });
+
+  it('names the capabilities a check found missing, and when, in the refusal', () => {
+    const checked = {
+      ...plugins,
+      models: new Map([
+        ...plugins.models,
+        [
+          'aivar/borealis',
+          {
+            residency: 'norway' as const,
+            capabilities: ['stream', 'tools'],
+            checked: { 'json-schema': '2026-11-19T08:00:00.000Z' },
+          },
+        ],
+      ]),
+      modelNeeds: new Map([['single-call@1', ['json-schema']]]),
+    };
+    const result = validateDefinition(
+      withSpec({
+        variants: [
+          { id: 'default' },
+          {
+            id: 'short',
+            strategy: { id: 'single-call', version: 1, config: { instructions: 'x' } },
+          },
+        ],
+      }),
+      checked,
+    );
+    expect(result.ok ? [] : result.errors.map((e) => e.message)).toEqual([
+      'model aivar/borealis lacks json-schema, which single-call needs; checked json-schema on 2026-11-19',
     ]);
   });
 
@@ -925,14 +1054,12 @@ describe('compiling a service into capabilities', () => {
     expect(compiled[0]?.capability.grants.map((g) => `${g.port}:${g.ref.id}`)).toEqual([
       'knowledge:digdir/kudos',
       'tools:rag@1',
-      'rerank:colbert',
       'model:foundry/gpt-4o',
       'model:aivar/borealis',
     ]);
     expect(compiled[0]?.capability.config).toMatchObject({
       knowledge: {
         datasets: [{ dataset: 'digdir/kudos' }],
-        reranker: 'colbert',
         retrieval: { maxPerDocument: 10 },
       },
       tools: ['rag@1'],
@@ -1533,5 +1660,235 @@ describe('decisions', () => {
     expect(
       toCapabilities(plain.definition, 1)[0]?.capability.grants.some((g) => g.port === 'decision'),
     ).toBe(false);
+  });
+});
+
+describe('a service interface (spec.interface)', () => {
+  const range = (n: number) => Array.from({ length: n }, (_, i) => i);
+  const layout = {
+    version: 1,
+    template: 'knowledge-assistant-next',
+    look: 'next',
+    zones: {
+      primary: [{ block: 'threads' }],
+      main: [{ block: 'chat', settings: { feedback: true, followUps: false } }],
+      secondary: [{ block: 'sources' }],
+    },
+    profile: {
+      assistantName: { nb: 'Kunnskapsassistenten', en: 'The knowledge assistant' },
+      suggestions: ['Hva handler dokumentene om?'],
+      corpora: {
+        kudos: {
+          label: 'Kudos',
+          fields: [{ id: 'type', label: { nb: 'Dokumenttyper', en: 'Document types' } }],
+          documentLinks: { digits: 'https://kudos.dfo.no/documents/{id}' },
+        },
+      },
+    },
+  };
+  const withLayout = (changed: Record<string, unknown>) =>
+    withSpec({ interface: { layout: { ...layout, ...changed } } });
+
+  it('is optional, and a service with none is valid as before', () => {
+    expect(errorsOf(withSpec({}))).toEqual([]);
+    expect(errorsOf(withSpec({ interface: {} }))).toEqual([]);
+  });
+
+  it('holds a layout whose texts are one wording or one per language, bokmål and English', () => {
+    expect(errorsOf(withLayout({}))).toEqual([]);
+    expect(
+      errorsOf(withLayout({ profile: { assistantName: { nb: 'Kunnskapsassistenten' } } })),
+    ).not.toEqual([]);
+  });
+
+  it('keeps a host’s own x- block and an x- setting, which only a host that runs its own code draws', async () => {
+    const zones = {
+      ...layout.zones,
+      secondary: [{ block: 'x-ka-glossary', settings: { 'x-source': 'begrepskatalogen' } }],
+    };
+    const store = new InMemoryDefinitionStore(plugins);
+    const definition = withLayout({ zones });
+    const published = await store.publish(definition, 'kari', 'eget oppsett', filesFor(definition));
+    if (!published.ok) throw new Error(JSON.stringify(published.errors));
+    expect(
+      (published.version.definition as ServiceDefinition).spec.interface?.layout?.zones.secondary,
+    ).toEqual(zones.secondary);
+  });
+
+  it('is closed: a part or a key it does not know is refused', () => {
+    expect(errorsOf(withSpec({ interface: { layout, colours: {} } }))).not.toEqual([]);
+    expect(errorsOf(withLayout({ zones: { ...layout.zones, top: [] } }))).not.toEqual([]);
+    expect(errorsOf(withLayout({ profile: { tagline: 'Hei' } }))).not.toEqual([]);
+    expect(errorsOf(withLayout({ version: 2 }))).not.toEqual([]);
+    expect(
+      errorsOf(withLayout({ zones: { ...layout.zones, main: [{ block: 'Chat' }] } })),
+    ).not.toEqual([]);
+  });
+
+  it('takes a ref beside a block, naming a Block definition by its publisher, id and version', () => {
+    const main = [{ block: 'chat', ref: '991825827/chat@3' }];
+    expect(errorsOf(withLayout({ zones: { ...layout.zones, main } }))).toEqual([]);
+    expect(parseBlockRef('991825827/chat@3')).toEqual({
+      publisher: '991825827',
+      id: 'chat',
+      version: 3,
+    });
+  });
+
+  it('refuses a ref that is not <organisation number>/<block id>@<version>', () => {
+    for (const ref of [
+      'chat',
+      'chat@1',
+      'digdir/chat@1',
+      '991825827/chat',
+      '991825827/chat@0',
+      '991825827/Chat@1',
+      '991825827/chat@1.2',
+      ' 991825827/chat@1',
+    ])
+      expect(
+        errorsOf(withLayout({ zones: { ...layout.zones, main: [{ block: 'chat', ref }] } })),
+      ).not.toEqual([]);
+  });
+
+  it('reads a ref in linear time', () => {
+    const long = `991825827/${'a'.repeat(200_000)}@`;
+    const started = performance.now();
+    expect(parseBlockRef(long)).toBeUndefined();
+    expect(parseBlockRef(`991825827/${'a-'.repeat(100_000)}@1`)).toBeUndefined();
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+
+  it("takes a document link on the host's own site, which opens under any hostname", () => {
+    const any = '/api/datasets/kudos/documents/{id}/file';
+    expect(
+      errorsOf(withLayout({ profile: { corpora: { kudos: { documentLinks: { any } } } } })),
+    ).toEqual([]);
+  });
+
+  it('refuses a document link that is not https or lets the number choose the host', () => {
+    for (const digits of [
+      'http://kudos.dfo.no/{id}',
+      'https://{id}.example.no/',
+      '//kudos.dfo.no/{id}',
+      '/\\kudos.dfo.no/{id}',
+      'dokument/{id}',
+    ])
+      expect(
+        errorsOf(withLayout({ profile: { corpora: { kudos: { documentLinks: { digits } } } } })),
+      ).not.toEqual([]);
+  });
+
+  it.each([
+    ['blocks in a zone', { zones: { ...layout.zones, main: Array(17).fill({ block: 'x-a' }) } }],
+    ['a name', { profile: { assistantName: 'x'.repeat(81) } }],
+    ['a name in English', { profile: { assistantName: { nb: 'a', en: 'x'.repeat(81) } } }],
+    ['suggestions', { profile: { suggestions: Array(7).fill('Hei') } }],
+    ['a suggestion', { profile: { suggestions: ['x'.repeat(201)] } }],
+    [
+      'settings on a block',
+      {
+        zones: {
+          ...layout.zones,
+          main: [
+            { block: 'chat', settings: Object.fromEntries(range(33).map((i) => [`x-${i}`, true])) },
+          ],
+        },
+      },
+    ],
+  ])('refuses a layout past its limit for %s', (_, changed) => {
+    expect(errorsOf(withLayout(changed))).not.toEqual([]);
+  });
+
+  describe('menu and pages', () => {
+    const about = { id: 'om-prosjektet', title: 'Om prosjektet', body: '# Om\n\nTekst.' };
+    const withPages = (changed: Record<string, unknown>) =>
+      withSpec({ interface: { layout, pages: [about], ...changed } });
+
+    it('holds a menu of pages and https or mailto links, with texts per language', () => {
+      expect(
+        errorsOf(
+          withPages({
+            menu: [
+              { label: { nb: 'Om prosjektet', en: 'About the project' }, page: 'om-prosjektet' },
+              { label: 'Skjema', href: 'https://forms.office.com/r/abc' },
+              { label: 'Kontakt', href: 'mailto:ka@digdir.no' },
+            ],
+          }),
+        ),
+      ).toEqual([]);
+    });
+
+    it.each([
+      'http://example.no',
+      'javascript:alert(1)',
+      'data:text/html,x',
+      'https://a:b@example.no',
+    ])('refuses a menu link that is not https or mailto: %s', (href) => {
+      expect(errorsOf(withPages({ menu: [{ label: 'Lenke', href }] }))).not.toEqual([]);
+    });
+
+    it('refuses a menu item for a page the interface does not have', () => {
+      expect(
+        errorsOf(withPages({ menu: [{ label: 'Endringslogg', page: 'endringslogg' }] })),
+      ).not.toEqual([]);
+    });
+
+    it('refuses two pages with one id, and a page at one of the host’s own addresses', () => {
+      expect(errorsOf(withPages({ pages: [about, about] }))).not.toEqual([]);
+      expect(errorsOf(withPages({ pages: [{ ...about, id: 'innstillinger' }] }))).not.toEqual([]);
+      expect(errorsOf(withPages({ pages: [{ ...about, id: 'Om prosjektet' }] }))).not.toEqual([]);
+    });
+
+    it('refuses more than 12 menu items or pages, a page over 32 KiB and pages over 128 KiB', () => {
+      const pages = (n: number, size: number) =>
+        range(n).map((i) => ({ id: `side-${i}`, title: `Side ${i}`, body: 'x'.repeat(size) }));
+      expect(errorsOf(withPages({ pages: pages(13, 1) }))).not.toEqual([]);
+      expect(
+        errorsOf(
+          withPages({ menu: range(13).map(() => ({ label: 'Om', page: 'om-prosjektet' })) }),
+        ),
+      ).not.toEqual([]);
+      expect(errorsOf(withPages({ pages: pages(1, 32 * 1024) }))).not.toEqual([]);
+      expect(errorsOf(withPages({ pages: pages(4, 30 * 1024) }))).toEqual([]);
+      expect(errorsOf(withPages({ pages: pages(5, 30 * 1024) }))).not.toEqual([]);
+    });
+  });
+
+  it('takes an icon only as a base64 PNG or SVG data address', () => {
+    const icon = (value: string) => errorsOf(withSpec({ interface: { layout, icon: value } }));
+    expect(icon('data:image/svg+xml;base64,PHN2Zy8+')).toEqual([]);
+    expect(icon('data:image/png;base64,iVBORw0KGgo=')).toEqual([]);
+    expect(icon('https://example.no/icon.svg')).not.toEqual([]);
+    expect(icon('data:image/svg+xml,<svg onload="x()"/>')).not.toEqual([]);
+    expect(icon('data:text/html;base64,PHN2Zy8+')).not.toEqual([]);
+    expect(icon(`data:image/png;base64,${'A'.repeat(24 * 1024)}`)).not.toEqual([]);
+  });
+
+  it('checks an icon in linear time', () => {
+    const long = `data:image/png;base64,${'A'.repeat(200_000)}!`;
+    const started = performance.now();
+    expect(isIconDataUrl(long)).toBe(false);
+    expect(isIconDataUrl(long.slice(0, 20_000))).toBe(true);
+    expect(isIconDataUrl(`${long.slice(0, 20_000)}!`)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+
+  it('refuses an interface over 256 KiB, and takes one just under', () => {
+    const settings = (n: number) =>
+      Object.fromEntries(range(32).map((i) => [`x-${i}`, 'x'.repeat(n)]));
+    const big = (n: number) => ({
+      ...layout,
+      profile: undefined,
+      zones: {
+        primary: range(16).map((i) => ({ block: `x-p${i}`, settings: settings(n) })),
+        main: range(16).map((i) => ({ block: `x-m${i}`, settings: settings(n) })),
+        secondary: range(16).map((i) => ({ block: `x-s${i}`, settings: settings(n) })),
+      },
+    });
+    expect(errorsOf(withSpec({ interface: { layout: big(150) } }))).toEqual([]);
+    expect(errorsOf(withSpec({ interface: { layout: big(180) } })).map((e) => e.message)).toContain(
+      `at most ${256 * 1024} bytes as JSON`,
+    );
   });
 });

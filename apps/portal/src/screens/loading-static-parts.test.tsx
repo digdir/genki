@@ -55,16 +55,14 @@ describe('the title, back link, tabs and buttons show while the data loads', () 
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });
 
-  it('a building block shows the back link and its tabs while it loads', async () => {
+  it('a catalogue part shows the back link and its tabs while it loads', async () => {
     await whileDataLoads('#/building-blocks/model/aivar%2Fqwen3-8');
 
-    expect(loading('Henter byggeklossen')).toBeTruthy();
-    expect(
-      within(screen.getByRole('main')).getByRole('link', { name: 'Byggeklosser' }),
-    ).toBeTruthy();
+    expect(loading('Henter delen')).toBeTruthy();
+    expect(within(screen.getByRole('main')).getByRole('link', { name: 'Katalog' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Om' }).getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByRole('tab', { name: 'Brukes av' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Versjoner' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Tjenester' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Historikk' })).toBeTruthy();
   });
 
   it('Innstillinger shows its title and tabs while the settings load', async () => {
@@ -77,18 +75,18 @@ describe('the title, back link, tabs and buttons show while the data loads', () 
     expect(screen.getByRole('tab', { name: 'Vanlige' })).toBeTruthy();
   });
 
-  it('Stegflyter shows its title and Ny stegflyt while the flows load', async () => {
+  it('Arbeidsflyter shows its title and Ny arbeidsflyt while the flows load', async () => {
     await whileDataLoads('#/developer/step-flows');
 
-    expect(await screen.findByRole('heading', { level: 2, name: 'Stegflyter' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Ny stegflyt' })).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: 'Ingen stegflyter ennå' })).toBeNull();
+    expect(await screen.findByRole('heading', { level: 2, name: 'Arbeidsflyter' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Ny arbeidsflyt' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Ingen arbeidsflyter ennå' })).toBeNull();
   });
 
-  it('Brukerflater shows the lead and Registrer brukerflate while the list loads', async () => {
+  it('Egne løsninger shows the lead and Registrer egen løsning while the list loads', async () => {
     await whileDataLoads('#/developer/frontends');
 
-    expect(await screen.findByRole('status', { name: 'Henter brukerflater' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Registrer brukerflate' })).toBeTruthy();
+    expect(await screen.findByRole('status', { name: 'Henter egne løsninger' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Registrer egen løsning' })).toBeTruthy();
   });
 });

@@ -10,6 +10,7 @@ import {
   type JobQueue,
   type JobReads,
   type JobTransaction,
+  type QueueBacklog,
   type QueueCounts,
   type WorkOptions,
   type QueueDefinition,
@@ -19,7 +20,7 @@ import {
   type SendOptions,
 } from '@genai/jobs';
 import type { Pool } from 'pg';
-import { PgBoss, type Db, type Queue } from 'pg-boss';
+import { PgBoss, type Db, type JobWithMetadata, type Queue } from 'pg-boss';
 
 export const jobSchema = 'pgboss';
 
@@ -267,6 +268,8 @@ export class PgBossJobReads implements JobReads {
   }
 }
 
+const backlogScan = 1000;
+
 export interface PgBossJobQueueOptions {
   works: boolean;
   schema?: string;
@@ -353,15 +356,17 @@ export class PgBossJobQueue implements JobQueue {
     handler: JobHandler<T>,
     options: WorkOptions = {},
   ) {
-    const id = await this.#boss.work<JobData>(
+    const id = await this.#boss.work(
       queue.name,
       {
         batchSize: 1,
         pollingIntervalSeconds: this.#pollingIntervalSeconds,
         // Each of these pollers takes one job, so the process works this many at once.
         localConcurrency: options.concurrency ?? 1,
+        // For the job's singleton key, which a convert job's waits are named by (issue 945).
+        includeMetadata: true,
       },
-      async ([job]) => {
+      async ([job]: JobWithMetadata<JobData>[]) => {
         if (!job) return;
         await handler({
           id: job.id,
@@ -369,6 +374,7 @@ export class PgBossJobQueue implements JobQueue {
           data: admitPayload(queue, job.data),
           retryCount: job.retryCount,
           signal: job.signal,
+          ...(job.singletonKey ? { key: job.singletonKey } : {}),
         });
       },
     );
@@ -462,6 +468,28 @@ export class PgBossJobQueue implements JobQueue {
 
   counts(queues: QueueDefinition[], options?: ReadOptions) {
     return this.#reads.counts(queues, options);
+  }
+
+  async backlog(now: Date = new Date()): Promise<QueueBacklog[]> {
+    const queues = await this.#boss.getQueues();
+    const deadLetters = new Set(queues.flatMap((q) => (q.deadLetter ? [q.deadLetter] : [])));
+    const backlog = await Promise.all(
+      queues
+        .filter((q) => !deadLetters.has(q.name))
+        .map(async (q) => {
+          const jobs = await this.#boss.findJobs(q.name, { queued: true, limit: backlogScan });
+          const ready = jobs
+            .map((job) => job.startAfter.getTime())
+            .filter((at) => at <= now.getTime());
+          const oldest = ready.length > 0 ? Math.min(...ready) : now.getTime();
+          return {
+            queue: q.name,
+            queued: jobs.length,
+            oldestQueuedSeconds: Math.floor((now.getTime() - oldest) / 1000),
+          };
+        }),
+    );
+    return backlog.filter((entry) => entry.queued > 0);
   }
 
   async stop() {

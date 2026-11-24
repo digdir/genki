@@ -358,7 +358,7 @@ export const RunsTab = ({
             {t('logRuns.noneTitle')}
           </Heading>
           <Paragraph>{t('logRuns.noneText')}</Paragraph>
-          <a href="#/playground" className="log-self-start">
+          <a href="#/playground/backend" className="log-self-start">
             {t('logRuns.openPlayground')}
           </a>
         </div>

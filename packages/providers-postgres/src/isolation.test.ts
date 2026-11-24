@@ -283,11 +283,13 @@ describe('row-level security under a non-superuser owner', () => {
       'change_versions',
       'content_keys',
       'currency_rates',
+      'discovered_models',
       'erased_scopes',
       'events',
       'identities',
       'judge_labels',
       'model_classifications',
+      'model_discovery_claims',
       'platform_identity',
       'rate_limit_windows',
       'setting_default_versions',
@@ -390,9 +392,13 @@ describe('row-level security under a non-superuser owner', () => {
          values ('catalog', 'platform', 'm', 2, '{}', false, 'x', 'now', 'r')`,
       ),
     ).rejects.toThrow(/row-level security/);
-    expect(await asTenant(runtime, ORG_A, `delete from definition_versions returning id`)).toEqual(
+    expect(await asTenant(runtime, ORG_B, `delete from definition_versions returning id`)).toEqual(
       [],
     );
+    expect(await asTenant(runtime, ORG_A, `delete from config_entries returning id`)).toEqual([]);
+    expect(await asTenant(runtime, ORG_A, `delete from definition_versions returning id`)).toEqual([
+      { id: 'svc' },
+    ]);
   });
 });
 

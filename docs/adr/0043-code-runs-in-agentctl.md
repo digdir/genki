@@ -1,6 +1,6 @@
 # 0043 Code runs in agentctl, not in the platform
 
-Status: proposed, 2026-10-29
+Status: proposed, 2026-10-29 (partly built: the dependency rule, 2026-11-03)
 
 ## Context
 

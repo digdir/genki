@@ -1,3 +1,5 @@
+import { untrustedData } from '@genai/port-model';
+import { questionWords } from './intent.js';
 import { sameLanguageRule } from './prompts.js';
 import { json, resolveAliasOrNormalize, structuredEvaluate, type Evaluator } from './structured.js';
 import type { Chunk, ChunkRange, Workspace } from './workspace.js';
@@ -14,7 +16,8 @@ export const evaluatorSystemPrompt =
   '- Contradictions: sources disagree on the value or interpretation.\n' +
   'Return JSON with keys: status, reasoning, missing_info, contradiction_detected, suggested_strategy.\n' +
   'When suggested_strategy is ask-clarification, also return clarification_question, optional options, and context_summary.\n' +
-  'Allowed status values: sufficient, insufficient, conflicting, off-topic.\n' +
+  'When a draft answer is given, judge whether the evidence supports what the draft says. Use status unsure when you cannot tell from the evidence: the draft then stands.\n' +
+  'Allowed status values: sufficient, insufficient, conflicting, off-topic, unsure.\n' +
   'Allowed suggested_strategy values: re-search, read-more, ask-clarification, finalize.\n' +
   '\n' +
   `Reasoning / clarification-question language: ${sameLanguageRule}`;
@@ -111,23 +114,6 @@ const queryMetric = (query: string): string | null => {
   if (q.includes('fte')) return 'fte';
   return null;
 };
-
-const questionWords = new Set([
-  'Hva',
-  'Hvem',
-  'Hvor',
-  'Hvordan',
-  'Hvorfor',
-  'Når',
-  'What',
-  'Who',
-  'Where',
-  'How',
-  'Why',
-  'When',
-  'Compare',
-  'Sammenlign',
-]);
 
 const queryEntity = (query: string): string | null => {
   const tokens = (query.match(/[A-ZÆØÅ][A-Za-zÆØÅæøå0-9.-]+/g) ?? []).filter(
@@ -594,20 +580,33 @@ export const heuristicDecision = (query: string, s: EvidenceSummary): Sufficienc
   degradedReason: 'heuristic-fallback',
 });
 
-export const buildEvaluatorPrompt = (query: string, s: EvidenceSummary) =>
-  `User query:\n${query}\n\nEvidence summary JSON:\n${json(s)}\n\nReturn only JSON.`;
+export const buildEvaluatorPrompt = (query: string, s: EvidenceSummary, draft?: string) =>
+  `User query:\n${query}\n\nEvidence summary JSON:\n${json(s)}` +
+  (draft ? `\n\nDraft answer:\n${untrustedData('draft-answer', draft)}` : '') +
+  '\n\nReturn only JSON.';
+
+export const standsWhenUnsure = (d: SufficiencyDecision): SufficiencyDecision =>
+  d.status === 'unsure'
+    ? {
+        ...d,
+        status: 'sufficient',
+        suggestedStrategy: 'finalize',
+        reasoning: `${d.reasoning} The judge was unsure, so the draft stands.`,
+      }
+    : d;
 
 export const evaluateSufficiency = (
   query: string,
   s: EvidenceSummary,
   llm: Evaluator | undefined,
   signal: AbortSignal,
+  draft?: string,
 ): Promise<SufficiencyDecision> =>
   llm
     ? structuredEvaluate({
         llm,
         system: evaluatorSystemPrompt,
-        user: buildEvaluatorPrompt(query, s),
+        user: buildEvaluatorPrompt(query, s, draft),
         normalize: (parsed) => ({ ...normalizeDecision(parsed), degraded: false }),
         fallback: () => heuristicDecision(query, s),
         signal,
@@ -634,6 +633,7 @@ export const buildEvidenceSummary = (w: Workspace, query: string): EvidenceSumma
       'doc-num': c.document ?? null,
       'chunk-index': c.position ?? null,
       title: c.title ?? null,
+      publisher: c.publisher ?? null,
       metadata: c.headers?.length ? JSON.stringify(c.headers) : null,
       'content-preview': preview(c.content, 500),
       ...(c.matchedQuestions?.length ? { 'matched-questions': c.matchedQuestions } : {}),
@@ -653,6 +653,7 @@ export const buildEvidenceSummary = (w: Workspace, query: string): EvidenceSumma
     'doc-num': s['doc-num'],
     'chunk-index': s['chunk-index'],
     title: s.title,
+    publisher: s.publisher ?? null,
     headers: s.headers,
     'content-length': s['content-length'],
   });

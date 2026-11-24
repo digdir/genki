@@ -34,6 +34,23 @@ const familyBase = z.union([
   z.url({ protocol: /^https?$/ }),
 ]);
 
+export const rerankFailureModes = ['degrade', 'fail'] as const;
+
+/** Settings that belong to one operation kind, kept under the kind's name on the model. */
+export const kindSettings = {
+  embed: z.strictObject({
+    dimensions: z.number().int().positive(),
+    maxBatch: z.number().int().positive().optional(),
+  }),
+  rerank: z.strictObject({ onFailure: z.enum(rerankFailureModes).default('degrade') }),
+};
+
+export const discoveredModelSettings = z.strictObject({
+  kind: z.string().regex(operationKindPattern).optional(),
+  embed: kindSettings.embed.optional(),
+  rerank: kindSettings.rerank.optional(),
+});
+
 const discoveryRule = z.strictObject({
   source: id,
   from: id.optional(),
@@ -44,6 +61,8 @@ const discoveryRule = z.strictObject({
   apis: bindings.optional(),
   maker: z.string().min(1).max(100).optional(),
   releaseDates: z.record(z.string().min(1).max(200), z.iso.date()).optional(),
+  residency: z.enum(residencies).optional(),
+  models: z.record(z.string().min(1).max(200), discoveredModelSettings).optional(),
 });
 
 export const connectionSettingValue = /^[\x21-\x7e](?:[\x20-\x7e]{0,254}[\x21-\x7e])?$/;
@@ -95,17 +114,6 @@ const endpoint = z
     message: 'a name is a setting or a key, not both',
     path: ['keys'],
   });
-
-export const rerankFailureModes = ['degrade', 'fail'] as const;
-
-/** Settings that belong to one operation kind, kept under the kind's name on the model. */
-export const kindSettings = {
-  embed: z.strictObject({
-    dimensions: z.number().int().positive(),
-    maxBatch: z.number().int().positive().optional(),
-  }),
-  rerank: z.strictObject({ onFailure: z.enum(rerankFailureModes).default('degrade') }),
-};
 
 const model = z.strictObject({
   id,

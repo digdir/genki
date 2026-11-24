@@ -16,7 +16,7 @@ RUN mkdir -p /out && \
       mkdir -p "/out/$(dirname "$asset")" && cp -r "$asset" "/out/$asset" || exit 1; \
     done && \
     node scripts/docs-bundle.ts /out/genki-docs && \
-    mkdir -p /out/scripts && cp scripts/knowledge-server-setup.ts scripts/setup.ts scripts/conversions-check.ts scripts/conversions-seed.ts scripts/docling-check.ts /out/scripts/ && \
+    mkdir -p /out/scripts && cp scripts/knowledge-server-setup.ts scripts/platform-backup.ts scripts/content-rewrap.ts scripts/setup.ts scripts/conversions-check.ts scripts/conversions-seed.ts scripts/docling-check.ts scripts/knowledge-filter-probe.ts /out/scripts/ && \
     cp package.json package-lock.json /out/
 
 FROM ${NODE_IMAGE} AS deps
@@ -33,7 +33,7 @@ COPY --from=build --chown=node:node /out/ ./
 USER node
 
 FROM build AS apps-build
-RUN for app in portal workspace console; do \
+RUN for app in portal workspace console assistant; do \
       (cd "apps/$app" && npx vite build --outDir "/web/$app") || exit 1; \
     done
 RUN find /web -type f \( -name '*.js' -o -name '*.css' -o -name '*.svg' -o -name '*.html' \) \

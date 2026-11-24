@@ -355,6 +355,13 @@ describe('the steps as the dev boards’ tool, `variant="list"`', () => {
     expect(document.querySelector('.uib-approach-step-time')).toBeNull();
   });
 
+  it('puts Designsystemet’s Divider between the scope and the steps', () => {
+    draw({ scope: <p>Leste fra 3 dokumenter</p> });
+    const scope = document.querySelector('.uib-approach-scope');
+    expect(scope?.nextElementSibling?.classList.contains('ds-divider')).toBe(true);
+    expect(scope?.nextElementSibling?.nextElementSibling?.tagName).toBe('OL');
+  });
+
   it('draws the note and the scope over the steps, and the totals and the time at the foot, when given', () => {
     render(
       <Approach

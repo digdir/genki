@@ -99,7 +99,7 @@
     padding: var(--genai-threads-thread-padding-block, var(--ds-size-1))
       var(--genai-threads-thread-padding-inline, var(--ds-size-2))
       var(--genai-threads-focus-width, var(--ds-border-width-focus));
-    border-radius: var(--genai-threads-thread-border-radius, var(--ds-border-radius-md));
+    border-radius: var(--genai-threads-thread-border-radius, var(--ds-border-radius-xl));
     text-decoration: none;
   }
   /* One line: titles are the person's own questions; the box shows the rest. */
@@ -147,7 +147,7 @@
     inline-size: max-content;
     padding: var(--genai-threads-overlay-padding-block, var(--ds-size-1))
       var(--genai-threads-overlay-padding-inline, var(--ds-size-2));
-    border-radius: var(--genai-threads-thread-border-radius, var(--ds-border-radius-md));
+    border-radius: var(--genai-threads-thread-border-radius, var(--ds-border-radius-xl));
     background: var(--genai-threads-overlay-background, var(--ds-color-surface-hover));
     color: var(--genai-threads-overlay-color, var(--ds-color-text-subtle));
     box-shadow: var(--genai-threads-overlay-shadow, var(--ds-shadow-md));

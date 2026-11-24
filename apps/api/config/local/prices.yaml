@@ -1,5 +1,14 @@
 # Azure Retail Prices API (prices.azure.com), Sweden Central, in kroner per unit (ADR 0048). GlobalStandard 2026-10-08; the genki-test-ai models 2026-11-02, DataZoneStandard where deployed so (gpt-5.4-nano and gpt-5.4-pro are GlobalStandard)
 models:
+  # The AI gateway charges nothing for its aivar and Sigma2 models (docs/api/gateway.md)
+  ai-gateway/aivar-borealis:
+    chat: { input-token: 0, output-token: 0 }
+  ai-gateway/sigma2-borealis-27b:
+    chat: { input-token: 0, output-token: 0 }
+  ai-gateway/sigma2-borealis2-preview:
+    chat: { input-token: 0, output-token: 0 }
+  ai-gateway/sigma2-qwen3.8-27b:
+    chat: { input-token: 0, output-token: 0 }
   foundry-openai/gpt-4.1:
     chat: { input-token: 0.000019, output-token: 0.0000762 }
   foundry-openai/gpt-4.1-mini:
