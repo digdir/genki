@@ -226,6 +226,25 @@ describe('@genai/client requests', () => {
     expect(answer.sources).toEqual(excerptSources);
   });
 
+  it('passes on the cited words of a marker as a TextQuoteSelector and drops a malformed one', async () => {
+    const quote = { type: 'TextQuoteSelector', exact: 'Tredje', prefix: '', suffix: '' };
+    const located = {
+      ...excerptBody,
+      markers: excerptBody.markers.map((m) =>
+        m.marker === '2' ? { ...m, quote } : m.marker === '3' ? { ...m, quote: { exact: 3 } } : m,
+      ),
+    };
+    const expected = excerptMarkers.map((m) => (m.marker === '2' ? { ...m, quote } : m));
+    const { fetchFn } = recording(() => Response.json(located));
+
+    const answer = await createClient({ baseUrl: 'http://api', fetch: fetchFn }).ask({
+      service: 's',
+      question: 'q',
+    });
+
+    expect(answer.markers).toEqual(expected);
+  });
+
   it('leaves the markers out when the service cites documents', async () => {
     const { fetchFn } = recording(() =>
       Response.json({

@@ -452,6 +452,28 @@ describe('conversation routes for frontends', () => {
     expect(answer).toMatchObject({ sources, markers });
   });
 
+  it('returns the cited words a stored marker carries', async () => {
+    const { send, store } = setup();
+    const { json } = await create(send, 'ka', 'u');
+    const owner = { tenant: '991825827', user: 'legacy-api-key|key-ka#u' };
+    const quote = {
+      type: 'TextQuoteSelector' as const,
+      exact: 'Andre',
+      prefix: 'Første ',
+      suffix: '',
+    };
+    const markers = [{ marker: '1', chunk_id: 'c2', document: 'd1', quote }];
+    await store.append(owner, json.conversation.id, {
+      role: 'assistant',
+      text: 'Andre [1].',
+      markers,
+    });
+
+    const answer = (await messagesOf(send, json.conversation.id)).at(-1);
+
+    expect(answer).toMatchObject({ markers });
+  });
+
   it('returns every field a stored excerpt was given, also one the store does not name', async () => {
     const { send, store } = setup();
     const { json } = await create(send, 'ka', 'u');

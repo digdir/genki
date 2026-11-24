@@ -1,4 +1,4 @@
-import type { SourceDocument, SourceExcerpt } from './types.js';
+import type { SourceDocument, SourceExcerpt, TextQuote } from './types.js';
 
 /** What the footnotes name: `excerpt` when every one names its excerpt, else `document`. */
 export type CitationMode = 'excerpt' | 'document';
@@ -10,6 +10,8 @@ export interface SourceCitation {
   documentId?: string | undefined;
   /** The contract's `[N]`, the source with `index: N`. */
   index?: number | undefined;
+  /** The words the footnote rests on in its excerpt. */
+  quote?: TextQuote | undefined;
 }
 
 export interface Pairing {

@@ -200,3 +200,34 @@ describe('the excerpts in Kilder (dev-kilder-hoyre)', () => {
     expect(screen.getByRole('searchbox')).toBeTruthy();
   });
 });
+
+describe('the words a footnote rests on, in an excerpt shown whole', () => {
+  const quote = (exact: string) => ({
+    type: 'TextQuoteSelector' as const,
+    exact,
+    prefix: '',
+    suffix: '',
+  });
+  // Footnotes 1 and 4 cite the same excerpt, each for its own words.
+  const quoted: SourceCitation[] = [
+    { chunkId: 'kudos::2021-1', quote: quote('Nkoms totale utgiftsbevilgning for 2021') },
+    { chunkId: 'kudos::2022-1' },
+    { chunkId: 'kudos::2021-2' },
+    { chunkId: 'kudos::2021-1', quote: quote('594,2 mill. kroner.') },
+  ];
+  const cited = () =>
+    [...document.querySelectorAll('mark.uib-sources-cited')].map((m) => m.textContent);
+
+  it('marks the words of the footnote shown, and the other footnote’s words when it steps there', () => {
+    const { rerender } = render(<Host citations={quoted} start={0} />);
+    expect(cited()).toEqual(['Nkoms totale utgiftsbevilgning for 2021']);
+
+    rerender(<Host citations={quoted} start={3} key="4" />);
+    expect(cited()).toEqual(['594,2 mill. kroner.']);
+  });
+
+  it('shows the excerpt unmarked for a footnote without a quote', () => {
+    render(<Host citations={quoted} start={1} />);
+    expect(document.querySelector('mark')).toBeNull();
+  });
+});

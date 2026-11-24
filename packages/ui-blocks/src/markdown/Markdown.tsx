@@ -574,7 +574,7 @@ export const Markdown = ({
                 run.hit ? (
                   <mark
                     key={i}
-                    className={highlight.markClassName}
+                    className={run.hit.className ?? highlight.markClassName}
                     data-current={run.hit === highlight.current ? 'true' : undefined}
                   >
                     {run.text}

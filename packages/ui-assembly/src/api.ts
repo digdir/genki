@@ -12,6 +12,7 @@ import type {
   FilterSelection,
   ModelRow,
   SourceDocument,
+  TextQuote,
   ThreadItem,
 } from '@genai/ui-blocks';
 import { documentLink } from './links.js';
@@ -309,15 +310,29 @@ const fromChunks = (chunks: readonly ApiChunk[], corpus?: CorpusProfile): Source
   return [...documents.values()];
 };
 
+// A W3C TextQuoteSelector as a stored marker carries it, or none.
+const textQuote = (raw: unknown): TextQuote | undefined => {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const { type, exact, prefix, suffix } = raw as Record<string, unknown>;
+  return type === 'TextQuoteSelector' &&
+    typeof exact === 'string' &&
+    exact !== '' &&
+    typeof prefix === 'string' &&
+    typeof suffix === 'string'
+    ? { type, exact, prefix, suffix }
+    : undefined;
+};
+
 // The turn's own list; a marker that does not name its excerpt and document is left out.
 const storedMarkers = (raw: unknown): AnswerMarker[] | undefined => {
   const found = (Array.isArray(raw) ? (raw as unknown[]) : []).flatMap((m) => {
     if (typeof m !== 'object' || m === null) return [];
-    const { marker, chunk_id: chunkId, document: documentId } = m as Record<string, unknown>;
+    const { marker, chunk_id: chunkId, document: documentId, quote } = m as Record<string, unknown>;
+    const cited = textQuote(quote);
     return typeof marker === 'string' &&
       typeof chunkId === 'string' &&
       typeof documentId === 'string'
-      ? [{ marker, chunkId, documentId }]
+      ? [{ marker, chunkId, documentId, ...(cited ? { quote: cited } : {}) }]
       : [];
   });
   return found.length > 0 ? found : undefined;

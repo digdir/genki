@@ -1,6 +1,6 @@
 import { renderBlocks } from '../markdown/Markdown.js';
 import { pairCitations, type Pairing, type SourceCitation } from '../sources/pairing.js';
-import type { SourceDocument } from '../sources/types.js';
+import type { SourceDocument, TextQuote } from '../sources/types.js';
 
 /**
  * One marker as the contract's top-level `markers` lists it when a service cites excerpts: `[N]`
@@ -11,6 +11,8 @@ export interface AnswerMarker {
   marker: string;
   chunkId: string;
   documentId?: string | undefined;
+  /** The words the marker rests on in its excerpt, when the model cited them (ADR 0052). */
+  quote?: TextQuote | undefined;
 }
 
 /** What one `[N]` in the answer is drawn as. A `[N]` that is not here stays text, such as a year. */
@@ -83,7 +85,13 @@ export const readFootnotes = (
     if (!sources) return undefined;
     if (markers) {
       const marker = byMarker.get(String(n));
-      return marker && { chunkId: marker.chunkId, documentId: marker.documentId };
+      return (
+        marker && {
+          chunkId: marker.chunkId,
+          documentId: marker.documentId,
+          ...(marker.quote ? { quote: marker.quote } : {}),
+        }
+      );
     }
     const source = sources.find((s) => s.index === n);
     return source && { index: n, documentId: source.documentId };

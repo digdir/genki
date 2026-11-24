@@ -49,6 +49,8 @@ export interface MessageMarker {
   marker: string;
   chunk_id: string;
   document: string;
+  /** The words the marker rests on, as a W3C TextQuoteSelector (ADR 0052). */
+  quote?: { type: 'TextQuoteSelector'; exact: string; prefix: string; suffix: string };
 }
 
 export interface Message {

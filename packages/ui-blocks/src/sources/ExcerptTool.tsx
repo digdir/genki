@@ -6,11 +6,18 @@ import {
   FileTextIcon,
 } from '@navikt/aksel-icons';
 import { useEffect, useMemo, useRef, type KeyboardEvent } from 'react';
-import { Markdown, visibleText } from '../markdown/Markdown.js';
+import { Markdown, visibleText, type MarkdownHighlight } from '../markdown/Markdown.js';
+import { citedRange } from './citedRange.js';
 import { excerptMarkdown, headingText } from './excerptMarkdown.js';
 import { useT } from './i18n.js';
 import type { Pairing } from './pairing.js';
-import type { SourceDocument, SourceExcerpt, SourceSelection, SourceTarget } from './types.js';
+import type {
+  SourceDocument,
+  SourceExcerpt,
+  SourceSelection,
+  SourceTarget,
+  TextQuote,
+} from './types.js';
 
 type Level = 2 | 3 | 4 | 5 | 6;
 
@@ -40,6 +47,8 @@ export interface ExcerptToolProps {
   onReturn?: (() => void) | undefined;
   /** The level of the shown document's title; its section is one under. */
   level: 2 | 3 | 4 | 5;
+  /** Per footnote, the words it rests on, marked in its excerpt when it is shown whole. */
+  quotes?: readonly (TextQuote | undefined)[] | undefined;
 }
 
 const yearOf = (date: string | undefined) => {
@@ -59,6 +68,7 @@ export const ExcerptTool = ({
   request,
   onReturn,
   level,
+  quotes,
 }: ExcerptToolProps) => {
   const t = useT();
   const cards = useRef(new Map<string, HTMLElement>());
@@ -81,6 +91,19 @@ export const ExcerptTool = ({
   );
   const target = footnote === undefined ? undefined : pairing.targets[footnote];
   const shown = target === undefined ? undefined : cited.find((c) => c.chunkId === target);
+  const quote = footnote === undefined ? undefined : quotes?.[footnote];
+  const shownText = shown ? excerptMarkdown(shown.excerpt.text) : '';
+  const highlight = useMemo((): MarkdownHighlight | undefined => {
+    if (!quote || !shownText) return undefined;
+    const drawn = visibleText(shownText, false);
+    const range = citedRange(shownText, drawn.text, quote);
+    return range
+      ? {
+          hits: [{ itemId: 'cited', ...range, className: 'uib-sources-cited' }],
+          offsets: drawn.offsets,
+        }
+      : undefined;
+  }, [quote, shownText]);
 
   // Focus: the document on the way in, the step pressed on a step, the card on the way back.
   useEffect(() => {
@@ -190,9 +213,10 @@ export const ExcerptTool = ({
             <Paragraph data-size="sm">{t('sources.excerptUnavailable')}</Paragraph>
           ) : (
             <Markdown
-              text={excerptMarkdown(shown.excerpt.text)}
+              text={shownText}
               links={false}
               className="uib-markdown uib-sources-ex-quote"
+              highlight={highlight}
             />
           )}
         </div>
