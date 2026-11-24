@@ -1,4 +1,5 @@
 export * from './chunk-document.js';
+export * from './parts-unit.js';
 export * from './chunking.js';
 export * from './converter.js';
 export * from './copy-listing.js';

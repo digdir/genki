@@ -8,6 +8,7 @@ import {
   type ChunkDocumentConfig,
   type Location,
 } from './chunk-document.js';
+import type { ConvertedParts } from './converter.js';
 import type { CollectionIds } from './ids.js';
 import {
   generatePhrases,
@@ -36,6 +37,8 @@ export interface SourceFile {
   name: string;
   sha256?: string;
   pages: string[];
+  /** The file's stored parts, when its pipeline chunks parts (issue 635). */
+  parts?: ConvertedParts;
 }
 
 export interface SourceDocument {

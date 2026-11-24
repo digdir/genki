@@ -28,6 +28,22 @@ datasets:
     aliases: [digdir/default]
     endpoint: kunnskapsserveren
     residency: global
+  - id: digdir/kudos-parts
+    name: Kudos fra deler
+    description: Et utvalg av Kudos delt opp side for side fra konverteringens deler, uten topp- og bunntekst, til sammenligning med sidene i digdir/kudos (issue 635)
+    endpoint: kunnskapsserveren
+    # The generation it is read by; the kudos-parts pipeline fills it at its first run.
+    generation: g-20261123-4f2a91
+    residency: global
+    embedding: { model: foundry/text-embedding-3-small, dimensions: 1536 }
+    filters:
+      type: multiselect
+      concerned_years: multiselect
+      orgs_short: multiselect
+      orgs_long: multiselect
+      doc_num: multiselect
+      title: text
+    valueTypes: { concerned_years: integer }
   - id: digdir/genki-docs
     name: GenKI-dokumentasjon
     description: Dokumentasjonen til GenKI selv, lest inn fra filene i koden som kjører

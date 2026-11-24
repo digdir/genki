@@ -1,7 +1,8 @@
 import { shortHash } from '@genai/valuehash';
 import type { IndexChunk, IndexDocument } from '@genai/port-knowledge';
 import { markerPageSeparator } from './converter.js';
-import type { SourceDocument } from './pipeline.js';
+import type { PartsChunk } from './parts-unit.js';
+import type { SourceDocument, SourceFile } from './pipeline.js';
 
 /**
  * A chunk's id in the knowledge database: its document id, file, page and position (ADR 0042,
@@ -164,3 +165,43 @@ export const placeChunks = (
   const phrases = doc.phrases.map((p) => ({ ...p, chunkId: ids.get(p.chunkId) ?? p.chunkId }));
   return { ...doc, chunks, phrases };
 };
+
+/** A chunk made from a file's parts, by the file's place in its document. */
+export interface PlacedPartsChunk {
+  file: number;
+  chunk: PartsChunk;
+}
+
+/**
+ * Gives each chunk made from parts its file, pages, heading path, conversion, parts and span, which
+ * its parts give, and its id with its first page (ADR 0055, "Chunks and reads"). `placed` holds the
+ * document's chunks in their order.
+ */
+export const placePartsChunks = (
+  doc: IndexDocument,
+  files: readonly SourceFile[],
+  placed: readonly PlacedPartsChunk[],
+): IndexDocument => ({
+  ...doc,
+  chunks: doc.chunks.map((chunk, i): IndexChunk => {
+    const at = placed[i];
+    const file = at && files[at.file];
+    const parts = file?.parts;
+    if (!at || !file || !parts) throw new Error('a chunk from parts has no file with parts');
+    const { pageFrom, pageTo, headingPath, seqFrom, seqTo, textStart, textEnd } = at.chunk;
+    return {
+      ...chunk,
+      id: knowledgeChunkId(doc.id, file.sha256 ?? file.name, pageFrom, chunk.position),
+      file: file.name,
+      ...(file.sha256 ? { fileSha256: file.sha256 } : {}),
+      pageFrom,
+      pageTo,
+      ...(headingPath.length > 0 ? { headingPath } : {}),
+      conversion: parts.conversion,
+      seqFrom,
+      seqTo,
+      textStart,
+      textEnd,
+    };
+  }),
+});

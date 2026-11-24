@@ -100,6 +100,7 @@ import {
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { openJobQueue, PgBossRunJobs } from '@genai/providers-pgboss';
 import {
+  addChunkColumns,
   knowledgeConversionsOf,
   knowledgeHeavyWork,
   prepareGeneration,
@@ -486,6 +487,11 @@ const knowledgeHandlers =
                   knowledgeServer.pools.owner as Parameters<typeof prepareGeneration>[0],
                   dataset,
                   generation,
+                ),
+              // Before every parts write: it takes no lock once the columns are there (issue 635).
+              chunkColumns: () =>
+                addChunkColumns(
+                  knowledgeServer.pools.owner as Parameters<typeof addChunkColumns>[0],
                 ),
             }
           : {}),

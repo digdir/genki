@@ -1,4 +1,5 @@
 import { authHeaders, type Credential } from '@genai/kernel';
+import { conversionText, type ConversionUnit } from '@genai/port-knowledge';
 
 export interface DocumentFile {
   name: string;
@@ -21,7 +22,33 @@ export interface Conversion {
   pages: string[];
   output?: Uint8Array;
   converter: ConverterIdentity;
+  /** A stored parts conversion's parts, read in place of pages by a parts chunking (issue 635). */
+  parts?: ConvertedParts;
 }
+
+/** A file's stored conversion parts, as a parts chunking reads them (ADR 0055, issue 635). */
+export interface ConvertedParts {
+  /** The conversion's number, which its chunks record. */
+  conversion: string;
+  /** The derivation the parts were made by, such as `docling-parts`. */
+  derivation: string;
+  units: ConversionUnit[];
+}
+
+/**
+ * A conversion's text: its parts' text, the body parts joined by a blank line, or its pages joined
+ * with the page separator.
+ */
+export const textOfConversion = (conversion: Pick<Conversion, 'pages' | 'parts'>) =>
+  conversion.parts
+    ? conversionText(conversion.parts.units.flatMap((unit) => unit.parts))
+    : joinPages(conversion.pages);
+
+/** Whether a conversion has no text: no body part with text, or only blank pages. */
+export const blankConversion = (conversion: Pick<Conversion, 'pages' | 'parts'>) =>
+  conversion.parts
+    ? textOfConversion(conversion).trim() === ''
+    : conversion.pages.every((page) => page.trim() === '');
 
 export interface DocumentConverter {
   extensions?: readonly string[];

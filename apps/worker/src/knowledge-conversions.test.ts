@@ -59,6 +59,7 @@ import {
   UnsupportedDocumentError,
 } from '@genai/providers-documents';
 import {
+  addChunkColumns,
   attachGeneration,
   knowledgeConversionsOf,
   knowledgeRecordsOf,
@@ -80,7 +81,7 @@ import {
 import { stopPostgres } from '@genai/providers-postgres/testing';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { knowledgeWork, replacementRuns } from './knowledge-handlers.js';
+import { givingWayMs, knowledgeWork, replacementRuns } from './knowledge-handlers.js';
 import { conversionRunJobs } from './knowledge-jobs.js';
 
 const ORG = '991825827';
@@ -227,6 +228,10 @@ interface ScenarioOptions {
   include?: string[];
   /** The media type a convert job's fetched file carries, as a source that passes on a server's Content-Type gives it. */
   fetchedMimetype?: string;
+  /** The pipeline's chunking; a page-less header chunking with no minimum when left out. */
+  chunking?: Record<string, unknown>;
+  /** Whether the chunk columns of parts can be added; they can when left out (issue 635). */
+  chunkColumns?: () => Promise<boolean>;
 }
 
 /** A folder dataset on the knowledge database whose worker stores conversions. */
@@ -247,7 +252,7 @@ const scenario = async (options: ScenarioOptions = {}) => {
   const spec = pipelineSpec.parse({
     name: 'Docs',
     source: { kind: 'folder', path: folder, include: options.include ?? ['**/*.pdf', '**/*.md'] },
-    chunking: { minimumLength: 1 },
+    chunking: options.chunking ?? { minimumLength: 1 },
   });
   const textLayer = createLocalConverter();
   const converted: string[] = [];
@@ -288,6 +293,7 @@ const scenario = async (options: ScenarioOptions = {}) => {
     ...(options.nativeOutputs ? { nativeOutputs: options.nativeOutputs } : {}),
     ...(options.log ? { log: options.log } : {}),
     ...(options.bound ? { bound: options.bound } : {}),
+    chunkColumns: options.chunkColumns ?? (() => addChunkColumns(owner())),
     knowledge: {
       send: knowledge.send,
       sendAgain: async (queue, j, again) => {
@@ -3353,9 +3359,10 @@ describe('conversion parts', () => {
     });
   });
 
-  it('storing parts ends no wait, which is for pages', async () => {
+  it('storing parts ends only the waits on parts', async () => {
     const file = shaStarting('');
-    const target = { sha256: file, ...docling };
+    const pagesTarget = { sha256: file, ...docling };
+    const partsTarget = { ...pagesTarget, parts: true };
     const waiter = {
       dataset: `${ORG}/deler`,
       record: '818181',
@@ -3363,17 +3370,43 @@ describe('conversion parts', () => {
       run: crypto.randomUUID(),
       tenant: ORG,
     };
-    await conversions.wait(target, waiter, async () => undefined);
+    await conversions.wait(pagesTarget, waiter, async () => undefined);
+    await conversions.wait(partsTarget, { ...waiter, record: '828282' }, async () => undefined);
 
-    const stored = await conversions.store(partsConversion(file, ['Side.']), noIndex);
+    const parts = await conversions.store(partsConversion(file, ['Side.']), noIndex);
 
-    expect(stored).toEqual({ sent: [], busy: [], held: [] });
-    expect(await conversions.waiting(conversionKey(target))).toHaveLength(1);
-    // With only parts stored, a record still waits on the file's pages.
+    expect(parts.sent.map((w) => w.record)).toEqual(['828282']);
+    expect(await conversions.waiting(conversionKey(pagesTarget))).toHaveLength(1);
+    expect(await conversions.waiting(conversionKey(partsTarget))).toEqual([]);
+    // With only parts stored, a record still waits on the file's pages, and none on its parts.
     expect(
-      await conversions.wait(target, { ...waiter, record: '828282' }, async () => undefined),
+      await conversions.wait(pagesTarget, { ...waiter, record: '838383' }, async () => undefined),
     ).toBe(true);
+    expect(
+      await conversions.wait(partsTarget, { ...waiter, record: '848484' }, async () => undefined),
+    ).toBe(false);
+
+    const pages = await conversions.store(
+      { ...pagesTarget, derivation: doclingPagesDerivation, pages: ['Side.'] },
+      noIndex,
+    );
+    expect(pages.sent.map((w) => w.record).sort()).toEqual(['818181', '838383']);
     await admin.query(`delete from src_conversion_waits where dataset = $1`, [waiter.dataset]);
+  });
+
+  it('a parts conversion refuses the key of a pages job, and a pages conversion that of a parts job', async () => {
+    const file = shaStarting('');
+    const pagesKey = conversionKey({ sha256: file, ...docling });
+    await expect(
+      conversions.store(partsConversion(file, ['Side.']), noIndex, pagesKey),
+    ).rejects.toThrow('a convert job key names another file or converter');
+    await expect(
+      conversions.store(
+        { sha256: file, ...docling, derivation: doclingPagesDerivation, pages: ['Side.'] },
+        noIndex,
+        `${pagesKey}:parts`,
+      ),
+    ).rejects.toThrow('a convert job key names another file or converter');
   });
 
   it('parts are derived from the Blob copy with no fetch and no converter call', async () => {
@@ -3991,5 +4024,401 @@ describe('a change of Docling settings', () => {
 
     expect(s.sentAgain.map((j) => j.key)).toEqual([before]);
     expect(server.requests()).toBe(0);
+  }, 60_000);
+});
+
+const partsChunking = {
+  minimumLength: 1,
+  maximumLength: 4000,
+  strategy: { kind: 'parts-unit', splitMaxLength: 4000 },
+};
+
+/** A generation's chunks with what a chunk from parts records. */
+const partsChunks = async (generation: string) =>
+  (
+    await admin.query<{
+      text: string;
+      file_sha256: string | null;
+      page_from: number | null;
+      page_to: number | null;
+      conversion: string | null;
+      seq_from: number | null;
+      seq_to: number | null;
+      text_start: number | null;
+      text_end: number | null;
+    }>(
+      `select text, file_sha256, page_from, page_to, conversion::text, seq_from, seq_to,
+              text_start, text_end
+         from ${partitionOf('kn_chunks', generation)} order by position`,
+    )
+  ).rows;
+
+/** A PDF whose text layer was stored before parts were: its pages and no parts. */
+const textLayerOnly = async (tag: string) => {
+  const report = reportOf(tag);
+  const file = await sha(report);
+  const pages = await scenario();
+  await pages.file('rapport.pdf', report);
+  await ingest(pages);
+  await drain(pages);
+  await admin.query(`delete from src_conversions where sha256 = $1 and derivation like '%-parts'`, [
+    file,
+  ]);
+  return { report, file, pages: (await stored(file))[0]?.pages ?? [] };
+};
+
+describe('parts chunking (issue 635)', () => {
+  it('a pipeline with a parts strategy waits for a parts conversion, not a pages one', async () => {
+    await clearConvertJobs();
+    const { report, file } = await textLayerOnly('deler-vent');
+    const s = await scenario({ chunking: partsChunking });
+    await s.file('rapport.pdf', report);
+
+    const { sent } = await ingest(s);
+
+    expect(sent.map((j) => j.queue)).toEqual(['knowledge.convert']);
+    expect(sent[0]?.data).toMatchObject({ file, parts: true });
+    const key = `${conversionKey({ sha256: file, converter: 'text-layer', version: '1', settings: {} })}:parts`;
+    expect(sent[0]?.options?.key).toBe(key);
+    expect(await conversions.waiting(key)).toHaveLength(1);
+  }, 60_000);
+
+  it('a PDF with only a stored text layer is fetched again and gets text-layer-parts on a worker without Docling', async () => {
+    await clearConvertJobs();
+    const { report, file, pages } = await textLayerOnly('deler-tekstlag');
+    const s = await scenario({ chunking: partsChunking });
+    await s.file('rapport.pdf', report);
+
+    await ingest(s);
+    await drain(s);
+
+    expect(s.converted).toEqual(['rapport.pdf']);
+    const parts = await conversions.find(file, textLayerPartsOnly);
+    expect(parts?.units?.map((u) => u.parts.map((p) => p.text))).toEqual(pages.map((p) => [p]));
+    expect((await partsChunks(s.generation)).map((c) => [c.page_from, c.page_to, c.text])).toEqual(
+      pages.map((p, i) => [i + 1, i + 1, p]),
+    );
+  }, 60_000);
+
+  it('a chunk from parts records its conversion and its parts', async () => {
+    await clearConvertJobs();
+    const { report, file, pages } = await textLayerOnly('deler-kolonner');
+    const s = await scenario({ chunking: partsChunking });
+    await s.file('rapport.pdf', report);
+
+    await ingest(s);
+    await drain(s);
+
+    const parts = await conversions.find(file, textLayerPartsOnly);
+    expect(parts?.id).toMatch(/^\d+$/);
+    const second = (pages[0] as string).length + 2;
+    expect(await partsChunks(s.generation)).toEqual([
+      {
+        text: pages[0],
+        file_sha256: file,
+        page_from: 1,
+        page_to: 1,
+        conversion: parts?.id,
+        seq_from: 0,
+        seq_to: 0,
+        text_start: 0,
+        text_end: (pages[0] as string).length,
+      },
+      {
+        text: pages[1],
+        file_sha256: file,
+        page_from: 2,
+        page_to: 2,
+        conversion: parts?.id,
+        seq_from: 1,
+        seq_to: 1,
+        text_start: second,
+        text_end: second + (pages[1] as string).length,
+      },
+    ]);
+  }, 60_000);
+
+  it('a file with pages and no parts gets a convert job that reads Blob, with no fetch and no converter call', async () => {
+    await clearConvertJobs();
+    const report = reportOf('deler-blob');
+    const file = await sha(report);
+    const blob = seedContainer();
+    await blob.put(file, ['Docling leste forsiden.', 'Docling leste baksiden.']);
+    let fetches = 0;
+    const refuse: DocumentConverter = {
+      extensions: ['.pdf'],
+      convert: async () => {
+        throw new Error('no converter call');
+      },
+    };
+    const s = await scenario({
+      chunking: partsChunking,
+      nativeOutputs: blob.store,
+      converter: refuse,
+      docling: { current: refuse },
+      fetchError: () => {
+        fetches += 1;
+        return new Error('no fetch');
+      },
+    });
+    await seed(s, file.slice(0, 2));
+    await s.file('rapport.pdf', report);
+
+    const { sent } = await ingest(s);
+    await drain(s);
+
+    expect(sent.map((j) => j.queue)).toEqual(['knowledge.convert']);
+    expect(fetches).toBe(0);
+    expect((await partsChunks(s.generation)).map((c) => c.text)).toEqual([
+      'Docling leste forsiden.',
+      'Docling leste baksiden.',
+    ]);
+    expect((await conversions.find(file, doclingPartsOnly))?.version).toBe(docling.version);
+  }, 60_000);
+
+  it('a pipeline with the page strategy reads pages as before', async () => {
+    await clearConvertJobs();
+    const report = reportOf('sider-som-før');
+    const file = await sha(report);
+    const blob = seedContainer();
+    await blob.put(file, ['Docling leste forsiden.', 'Docling leste baksiden.']);
+    const s = await scenario({
+      nativeOutputs: blob.store,
+      chunking: { minimumLength: 1, strategy: { kind: 'page', splitMaxLength: 4000 } },
+    });
+    await seed(s, file.slice(0, 2));
+    await seedParts(s, file.slice(0, 2));
+    await s.file('rapport.pdf', report);
+
+    const { sent } = await ingest(s);
+    await drain(s);
+
+    expect(sent.map((j) => j.queue)).toEqual(['knowledge.index']);
+    expect(
+      (await partsChunks(s.generation)).map((c) => [c.text, c.page_from, c.conversion, c.seq_from]),
+    ).toEqual([
+      ['Docling leste forsiden.', 1, null, null],
+      ['Docling leste baksiden.', 2, null, null],
+    ]);
+  }, 60_000);
+
+  it('a convert job queued before the deploy runs as a pages job', async () => {
+    await clearConvertJobs();
+    const report = reportOf('jobb-fra-før');
+    const file = await sha(report);
+    const s = await scenario();
+    await s.file('rapport.pdf', report);
+
+    const { sent } = await ingest(s);
+    const convert = sent.find((j) => j.queue === 'knowledge.convert');
+    // The job and key a worker of the release before sends: no parts, and the key as it was.
+    expect(Object.keys(convert?.data ?? {})).not.toContain('parts');
+    expect(convert?.options?.key).toBe(`${file}:text-layer:1:${settingsHash({})}`);
+    await drain(s);
+
+    expect(await conversions.waiting(convert?.options?.key as string)).toEqual([]);
+    expect((await chunks(s.generation)).length).toBeGreaterThan(0);
+  }, 60_000);
+
+  it('a Word file in a parts pipeline is skipped as unsupported_type', async () => {
+    await clearConvertJobs();
+    const s = await scenario({ chunking: partsChunking, include: ['**/*.docx'] });
+    const docx = docxBytes(['Brev om tilskudd', `Et brev ${randomBytes(8).toString('hex')}.`]);
+    await s.file('brev.docx', docx);
+
+    await ingest(s);
+    await drain(s);
+
+    const { rows } = await admin.query(
+      `select state, reason from src_documents where dataset = $1`,
+      [s.dataset.id],
+    );
+    expect(rows).toEqual([{ state: 'skipped', reason: 'unsupported_type' }]);
+    const parts = await admin.query(
+      `select derivation, failure from src_conversions where sha256 = $1 and derivation like '%-parts'`,
+      [await sha(docx)],
+    );
+    expect(parts.rows).toEqual([{ derivation: 'text-layer-parts', failure: 'unsupported_type' }]);
+  }, 60_000);
+
+  it('the run report counts the files chunked from each parts derivation', async () => {
+    await clearConvertJobs();
+    const { report } = await textLayerOnly('deler-rapport');
+    const s = await scenario({ chunking: partsChunking });
+    await s.file('rapport.pdf', report);
+
+    const { run } = await ingest(s);
+    await drain(s);
+
+    expect((await runRecords.find(run))?.report).toMatchObject({
+      stored: 1,
+      'parts.text-layer-parts': 1,
+    });
+    expect((await runRecords.find(run))?.report).not.toHaveProperty('parts.docling-parts');
+  }, 60_000);
+
+  it("a parts job on a worker without Docling reads Docling's parts from Blob", async () => {
+    await clearConvertJobs();
+    const report = reportOf('deler-uten-docling');
+    const file = await sha(report);
+    const blob = seedContainer();
+    await blob.put(file, ['Docling leste forsiden.', 'Docling leste baksiden.']);
+    const s = await scenario({ chunking: partsChunking, nativeOutputs: blob.store });
+    await seed(s, file.slice(0, 2));
+    await s.file('rapport.pdf', report);
+
+    await ingest(s);
+    await drain(s);
+
+    expect(s.converted).toEqual([]);
+    expect((await partsChunks(s.generation)).map((c) => c.text)).toEqual([
+      'Docling leste forsiden.',
+      'Docling leste baksiden.',
+    ]);
+  }, 60_000);
+
+  it('a parts convert job whose parts derivation throws stores the pages and calls Docling once', async () => {
+    await clearConvertJobs();
+    const server = await doclingServer(() => ({
+      status: 200,
+      body: JSON.stringify({
+        status: 'success',
+        errors: [],
+        document: { filename: 'document.pdf', json_content: partsBreaking() },
+      }),
+    }));
+    const blob = seedContainer();
+    const s = await scenario({
+      chunking: partsChunking,
+      nativeOutputs: blob.store,
+      docling: { current: doclingFor(server.url) },
+    });
+    const pdf = reportOf('deler-feiler');
+    const file = await sha(pdf);
+    await s.file('rapport.pdf', pdf);
+    const { sent } = await ingest(s);
+    const convert = sent.find((j) => j.queue === 'knowledge.convert');
+    if (!convert) throw new Error('no convert job');
+    const run = () =>
+      handler(
+        s.work.knowledge,
+        convert.queue,
+      )(job(convert.queue, convert.data)).catch((error: Error) => error.message);
+
+    expect(await run()).toMatch(/failed/);
+    expect((await doclingRows(file)).map((r) => r.derivation)).toEqual(['docling-pages']);
+    await run();
+
+    expect(server.requests()).toBe(1);
+  }, 60_000);
+
+  it('a parts job uses a stored Docling refusal and does not call Docling again', async () => {
+    await clearConvertJobs();
+    const server = await doclingServer(() => recordedAnswer('failure-corrupt'));
+    const holder = { current: doclingFor(server.url) };
+    const pages = await scenario({ docling: holder });
+    const pdf = reportOf('deler-avvist');
+    const file = await sha(pdf);
+    await pages.file('rapport.pdf', pdf);
+    await ingest(pages);
+    await drain(pages);
+    await admin.query(
+      `delete from src_conversions where sha256 = $1 and derivation like '%-parts'`,
+      [file],
+    );
+    const before = server.requests();
+    const s = await scenario({ chunking: partsChunking, docling: holder });
+    await s.file('rapport.pdf', pdf);
+
+    await ingest(s);
+    await drain(s);
+
+    expect(server.requests() - before).toBe(0);
+    expect((await partsChunks(s.generation)).map((c) => c.page_from)).toEqual([1, 2]);
+  }, 60_000);
+
+  it('a chunk from parts longer than maximumLength is stored whole', async () => {
+    await clearConvertJobs();
+    const { report, pages } = await textLayerOnly('deler-lange');
+    const s = await scenario({
+      chunking: {
+        ...partsChunking,
+        maximumLength: 20,
+        strategy: { kind: 'parts-unit', splitMaxLength: 20 },
+      },
+    });
+    await s.file('rapport.pdf', report);
+
+    await ingest(s);
+    await drain(s);
+
+    expect(pages.every((p) => p.length > 20)).toBe(true);
+    expect((await partsChunks(s.generation)).map((c) => c.text)).toEqual(pages);
+  }, 60_000);
+
+  it('the recipe records the derivations a parts chunking reads', async () => {
+    await clearConvertJobs();
+    const s = await scenario({ chunking: partsChunking });
+
+    await ingest(s);
+
+    const { rows } = await admin.query<{ chunking: Record<string, unknown> }>(
+      `select recipe -> 'chunking' -> 'docs' as chunking from kn_generations where generation = $1`,
+      [s.generation],
+    );
+    expect(rows[0]?.chunking).toMatchObject({
+      strategy: { kind: 'parts-unit', splitMaxLength: 4000 },
+      reads: [
+        { converter: 'docling', derivation: 'docling-parts', version: 1 },
+        { converter: 'text-layer', derivation: 'text-layer-parts', version: 1 },
+      ],
+    });
+  }, 60_000);
+
+  it('a missed lock on the chunk columns fails only a parts index job', async () => {
+    await clearConvertJobs();
+    const { report } = await textLayerOnly('deler-lås');
+    const missed = async () => false;
+    const parts = await scenario({ chunking: partsChunking, chunkColumns: missed });
+    const pages = await scenario({ chunkColumns: missed });
+    await parts.file('rapport.pdf', report);
+    await pages.file('rapport.pdf', report);
+
+    await ingest(parts);
+    await drain(parts);
+    await ingest(pages);
+    await drain(pages);
+
+    // The parts index job gives way and keeps its retries; the pages one writes as today.
+    expect(parts.sentAgain.map((j) => j.queue)).toEqual(['knowledge.index']);
+    expect(await chunks(parts.generation)).toEqual([]);
+    expect(pages.sentAgain).toEqual([]);
+    expect((await chunks(pages.generation)).length).toBeGreaterThan(0);
+  }, 60_000);
+
+  it('after a missed lock, parts index jobs give way without trying again for two minutes', async () => {
+    await clearConvertJobs();
+    let clock = new Date('2026-11-24T10:00:00Z');
+    let tries = 0;
+    const missed = async () => {
+      tries += 1;
+      return false;
+    };
+    const s = await scenario({ chunking: partsChunking, chunkColumns: missed, now: () => clock });
+    await s.file('en.pdf', reportOf('pause-en'));
+    await s.file('to.pdf', reportOf('pause-to'));
+
+    await ingest(s);
+    await drain(s);
+
+    expect(s.sentAgain.map((j) => j.queue)).toEqual(['knowledge.index', 'knowledge.index']);
+    expect(tries).toBe(1);
+
+    // The first job that comes back two minutes later tries again.
+    clock = new Date(clock.getTime() + givingWayMs);
+    const again = s.sentAgain[0] as (typeof s.sentAgain)[number];
+    await handler(s.work.knowledge, again.queue)(job(again.queue, again.data));
+
+    expect(tries).toBe(2);
   }, 60_000);
 });

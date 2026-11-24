@@ -47,5 +47,7 @@ export const operations = {
     'A dataset on the knowledge database is filled by one pipeline until co-owners are built; this one has {pipelines}.',
   switchKnowledgePhrases:
     'Search phrases cannot fill a dataset on the knowledge database until recipes hold them ({pipeline}).',
+  switchPartsPipeline:
+    'The ingestion {pipeline} chunks by its conversion parts, which only the knowledge database has.',
   switchRunCancelled: 'The run {run} was cancelled.',
 } satisfies Translation<typeof source>;

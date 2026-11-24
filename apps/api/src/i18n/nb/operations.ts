@@ -46,5 +46,7 @@ export const operations = defineNamespace({
     'Et datasett i kunnskapsdatabasen fylles av én innlesing til medeiere er bygget; dette har {pipelines}.',
   switchKnowledgePhrases:
     'Søkefraser kan ikke fylle et datasett i kunnskapsdatabasen før oppskriftene holder dem ({pipeline}).',
+  switchPartsPipeline:
+    'Innlesingen {pipeline} deler opp etter konverteringens deler, som bare finnes i kunnskapsdatabasen.',
   switchRunCancelled: 'Kjøringen {run} ble avbrutt.',
 });
