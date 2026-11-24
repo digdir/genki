@@ -861,9 +861,14 @@ const read = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> =>
           returned: kept,
           alreadyRead,
           cappedByCount: rangePlan.cappedByCount && trimmed === 0,
+          narrowed:
+            trimmed > 0 ||
+            (rangePlan.selected !== undefined &&
+              rangePlan.selected.to - rangePlan.selected.from <
+                rangePlan.requested.to - rangePlan.requested.from),
           chunksPerRead: budget.chunksPerRead,
-          remaining,
-          readsRemaining: budget.readsRemaining,
+          remaining: Math.max(0, remaining - consumed),
+          readsRemaining: Math.max(0, budget.readsRemaining - 1),
         })
       : undefined;
   const budgetNote =

@@ -266,7 +266,7 @@ export class Workspace {
   sourceFactsRead = false;
   serviceFactsRead = false;
   lastSearchWindow: SearchWindow | undefined;
-  /** How many chunks each document has, as searches and reads reported it. */
+  /** How many chunks each document has, as searches reported it. */
   readonly documentLengths = new Map<string, number>();
 
   constructor(readonly limits: BudgetLimits) {}
@@ -999,11 +999,14 @@ export const rangeCutNote = (o: {
   alreadyRead: Set<number>;
   cappedByCount: boolean;
   chunksPerRead: number;
+  /** The plan narrowed the range, or chunks were trimmed after the fetch. */
+  narrowed: boolean;
+  /** The budget left after this read. */
   remaining: number;
   readsRemaining: number;
 }): string | undefined => {
   // Nothing came back: the document or range is missing, which is not a cut.
-  if (o.returned.length === 0) return undefined;
+  if (o.returned.length === 0 || !o.narrowed) return undefined;
   const total = o.returned.find((c) => c.totalChunks !== undefined)?.totalChunks;
   const to = total === undefined ? o.requested.to : Math.min(o.requested.to, total - 1);
   const returned = new Set(
@@ -1017,15 +1020,17 @@ export const rangeCutNote = (o: {
   return (
     (o.cappedByCount
       ? `This read was cut to the read cap of ${o.chunksPerRead} ${plural(o.chunksPerRead, 'chunk')}.`
-      : `This read was cut to fit the read budget left: ${o.remaining} ${plural(o.remaining, 'character')} and ${o.readsRemaining} ${plural(o.readsRemaining, 'read')}.`) +
+      : `This read was cut to fit the read budget. Left: ${o.remaining} ${plural(o.remaining, 'character')} and ${o.readsRemaining} ${plural(o.readsRemaining, 'read')}.`) +
     ` Returned chunk_index ${spanText(spans([...returned]))} of doc_num="${o.document}".` +
     ` Left out chunk_index ${spanText(missing)}.` +
-    ` To read them, call read_chunks with ${missing
-      .map(
-        ([from, to]) =>
-          `{"doc_num": "${o.document}", "chunk_range": {"from": ${from}, "to": ${to}}}`,
-      )
-      .join(' and with ')}.`
+    (o.readsRemaining > 0 && o.remaining > 0
+      ? ` To read them, call read_chunks with ${missing
+          .map(
+            ([from, to]) =>
+              `{"doc_num": "${o.document}", "chunk_range": {"from": ${from}, "to": ${to}}}`,
+          )
+          .join(' and with ')}.`
+      : ' No reads are left to read them.')
   );
 };
 

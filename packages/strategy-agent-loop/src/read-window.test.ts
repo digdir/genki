@@ -90,7 +90,7 @@ describe('range reads', () => {
   it('a range wider than the cap is centred on the best-scoring unread hit in it', async () => {
     // The best hit (position 13) came from the first search; the last search lists
     // the contents (position 1) first.
-    const r = searches([hit(13, 1.71), hit(2, 0.4)], [hit(1, 0.9), hit(13, 0.3)]);
+    const r = searches([hit(2, 0.4), hit(13, 1.71)], [hit(1, 0.9), hit(13, 0.3)]);
     await run({
       retrieval: r.impl,
       config: withBudget({}),
@@ -149,8 +149,8 @@ describe('range reads', () => {
     const note = toolMessages(out.loops[2])[1];
     const [, from, to] = ranges(r)[0] as [string, number, number];
     expect(to - from + 1).toBeLessThan(10);
-    expect(note).toContain(
-      'This read was cut to fit the read budget left: 12000 characters and 6 reads.',
+    expect(note).toMatch(
+      /This read was cut to fit the read budget\. Left: \d+ characters and 5 reads\./,
     );
     expect(note).not.toContain('read cap');
   });
@@ -266,9 +266,51 @@ describe('range reads', () => {
     expect(ranges(r)).toEqual([['dA', 9, 18]]);
     const note = toolMessages(out.loops[2])[1];
     expect(note).toContain(
-      'This read was cut to fit the read budget left: 12000 characters and 6 reads.',
+      'This read was cut to fit the read budget. Left: 0 characters and 5 reads.',
     );
     expect(note).not.toContain('read cap');
+  });
+
+  it('a cut read on the last read says no reads are left instead of offering calls', async () => {
+    const r = searches([hit(13, 1.71)]);
+    const out = await run({
+      retrieval: r.impl,
+      config: withBudget({ reads: 1 }),
+      scripts: {
+        primary: { loop: readRange(0, 19), read: [() => readSignal('gap-remaining')] },
+      },
+    });
+    const note = toolMessages(out.loops[2])[1];
+    expect(note).toMatch(/Left: \d+ characters and 0 reads\./);
+    expect(note).toContain('No reads are left to read them.');
+    expect(note).not.toContain('call read_chunks');
+  });
+
+  it('a range read the plan did not narrow adds no cut note', async () => {
+    // The document has 6 chunks, but neither the search nor the store says so.
+    const unsized = new Map<string, Chunk>(
+      [...report].slice(0, 6).map(([id, c]) => {
+        const { totalChunks: _t, ...rest } = c;
+        return [id, rest];
+      }),
+    );
+    const r = retrieval(
+      {
+        search: async () => ({
+          chunks: [{ chunkId: 'p1', document: 'dA', position: 1, score: 1, rank: 1 }],
+        }),
+      },
+      unsized,
+    );
+    const out = await run({
+      retrieval: r.impl,
+      config: withBudget({}),
+      scripts: {
+        primary: { loop: readRange(0, 9), read: [() => readSignal('gap-remaining')] },
+      },
+    });
+    expect(ranges(r)).toEqual([['dA', 0, 9]]);
+    expect(toolMessages(out.loops[2])[1]).not.toContain('This read was cut');
   });
 
   it('budget.chunksPerRead sets the cap', async () => {
