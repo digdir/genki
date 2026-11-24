@@ -29,6 +29,33 @@ const readInto = (w: Workspace, ...ns: number[]) => {
   w.addChunks(chunks);
 };
 
+const decline = 'Kildene i Kudos dekker ikke dette. Vil du at jeg søker etter noe annet?';
+
+const judged = (w: Workspace, status: string) =>
+  w.sufficiencyDecisions.push({
+    status,
+    reasoning: `${status} by test`,
+    missingInfo: status === 'sufficient' ? [] : ['billettpriser 2026'],
+    contradictionDetected: status === 'conflicting',
+    suggestedStrategy: status === 'sufficient' ? 'finalize' : 're-search',
+  });
+
+const readCheck = (
+  w: Workspace,
+  status: ShadowDecision['status'],
+  reasonCode = `${status}-by-test`,
+) =>
+  w.shadowDecisions.push({
+    source: 'read-signals',
+    status,
+    reasonCode,
+    suggestedStrategy: status === 'sufficient' ? 'finalize' : 'read-more',
+    missingClaims: status === 'sufficient' ? [] : ['answer-bearing-evidence'],
+    contradictions: [],
+    supportedClaimCount: 0,
+    stagnantGapClaims: [],
+  });
+
 describe('citation backfill when the agent answers without citing', () => {
   it('re-synthesises a cited answer when the model writes its own answer after reading', async () => {
     const out = await run({
@@ -228,6 +255,7 @@ describe('settling citations on the final answer', () => {
       w.citationIndex = buildCitationIndex(['c1']);
       w.lastGeneratedResponse = 'Svar [1].';
       w.lastGenerateInsufficient = true;
+      judged(w, 'insufficient');
     });
 
     expect(settleCitations('Jeg fant ingen informasjon om dette.', w)).toEqual({
@@ -247,29 +275,6 @@ describe('settling citations on the final answer', () => {
     });
   });
 });
-
-const decline = 'Kildene i Kudos dekker ikke dette. Vil du at jeg søker etter noe annet?';
-
-const judged = (w: Workspace, status: string) =>
-  w.sufficiencyDecisions.push({
-    status,
-    reasoning: `${status} by test`,
-    missingInfo: status === 'sufficient' ? [] : ['billettpriser 2026'],
-    contradictionDetected: status === 'conflicting',
-    suggestedStrategy: status === 'sufficient' ? 'finalize' : 're-search',
-  });
-
-const readCheck = (w: Workspace, status: ShadowDecision['status']) =>
-  w.shadowDecisions.push({
-    source: 'read-signals',
-    status,
-    reasonCode: `${status}-by-test`,
-    suggestedStrategy: status === 'sufficient' ? 'finalize' : 'read-more',
-    missingClaims: status === 'sufficient' ? [] : ['answer-bearing-evidence'],
-    contradictions: [],
-    supportedClaimCount: 0,
-    stagnantGapClaims: [],
-  });
 
 describe('a decline after the gate judged the evidence', () => {
   it('keeps a decline written after two reads that left a gap and no gate step, as in case 022', async () => {
@@ -305,6 +310,57 @@ describe('a decline after the gate judged the evidence', () => {
       reason: 'declined-after-insufficient',
     });
     expect(out.notices.filter((n) => n.stage === 'answer-discarded')).toEqual([]);
+  });
+
+  it('keeps a decline written after the model gate judged the read chunks off-topic and the read check said nothing', async () => {
+    const out = await run({
+      config: { ...baseConfig, strategy: { ...baseConfig.strategy, ablate: ['read-signal-eval'] } },
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['Hurtigruten billettpriser 2026'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c2', 'c3', 'c4', 'c5'] })]),
+            () => result(decline),
+          ],
+          sufficiency: [() => decision('off-topic', 're-search')],
+          synth: [() => 'Staten betaler for kystruten [1].'],
+        },
+      },
+    });
+
+    expect(out.text).toBe(decline);
+    expect(out.notices).toContainEqual({
+      stage: 'citations',
+      action: 'keep',
+      reason: 'declined-after-insufficient',
+    });
+    expect(out.notices.filter((n) => n.stage === 'answer-discarded')).toEqual([]);
+  });
+
+  it("keeps a decline when the last read check found the chunks outside the question's scope", () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      readCheck(w, 'ambiguous', 'wrong-scope');
+    });
+
+    expect(settleCitations(decline, w)).toEqual({
+      action: 'keep',
+      reason: 'declined-after-insufficient',
+    });
+  });
+
+  it('keeps a decline that also states a figure, without citations, after the gate judged the evidence insufficient', () => {
+    const partial =
+      'Jeg fant ikke billettprisene for 2026. Staten betaler 1,2 milliarder kroner for ruten.';
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'insufficient');
+    });
+
+    expect(settleCitations(partial, w)).toEqual({
+      action: 'keep',
+      reason: 'declined-after-insufficient',
+    });
   });
 
   it('keeps a decline when the read check that came after the last gate decision found a gap', () => {

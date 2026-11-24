@@ -937,6 +937,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       let sufficiency: SufficiencyDecision | undefined = shadow;
       if (!sufficiency && keepable && summary) {
         const judged = await evaluateSufficiency(query, summary, evaluator, ctx.signal, draft);
+        workspace.gateVerdicts.push(judged);
         const decision = enforceSufficiencyLimit(workspace, {
           ...(generated ? standsWhenUnsure(judged) : judged),
           source: 'llm-sufficiency-gate',
