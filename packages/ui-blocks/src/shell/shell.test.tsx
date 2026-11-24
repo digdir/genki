@@ -418,6 +418,17 @@ describe('a panel that fills the shell, below 1139', () => {
     expect([fills(primary()), fills(secondary())]).toEqual([false, false]);
   });
 
+  it('sets the sheet’s width to the panel’s own, and closes on a click beside it but not inside it', () => {
+    draw({}, 1000);
+    fireEvent.click(button('Vis tråder og filter'));
+    const fill = fillOf(primary()) as HTMLElement;
+    expect(fill.style.getPropertyValue('--uib-shell-sheet-width')).toMatch(/^\d+px$/);
+    fireEvent.click(within(fill).getByRole('link', { name: 'En tråd' }));
+    expect(fills(primary())).toBe(true);
+    fireEvent.click(fill);
+    expect(fills(primary())).toBe(false);
+  });
+
   it('opens from the rail’s button in the shell’s own box, with its head, foot and own close button', () => {
     const { container } = draw({}, 1000);
     fireEvent.click(button('Vis tråder og filter'));
