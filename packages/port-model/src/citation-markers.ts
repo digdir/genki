@@ -12,9 +12,12 @@ const sourcePage =
  * Rewrites the citation markers a model writes in other forms as the contract's `[N]`:
  * OpenAI file search's `【N†…】`, and a page written inside the bracket, `[1, s. 63]`,
  * as `[1] s. 63`. A bracket is rewritten only when every number in it is a source
- * (`isSource`), so `validateCitations` stays the judge of what is a citation.
+ * (`isSource`; without it none is), so `validateCitations` stays the judge of what is a citation.
  */
-export const normaliseCitationMarkers = (text: string, isSource: (n: number) => boolean): string =>
+export const normaliseCitationMarkers = (
+  text: string,
+  isSource: (n: number) => boolean = () => false,
+): string =>
   text.replace(fileSearchMarker, '[$1]').replace(bracket, (whole, inside: string) => {
     const cited: string[] = [];
     for (const one of inside.split(';')) {

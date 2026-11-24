@@ -45,6 +45,11 @@ describe('a page written inside the citation bracket', () => {
     expect(normaliseCitationMarkers(text, sources)).toBe(text);
   });
 
+  it('rewrites no bracket when the caller does not say which numbers are sources', () => {
+    const text = 'Svar [1, s. 63].';
+    expect(normaliseCitationMarkers(text)).toBe(text);
+  });
+
   it('leaves a bracket whose number is not a source as it is', () => {
     const text = 'Se tabellen [7, s. 12] og [2023, s. 4].';
     expect(normaliseCitationMarkers(text, sources)).toBe(text);
