@@ -64,6 +64,12 @@ describe('footer pages', () => {
     expectAccessible();
   });
 
+  it('Kom i gang leads the try step to Backend in the playground, where questions are asked', async () => {
+    await open('#/onboarding');
+    const link = await screen.findByRole('link', { name: 'Åpne prøveområdet' });
+    expect(link.getAttribute('href')).toBe('#/playground/backend');
+  });
+
   it('says a missing page is not found and links to Oversikt', async () => {
     await open('#/docs');
 
