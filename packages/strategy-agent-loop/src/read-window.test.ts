@@ -90,7 +90,7 @@ describe('range reads', () => {
   it('a range wider than the cap is centred on the best-scoring unread hit in it', async () => {
     // The best hit (position 13) came from the first search; the last search lists
     // the contents (position 1) first.
-    const r = searches([hit(13, 1.71), hit(2, 0.4)], [hit(1, 0.9), hit(13, 1.2)]);
+    const r = searches([hit(13, 1.71), hit(2, 0.4)], [hit(1, 0.9), hit(13, 0.3)]);
     await run({
       retrieval: r.impl,
       config: withBudget({}),
@@ -112,15 +112,15 @@ describe('range reads', () => {
   });
 
   it('the read cap shrinks when the remaining read budget cannot hold it', async () => {
-    // About 1,500 characters a chunk, so 4,500 characters hold 3 chunks.
+    // About 1,500 characters a chunk, so 7,500 characters hold 5 chunks.
     const r = searches([hit(1, 0.9)]);
     await run({
       retrieval: r.impl,
-      config: withBudget({ readChars: 4500 }),
+      config: withBudget({ readChars: 7500 }),
       scripts: { primary: { loop: readRange(0, 16) } },
     });
     const [, from, to] = ranges(r)[0] as [string, number, number];
-    expect(to - from + 1).toBe(3);
+    expect(to - from + 1).toBe(5);
   });
 
   it('a cut read says which positions it left out', async () => {
@@ -135,6 +135,74 @@ describe('range reads', () => {
     expect(toolMessages(out.loops[2])[1]).toContain(
       'This read was cut to the read cap of 10 chunks. Returned chunk_index 9–18 of doc_num="dA". Left out chunk_index 0–8, 19. To read them, call read_chunks with {"doc_num": "dA", "chunk_range": {"from": 0, "to": 8}}.',
     );
+  });
+
+  it('a read cut by the budget says so, not the read cap', async () => {
+    const r = searches([{ ...hit(13, 1.71), contentLength: 600 }]);
+    const out = await run({
+      retrieval: r.impl,
+      config: withBudget({ readChars: 12000 }),
+      scripts: {
+        primary: { loop: readRange(0, 19), read: [() => readSignal('gap-remaining')] },
+      },
+    });
+    const note = toolMessages(out.loops[2])[1];
+    const [, from, to] = ranges(r)[0] as [string, number, number];
+    expect(to - from + 1).toBeLessThan(10);
+    expect(note).toContain(
+      'This read was cut to fit the read budget left: 12000 characters and 6 reads.',
+    );
+    expect(note).not.toContain('read cap');
+  });
+
+  it('a cut read does not list positions already read as left out', async () => {
+    const r = searches([hit(15, 1)]);
+    const out = await run({
+      retrieval: r.impl,
+      config: withBudget({}),
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () =>
+              result('', [call('read_chunks', { doc_num: 'dA', chunk_range: { from: 0, to: 9 } })]),
+            () =>
+              result('', [
+                call('read_chunks', { doc_num: 'dA', chunk_range: { from: 0, to: 19 } }),
+              ]),
+            () => result('Ferdig.'),
+          ],
+          read: [() => readSignal('gap-remaining')],
+        },
+      },
+    });
+    expect(ranges(r)).toEqual([
+      ['dA', 0, 9],
+      ['dA', 10, 19],
+    ]);
+    expect(toolMessages(out.loops[3])[2]).not.toContain('Left out');
+  });
+
+  it('a range read that finds nothing does not claim it was cut', async () => {
+    const r = searches([hit(1, 0.9)]);
+    const out = await run({
+      retrieval: r.impl,
+      config: withBudget({}),
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () =>
+              result('', [
+                call('read_chunks', { doc_num: 'nope', chunk_range: { from: 0, to: 4 } }),
+              ]),
+            () => result('Ferdig.'),
+          ],
+          read: [() => readSignal('gap-remaining')],
+        },
+      },
+    });
+    expect(out.loops.flatMap((l) => toolMessages(l)).join('\n')).not.toContain('This read was cut');
   });
 
   it('budget.chunksPerRead sets the cap', async () => {

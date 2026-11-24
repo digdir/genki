@@ -874,7 +874,9 @@ export const planRangeRead = (
   return {
     requested: r,
     cappedByCount:
-      rangeWidth(candidate) < rangeWidth(r) && rangeWidth(candidate) === budget.chunksPerRead,
+      selected !== undefined &&
+      rangeWidth(selected) === Math.max(1, budget.chunksPerRead) &&
+      rangeWidth(selected) < rangeWidth(r),
     selected,
     prefetchSkippedCount: rangeWidth(candidate) - (selected ? rangeWidth(selected) : 0),
   };
@@ -981,27 +983,43 @@ export const rangeCutNote = (o: {
   document: string;
   requested: ChunkRange;
   returned: Chunk[];
+  /** Positions of this document the agent had read before this call. */
+  alreadyRead: Set<number>;
   cappedByCount: boolean;
   chunksPerRead: number;
   remaining: number;
+  readsRemaining: number;
 }): string | undefined => {
+  // Nothing came back: the document or range is missing, which is not a cut.
+  if (o.returned.length === 0) return undefined;
   const total = o.returned.find((c) => c.totalChunks !== undefined)?.totalChunks;
   const to = total === undefined ? o.requested.to : Math.min(o.requested.to, total - 1);
   const returned = new Set(
     o.returned.flatMap((c) => (c.position === undefined ? [] : [c.position])),
   );
   const leftOut: number[] = [];
-  for (let i = o.requested.from; i <= to; i++) if (!returned.has(i)) leftOut.push(i);
+  for (let i = o.requested.from; i <= to; i++)
+    if (!returned.has(i) && !o.alreadyRead.has(i)) leftOut.push(i);
   const missing = spans(leftOut);
   const first = missing[0];
   if (!first) return undefined;
   return (
     (o.cappedByCount
       ? `This read was cut to the read cap of ${o.chunksPerRead} chunks.`
-      : `This read was cut to fit the remaining ${o.remaining}-char read budget.`) +
-    ` Returned chunk_index ${returned.size ? spanText(spans([...returned])) : 'none'} of doc_num="${o.document}".` +
+      : `This read was cut to fit the read budget left: ${o.remaining} characters and ${o.readsRemaining} reads.`) +
+    ` Returned chunk_index ${spanText(spans([...returned]))} of doc_num="${o.document}".` +
     ` Left out chunk_index ${spanText(missing)}.` +
     ` To read them, call read_chunks with {"doc_num": "${o.document}", "chunk_range": {"from": ${first[0]}, "to": ${first[1]}}}.`
+  );
+};
+
+/** Positions of a document already in the workspace from earlier reads. */
+export const readPositions = (workspace: Workspace, document: string) => {
+  const read = workspace.readChunkIds();
+  return new Set(
+    [...workspace.chunks.values()]
+      .filter((c) => c.document === document && read.has(c.chunkId) && c.position !== undefined)
+      .map((c) => c.position as number),
   );
 };
 

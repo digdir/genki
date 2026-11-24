@@ -384,6 +384,20 @@
               },
               "x-widget": "number"
             },
+            "chunksPerRead": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "x-label": {
+                "nb": "Flest biter per lesing",
+                "en": "Most chunks per read"
+              },
+              "x-help": {
+                "nb": "Så mange biter (om lag en side hver) gir én lesing av et område. Ikke satt gir 10.",
+                "en": "How many chunks (about a page each) one read of a range returns. Not set gives 10."
+              },
+              "x-widget": "number"
+            },
             "seconds": {
               "type": "integer",
               "minimum": 10,
