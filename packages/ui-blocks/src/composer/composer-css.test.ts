@@ -54,6 +54,43 @@ describe('the Composer styles', () => {
     );
   });
 
+  it('hide the frame border while the field has focus, so the focus ring is the only line round it', () => {
+    expect(
+      rule('.uib-composer-frame:not([data-dragging]):has(.uib-composer-field :focus-visible)'),
+    ).toContain('border-color: transparent;');
+  });
+
+  it('keep the accent border while a file is dragged onto a field that has focus', () => {
+    const hiding = [...flat.matchAll(/([^{}]*:focus-visible[^{}]*)\{([^}]*)\}/g)]
+      .filter(([, , body]) => body.includes('border-color: transparent'))
+      .map(([, selector]) => selector.trim());
+    expect(hiding).not.toHaveLength(0);
+    for (const selector of hiding) expect(selector).toContain(':not([data-dragging])');
+  });
+
+  it('draw no outline of its own on the field in hover or focus, so the frame is the only line', () => {
+    const own = rule(
+      '.uib-composer-field textarea:hover, .uib-composer-field textarea:focus-visible',
+    );
+    expect(own).toContain('outline: none;');
+    expect(own).toContain('box-shadow: none;');
+  });
+
+  it('show hover as a second line of the frame’s border colour, as Designsystemet does on a text field, and not while the ring shows', () => {
+    const hover = rule(
+      '.uib-composer-frame:has(.uib-composer-field:hover):not(:has(.uib-composer-field :focus-visible))',
+    );
+    expect(hover).toContain('var(--ds-border-width-default)) solid');
+    expect(hover).toContain('var(--ds-color-border-default)');
+  });
+
+  it('draw the hover line outside the border, since Chrome rounds a small negative offset onto the border', () => {
+    const hover = rule(
+      '.uib-composer-frame:has(.uib-composer-field:hover):not(:has(.uib-composer-field :focus-visible))',
+    );
+    expect(hover).toContain('outline-offset: 0;');
+  });
+
   it('take the empty refusal out of the flow, but keep it in the page', () => {
     const empty = rule('.uib-composer-refusal:empty');
     expect(empty).toContain('position: absolute;');
