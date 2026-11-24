@@ -33,6 +33,7 @@ import {
   NotAsked,
   type AskParams,
   type AssistantApi,
+  type DatasetRef,
 } from './api.js';
 import { Assistant } from './Assistant.js';
 import type { AssistantProfile, FieldSpec } from './profile.js';
@@ -756,6 +757,55 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
       />,
     );
 
+  // On a hostname the host's tenant is the organisation number, and Kudos is digdir's.
+  const drawHosted = (storage: AssistantStorage, api: AssistantApi) =>
+    render(
+      <Assistant
+        api={api}
+        layout={kaLayout}
+        service="ka"
+        tenant="991825827"
+        profile={profile}
+        storage={storage}
+        threadInUrl
+      />,
+    );
+
+  it('asks a shared collection’s facets under the tenant that owns it, not the host’s', async () => {
+    const { api } = fakeApi();
+    drawHosted(memory().storage, api);
+    await waitFor(() =>
+      expect(api.loadFacets).toHaveBeenCalledWith(
+        expect.anything(),
+        { key: 'kudos', tenant: 'digdir' },
+        expect.anything(),
+      ),
+    );
+    const tenants = vi.mocked(api.loadFacets).mock.calls.map(([, dataset]) => dataset.tenant);
+    expect(tenants.filter((t) => t !== 'digdir')).toEqual([]);
+  });
+
+  it('asks a chosen collection’s facets only once genki has said who owns it', async () => {
+    const { kept, storage } = memory();
+    kept.set('corpus', 'genki-docs');
+    const { api } = fakeApi();
+    let list: (found: { key: string; label: string; tenant: string }[]) => void = () => {};
+    api.loadCorpora = vi.fn(() => new Promise((resolve) => (list = resolve)));
+    drawHosted(storage, api);
+    await waitFor(() => expect(api.loadFields).toHaveBeenCalledWith('genki-docs'));
+    await screen.findByRole('textbox', { name: questionField });
+    expect(api.loadFacets).not.toHaveBeenCalled();
+    list([{ key: 'genki-docs', label: 'GenKI-dokumentasjon', tenant: 'genki' }]);
+    await waitFor(() =>
+      expect(api.loadFacets).toHaveBeenCalledWith(
+        expect.anything(),
+        { key: 'genki-docs', tenant: 'genki' },
+        expect.anything(),
+      ),
+    );
+    expect(vi.mocked(api.loadFacets).mock.calls).toHaveLength(1);
+  });
+
   it('keeps Kilder’s own heading when it is the secondary panel’s only tool', async () => {
     drawKa(memory().storage);
     await screen.findByRole('textbox', { name: questionField });
@@ -853,7 +903,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     await waitFor(() =>
       expect(api.loadFacets).toHaveBeenCalledWith(
         { type: ['Årsrapport'] },
-        'kudos',
+        { key: 'kudos', tenant: 'digdir' },
         expect.anything(),
         expect.anything(),
       ),
@@ -955,7 +1005,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     await waitFor(() =>
       expect(api.loadFacets).toHaveBeenCalledWith(
         { type: ['Årsrapport'] },
-        'kudos',
+        { key: 'kudos', tenant: 'digdir' },
         expect.anything(),
         expect.anything(),
       ),
@@ -4439,12 +4489,12 @@ describe('the page around the blocks', () => {
       { id: 'year', label: 'År' },
     ]);
     // Both chosen types are every type in Kudos, and two of three in the other collection.
-    api.loadFacets = vi.fn(async (_selection: unknown, dataset: string) => [
+    api.loadFacets = vi.fn(async (_selection: unknown, dataset: DatasetRef) => [
       {
         id: 'type',
         label: 'Dokumenttyper',
         options: [
-          ...(dataset === 'kudos' ? [] : [{ value: 'Evaluering', count: 1 }]),
+          ...(dataset.key === 'kudos' ? [] : [{ value: 'Evaluering', count: 1 }]),
           { value: 'Årsrapport', count: 3 },
           { value: 'Tildelingsbrev', count: 2 },
         ],
@@ -4475,7 +4525,7 @@ describe('the page around the blocks', () => {
     await waitFor(() =>
       expect(api.loadFacets).toHaveBeenCalledWith(
         { type: [] },
-        'kudos',
+        { key: 'kudos', tenant: 'digdir' },
         expect.anything(),
         expect.anything(),
       ),
@@ -4484,7 +4534,7 @@ describe('the page around the blocks', () => {
     await waitFor(() =>
       expect(api.loadFacets).toHaveBeenCalledWith(
         { type: ['Årsrapport', 'Tildelingsbrev'] },
-        'genki-docs',
+        expect.objectContaining({ key: 'genki-docs' }),
         expect.anything(),
         expect.anything(),
       ),

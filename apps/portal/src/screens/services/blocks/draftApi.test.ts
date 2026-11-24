@@ -544,7 +544,7 @@ describe('the draft API for the try view', () => {
       { id: 'kommune', label: 'kommune' },
       { id: 'aar', label: 'aar', integer: true },
     ];
-    await draftApi.loadFacets({ kommune: ['Oslo'], aar: ['2026'] }, 'byggeregler', fields);
+    await draftApi.loadFacets({ kommune: ['Oslo'], aar: ['2026'] }, { key: 'byggeregler' }, fields);
     const queries = paths
       .filter((path) => path.startsWith('/api/facets'))
       .map((path) => new URLSearchParams(path.split('?')[1]));
@@ -566,10 +566,10 @@ describe('the draft API for the try view', () => {
       { id: 'aar', label: 'aar', integer: true },
     ];
     await Promise.all([
-      draftApi.loadFacets({}, 'byggeregler', fields),
-      draftApi.loadFacets({}, 'byggeregler', fields),
+      draftApi.loadFacets({}, { key: 'byggeregler' }, fields),
+      draftApi.loadFacets({}, { key: 'byggeregler' }, fields),
     ]);
-    await draftApi.loadFacets({}, 'byggeregler', fields);
+    await draftApi.loadFacets({}, { key: 'byggeregler' }, fields);
     expect(paths.filter((path) => path.startsWith('/api/facets'))).toHaveLength(2);
   });
 

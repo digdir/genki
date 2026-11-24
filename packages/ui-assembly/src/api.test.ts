@@ -633,7 +633,7 @@ describe('the host’s credentials', () => {
     await reads.loadThreads();
     await reads.loadThread('t1');
     await reads.loadCorpora();
-    await reads.loadFacets({}, 'kudos', await reads.loadFields('kudos'));
+    await reads.loadFacets({}, { key: 'kudos' }, await reads.loadFields('kudos'));
     expect(sent.map((r) => [r.url.split('?')[0], r.headers.get('authorization')])).toEqual([
       ['/genki/v1/models', 'Bearer tok'],
       ['/genki/api/conversations', 'Bearer tok'],
@@ -793,6 +793,66 @@ describe('the filter as genki takes it', () => {
 
   it('refuses a field with more than 100 chosen when the values it has are not known', () => {
     expect(() => filterSet({ org: names(101) }, organisations)).toThrow(FilterTooLarge);
+  });
+});
+
+describe('the tenant a collection’s facets are asked under', () => {
+  // genki, listing the collections given; returns each facets request's query.
+  const genki = (datasets: unknown[] = []) => {
+    const asked: URLSearchParams[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const [path, query] = url.split('?');
+        if (path === '/genki/api/datasets') return json({ datasets });
+        asked.push(new URLSearchParams(query));
+        return json({ fields: [{ field: 'type', options: [{ value: 'Årsrapport', count: 1 }] }] });
+      }),
+    );
+    return asked;
+  };
+  const field: FieldSpec = { id: 'type', label: 'Type' };
+  // The host's tenant is the organisation number; Kudos is digdir's, shared with it.
+  const hosted = (profile?: GenkiApiOptions['profile']) =>
+    createGenkiApi({ baseUrl: '/genki', tenant: '991825827', profile });
+  const sent = (asked: URLSearchParams[]) =>
+    asked.map((q) => [q.get('tenant'), q.get('dataset-config-key')]);
+
+  it('asks a shared collection’s facets under the tenant that owns it, not the host’s', async () => {
+    const asked = genki();
+    await hosted().loadFacets({}, { key: 'kudos', tenant: 'digdir' }, [field]);
+    expect(sent(asked)).toEqual([['digdir', 'kudos']]);
+  });
+
+  it('asks a collection with no owner named under the host’s tenant', async () => {
+    const asked = genki();
+    await hosted().loadFacets({}, { key: 'own' }, [field]);
+    expect(sent(asked)).toEqual([['991825827', 'own']]);
+  });
+
+  it('asks the line under a document under the collection’s owner, apart from the host’s', async () => {
+    const asked = genki();
+    const about = { idField: 'doc_num', fields: ['type'] };
+    const assistant = hosted({ corpora: { kudos: { about } } });
+    expect(await assistant.loadAbout({ key: 'kudos', tenant: 'digdir' }, '7')).toEqual([
+      'Årsrapport',
+    ]);
+    await assistant.loadAbout({ key: 'kudos' }, '7');
+    expect(sent(asked)).toEqual([
+      ['digdir', 'kudos'],
+      ['991825827', 'kudos'],
+    ]);
+  });
+
+  it('lists each collection with the tenant that owns it', async () => {
+    genki([
+      { id: 'kudos', tenant: 'digdir', name: 'Kudos', description: null },
+      { id: 'own', name: 'Egen', description: null },
+    ]);
+    expect(await hosted().loadCorpora()).toEqual([
+      { key: 'kudos', label: 'Kudos', tenant: 'digdir' },
+      { key: 'own', label: 'Egen' },
+    ]);
   });
 });
 

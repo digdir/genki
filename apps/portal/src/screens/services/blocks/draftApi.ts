@@ -331,7 +331,7 @@ export const createDraftApi = ({
 
     // One call per field, narrowed by the other fields only: counts «given the others».
     loadFacets: async (selection, dataset, fields) => {
-      const found = await datasetOf(dataset);
+      const found = await datasetOf(dataset.key);
       return Promise.all(
         fields.map(async (field) => {
           const others = Object.fromEntries(
@@ -339,8 +339,8 @@ export const createDraftApi = ({
           );
           const filter = filterSet(others, fields);
           const query = new URLSearchParams({
-            tenant: found?.tenant || tenant,
-            'dataset-config-key': dataset,
+            tenant: found?.tenant || dataset.tenant || tenant,
+            'dataset-config-key': dataset.key,
             fields: field.id,
             ...(filter ? { filter: JSON.stringify(filter) } : {}),
           });

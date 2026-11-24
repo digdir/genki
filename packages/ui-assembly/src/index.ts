@@ -8,6 +8,7 @@ export {
   type AnswerData,
   type AskParams,
   type AssistantApi,
+  type DatasetRef,
   type GenkiApi,
   type GenkiApiOptions,
   type ThreadRow,

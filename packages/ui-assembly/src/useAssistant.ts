@@ -65,6 +65,7 @@ import {
   sourceFromWire,
   type AnswerData,
   type AssistantApi,
+  type DatasetRef,
   type ThreadRow,
   type Turn,
 } from './api.js';
@@ -390,17 +391,39 @@ export const useAssistant = ({
   );
   const corpusKey = (corpusChoice ? chosenCorpus : undefined) ?? ownDataset?.key;
   const [corpora, setCorpora] = useState<CorpusOption[]>([]);
+  const [corporaHeard, setCorporaHeard] = useState(false);
   useEffect(() => {
     if (!corpusChoice) return;
     let gone = false;
     api.loadCorpora().then(
-      (found) => !gone && setCorpora(found),
-      (error: Error) => console.error('[assistant] corpora', error.message),
+      (found) => {
+        if (gone) return;
+        setCorpora(found);
+        setCorporaHeard(true);
+      },
+      (error: Error) => {
+        console.error('[assistant] corpora', error.message);
+        if (!gone) setCorporaHeard(true);
+      },
     );
     return () => {
       gone = true;
     };
   }, [api, corpusChoice]);
+  // Who owns the collection: the service's own from the models, a chosen one from the list.
+  const corpusTenant =
+    corpusKey === ownDataset?.key
+      ? ownDataset?.tenant
+      : corpora.find((c) => c.key === corpusKey)?.tenant;
+  const ownerHeard =
+    corpusTenant !== undefined ||
+    ((models !== undefined || modelsFailed !== undefined) && (!corpusChoice || corporaHeard));
+  // Facets wait for the owner, so a shared collection is never asked under the host's tenant first.
+  const dataset = useMemo<DatasetRef | undefined>(
+    () =>
+      corpusKey && ownerHeard ? { key: corpusKey, tenant: corpusTenant || tenant } : undefined,
+    [corpusKey, ownerHeard, corpusTenant, tenant],
+  );
   const corpusLabel = (key: string) =>
     profile?.corpora?.[key]?.label ?? corpora.find((c) => c.key === key)?.label ?? key;
   const corpus: CorpusOption | undefined = corpusKey
@@ -761,7 +784,7 @@ export const useAssistant = ({
     });
   const [facetsKey, setFacetsKey] = useState(0);
   useEffect(() => {
-    if (!filterOn || !fields || !corpusKey) return;
+    if (!filterOn || !fields || !dataset) return;
     let gone = false;
     setFacetsFailed(false);
     // Year fields bounded everywhere, so «Velg alle» on the years narrows nothing, as «Alle år».
@@ -773,8 +796,8 @@ export const useAssistant = ({
     ) =>
       withinYears(
         await (lists
-          ? api.loadFacets(asked, corpusKey, fields, lists)
-          : api.loadFacets(asked, corpusKey, fields)),
+          ? api.loadFacets(asked, dataset, fields, lists)
+          : api.loadFacets(asked, dataset, fields)),
         fields,
         keep,
         thisYear,
@@ -803,7 +826,7 @@ export const useAssistant = ({
       gone = true;
     };
     // `selection` is new on every render without Filter; `baseFacets` is set here, not a cause.
-  }, [api, filterOn, chosenSelection, facetsKey, corpusKey, fields]);
+  }, [api, filterOn, chosenSelection, facetsKey, dataset, fields]);
 
   const chooseCorpus = (key: string) => {
     // A new collection starts a new thread with an empty filter (kunnskapsassistenten's useCorpus).
@@ -847,16 +870,16 @@ export const useAssistant = ({
           .join(',')
       : '';
   useEffect(() => {
-    if (!sourceKey || !corpusKey) return;
+    if (!sourceKey || !dataset) return;
     let gone = false;
     for (const id of sourceKey.split(','))
-      void api.loadAbout(corpusKey, id).then((line) => {
+      void api.loadAbout(dataset, id).then((line) => {
         if (!gone && line) setAbout((all) => (all.has(id) ? all : new Map(all).set(id, line)));
       });
     return () => {
       gone = true;
     };
-  }, [api, sourceKey, corpusKey]);
+  }, [api, sourceKey, dataset]);
   const documents = useMemo<DocumentItem[] | undefined>(
     () =>
       activeAnswer?.sources?.map((s, i) => {
@@ -1000,7 +1023,9 @@ export const useAssistant = ({
         model,
         conversationId: startedIn,
         filters: filtersOf(),
-        dataset: corpusKey ? { tenant: ownDataset?.tenant || tenant, key: corpusKey } : undefined,
+        dataset: corpusKey
+          ? { tenant: corpusTenant || ownDataset?.tenant || tenant, key: corpusKey }
+          : undefined,
         steps: approachOn,
         signal: controller.signal,
       })) {
