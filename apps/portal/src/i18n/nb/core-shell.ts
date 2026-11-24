@@ -96,6 +96,7 @@ export const devTools = defineNamespace({
   guardrailsDesc:
     'Regler virksomheten deler. Regler merket som obligatoriske gjelder alle tjenestene, de andre velger hver tjeneste selv.',
   guardrailsNotAvailable: 'Felles regler vises når portalen er koblet til plattformen.',
+  settings: 'Innstillingsnøkler',
   api: 'API-referanse og dokumentasjon',
   apiDesc: 'Referansen til API-et og dokumentasjon for utviklere.',
   openLog: 'Åpne Logg',

@@ -179,13 +179,16 @@ const Screen = ({
   if (area === 'statistics') return <Usage {...props} />;
   if (area === 'developer' && id === 'api' && sub === 'code')
     return <MovedTo hash="#/developer/api" />;
-  if (area === 'developer' && id === 'settings') return <MovedTo hash="#/settings/all" />;
   if (area === 'developer' && id === 'step-flows' && sub) return <StepFlows {...props} />;
   if (area === 'developer')
     return id === 'hooks' && sub ? (
       <Integrations {...props} />
     ) : (
-      <DeveloperTools {...props} integrations={(p) => <Integrations {...p} />} />
+      <DeveloperTools
+        {...props}
+        integrations={(p) => <Integrations {...p} />}
+        settings={(p) => <Settings {...p} context={{ kind: 'tenant' }} section="all" />}
+      />
     );
   if (area === 'integrations') return <MovedTo hash={developerHashFor(props.route)} />;
   if (area === 'profile')
@@ -197,8 +200,8 @@ const Screen = ({
     return <MovedTo hash="#/log/changes" />;
   if (area === 'log') return <Log {...props} />;
   if (area === 'status') return <MovedTo hash="#/developer/status" />;
-  if (area === 'settings' && props.route.query.get('tab') === 'transfer')
-    return <MovedTo hash="#/settings/all" />;
+  if (area === 'settings' && (id === 'all' || props.route.query.get('tab') === 'transfer'))
+    return <MovedTo hash="#/developer/settings" />;
   if (area === 'settings') return <Settings {...props} context={{ kind: 'tenant' }} />;
   if (area === 'data-handling') return <DataHandling api={props.api} />;
   if (area === 'about' && id === priceSegment) return <PricePage />;

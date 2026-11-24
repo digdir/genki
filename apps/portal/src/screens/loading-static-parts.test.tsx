@@ -65,14 +65,20 @@ describe('the title, back link, tabs and buttons show while the data loads', () 
     expect(screen.getByRole('tab', { name: 'Historikk' })).toBeTruthy();
   });
 
-  it('Innstillinger shows its title and tabs while the settings load', async () => {
-    await whileDataLoads('#/settings/all');
+  it('Innstillinger shows its title while the settings load', async () => {
+    await whileDataLoads('#/settings');
 
     expect(screen.getByRole('heading', { level: 1, name: 'Innstillinger' })).toBeTruthy();
+    expect(screen.queryByRole('tab')).toBeNull();
+  });
+
+  it('Innstillingsnøkler shows its title and the menu while the settings load', async () => {
+    await whileDataLoads('#/developer/settings');
+
     expect(
-      screen.getByRole('tab', { name: 'Alle innstillinger' }).getAttribute('aria-selected'),
-    ).toBe('true');
-    expect(screen.getByRole('tab', { name: 'Vanlige' })).toBeTruthy();
+      await screen.findByRole('heading', { level: 2, name: 'Innstillingsnøkler' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Innstillingsnøkler' })).toBeTruthy();
   });
 
   it('Arbeidsflyter shows its title and Ny arbeidsflyt while the flows load', async () => {

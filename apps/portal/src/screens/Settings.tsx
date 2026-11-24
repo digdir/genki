@@ -1,6 +1,5 @@
 import {
   Alert,
-  Button,
   Field,
   Heading,
   Label,
@@ -10,7 +9,7 @@ import {
   TabsPanel,
   TabsTab,
 } from '@digdir/designsystemet-react';
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { useT } from '../i18n';
 import { BackLink } from '../components/BackLink';
 import { useInServicePage } from './service/context';
@@ -46,6 +45,8 @@ interface Loaded {
   norwayOnly: boolean;
 }
 
+const noDirtyGuard = () => undefined;
+
 const nameFromSlug = (list: string[], id: string) => list.find((n) => slug(n) === id);
 
 const View = ({
@@ -54,9 +55,14 @@ const View = ({
   tenantName,
   route,
   context,
+  section,
   loaded,
   live,
-}: ScreenProps & { context: SettingsContext; loaded: Loaded }) => {
+}: ScreenProps & {
+  context: SettingsContext;
+  section: 'common' | 'all';
+  loaded: Loaded;
+}) => {
   const t = useT();
   const embedded = useInServicePage();
   const serviceNames = live ? [] : exampleServiceNames;
@@ -79,10 +85,6 @@ const View = ({
   const [flash, setFlash] = useState('');
   const [draftMsg, setDraftMsg] = useState('');
   const tab = route.query.get('tab') === 'transfer' ? 'transfer' : 'grid';
-  const tenantTab = route.segments[1] === 'all' ? 'all' : 'common';
-  const [dirty, setDirty] = useState(false);
-  const [leaving, setLeaving] = useState<string>();
-  const onDirty = useCallback((next: boolean) => setDirty(next), []);
   const ctx: Ctx = {
     kind: context.kind,
     target: loaded.target,
@@ -157,8 +159,30 @@ const View = ({
     </div>
   );
 
+  if (context.kind === 'tenant' && section === 'all') {
+    return (
+      <div className="settings-page stack">
+        {flashView}
+        <p>{t('settings.allIntro')}</p>
+        <AllSettingsTable
+          rows={rows}
+          categories={loaded.categories}
+          ctx={ctx}
+          selected={panel}
+          onOpen={setPanel}
+        />
+        <section aria-labelledby="settings-transfer-h" className="stack-sm">
+          <Heading level={2} data-size="xs" id="settings-transfer-h">
+            {t('settings.transferHeading')}
+          </Heading>
+          {transfer}
+        </section>
+        {panelView}
+      </div>
+    );
+  }
+
   if (context.kind === 'tenant') {
-    const hashFor = (v: string) => (v === 'all' ? '#/settings/all' : '#/settings');
     return (
       <div className="settings-page stack">
         <div className="settings-header">
@@ -169,77 +193,15 @@ const View = ({
             <p className="lead">{t('settings.introOrganisation', { name: tenantName })}</p>
           </div>
         </div>
-        <Tabs
-          value={tenantTab}
-          onChange={(v) => {
-            if (v === tenantTab) return;
-            if (dirty) {
-              setLeaving(hashFor(v));
-              return;
-            }
-            setFlash('');
-            navigate(hashFor(v));
-          }}
-        >
-          <TabsList aria-label={t('settings.tenantTabsLabel')}>
-            <TabsTab value="common">{t('settings.tabCommon')}</TabsTab>
-            <TabsTab value="all">{t('settings.tabAll')}</TabsTab>
-          </TabsList>
-          {leaving ? (
-            <Alert data-color="warning" data-size="sm" role="alert">
-              {t('settings.leaveAsk')}
-              <div className="actions">
-                <Button
-                  data-size="sm"
-                  variant="primary"
-                  onClick={() => {
-                    setLeaving(undefined);
-                    setDirty(false);
-                    navigate(leaving);
-                  }}
-                >
-                  {t('settings.leaveGo')}
-                </Button>
-                <Button data-size="sm" variant="secondary" onClick={() => setLeaving(undefined)}>
-                  {t('settings.leaveStay')}
-                </Button>
-              </div>
-            </Alert>
-          ) : null}
-          {flashView}
-          <TabsPanel value="common">
-            {tenantTab === 'common' ? (
-              <CommonSettings
-                api={api}
-                tenant={tenant}
-                live={live}
-                rows={rows}
-                onSaved={setRows}
-                onDirty={onDirty}
-              />
-            ) : null}
-          </TabsPanel>
-          <TabsPanel value="all">
-            {tenantTab === 'all' ? (
-              <div className="stack">
-                <p>{t('settings.allIntro')}</p>
-                <AllSettingsTable
-                  rows={rows}
-                  categories={loaded.categories}
-                  ctx={ctx}
-                  selected={panel}
-                  onOpen={setPanel}
-                />
-                <section aria-labelledby="settings-transfer-h" className="stack-sm">
-                  <Heading level={2} data-size="xs" id="settings-transfer-h">
-                    {t('settings.transferHeading')}
-                  </Heading>
-                  {transfer}
-                </section>
-              </div>
-            ) : null}
-          </TabsPanel>
-        </Tabs>
+        {flashView}
+        <CommonSettings
+          api={api}
+          tenant={tenant}
+          live={live}
+          rows={rows}
+          onSaved={setRows}
+          onDirty={noDirtyGuard}
+        />
         {panelView}
       </div>
     );
@@ -328,11 +290,9 @@ const View = ({
 
 const TenantSettingsLoading = ({
   tenantName,
-  tab,
   onRetry,
 }: {
   tenantName: string;
-  tab: 'common' | 'all';
   onRetry: () => void;
 }) => {
   const t = useT();
@@ -346,25 +306,16 @@ const TenantSettingsLoading = ({
           <p className="lead">{t('settings.introOrganisation', { name: tenantName })}</p>
         </div>
       </div>
-      <Tabs
-        value={tab}
-        onChange={(v) => {
-          if (v !== tab) navigate(v === 'all' ? '/settings/all' : '/settings');
-        }}
-      >
-        <TabsList aria-label={t('settings.tenantTabsLabel')}>
-          <TabsTab value="common">{t('settings.tabCommon')}</TabsTab>
-          <TabsTab value="all">{t('settings.tabAll')}</TabsTab>
-        </TabsList>
-        <TabsPanel value={tab}>
-          <Loading label={t('settings.loading')} shape="form" onRetry={onRetry} />
-        </TabsPanel>
-      </Tabs>
+      <Loading label={t('settings.loading')} shape="form" onRetry={onRetry} />
     </div>
   );
 };
 
-export const Settings = (props: ScreenProps & { context: SettingsContext }) => {
+/** `section: 'all'` is the table of every setting key, shown under Utviklerverktøy. */
+export const Settings = ({
+  section = 'common',
+  ...props
+}: ScreenProps & { context: SettingsContext; section?: 'common' | 'all' }) => {
   const { api, tenant, context, live } = props;
   const t = useT();
   const embedded = useInServicePage();
@@ -428,19 +379,15 @@ export const Settings = (props: ScreenProps & { context: SettingsContext }) => {
     [api, tenant, context.kind, id, live],
   );
   if (state.status === 'loading')
-    return context.kind === 'tenant' ? (
-      <TenantSettingsLoading
-        tenantName={props.tenantName}
-        tab={props.route.segments[1] === 'all' ? 'all' : 'common'}
-        onRetry={retry}
-      />
+    return context.kind === 'tenant' && section === 'common' ? (
+      <TenantSettingsLoading tenantName={props.tenantName} onRetry={retry} />
     ) : (
       <Loading label={t('settings.loading')} shape="form" onRetry={retry} />
     );
   if (state.status === 'error')
     return (
       <div className="stack">
-        {embedded ? null : (
+        {embedded || section === 'all' ? null : (
           <Heading level={1} data-size="md">
             {t('settings.heading')}
           </Heading>
@@ -451,7 +398,7 @@ export const Settings = (props: ScreenProps & { context: SettingsContext }) => {
               {t('settings.loadFailedTitle')}
             </Heading>
             <p>
-              {props.route.segments[1] === 'all'
+              {section === 'all'
                 ? t('settings.loadFailedNoDefaults')
                 : t('settings.loadFailedNoForm')}
             </p>
@@ -460,5 +407,5 @@ export const Settings = (props: ScreenProps & { context: SettingsContext }) => {
         <ErrorState error={state.error} onRetry={retry} />
       </div>
     );
-  return <View key={`${context.kind}-${id}`} {...props} loaded={state.data} />;
+  return <View key={`${context.kind}-${id}`} {...props} section={section} loaded={state.data} />;
 };

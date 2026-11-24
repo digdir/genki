@@ -173,7 +173,7 @@ describe('shell', () => {
   it.each([
     ['#/status', '#/developer/status'],
     ['#/developer/api/code', '#/developer/api'],
-    ['#/developer/settings', '#/settings/all'],
+    ['#/settings/all', '#/developer/settings'],
     ['#/step-flows', '#/developer/step-flows'],
     ['#/step-flows/ai-overview', '#/developer/step-flows/ai-overview'],
     ['#/log?tab=changes', '#/log/changes'],
