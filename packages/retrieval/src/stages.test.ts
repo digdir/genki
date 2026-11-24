@@ -13,6 +13,7 @@ import {
   unionMerge,
   type Chunk,
 } from './stages.js';
+import { tokenize } from './text.js';
 
 const defaults = retrievalConfig.parse({});
 
@@ -174,6 +175,8 @@ describe('records of one report', () => {
   const own = { own: true, date: '2024-04-15', pages: 151 };
   const sameYearCopy = { own: false, date: '2023-01-01', pages: 153 };
   const hod = { own: false, date: '2024-01-01', pages: 151 };
+  const words = (prefix: string, count: number) =>
+    Array.from({ length: count }, (_, i) => `${prefix}${i}`).join(' ');
 
   it("hits on the same page of two records with one report key come back once, from the agency's own record", () => {
     const kept = collapseReportCopies([
@@ -317,6 +320,85 @@ describe('records of one report', () => {
     const kept = collapseReportCopies([first as Chunk, second as Chunk]);
 
     expect(kept.map((c) => [c.id, c.copies?.map((x) => x.id)])).toEqual([['a#18', ['b#18']]]);
+  });
+
+  describe('a copy whose PDF is cut into chunks at other places', () => {
+    // The HOD copy's chunk of the 826 000 page starts and ends elsewhere than the agency's own.
+    const table = `${salary} ${words('rad', 119)}`;
+    const ownChunk = `# Redegjørelse om likestilling ${table} ${words('innledning', 23)}`;
+    const hodChunk = `# Kjønnsbalanse ${table} ${words('sluttrad', 11)}`;
+
+    it('the regression chunks overlap less than 0.8 over both word sets, as the HOD copy did in test', () => {
+      const own = tokenize(ownChunk);
+      const copy = tokenize(hodChunk);
+
+      const shared = [...own].filter((w) => copy.has(w)).length;
+
+      expect([own.size, copy.size, shared]).toEqual([154, 140, 128]);
+      expect(shared / (own.size + copy.size - shared)).toBeLessThan(0.8);
+    });
+
+    it("a copy's hit is grouped with the own record's hit when nearly all of the shorter hit's words are in the other", () => {
+      const kept = collapseReportCopies([
+        record('hod#17', 'kudos:fdfac1a8', hod, hodChunk),
+        record('own#15', 'kudos:51fe0107', own, ownChunk),
+      ]);
+
+      expect(kept.map((c) => c.id)).toEqual(['own#15']);
+      expect(kept[0]?.copies).toEqual([{ id: 'hod#17', document: 'kudos:fdfac1a8' }]);
+    });
+
+    it('two different pages of one report that share ordinary words are not grouped', () => {
+      const ordinary = `Helsedirektoratet 2023 og i for med som til av på er det ${words('felles', 40)}`;
+      const kept = collapseReportCopies([
+        record('hod#17', 'kudos:fdfac1a8', hod, `${ordinary} ${words('side17', 90)}`),
+        record('own#18', 'kudos:51fe0107', own, `${ordinary} ${words('side18', 90)}`),
+      ]);
+
+      expect(kept.map((c) => c.id)).toEqual(['hod#17', 'own#18']);
+    });
+
+    it('a short hit whose words are all in a much longer hit is not grouped with it', () => {
+      const kept = collapseReportCopies([
+        record(
+          'hod#40',
+          'kudos:fdfac1a8',
+          hod,
+          'Redegjørelse om likestilling. For kvinner utgjorde gjennomsnittslønnen rad1 rad2 rad3',
+        ),
+        record('own#15', 'kudos:51fe0107', own, ownChunk),
+      ]);
+
+      expect(kept.map((c) => c.id)).toEqual(['hod#40', 'own#15']);
+    });
+  });
+
+  it('two five-word pages of one report that differ by one word are not grouped', () => {
+    const kept = collapseReportCopies([
+      record('hod#30', 'kudos:fdfac1a8', hod, 'Del 2 Årsrapport Helsedirektoratet 2023'),
+      record('own#40', 'kudos:51fe0107', own, 'Del 3 Årsrapport Helsedirektoratet 2023'),
+    ]);
+
+    expect(kept.map((c) => c.id)).toEqual(['hod#30', 'own#40']);
+  });
+
+  it("a copy's hit spanning two pages is not grouped with the own record's hit on one of them", () => {
+    const kept = collapseReportCopies([
+      record('hod#17', 'kudos:fdfac1a8', hod, `${words('side17', 80)} ${words('side18', 80)}`),
+      record('own#17', 'kudos:51fe0107', own, words('side17', 80)),
+    ]);
+
+    expect(kept.map((c) => c.id)).toEqual(['hod#17', 'own#17']);
+  });
+
+  it('a hit joins a group only when it is the same page as every hit in it', () => {
+    const kept = collapseReportCopies([
+      record('own#15', 'kudos:51fe0107', own, `${words('a', 100)} ${words('b', 40)}`),
+      record('hod#15', 'kudos:fdfac1a8', hod, `${words('a', 100)} ${words('b', 80)}`),
+      record('dup#16', 'kudos:a2a2fe02', sameYearCopy, `${words('a', 60)} ${words('b', 80)}`),
+    ]);
+
+    expect(kept.map((c) => c.id)).toEqual(['own#15', 'dup#16']);
   });
 
   it('a record with no page count is never grouped', () => {
