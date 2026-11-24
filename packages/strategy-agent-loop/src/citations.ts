@@ -222,8 +222,13 @@ export const sourcesFirst = <C extends { chunkId: string }>(first: C[], rest: C[
   return [...first, ...rest.filter((c) => !ids.has(c.chunkId))];
 };
 
-const sourceListLine =
-  /^[#>-]* ?(kilder|kilde|kjelder|kjelde|sources?|references?) ?:? ?(\[\d+(?:,? s\. ?\d+(?:[-–]\d+)?)?\](?: s\. ?\d+(?:[-–]\d+)?)? ?(?:(?:[-–,.;]|og|and) ?)?)+$/iu;
+// The pages a source list may give after a source, as citations write them: `s. 4`,
+// `s. 61 – 62`, `s. 5, 34 og 42`.
+const listPages = String.raw`s\. ?\d+(?: ?[-–] ?\d+)?(?:(?:, | og )\d+(?: ?[-–] ?\d+)?)*`;
+const sourceListLine = new RegExp(
+  String.raw`^[#>-]* ?(kilder|kilde|kjelder|kjelde|sources?|references?) ?:? ?(\[\d+(?:,? ${listPages})?\](?: ${listPages})? ?(?:(?:[-–,.;]|og|and) ?)?)+$`,
+  'iu',
+);
 
 const isSourceListLine = (line: string) =>
   sourceListLine.test(line.replace(/[*_]/g, '').replace(/\s+/g, ' ').trim());
