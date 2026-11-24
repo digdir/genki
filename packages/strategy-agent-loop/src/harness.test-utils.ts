@@ -39,7 +39,7 @@ export const call = (name: string, args: unknown): ToolCall => ({
   arguments: JSON.stringify(args),
 });
 
-const section = (prompt: string, title: string) => {
+export const section = (prompt: string, title: string) => {
   const start = prompt.indexOf(`${title}\n`);
   if (start < 0) return undefined;
   const rest = prompt.slice(start + title.length + 1);
