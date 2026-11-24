@@ -13,7 +13,7 @@ import {
 import { buildCitationIndex } from './citations.js';
 import { settleCitations, soundsLikeRefusal } from './citation-backfill.js';
 import { exhaustionNudge, readBeforeAnswerNudge } from './prompts.js';
-import { Workspace } from './workspace.js';
+import { Workspace, type ShadowDecision } from './workspace.js';
 
 const unsure = () => readSignal('gap-remaining', { scope_assessment: 'ambiguous' });
 
@@ -28,6 +28,33 @@ const readInto = (w: Workspace, ...ns: number[]) => {
   w.recordRead({ chunkIds: chunks.map((c) => c.chunkId) }, chunks);
   w.addChunks(chunks);
 };
+
+const decline = 'Kildene i Kudos dekker ikke dette. Vil du at jeg søker etter noe annet?';
+
+const judged = (w: Workspace, status: string) =>
+  w.sufficiencyDecisions.push({
+    status,
+    reasoning: `${status} by test`,
+    missingInfo: status === 'sufficient' ? [] : ['billettpriser 2026'],
+    contradictionDetected: status === 'conflicting',
+    suggestedStrategy: status === 'sufficient' ? 'finalize' : 're-search',
+  });
+
+const readCheck = (
+  w: Workspace,
+  status: ShadowDecision['status'],
+  reasonCode = `${status}-by-test`,
+) =>
+  w.shadowDecisions.push({
+    source: 'read-signals',
+    status,
+    reasonCode,
+    suggestedStrategy: status === 'sufficient' ? 'finalize' : 'read-more',
+    missingClaims: status === 'sufficient' ? [] : ['answer-bearing-evidence'],
+    contradictions: [],
+    supportedClaimCount: 0,
+    stagnantGapClaims: [],
+  });
 
 describe('citation backfill when the agent answers without citing', () => {
   it('re-synthesises a cited answer when the model writes its own answer after reading', async () => {
@@ -231,6 +258,7 @@ describe('settling citations on the final answer', () => {
       w.citationIndex = buildCitationIndex(['c1']);
       w.lastGeneratedResponse = 'Svar [1].';
       w.lastGenerateInsufficient = true;
+      judged(w, 'insufficient');
     });
 
     expect(settleCitations('Jeg fant ingen informasjon om dette.', w)).toEqual({
@@ -247,6 +275,192 @@ describe('settling citations on the final answer', () => {
     expect(settleCitations('Svaret er 42.', w)).toEqual({
       action: 'keep',
       reason: 'no-supporting-chunks',
+    });
+  });
+});
+
+describe('a decline after the gate judged the evidence', () => {
+  it('keeps a decline written after two reads that left a gap and no gate step, as in case 022', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['Hurtigruten billettpriser 2026'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result('', [call('search', { queries: ['kystruten maksimalpriser billett'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c2'] })]),
+            () => result(decline),
+          ],
+          read: [
+            () => readSignal('gap-remaining'),
+            () =>
+              readSignal('gap-remaining', {
+                remaining_gaps: [
+                  { claim_id: 'topic-match', reason: 'not-addressed', critical: true },
+                ],
+              }),
+          ],
+          synth: [() => 'Staten betaler for kystruten [1].'],
+        },
+      },
+    });
+
+    expect(out.notices.filter((n) => n.stage === 'gate')).toEqual([]);
+    expect(out.text).toBe(decline);
+    expect(out.notices).toContainEqual({
+      stage: 'citations',
+      action: 'keep',
+      reason: 'declined-after-insufficient',
+    });
+    expect(out.notices.filter((n) => n.stage === 'answer-discarded')).toEqual([]);
+  });
+
+  it('keeps a decline written after the model gate judged the read chunks off-topic and the read check said nothing', async () => {
+    const out = await run({
+      config: { ...baseConfig, strategy: { ...baseConfig.strategy, ablate: ['read-signal-eval'] } },
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['Hurtigruten billettpriser 2026'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c2', 'c3', 'c4', 'c5'] })]),
+            () => result(decline),
+          ],
+          sufficiency: [() => decision('off-topic', 're-search')],
+          synth: [() => 'Staten betaler for kystruten [1].'],
+        },
+      },
+    });
+
+    expect(out.text).toBe(decline);
+    expect(out.notices).toContainEqual({
+      stage: 'citations',
+      action: 'keep',
+      reason: 'declined-after-insufficient',
+    });
+    expect(out.notices.filter((n) => n.stage === 'answer-discarded')).toEqual([]);
+  });
+
+  it('still rewrites a decline when the model gate could not judge and fell back to a guess', async () => {
+    const out = await run({
+      config: { ...baseConfig, strategy: { ...baseConfig.strategy, ablate: ['read-signal-eval'] } },
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['Hurtigruten billettpriser 2026'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c2', 'c3', 'c4', 'c5'] })]),
+            () => result(decline),
+          ],
+          sufficiency: [() => 'not json'],
+          synth: [() => 'Staten betaler for kystruten [1].'],
+        },
+      },
+    });
+
+    expect(out.notices).toContainEqual({ stage: 'citations', action: 'backfill', adopted: true });
+  });
+
+  it("keeps a decline when the last read check found the chunks outside the question's scope", () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      readCheck(w, 'ambiguous', 'wrong-scope');
+    });
+
+    expect(settleCitations(decline, w)).toEqual({
+      action: 'keep',
+      reason: 'declined-after-insufficient',
+    });
+  });
+
+  it('keeps a decline that also states a figure, without citations, after the gate judged the evidence insufficient', () => {
+    const partial =
+      'Jeg fant ikke billettprisene for 2026. Staten betaler 1,2 milliarder kroner for ruten.';
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'insufficient');
+    });
+
+    expect(settleCitations(partial, w)).toEqual({
+      action: 'keep',
+      reason: 'declined-after-insufficient',
+    });
+  });
+
+  it('keeps a decline when the read check that came after the last gate decision found a gap', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'sufficient');
+      readCheck(w, 'insufficient');
+    });
+
+    expect(settleCitations(decline, w)).toEqual({
+      action: 'keep',
+      reason: 'declined-after-insufficient',
+    });
+  });
+
+  it('rewrites a decline when the gate judged the evidence sufficient after the last read check', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      readCheck(w, 'insufficient');
+      judged(w, 'sufficient');
+    });
+
+    expect(settleCitations(decline, w)).toEqual({
+      action: 'backfill',
+      readFirst: [],
+      refusal: true,
+    });
+  });
+
+  it('keeps a decline written after the gate judged the evidence insufficient', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'sufficient');
+      judged(w, 'insufficient');
+    });
+
+    expect(settleCitations(decline, w)).toEqual({
+      action: 'keep',
+      reason: 'declined-after-insufficient',
+    });
+  });
+
+  it('keeps a decline written after the gate judged the question off-topic', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'off-topic');
+    });
+
+    expect(settleCitations(decline, w)).toEqual({
+      action: 'keep',
+      reason: 'declined-after-insufficient',
+    });
+  });
+
+  it('still rewrites a decline from what was read when the gate judged the evidence sufficient', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'insufficient');
+      judged(w, 'sufficient');
+    });
+
+    expect(settleCitations(decline, w)).toEqual({
+      action: 'backfill',
+      readFirst: [],
+      refusal: true,
+    });
+  });
+
+  it('still rewrites a decline when the gate found the evidence conflicting', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'conflicting');
+    });
+
+    expect(settleCitations(decline, w)).toEqual({
+      action: 'backfill',
+      readFirst: [],
+      refusal: true,
     });
   });
 });

@@ -7,6 +7,21 @@ import type { SourceFactsQuery, SourceFactsReport } from './source-facts.js';
 
 export type SearchType = 'phrase' | 'metadata' | 'content';
 
+// Stamped on push, so the latest decision is known across the decision lists.
+let decisionClock = 0;
+const decidedAt = new WeakMap<object, number>();
+
+class DecisionList<T extends object> extends Array<T> {
+  static override get [Symbol.species]() {
+    return Array;
+  }
+
+  override push(...items: T[]) {
+    for (const item of items) decidedAt.set(item, ++decisionClock);
+    return super.push(...items);
+  }
+}
+
 export interface ChunkSummary {
   chunkId: string;
   document?: string;
@@ -250,8 +265,10 @@ export class Workspace {
   contradictions: ReadSignal['contradictions'] = [];
   nonSupporting = new Set<string>();
   refunded = new Set<string>();
-  shadowDecisions: ShadowDecision[] = [];
-  sufficiencyDecisions: SufficiencyDecision[] = [];
+  shadowDecisions: ShadowDecision[] = new DecisionList<ShadowDecision>();
+  sufficiencyDecisions: SufficiencyDecision[] = new DecisionList<SufficiencyDecision>();
+  /** Every verdict of the model gate, also those the loop does not act on; never counted. */
+  gateVerdicts: SufficiencyDecision[] = new DecisionList<SufficiencyDecision>();
   responseValidations: SufficiencyDecision[] = [];
   lastGeneratedResponse: string | undefined;
   lastGenerateInsufficient = false;
@@ -456,6 +473,19 @@ export class Workspace {
 
   latestSearchQueries(): string[] {
     return this.searches.at(-1)?.queries ?? [];
+  }
+
+  /** The last decision pushed, by the read check or by the gate. */
+  latestDecision(): ShadowDecision | SufficiencyDecision | undefined {
+    const last: (ShadowDecision | SufficiencyDecision | undefined)[] = [
+      this.shadowDecisions.at(-1),
+      this.sufficiencyDecisions.at(-1),
+      this.gateVerdicts.at(-1),
+    ];
+    let latest: ShadowDecision | SufficiencyDecision | undefined;
+    for (const d of last)
+      if (d && (!latest || (decidedAt.get(d) ?? 0) > (decidedAt.get(latest) ?? 0))) latest = d;
+    return latest;
   }
 
   countSufficiencyRejections(): number {

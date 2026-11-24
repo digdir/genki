@@ -78,6 +78,14 @@ const unreadSearchHits = (workspace: Workspace) => {
     .slice(0, backfillReadLimit);
 };
 
+// Nothing read answers the question, so a rewrite from it adds only what is beside the point.
+const declineJudged = (workspace: Workspace) => {
+  const d = workspace.latestDecision();
+  if (!d || ('degraded' in d && d.degraded)) return false;
+  if ('reasonCode' in d && d.reasonCode === 'wrong-scope') return true;
+  return d.status === 'insufficient' || d.status === 'off-topic';
+};
+
 export const settleCitations = (answer: string, workspace: Workspace): CitationSettlement => {
   if (validateCitations(answer, workspace.citationIndex).grounded)
     return { action: 'keep', reason: 'cited' };
@@ -92,6 +100,7 @@ export const settleCitations = (answer: string, workspace: Workspace): CitationS
     return { action: 'carry-through' };
   if (refusal) {
     if (workspace.citationIndex.size > 0) return { action: 'keep', reason: 'generated-uncited' };
+    if (declineJudged(workspace)) return { action: 'keep', reason: 'declined-after-insufficient' };
     return refusalBackfillCandidates(workspace).length
       ? { action: 'backfill', readFirst: [], refusal: true }
       : { action: 'keep', reason: 'no-answer-text' };
