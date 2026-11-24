@@ -290,7 +290,8 @@ describe('range reads', () => {
     // The document has 6 chunks, but neither the search nor the store says so.
     const unsized = new Map<string, Chunk>(
       [...report].slice(0, 6).map(([id, c]) => {
-        const { totalChunks: _t, ...rest } = c;
+        const rest = { ...c };
+        delete rest.totalChunks;
         return [id, rest];
       }),
     );
