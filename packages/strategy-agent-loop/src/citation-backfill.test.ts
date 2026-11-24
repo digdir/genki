@@ -248,6 +248,71 @@ describe('settling citations on the final answer', () => {
   });
 });
 
+const decline = 'Kildene i Kudos dekker ikke dette. Vil du at jeg søker etter noe annet?';
+
+const judged = (w: Workspace, status: string) =>
+  w.sufficiencyDecisions.push({
+    status,
+    reasoning: `${status} by test`,
+    missingInfo: status === 'sufficient' ? [] : ['billettpriser 2026'],
+    contradictionDetected: status === 'conflicting',
+    suggestedStrategy: status === 'sufficient' ? 'finalize' : 're-search',
+  });
+
+describe('a decline after the gate judged the evidence', () => {
+  it('keeps a decline written after the gate judged the evidence insufficient', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'sufficient');
+      judged(w, 'insufficient');
+    });
+
+    expect(settleCitations(decline, w)).toEqual({
+      action: 'keep',
+      reason: 'declined-after-insufficient',
+    });
+  });
+
+  it('keeps a decline written after the gate judged the question off-topic', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'off-topic');
+    });
+
+    expect(settleCitations(decline, w)).toEqual({
+      action: 'keep',
+      reason: 'declined-after-insufficient',
+    });
+  });
+
+  it('still rewrites a decline from what was read when the gate judged the evidence sufficient', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'insufficient');
+      judged(w, 'sufficient');
+    });
+
+    expect(settleCitations(decline, w)).toEqual({
+      action: 'backfill',
+      readFirst: [],
+      refusal: true,
+    });
+  });
+
+  it('still rewrites a decline when the gate found the evidence conflicting', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'conflicting');
+    });
+
+    expect(settleCitations(decline, w)).toEqual({
+      action: 'backfill',
+      readFirst: [],
+      refusal: true,
+    });
+  });
+});
+
 describe('recognising a refusal', () => {
   it.each([
     'Jeg kunne ikke finne spesifikk informasjon i tildelingsbrevet for 2025.',
