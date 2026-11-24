@@ -927,6 +927,36 @@ describe('ingestion pipelines', () => {
     ]);
   });
 
+  it('lets an operator create, update and list a dataset pipeline, refusing a duplicate, a bad spec and an employee', async () => {
+    const { call } = await boot();
+    const base = `/operator/datasets/${encodeURIComponent('digdir/kudos')}/pipelines`;
+
+    expect((await call(base, 'drift', { body: pipeline })).status).toBe(201);
+    expect((await call(base, 'drift', { body: pipeline })).status).toBe(409);
+    expect(
+      (
+        await call(`${base}/nettsider`, 'drift', {
+          method: 'PUT',
+          body: { ...pipeline, parallelism: 4 },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await call(`${base}/nettsider`, 'drift', {
+          method: 'PUT',
+          body: { name: 'x', source: { kind: 'ftp' } },
+        })
+      ).status,
+    ).toBe(400);
+    const listed = await json<{ data: { id: string; version: number }[] }>(
+      await call(base, 'drift'),
+    );
+    expect(listed.data).toEqual([expect.objectContaining({ id: 'nettsider', version: 2 })]);
+    expect((await call(base, 'kari')).status).toBe(403);
+    expect((await call(base, 'kari', { body: { ...pipeline, id: 'annen' } })).status).toBe(403);
+  });
+
   it('refuses a Kudos pipeline that would read the whole archive, and tells when a scheduled one runs', async () => {
     const { call } = await boot();
     const base = `/operator/datasets/${encodeURIComponent('digdir/kudos')}/pipelines`;
