@@ -373,6 +373,26 @@ describe('records of one report', () => {
     });
   });
 
+  it('two short pages of one report that differ by one word are not grouped', () => {
+    const kept = collapseReportCopies([
+      record('hod#30', 'kudos:fdfac1a8', hod, 'Del 2 Årsrapport Helsedirektoratet 2023'),
+      record('own#40', 'kudos:51fe0107', own, 'Del 3 Årsrapport Helsedirektoratet 2023'),
+    ]);
+
+    expect(kept.map((c) => c.id)).toEqual(['hod#30', 'own#40']);
+  });
+
+  it("a copy's hit spanning two pages is not grouped with the own record's hit on one of them", () => {
+    const words = (prefix: string, count: number) =>
+      Array.from({ length: count }, (_, i) => `${prefix}${i}`).join(' ');
+    const kept = collapseReportCopies([
+      record('hod#17', 'kudos:fdfac1a8', hod, `${words('side17', 80)} ${words('side18', 80)}`),
+      record('own#17', 'kudos:51fe0107', own, words('side17', 80)),
+    ]);
+
+    expect(kept.map((c) => c.id)).toEqual(['hod#17', 'own#17']);
+  });
+
   it('a record with no page count is never grouped', () => {
     const noPages = chunk('np', {
       document: 'np',

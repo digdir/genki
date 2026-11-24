@@ -248,16 +248,12 @@ const reportOf = (c: Chunk): ReportInfo | undefined => {
 
 /** Records whose page counts differ by more than this are kept apart, whatever their key. */
 const reportPageTolerance = 0.05;
-/**
- * Two hits are the same page when this share of the shorter hit's words is in the longer one.
- * Copies are cut into chunks at other places, so neither hit holds all of the other.
- */
+/** Two hits are the same page when this share of the shorter hit's words is in the longer one. */
 const samePageShorterShare = 0.8;
-/**
- * The shared words also make this share of the longer hit, so a short hit whose words are all
- * somewhere in a long page is not taken for that page.
- */
-const samePageLongerShare = 0.5;
+/** The shared words are also this share of the longer hit, so it is not two pages. */
+const samePageLongerShare = 0.75;
+/** Below this many words one word is a large share, so 0.8 of both hits' words together is needed. */
+const samePageShareMinWords = 20;
 /** Fewer words than this, such as a footer, are compared by page instead. */
 const samePageMinWords = 5;
 
@@ -265,12 +261,13 @@ const closePages = (a: number, b: number) =>
   Math.abs(a - b) <= reportPageTolerance * Math.max(a, b);
 
 const sameWords = (a: Set<string>, b: Set<string>) => {
-  if (a.size === 0 || b.size === 0) return false;
   const shared = intersect(a, b).size;
-  return (
-    shared >= samePageShorterShare * Math.min(a.size, b.size) &&
-    shared >= samePageLongerShare * Math.max(a.size, b.size)
-  );
+  const shorter = Math.min(a.size, b.size);
+  const longer = Math.max(a.size, b.size);
+  if (shorter === 0) return false;
+  if (shorter < samePageShareMinWords)
+    return shared / (a.size + b.size - shared) >= samePageShorterShare;
+  return shared >= samePageShorterShare * shorter && shared >= samePageLongerShare * longer;
 };
 
 /** The agency's own record first, then the latest publish date. */
