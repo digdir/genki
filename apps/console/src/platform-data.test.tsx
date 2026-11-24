@@ -229,7 +229,7 @@ describe('ekstern byggekloss', () => {
     const { calls, fetch } = serve(() => undefined);
     await open('#/building-blocks', fetch);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Registrer ekstern byggekloss' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Registrer eksternt tillegg' }));
     const dialog = await screen.findByRole('dialog');
     const manifest = within(dialog).getByRole('textbox', { name: 'Manifest (YAML)' });
     fireEvent.change(manifest, { target: { value: 'kind: [' } });
@@ -281,7 +281,7 @@ describe('ekstern byggekloss', () => {
     );
     await open('#/building-blocks', fetch);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Registrer ekstern byggekloss' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Registrer eksternt tillegg' }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Registrer og test' }));
     await waitFor(() =>

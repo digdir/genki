@@ -490,7 +490,8 @@ export const schemaRoutes: RouteConfig[] = [
     responses: {
       200: {
         content: { 'application/json': { schema: zo.record(zo.string(), zo.unknown()) } },
-        description: '`spec.interface`: the layout, the menu and the pages',
+        description:
+          '`spec.interface`: the layout, the menu and the pages, and `blocks`: the pinned edition of every `block: ref` in the layout, keyed by its ref, as `RefBlockPayload`',
       },
       401: { content: v1ErrorContent, description: 'Invalid or missing credentials' },
       404: {

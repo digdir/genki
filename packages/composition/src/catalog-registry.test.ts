@@ -13,14 +13,14 @@ const adapter = (engine: string): KnowledgeAdapter => ({
     throw new Error('not used');
   },
 });
-const adapters = [adapter('typesense'), adapter('knowledge')];
+const adapters = [adapter('typesense'), adapter('pgvector')];
 
 const problemsOf = (catalog: unknown): CatalogProblem[] => {
   const parsed = parseKnowledgeCatalog(catalog, adapters);
   return parsed.ok ? [] : parsed.errors;
 };
 
-const knowledgeServer = { engine: 'knowledge', options: { connection: 'knowledge' } };
+const knowledgeServer = { engine: 'pgvector', options: { connection: 'knowledge' } };
 const typesense = { engine: 'typesense' };
 const dataset = (endpoint: string, extra: Record<string, unknown> = {}) => ({
   endpoint,
@@ -192,7 +192,7 @@ describe('catalog replay', () => {
           level: 'info',
           dataset: 'digdir/docs',
           endpoint: 'server',
-          engine: 'knowledge',
+          engine: 'pgvector',
           generation: 'g-20261116-abc123',
         },
       },
@@ -225,5 +225,168 @@ describe('catalog replay', () => {
     expect(registry.skipped()).toEqual([]);
     expect(registry.get('knowledge-endpoint', 'old')).toBeUndefined();
     expect(endpointOf(registry, 'digdir/docs')).toBe('new');
+  });
+});
+
+const unknownEndpoints = (catalog: unknown): CatalogProblem[] => {
+  const { endpoints, models } = catalog as {
+    endpoints: Record<string, unknown>;
+    models: { id: string; endpoint: string }[];
+  };
+  return models
+    .filter((m) => !(m.endpoint in endpoints))
+    .map((m) => ({ path: 'models', message: `unknown endpoint ${m.endpoint}` }));
+};
+
+const leftoverOn = (
+  store: InMemoryConfigEntryStore,
+  used: { models?: string[]; rerankers?: string[] } = {},
+) =>
+  new CatalogRegistry({
+    seed: emptySeed,
+    store,
+    checks: { models: unknownEndpoints, knowledge: problemsOf, rerank: () => [] },
+    apply: () => {},
+    references: async () => ({
+      models: new Set(used.models),
+      datasets: new Set(),
+      rerankers: new Set(used.rerankers),
+    }),
+    now: () => new Date('2026-11-20T10:35:00Z'),
+  });
+
+const leftover = 'nimbrel-cortex/cortex';
+
+describe('skipped entries', () => {
+  it('a leftover model nobody uses is marked unused', async () => {
+    const store = new InMemoryConfigEntryStore();
+    await save(store, 'model', leftover, { endpoint: 'gone' }, '2026-11-17T09:22:00Z');
+    const registry = leftoverOn(store);
+
+    await registry.initialize();
+
+    expect(registry.skipped()).toMatchObject([{ kind: 'model', id: leftover, unused: true }]);
+  });
+
+  it('a skipped model a published service uses is not marked unused', async () => {
+    const store = new InMemoryConfigEntryStore();
+    await save(store, 'model', leftover, { endpoint: 'gone' }, '2026-11-17T09:22:00Z');
+    const registry = leftoverOn(store, { models: [leftover] });
+
+    await registry.initialize();
+
+    expect(registry.skipped()[0]?.unused).toBeUndefined();
+  });
+
+  it('a skipped model a dataset embeds with is not marked unused', async () => {
+    const store = new InMemoryConfigEntryStore();
+    await save(store, 'knowledge-endpoint', 'server', typesense, '2026-11-05T08:26:00Z');
+    await save(
+      store,
+      'dataset',
+      'digdir/docs',
+      dataset('server', { embedding: { model: leftover, dimensions: 1024 } }),
+      '2026-11-06T08:26:00Z',
+    );
+    await save(store, 'model', leftover, { endpoint: 'gone' }, '2026-11-17T09:22:00Z');
+    const registry = leftoverOn(store);
+
+    await registry.initialize();
+
+    expect(registry.skipped()).toHaveLength(1);
+    expect(registry.skipped()[0]?.unused).toBeUndefined();
+  });
+
+  it('a skipped dataset is never marked unused', async () => {
+    const store = new InMemoryConfigEntryStore();
+    await save(store, 'dataset', 'digdir/lost', dataset('gone'), '2026-11-17T09:22:00Z');
+    const registry = leftoverOn(store);
+
+    await registry.initialize();
+
+    expect(registry.skipped()).toHaveLength(1);
+    expect(registry.skipped()[0]?.unused).toBeUndefined();
+  });
+
+  it('an operator can delete a skipped entry, and replay never reports it again', async () => {
+    const store = new InMemoryConfigEntryStore();
+    await save(store, 'model', leftover, { endpoint: 'gone' }, '2026-11-17T09:22:00Z');
+    const registry = leftoverOn(store);
+    await registry.initialize();
+
+    const result = await registry.remove({
+      kind: 'model',
+      scope: platformScope,
+      id: leftover,
+      by: 'drift',
+      reason: 'its APIs were deleted',
+      ifVersion: 1,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(registry.skipped()).toEqual([]);
+    expect((await store.history('model', platformScope, leftover)).at(-1)).toMatchObject({
+      version: 2,
+      deleted: true,
+      by: 'drift',
+      reason: 'its APIs were deleted',
+      spec: { endpoint: 'gone' },
+    });
+    const replayed = leftoverOn(store);
+    await replayed.initialize();
+    expect(replayed.skipped()).toEqual([]);
+  });
+
+  it('a skipped entry is deleted only in its own scope', async () => {
+    const store = new InMemoryConfigEntryStore();
+    await save(store, 'model', leftover, { endpoint: 'gone' }, '2026-11-17T09:22:00Z');
+    const registry = leftoverOn(store);
+    await registry.initialize();
+
+    const result = await registry.remove({
+      kind: 'model',
+      scope: '312521172',
+      id: leftover,
+      by: 'drift',
+      reason: 'test',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(registry.skipped()).toHaveLength(1);
+  });
+
+  it('a skipped entry a published service uses cannot be deleted', async () => {
+    const store = new InMemoryConfigEntryStore();
+    await save(store, 'model', leftover, { endpoint: 'gone' }, '2026-11-17T09:22:00Z');
+    const registry = leftoverOn(store, { models: [leftover] });
+    await registry.initialize();
+
+    const result = await registry.remove({
+      kind: 'model',
+      scope: platformScope,
+      id: leftover,
+      by: 'drift',
+      reason: 'test',
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      errors: [{ message: `${leftover} is used by a published service` }],
+    });
+  });
+
+  it('deleting an id with no journal entry is still refused', async () => {
+    const registry = leftoverOn(new InMemoryConfigEntryStore());
+    await registry.initialize();
+
+    const result = await registry.remove({
+      kind: 'model',
+      scope: platformScope,
+      id: 'nobody/none',
+      by: 'drift',
+      reason: 'test',
+    });
+
+    expect(result).toMatchObject({ ok: false, errors: [{ message: 'no model nobody/none' }] });
   });
 });

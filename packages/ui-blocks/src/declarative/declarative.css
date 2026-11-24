@@ -1,0 +1,64 @@
+/* After Designsystemet's layers, every token read through a --genai-declarative-* variable. */
+@layer ds.theme, ds.base, ds.components, genai.components;
+
+@layer genai.components {
+  .uib-declarative {
+    font-family: var(--genai-declarative-font-family, var(--ds-font-family)), sans-serif;
+  }
+  .uib-declarative-stack,
+  .uib-declarative-row {
+    display: flex;
+    gap: var(--genai-declarative-gap-md, var(--ds-size-3));
+  }
+  .uib-declarative-stack {
+    flex-direction: column;
+  }
+  .uib-declarative-row {
+    flex-direction: row;
+    align-items: start;
+  }
+  .uib-declarative-row[data-wrap='true'] {
+    flex-wrap: wrap;
+  }
+  .uib-declarative-row[data-align='center'] {
+    align-items: center;
+  }
+  .uib-declarative-row[data-align='end'] {
+    align-items: end;
+  }
+  .uib-declarative-row[data-align='baseline'] {
+    align-items: baseline;
+  }
+  [data-gap='none'] {
+    gap: 0;
+  }
+  [data-gap='sm'] {
+    gap: var(--genai-declarative-gap-sm, var(--ds-size-1));
+  }
+  [data-gap='lg'] {
+    gap: var(--genai-declarative-gap-lg, var(--ds-size-6));
+  }
+  .uib-declarative-subtle {
+    color: var(--genai-declarative-subtle-color, var(--ds-color-text-subtle));
+  }
+  .uib-declarative-key-value {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--genai-declarative-gap-sm, var(--ds-size-1))
+      var(--genai-declarative-gap-md, var(--ds-size-3));
+    margin: 0;
+  }
+  .uib-declarative-key-value > div {
+    display: contents;
+  }
+  .uib-declarative-key-value dt {
+    font-weight: var(--genai-declarative-key-weight, var(--ds-font-weight-medium));
+  }
+  .uib-declarative-key-value dd {
+    margin: 0;
+  }
+  .uib-declarative-icon {
+    flex: none;
+    font-size: var(--genai-declarative-icon-size, var(--ds-size-6));
+  }
+}

@@ -475,7 +475,7 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
     const endpoint = endpointOf(proposal);
     if (!proposal.item || !endpoint)
       return {
-        response: problem(c, 422, 'Forslaget mangler adressen til byggeklossen', [
+        response: problem(c, 422, 'Forslaget mangler adressen til delen', [
           { path: 'permissions', message: 'a network permission with the endpoint URL is needed' },
         ]),
       };

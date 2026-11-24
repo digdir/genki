@@ -542,7 +542,8 @@ export const skillsMock = (options: SkillsMockOptions = {}): MockHandler => {
         return problem(req, 422, 'Bekreft at ferdigheten ikke inneholder personopplysninger');
       if (!req.reason) return req.reasonMissing();
       const latest = latestOf(record);
-      if (!latest) return problem(req, 422, 'Publiser ferdigheten før du deler den', 'version');
+      if (!latest)
+        return problem(req, 422, 'Publiser arbeidsinstruksen før du deler den', 'version');
       if (record.share !== 'none') return problem(req, 409, 'Conflict', 'share');
       record.share = 'pending_digdir';
       const share: SkillShareResponse = {

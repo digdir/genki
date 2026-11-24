@@ -293,7 +293,7 @@ describe('Innstillinger for en tjeneste', () => {
   it('reads effective settings and puts a change in the service draft without a reason', async () => {
     const { calls, fetch } = recording();
     await renderAt('#/services/vedtaksutkast/setup/limits', fetch);
-    fireEvent.click(await screen.findByRole('button', { name: 'Endre grenser' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre begrensninger' }));
     const region = await grid();
 
     expect(calls.some((c) => c.url.endsWith('/settings/effective?service=vedtaksutkast'))).toBe(
@@ -335,7 +335,7 @@ describe('Innstillinger for en tjeneste', () => {
 
   it('explains inherited values in the legend in words, without a sample digit', async () => {
     await renderAt('#/services/vedtaksutkast/setup/limits');
-    fireEvent.click(await screen.findByRole('button', { name: 'Endre grenser' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre begrensninger' }));
     await grid();
     const legend = document.querySelector('.settings-legend') as HTMLElement;
     expect(legend.textContent).toContain('arvet: verdien kommer fra laget til venstre');
@@ -344,7 +344,7 @@ describe('Innstillinger for en tjeneste', () => {
 
   it('keeps the wide grid inside its own scroll box, so a phone page does not scroll sideways', async () => {
     await renderAt('#/services/vedtaksutkast/setup/limits');
-    fireEvent.click(await screen.findByRole('button', { name: 'Endre grenser' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre begrensninger' }));
     await grid();
     const table = document.querySelector('.settings-table') as HTMLElement;
     expect(table.parentElement?.className).toContain('settings-grid-scroll');
@@ -353,7 +353,7 @@ describe('Innstillinger for en tjeneste', () => {
 
   it('blocks turning off human approval for a high-risk service', async () => {
     await renderAt('#/services/vedtaksutkast/setup/limits');
-    fireEvent.click(await screen.findByRole('button', { name: 'Endre grenser' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre begrensninger' }));
     const side = await open('Menneskelig godkjenning', grid);
     fireEvent.change(within(side).getByLabelText('Verdi'), { target: { value: 'av' } });
     fireEvent.click(within(side).getByRole('button', { name: 'Forhåndsvis endring' }));
@@ -369,7 +369,7 @@ describe('Innstillinger for en tjeneste', () => {
   });
 });
 
-describe('Innstillinger for et datasett', () => {
+describe('Innstillinger for en dokumentsamling', () => {
   it('shows the dataset layer', async () => {
     await renderAt('#/datasets/kudos-rapporter/settings');
     const region = await grid();
@@ -380,11 +380,11 @@ describe('Innstillinger for et datasett', () => {
       within(region)
         .getAllByRole('columnheader')
         .map((h) => h.textContent),
-    ).toContain('Kudos-rapporterDatasett');
+    ).toContain('Kudos-rapporterDokumentsamling');
     const chunk = within(region)
       .getByRole('button', { name: 'Størrelse på tekstbiter' })
       .closest('tr') as HTMLElement;
-    expect(within(chunk).getByText('Satt på datasettet')).toBeTruthy();
+    expect(within(chunk).getByText('Satt på dokumentsamlingen')).toBeTruthy();
     expectAccessible();
   });
 });
@@ -409,7 +409,7 @@ describe('Eksporter og importer', () => {
     fireEvent.click(await screen.findByRole('radio', { name: 'Importer fra fil' }));
     fireEvent.click(screen.getByRole('button', { name: 'Kjør prøvekjøring' }));
     expect(screen.getByText('Velg en fil, eller bruk eksempelfilen.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Bruk eksempelfil fra testmiljøet' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk eksempelfil fra genki-test' }));
     fireEvent.click(screen.getByRole('button', { name: 'Kjør prøvekjøring' }));
     expect(
       screen.getByRole('heading', { name: 'Prøvekjøring: ingenting er endret ennå' }),

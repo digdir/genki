@@ -35,7 +35,7 @@ const catalog = (onFailure: 'degrade' | 'fail' = 'degrade', residency = 'norway'
       auth: { kind: 'api-key', secret: 'secret://env/k' },
     },
   },
-  rerankers: [{ id: 'colbert', endpoint: 'main', residency, onFailure }],
+  rerankers: [{ id: 'omrangering', endpoint: 'main', residency, onFailure }],
 });
 
 const router = (
@@ -107,7 +107,7 @@ describe('rerank router', () => {
     ]);
 
     expect(
-      (await r.open({ kind: 'reranker', id: 'colbert' }, context()).rerank(docs)).ranking.map(
+      (await r.open({ kind: 'reranker', id: 'omrangering' }, context()).rerank(docs)).ranking.map(
         (x) => x.index,
       ),
     ).toEqual([2, 0]);
@@ -116,9 +116,9 @@ describe('rerank router', () => {
   it('degrades to no ranking and warns once per tenant', async () => {
     const { r, warnings } = router(() => Promise.reject(new Error('connection refused')));
 
-    const first = await r.open({ kind: 'reranker', id: 'colbert' }, context()).rerank(docs);
-    await r.open({ kind: 'reranker', id: 'colbert' }, context()).rerank(docs);
-    await r.open({ kind: 'reranker', id: 'colbert' }, context('889640782')).rerank(docs);
+    const first = await r.open({ kind: 'reranker', id: 'omrangering' }, context()).rerank(docs);
+    await r.open({ kind: 'reranker', id: 'omrangering' }, context()).rerank(docs);
+    await r.open({ kind: 'reranker', id: 'omrangering' }, context('889640782')).rerank(docs);
 
     expect(first).toEqual({
       ranking: [],
@@ -138,11 +138,11 @@ describe('rerank router', () => {
     const degrading = router(() => Promise.reject(new Error('aborted'))).r;
 
     await expect(
-      failing.open({ kind: 'reranker', id: 'colbert' }, context()).rerank(docs),
+      failing.open({ kind: 'reranker', id: 'omrangering' }, context()).rerank(docs),
     ).rejects.toMatchObject({ code: 'rate_limited' });
     await expect(
       degrading
-        .open({ kind: 'reranker', id: 'colbert' }, context('991825827', controller.signal))
+        .open({ kind: 'reranker', id: 'omrangering' }, context('991825827', controller.signal))
         .rerank(docs),
     ).rejects.toMatchObject({
       code: 'cancelled',
@@ -159,7 +159,7 @@ describe('rerank router', () => {
       'degrade',
       { maxDocuments: 2 },
     );
-    const port = r.open({ kind: 'reranker', id: 'colbert' }, context());
+    const port = r.open({ kind: 'reranker', id: 'omrangering' }, context());
 
     expect(await port.rerank({ query: 'q', documents: [] })).toEqual({ ranking: [] });
     await expect(port.rerank(docs)).rejects.toThrow(/at most 2/);
@@ -176,7 +176,7 @@ describe('rerank router', () => {
 
     expect(() => r.open({ kind: 'reranker', id: 'none' }, context())).toThrow(/no reranker none/);
     await expect(
-      r.open({ kind: 'reranker', id: 'colbert' }, context()).rerank({
+      r.open({ kind: 'reranker', id: 'omrangering' }, context()).rerank({
         query: 'hei',
         documents: ['a'],
       }),
@@ -198,7 +198,7 @@ describe('rerank router', () => {
     });
 
     await expect(
-      r.open({ kind: 'reranker', id: 'colbert' }, context()).rerank(docs),
+      r.open({ kind: 'reranker', id: 'omrangering' }, context()).rerank(docs),
     ).rejects.toMatchObject({
       code: 'unauthorized',
     });
@@ -208,7 +208,7 @@ describe('rerank router', () => {
   it('a rerank call outside the service residency is refused even when the reranker degrades on failure', async () => {
     const { r } = router(async () => []);
     const port = r.open(
-      { kind: 'reranker', id: 'colbert' },
+      { kind: 'reranker', id: 'omrangering' },
       { ...context(), serviceResidency: 'norway' },
     );
     await expect(port.rerank(docs)).resolves.toMatchObject({ ranking: [] });
@@ -219,7 +219,7 @@ describe('rerank router', () => {
     });
     await expect(
       strict
-        .open({ kind: 'reranker', id: 'colbert' }, { ...context(), serviceResidency: 'norway' })
+        .open({ kind: 'reranker', id: 'omrangering' }, { ...context(), serviceResidency: 'norway' })
         .rerank(docs),
     ).rejects.toMatchObject({ code: 'residency' });
   });
@@ -229,7 +229,7 @@ describe('rerank router', () => {
       catalog: {
         ...catalog(),
         rerankers: [
-          { id: 'colbert', endpoint: 'main', residency: 'norway', tenants: ['111222333'] },
+          { id: 'omrangering', endpoint: 'main', residency: 'norway', tenants: ['111222333'] },
         ],
       },
       adapters: [stub(async () => [])],
@@ -237,7 +237,7 @@ describe('rerank router', () => {
     });
 
     await expect(
-      r.open({ kind: 'reranker', id: 'colbert' }, context()).rerank(docs),
+      r.open({ kind: 'reranker', id: 'omrangering' }, context()).rerank(docs),
     ).rejects.toMatchObject({
       code: 'forbidden',
     });
@@ -253,10 +253,10 @@ describe('rerank router', () => {
       },
     };
 
-    await r.open({ kind: 'reranker', id: 'colbert' }, ctx).rerank(docs);
+    await r.open({ kind: 'reranker', id: 'omrangering' }, ctx).rerank(docs);
 
     expect(metered).toEqual([
-      { usage: { requests: 1 }, model: { kind: 'reranker', id: 'colbert' } },
+      { usage: { requests: 1 }, model: { kind: 'reranker', id: 'omrangering' } },
     ]);
   });
 });
@@ -276,7 +276,7 @@ describe('rerankers in the model catalogue (ADR 0048)', () => {
       },
     },
     models: [
-      { id: 'colbert', endpoint: 'stub', residency, apis: { rerank: 'stub/rerank@1' } },
+      { id: 'omrangering', endpoint: 'stub', residency, apis: { rerank: 'stub/rerank@1' } },
       { id: 'luna', endpoint: 'stub', residency, apis: { chat: 'openai/chat-completions@1' } },
     ],
   });
@@ -289,9 +289,9 @@ describe('rerankers in the model catalogue (ADR 0048)', () => {
       secrets: envSecrets({ K: 'k' }),
     });
 
-    expect(r.rerankers()).toEqual(['colbert']);
-    expect(r.residency('colbert')).toBe('eu');
-    const ranked = await r.open({ kind: 'reranker', id: 'colbert' }, context()).rerank(docs);
+    expect(r.rerankers()).toEqual(['omrangering']);
+    expect(r.residency('omrangering')).toBe('eu');
+    const ranked = await r.open({ kind: 'reranker', id: 'omrangering' }, context()).rerank(docs);
     expect(ranked.ranking.map((x) => x.index)).toEqual([2]);
   });
 

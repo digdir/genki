@@ -13,6 +13,7 @@ import {
   type BlockTexts,
   type RuntimeBlock,
   type RuntimeBlocks,
+  makerOf,
 } from '@genai/composition';
 import {
   serviceDataLocation,
@@ -78,7 +79,6 @@ import type {
 import type { SinkJudge, TraceConnection } from './trace-connections.js';
 import { requireRight, rightRefused, type Right } from './rights.js';
 import { datasetDataLocation } from './residency.js';
-import { makerOf } from './model-identity.js';
 import { modelDisplayNames } from './model-access.js';
 import { pluginBlockOf, pluginEntries } from './external-plugins.js';
 import { actorNameOf, changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
@@ -961,7 +961,7 @@ export const createBuildingBlocksModule =
       const definitionOwners = [...new Set([tenant, deps.platformTenant])];
       for (const owner of wants('skill') || wants('step_flow') ? definitionOwners : []) {
         for (const entry of await deps.definitions.list(owner)) {
-          if (entry.kind === 'Service') continue;
+          if (entry.kind !== 'Skill' && entry.kind !== 'StepFlow') continue;
           const history = await deps.definitions.versions(entry.kind, owner, entry.id);
           const latest = history.at(-1);
           if (!latest) continue;

@@ -6,11 +6,13 @@
 import {
   isDocumentLink,
   isHttpsLink,
+  profileIn,
   type AssistantLayout,
+  type DrawnProfile,
   type DocumentFile,
   type DocumentIdPattern,
   type FieldKind,
-  type ProfileData,
+  type ProfileLanguage,
   type ShellProfileProps,
   type YearBounds,
 } from '@genai/ui-blocks';
@@ -84,10 +86,6 @@ export interface AssistantProfile {
    * more than the service's own, as kunnskapsassistenten's picker offers its family of services.
    */
   family?: ((service: string) => boolean) | undefined;
-  /**
-   * A document's whole file for Dokumentvisning, by its number, and the opened excerpt's own file
-   * (its `url` before `#page=N`) when the excerpt has one; provisional until genki has a route.
-   */
   documentFile?:
     | ((
         documentId: string,
@@ -126,7 +124,7 @@ const own = <T>(record: Readonly<Record<string, T>> | undefined, key: string) =>
 /** Each collection of either, the host's fields over the layout's, one by one. */
 const corporaOf = (
   host: AssistantProfile['corpora'],
-  data: ProfileData['corpora'],
+  data: DrawnProfile['corpora'],
 ): AssistantProfile['corpora'] => {
   if (!host || !data) return host ?? data;
   const keys = [...new Set([...Object.keys(data), ...Object.keys(host)])];
@@ -145,7 +143,7 @@ const corporaOf = (
 };
 
 // A stored layout may not have been checked: only the links the checks take are drawn.
-const httpsLinks = (data: ProfileData): ProfileData => {
+const httpsLinks = (data: DrawnProfile): DrawnProfile => {
   const corpora = data.corpora && {
     corpora: Object.fromEntries(
       Object.entries(data.corpora).map(([key, corpus]) => [
@@ -180,9 +178,10 @@ const httpsLinks = (data: ProfileData): ProfileData => {
 export const profileOf = (
   layout: Pick<AssistantLayout, 'profile'>,
   host?: AssistantProfile,
+  language: ProfileLanguage = 'nb',
 ): AssistantProfile | undefined => {
   if (!layout.profile) return host;
-  const data = httpsLinks(layout.profile);
+  const data = httpsLinks(profileIn(layout.profile, language));
   if (!host) return data;
   const corpora = corporaOf(host.corpora, data.corpora);
   return { ...data, ...set(host), ...(corpora ? { corpora } : {}) };

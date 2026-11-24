@@ -1,0 +1,18 @@
+dataset: digdir/kudos-parts
+id: kudos-parts
+spec:
+  name: Kudos fra deler
+  description: Kudos fra 1. oktober 2026, delt opp side for side fra konverteringens deler uten topp- og bunntekst, med samme størrelser som kudos, så de to kan sammenlignes side for side
+  source:
+    kind: kudos
+    profile: prod
+    since: '2026-10-01'
+  chunking:
+    strategy:
+      kind: parts-unit
+      splitMaxLength: 4000
+    minimumLength: 1
+    maximumLength: 4000
+  maxDocumentFailures: 5000
+  schedule: none
+  enabled: true

@@ -90,6 +90,22 @@ describe('ported headless-rag flows', () => {
     ]);
   });
 
+  it("the retrieve block's retrieval notice carries each hit's pages", async () => {
+    const paged = chunk('c3', { page: 12, pageEnd: 13 });
+    const retrieval = stubRetrieval([chunk('c1'), paged], [paged, chunk('c1')]);
+    const models = fakeModels({ primary: ['Påstanden stemmer, se [1].'] });
+
+    const out = await run(
+      { flows: allFlows(), entry: 'fact-checker@1', models, retrieval },
+      { data: { claim: 'Digdir har fått økt bevilgning i 2025' } },
+    );
+
+    const notice = notices(out.events).find((n) => n.kind === 'retrieval');
+    expect(notice?.hits).toContainEqual(
+      expect.objectContaining({ id: 'c3', page: 12, pageEnd: 13 }),
+    );
+  });
+
   it('records what the search detected in the retrieval notice', async () => {
     const detections = [
       { kind: 'year', field: 'title', values: ['2025'], queries: ['q'], use: 'boost' },

@@ -9,6 +9,7 @@ import type { PlainKey } from '../i18n';
 export type DatasetStatus =
   | 'Klar'
   | 'Delvis lest inn'
+  | 'Avbrutt'
   | 'Feilet'
   | 'Innlesing pågår'
   | 'I kø'
@@ -20,6 +21,7 @@ export type DatasetStatus =
 export const statusKeys: Record<DatasetStatus, PlainKey> = {
   Klar: 'datasets.statusReady',
   'Delvis lest inn': 'datasets.statusPartial',
+  Avbrutt: 'datasets.statusCancelled',
   Feilet: 'datasets.statusIngestionFailed',
   'Innlesing pågår': 'datasets.statusRunning',
   'I kø': 'datasets.statusQueued',
@@ -35,6 +37,7 @@ export const statusColors: Record<
 > = {
   Klar: 'success',
   'Delvis lest inn': 'warning',
+  Avbrutt: 'warning',
   Feilet: 'danger',
   'Innlesing pågår': 'info',
   'I kø': 'info',

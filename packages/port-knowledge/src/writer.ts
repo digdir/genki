@@ -32,6 +32,15 @@ export interface IndexChunk {
   pageTo?: number;
   /** The headings above the chunk, outermost first, when the converter gives headings. */
   headingPath?: string[];
+  /**
+   * A chunk made from conversion parts (ADR 0055, issue 635): the conversion's number, its first
+   * and last part, and its span of the conversion's text in code points. Chunks from pages have none.
+   */
+  conversion?: string;
+  seqFrom?: number;
+  seqTo?: number;
+  textStart?: number;
+  textEnd?: number;
 }
 
 export interface IndexPhrase {

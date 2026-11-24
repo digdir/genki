@@ -1,3 +1,4 @@
+import { isTrustedEntraLogin } from '@genai/composition';
 import type { Principal } from '@genai/contracts';
 import {
   admittedCredentialScope,
@@ -18,6 +19,19 @@ export const testRunnerScopeType = 'urn:genai:problem:test-runner-scope';
 export const testRunnerRefusedType = 'urn:genai:problem:test-runner-refused';
 
 export const smokePrefix = 'smoke-';
+
+export const testRunnerKeysAllowed = (env: Record<string, string | undefined>) =>
+  env.GENAI_TEST_RUNNER_KEYS === 'true';
+
+export const platformOperator =
+  (isOperator: (principal: Principal) => boolean, platformTenant: string) =>
+  (principal: Principal) =>
+    principal.tenant === platformTenant && isOperator(principal);
+
+export const mayGiveTestRunnerKeys = (
+  principal: Principal,
+  isOperator: (principal: Principal) => boolean = () => false,
+) => isTrustedEntraLogin(principal) || isOperator(principal);
 
 const isSmoke = (id: unknown) => typeof id === 'string' && id.startsWith(smokePrefix);
 

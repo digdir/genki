@@ -16,11 +16,14 @@ import {
 import {
   profileLimits,
   profileProblems,
+  textIn,
+  withTextIn,
   type AssistantLayout,
   type DocumentIdPattern,
   type ProfileCorpus,
   type ProfileData,
   type ProfileField,
+  type ProfileLanguage,
   type ProfileProblem,
 } from '@genai/ui-blocks/builder';
 import { Fragment, useId, useState, type ReactNode } from 'react';
@@ -29,12 +32,14 @@ import { asKnowledgeAssistant } from './kaProfile';
 import {
   corpusLink,
   corpusText,
+  corpusTypeField,
   fieldsIn,
   pluralRows,
   problemsByPath,
   withCorpus,
   withField,
   withPlurals,
+  typedText,
   withSuggestions,
   withText,
   type Collection,
@@ -83,6 +88,7 @@ export const TextsPanel = ({
   onChange: (profile: ProfileData | undefined) => void;
 }) => {
   const t = useT();
+  const language: ProfileLanguage = t.locale === 'en' ? 'en' : 'nb';
   const id = useId();
   const profile = layout.profile;
   const [filled, setFilled] = useState(false);
@@ -138,9 +144,9 @@ export const TextsPanel = ({
         data-size="sm"
         label={t('builderTexts.name')}
         description={t('builderTexts.nameHelp')}
-        value={profile?.assistantName ?? ''}
+        value={profile?.assistantName === undefined ? '' : textIn(profile.assistantName, language)}
         error={errorAt('profile.assistantName')}
-        onChange={(e) => change(withText(profile, 'assistantName', e.target.value))}
+        onChange={(e) => change(withText(profile, 'assistantName', e.target.value, language))}
       />
       <Fieldset data-size="sm">
         <Fieldset.Legend>{t('builderTexts.suggestions')}</Fieldset.Legend>
@@ -152,13 +158,15 @@ export const TextsPanel = ({
             <Textfield
               data-size="sm"
               label={t('builderTexts.suggestion', { n: at + 1 })}
-              value={text}
+              value={textIn(text, language)}
               error={errorAt(`profile.suggestions[${at}]`)}
               onChange={(e) =>
                 change(
                   withSuggestions(
                     profile,
-                    suggestions.map((s, i) => (i === at ? e.target.value : s)),
+                    suggestions.map((s, i) =>
+                      i === at ? withTextIn(s, e.target.value, language) : s,
+                    ),
                   ),
                 )
               }
@@ -199,9 +207,9 @@ export const TextsPanel = ({
         rows={2}
         label={t('builderTexts.settingsNote')}
         description={t('builderTexts.settingsNoteHelp')}
-        value={profile?.settingsNote ?? ''}
+        value={profile?.settingsNote === undefined ? '' : textIn(profile.settingsNote, language)}
         error={errorAt('profile.settingsNote')}
-        onChange={(e) => change(withText(profile, 'settingsNote', e.target.value))}
+        onChange={(e) => change(withText(profile, 'settingsNote', e.target.value, language))}
       />
 
       <Divider />
@@ -223,6 +231,7 @@ export const TextsPanel = ({
               : undefined
           }
           errorAt={errorAt}
+          language={language}
           onChange={(edit) => change(withCorpus(profile, collection.key, edit))}
           idPrefix={`${id}-${collection.key}`}
         />
@@ -251,12 +260,14 @@ const CollectionTexts = ({
   collection,
   corpus,
   errorAt,
+  language,
   onChange,
   idPrefix,
 }: {
   collection: Collection;
   corpus: ProfileCorpus | undefined;
   errorAt: (path: string) => ReactNode;
+  language: ProfileLanguage;
   onChange: (edit: (corpus: ProfileCorpus) => ProfileCorpus | undefined) => void;
   idPrefix: string;
 }) => {
@@ -275,16 +286,16 @@ const CollectionTexts = ({
           data-size="sm"
           label={t('builderTexts.label')}
           description={t('builderTexts.labelHelp')}
-          value={corpus?.label ?? ''}
+          value={corpus?.label === undefined ? '' : textIn(corpus.label, language)}
           error={errorAt(`${at}.label`)}
-          onChange={(e) => onChange((c) => corpusText(c, 'label', e.target.value))}
+          onChange={(e) => onChange((c) => corpusText(c, 'label', e.target.value, language))}
         />
         <Textfield
           data-size="sm"
           label={t('builderTexts.description')}
-          value={corpus?.description ?? ''}
+          value={corpus?.description === undefined ? '' : textIn(corpus.description, language)}
           error={errorAt(`${at}.description`)}
-          onChange={(e) => onChange((c) => corpusText(c, 'description', e.target.value))}
+          onChange={(e) => onChange((c) => corpusText(c, 'description', e.target.value, language))}
         />
 
         <Heading level={3} data-size="2xs">
@@ -309,6 +320,7 @@ const CollectionTexts = ({
               key={declared.field}
               id={declared.field}
               field={field}
+              language={language}
               errorAt={(suffix) => (field ? errorAt(`${fieldAt}.${suffix}`) : undefined)}
               onChange={edit}
             />
@@ -323,7 +335,7 @@ const CollectionTexts = ({
           <Select
             id={typeFieldId}
             value={corpus?.typeField ?? ''}
-            onChange={(e) => onChange((c) => corpusText(c, 'typeField', e.target.value))}
+            onChange={(e) => onChange((c) => corpusTypeField(c, e.target.value))}
           >
             <Select.Option value="">{t('builderTexts.typeFieldNone')}</Select.Option>
             {[
@@ -366,13 +378,15 @@ const CollectionTexts = ({
               <Textfield
                 data-size="sm"
                 label={t('builderTexts.pluralWord', { n: n + 1 })}
-                value={plural}
+                value={textIn(plural, language)}
                 error={errorAt(`${at}.typePlurals.${type}`)}
                 onChange={(e) =>
                   onChange((c) =>
                     withPlurals(
                       c,
-                      plurals.map((row, i) => (i === n ? [row[0], e.target.value] : row)),
+                      plurals.map((row, i) =>
+                        i === n ? [row[0], withTextIn(row[1], e.target.value, language)] : row,
+                      ),
                     ),
                   )
                 }
@@ -431,12 +445,14 @@ const CollectionTexts = ({
 const FieldTexts = ({
   id,
   field,
+  language,
   errorAt,
   onChange,
 }: {
   id: string;
   /** The field as the profile has it; none when it is left out of the filter. */
   field: ProfileField | undefined;
+  language: ProfileLanguage;
   errorAt: (suffix: string) => ReactNode;
   onChange: (change: (field: ProfileField) => ProfileField | undefined) => void;
 }) => {
@@ -468,21 +484,23 @@ const FieldTexts = ({
             label={t('builderTexts.fieldLabel')}
             description={t('builderTexts.fieldLabelHelp', { id })}
             placeholder={id}
-            value={field.label === id ? '' : field.label}
+            value={field.label === id ? '' : textIn(field.label, language)}
             error={errorAt('label')}
-            onChange={(e) => onChange((f) => ({ ...f, label: e.target.value || id }))}
+            onChange={(e) =>
+              onChange((f) => ({
+                ...f,
+                label: withTextIn(f.label, e.target.value || id, language),
+              }))
+            }
           />
           <Textfield
             data-size="sm"
             label={t('builderTexts.fieldHeading')}
             description={t('builderTexts.fieldHeadingHelp')}
-            value={field.heading ?? ''}
+            value={field.heading === undefined ? '' : textIn(field.heading, language)}
             error={errorAt('heading')}
             onChange={(e) =>
-              onChange((f) => ({
-                ...f,
-                heading: e.target.value.trim() ? e.target.value : undefined,
-              }))
+              onChange((f) => ({ ...f, heading: typedText(f.heading, e.target.value, language) }))
             }
           />
           <Switch

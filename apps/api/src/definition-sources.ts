@@ -70,6 +70,7 @@ export const localDefinitionSources = (
 ): DefinitionSource[] => {
   const promptsDir = join(configDir, 'prompts');
   return [
+    { dir: join(configDir, 'blocks') },
     { dir: join(configDir, 'flows'), promptsDir },
     { dir: join(configDir, 'services'), promptsDir },
     ...(isDevMode(env) ? [{ dir: join(configDir, 'dev-services'), promptsDir }] : []),

@@ -64,9 +64,9 @@ describe('features the design lacks keep their place on the service page', () =>
       'Verktøy',
       'Varianter',
       'Kanaler',
-      'Vakter',
+      'Sikkerhetsregler',
       'Risiko og KI-forordningen',
-      'Grenser og logging',
+      'Begrensninger og loggføring',
     ]);
   });
 
@@ -76,9 +76,9 @@ describe('features the design lacks keep their place on the service page', () =>
     expect(screen.getByRole('heading', { level: 3, name: 'Varianter' })).toBeTruthy();
     expect(screen.getByLabelText('Offentlig navn')).toBeTruthy();
 
-    await tabTo('channels', 'Utviklerverktøy');
+    await tabTo('channels', 'Teknisk');
     const link = await screen.findByRole('link', {
-      name: 'Start og kanaler og varianter endrer du i Oppsett, under Kanaler',
+      name: 'Kanaler og varianter endrer du i Oppsett, under Kanaler',
     });
     expect(link.getAttribute('href')).toBe('#/services/rapportassistenten/setup/channels');
     expect(screen.queryByLabelText('Offentlig navn')).toBeNull();
@@ -108,12 +108,12 @@ describe('features the design lacks keep their place on the service page', () =>
     ).toBe(true);
   });
 
-  it('shows no Prøv tjenesten button on Oppsett, keeps it on the other tabs and links the Prøv pane to Prøveområdet', async () => {
+  it('opens the Prøv pane from Prøv in the header on Oppsett, links Prøv to Prøveområdet on other tabs', async () => {
     const header = await openService('#/services/rapportassistenten/setup');
     await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
-    expect(within(header).queryByRole('link', { name: 'Prøv tjenesten' })).toBeNull();
+    expect(within(header).queryByRole('link', { name: 'Prøv' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Prøv' }));
+    fireEvent.click(within(header).getByRole('button', { name: 'Prøv' }));
     const pane = screen.getByRole('region', { name: 'Byggeassistent og prøving' });
     expect(
       within(pane)
@@ -124,6 +124,8 @@ describe('features the design lacks keep their place on the service page', () =>
     expect(within(pane).queryByRole('combobox', { name: 'Svarspråk' })).toBeNull();
 
     await tabTo('quality', 'Kvalitet');
-    expect(within(header).getByRole('link', { name: 'Prøv tjenesten' })).toBeTruthy();
+    expect(within(header).getByRole('link', { name: 'Prøv' }).getAttribute('href')).toBe(
+      '#/playground?service=rapportassistenten',
+    );
   });
 });

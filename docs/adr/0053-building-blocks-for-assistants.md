@@ -1,8 +1,8 @@
 # 0053 Building blocks for assistants
 
-Status: proposed, 2026-11-02 (partly built: the package and Approach, used in the workspace; the package's rules and their lint, 2026-11-10; the components from #403 to #413, 2026-11-11)
+Status: proposed, 2026-11-02 (partly built: the package and Approach, used in the workspace; the package's rules and their lint, 2026-11-10; the components from #403 to #413, 2026-11-11; a playground, the Frontend tab of the portal's Prøveområdet, 2026-11-23)
 
-Not built yet: projects, notes, the builder's preview drawing the real components, and a playground.
+Not built yet: projects, notes, and the builder's preview drawing the real components.
 
 Decided in their own records: how an answer's footnotes cite excerpts (ADR 0052); and the layout format and the package that fetches, `@genai/ui-assembly` (ADR 0054).
 
@@ -11,7 +11,7 @@ Decided in their own records: how an answer's footnotes cite excerpts (ADR 0052)
 The components an assistant is made from (chat, threads, approach, sources, filter and the rest) are React components in one shared package, `@genai/ui-blocks`, in this repository. They are what a person sees and uses, not the reusable definition parts that ADR 0050 calls building blocks.
 
 - **One component, every place.** The workspace draws a published service with them, and the builder's preview in the portal draws the draft with the same components. A component is not drawn a second way anywhere else.
-- **Data in, events out.** A component does not fetch and does not know about the API. It gets plain props (the steps, the counts, whether the assistant is working) and reports what the person did through callbacks. Each app turns what the API sends into those props.
+- **Data in, events out.** A component does not fetch and does not know about the API. It gets plain props (the steps, the counts, whether the assistant is working) and reports what the person did through callbacks. Each app turns what the API sends into those props. A declarative block (ADR 0067) keeps this by construction: its template is data, it reads only the fields the host gives it, and its events go to the host's handlers.
 - **Text from the platform is shown as sent.** Where the platform sends text, such as a step label, the component shows it. Where it sends a kind, such as a tool name, the app translates it, and a kind it does not know is left out rather than shown raw.
 - **Designsystemet first.** Components are built from `@digdir/designsystemet-react` and its tokens, with React and Designsystemet as peer dependencies. Own markup only where Designsystemet has nothing, and then with semantics and keyboard support from the start.
 - **Not shown without data.** A component, or a part of one, is shown only when there is something to show. An empty card or a link to nothing is a bug.
@@ -36,7 +36,7 @@ The styling rules are Designsystemet's own: its components sit in cascade layers
 
 ## Consequences
 
-- The workspace depends on `@genai/ui-blocks`, and the portal will once the builder's preview draws the components. Of this repository's packages it depends on `@genai/i18n` only, so it stays usable outside this repository; its icons come from `@navikt/aksel-icons`.
+- The workspace depends on `@genai/ui-blocks`, and the portal will once the builder's preview draws the components. Of this repository's packages it depends on `@genai/i18n`, and on `@genai/contracts` for the list of built-in block ids (ADR 0067), both without dependencies of their own, so it stays usable outside this repository; its icons come from `@navikt/aksel-icons`.
 - The lint reads a new block's sheet as soon as it is in a folder, and runs in `npm test`. A new block brings its own test that reads its props against its page, as `approach/docs.test.ts` does.
 - The variables and props are public once the package is published: renaming one then breaks a host. Until then they may still change.
 - What a component needs from the platform shows up as gaps. Approach is the first: the stream sends tool calls and agent iterations, but not what the assistant understood, how many documents it read or what it did not find. Those need the step frames in `docs/frontend-contract.md` to carry more, which is a separate change.

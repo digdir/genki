@@ -32,27 +32,6 @@ input: Scenarios and two base URLs
 output: Parity and quality reports
 replaces: []
 edges:
-  - to: kernel
-    label: 'Kernel SPI: tasks, events, principals, capabilities'
-    kind: call
-    target: call
-    witness:
-      file: apps/parity/src/cli.ts
-      imports: '@genai/kernel'
-  - to: port-knowledge
-    label: Search and fetch through the knowledge port
-    kind: call
-    target: call
-    witness:
-      file: apps/parity/src/cli.ts
-      imports: '@genai/port-knowledge'
-  - to: providers-typesense
-    label: Typesense adapter for live runs
-    kind: call
-    target: call
-    witness:
-      file: apps/parity/src/cli.ts
-      imports: '@genai/providers-typesense'
   - to: headless-rag
     label: Records the reference behaviour
     kind: http

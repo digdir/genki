@@ -1,0 +1,31 @@
+apiVersion: genai/v1
+kind: Block
+metadata:
+  tenant: '991825827'
+  id: sources
+  name: Kilder
+spec:
+  tier: built-in
+  builtIn: sources
+  title:
+    nb: Kilder
+    en: Sources
+  summary:
+    nb: Utdragene svaret bygger på
+    en: The excerpts the answer builds on
+  zones:
+    - secondary
+  sharing: everyone
+  props:
+    type: object
+    properties:
+      disclaimer:
+        type: boolean
+        default: true
+        x-label: builder.sourcesDisclaimer
+        x-widget: switch
+      search:
+        type: boolean
+        default: true
+        x-label: builder.sourcesSearch
+        x-widget: switch

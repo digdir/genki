@@ -143,11 +143,11 @@ const reranker = (rank: (r: RerankRequest) => { index: number; score: number; ra
           auth: { kind: 'api-key', secret: 'secret://env/k' },
         },
       },
-      rerankers: [{ id: 'colbert', endpoint: 'r', residency: 'norway' }],
+      rerankers: [{ id: 'omrangering', endpoint: 'r', residency: 'norway' }],
     },
     adapters: [adapter],
     secrets: envSecrets({ K: 'k' }),
-  }).open({ kind: 'reranker', id: 'colbert' }, ctx);
+  }).open({ kind: 'reranker', id: 'omrangering' }, ctx);
   return { port, requests };
 };
 
@@ -187,6 +187,23 @@ describe('agent retrieval factory', () => {
     expect(outcome.chunks[0]?.score).toBeGreaterThan(0);
     expect(outcome.chunks[0]).not.toHaveProperty('content');
     expect(outcome.attribution).toEqual({ phrase: 0, metadata: 0, content: 2 });
+  });
+
+  it('gives the agent each hit with its search types, hit count and a snippet of its text', async () => {
+    const s = stub();
+    const agent = createAgentRetrieval({
+      knowledge: s.knowledge,
+      config: { autoFilter: { enabled: false } },
+    });
+
+    const outcome = await agent.search(['årsverk'], {}, signal);
+
+    expect(outcome.chunks[0]).toMatchObject({
+      chunkId: 'c1',
+      searchTypes: ['content'],
+      hitCount: 1,
+      snippet: 'Digdir hadde 326 årsverk i 2022.',
+    });
   });
 
   it("tells the agent which strategy's search failed, in the attribution", async () => {

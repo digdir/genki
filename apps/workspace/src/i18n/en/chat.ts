@@ -28,7 +28,7 @@ export const chat = {
   askFollowUp: 'Ask a follow-up question',
   send: 'Send',
   batchNotice:
-    'This service runs as one job over many documents, not as a conversation. Start the job from the service in the portal.',
+    'This service runs as a batch run over many documents, not as a conversation. Start the batch run from the service in the portal.',
   batchLink: 'Open the service in the portal',
   newConversation: 'New conversation',
   pastConversations: 'Earlier conversations',

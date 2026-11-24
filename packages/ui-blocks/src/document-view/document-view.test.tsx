@@ -695,6 +695,27 @@ describe('the whole document from the host', () => {
     ).toBe('/api/files/2021#page=12');
   });
 
+  it('opens the PDF at the page when the excerpt names its file in another spelling than the host', () => {
+    const named = 'https://KUDOS.dfo.no/dokument/2021/filer/Årsrapport 2021.pdf';
+    const sources = [
+      {
+        ...report,
+        excerpts: report.excerpts.map((e) =>
+          e.chunkId === 'kudos::2021-2' ? { ...e, url: `${named}#page=12` } : e,
+        ),
+      },
+    ];
+    const file = {
+      status: 'ready' as const,
+      file: {
+        ...pdf,
+        source: 'https://kudos.dfo.no/dokument/2021/filer/%C3%85rsrapport%202021.pdf',
+      },
+    };
+    draw({ sources, file, target: { documentId: 'kudos::2021', chunkId: 'kudos::2021-2' } });
+    expect(frameOf()?.getAttribute('src')).toBe('/api/files/2021#page=12');
+  });
+
   it('shows the excerpts as before, and says so, when the host has no file for the document', () => {
     draw({ file: { status: 'none' } });
     expect(screen.getByText('Hele dokumentet kan ikke vises her.')).toBeTruthy();

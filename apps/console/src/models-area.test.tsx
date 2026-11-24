@@ -422,6 +422,28 @@ describe('Modeller: the model list', () => {
     expect(within(await modelRow('gpt-4o-2M-tps')).getByText('Ikke bekreftet')).toBeTruthy();
   });
 
+  it('a discovered model genki has no API for shows its kind and that it needs a descriptor', async () => {
+    const clef: OperatorModel = {
+      id: 'ai-gateway/sigma2-clef-flash',
+      kind: 'evaluation',
+      kindFrom: 'listing',
+      listedEndpoints: ['/v1/decisions', '/v1/systemone'],
+      endpoint: 'ai-gateway',
+      deployment: 'sigma2:clef-flash',
+      residency: 'norway',
+      capabilities: [],
+      apis: {},
+      enabled: true,
+      origin: 'discovered',
+      classified: false,
+    };
+    await signedIn('#/models?tab=models', mockFetch(undefined, [...exampleModels, clef]));
+
+    const row = await modelRow('sigma2:clef-flash');
+    expect(within(row).getByText('evaluation: ikke koblet til et API')).toBeTruthy();
+    expect(within(row).getByText('Trenger en API-beskrivelse før den kan brukes')).toBeTruthy();
+  });
+
   it('the model list can be searched and filtered by connection, kind and confirmation', async () => {
     await signedIn('#/models?tab=models', mockFetch(undefined, [...exampleModels, localModel]));
     const table = await screen.findByRole('region', { name: 'Liste over modeller' });

@@ -9,6 +9,7 @@ import {
 } from '@genai/port-knowledge';
 import { stopPostgres } from '@genai/providers-postgres/testing';
 import {
+  addChunkColumns,
   attachGeneration,
   migrateKnowledgeServer,
   syncFilterIndexes,
@@ -55,7 +56,7 @@ const doc = (id: string, dimensions: number, fields: Record<string, unknown>): I
   phrases: [],
 });
 
-const writerFor = (engine = pgvectorEngine({ pool: admin, knowledge: worker.pools })) =>
+const writerFor = (engine = pgvectorEngine({ knowledge: worker.pools })) =>
   engine.writer.connect(endpoint, { signal }) as IndexWriter<PgvectorDatasetOptions>;
 
 const fill = async (d: Dataset, generation: string, docs: IndexDocument[]) => {
@@ -181,7 +182,7 @@ describe('generations as partitions on the knowledge server', () => {
     await fill(other, 'g-20261030-0102', [doc('b', 8, { type: ['rapport'], year: 2024 })]);
     const otherIndexes = await indexesOf(partitionOf('kn_docs', 'g-20261030-0102'));
 
-    const engine = pgvectorEngine({ pool: admin, knowledge: worker.pools });
+    const engine = pgvectorEngine({ knowledge: worker.pools });
     await engine.followCatalog([
       {
         ...kudos,
@@ -205,8 +206,8 @@ describe('generations as partitions on the knowledge server', () => {
     const d = dataset('digdir/follow', 8, { filters: { type: 'multiselect' }, valueTypes: {} });
     await fill(d, 'g-20261030-0201', [doc('a', 8, { type: ['rapport'], year: 2023 })]);
     const table = partitionOf('kn_docs', 'g-20261030-0201');
-    const worker = pgvectorEngine({ pool: admin, knowledge: { owner, writer: owner } });
-    const api = pgvectorEngine({ pool: admin, knowledge: { reader: owner } });
+    const worker = pgvectorEngine({ knowledge: { owner, writer: owner } });
+    const api = pgvectorEngine({ knowledge: { reader: owner } });
     const changed: Dataset = {
       ...d,
       filters: { type: 'multiselect', year: 'range' },
@@ -225,7 +226,6 @@ describe('generations as partitions on the knowledge server', () => {
     const table = partitionOf('kn_docs', 'g-20261102-0201');
     let bound = false;
     const engine = pgvectorEngine({
-      pool: admin,
       knowledge: { owner, writer: owner },
       knowledgeGuard: () => {
         if (!bound) throw new Error('the knowledge server is bound to another platform server');
@@ -312,7 +312,6 @@ describe('generations as partitions on the knowledge server', () => {
   it('the worker logs how long the knowledge server migration took', async () => {
     const took: number[] = [];
     const engine = pgvectorEngine({
-      pool: admin,
       knowledge: worker.pools,
       onServerMigrated: (ms) => took.push(ms),
     });
@@ -356,6 +355,193 @@ describe('generations as partitions on the knowledge server', () => {
       await holder.query('rollback');
       holder.release();
     }
+  });
+
+  describe('the chunk columns of parts (issue 635)', () => {
+    const partsColumns = ['conversion', 'seq_from', 'seq_to', 'text_start', 'text_end'];
+    const columnsOf = async (table: string) =>
+      (
+        await admin.query<{ name: string }>(
+          `select attname as name from pg_attribute
+            where attrelid = to_regclass($1) and attnum > 0 and not attisdropped
+              and attname = any($2) order by attnum`,
+          [table, partsColumns],
+        )
+      ).rows.map((r) => r.name);
+    const withoutColumns = () =>
+      admin.query(
+        `alter table kn_chunks ${partsColumns.map((c) => `drop column if exists ${c}`).join(', ')}`,
+      );
+    const partsDoc = (id: string): IndexDocument => ({
+      ...doc(id, 8, {}),
+      chunks: doc(id, 8, {}).chunks.map((chunk, i) => ({
+        ...chunk,
+        pageFrom: i + 1,
+        pageTo: i + 1,
+        conversion: '42',
+        seqFrom: i,
+        seqTo: i,
+        textStart: i * 40,
+        textEnd: i * 40 + 30,
+      })),
+    });
+
+    it("a page chunk is written with today's columns", async () => {
+      await withoutColumns();
+      const d = dataset('digdir/sider-uten-kolonner', 8);
+
+      await fill(d, 'g-20261123-0101', [doc('a', 8, {})]);
+
+      const { rows } = await admin.query(
+        `select count(*)::int as n from ${partitionOf('kn_chunks', 'g-20261123-0101')}`,
+      );
+      expect(rows).toEqual([{ n: 2 }]);
+    });
+
+    it('a generation table prepared before the migration gets the new columns and attaches', async () => {
+      await withoutColumns();
+      const d = dataset('digdir/deler-før', 8);
+      const writer = writerFor();
+      await writer.prepare(d, 'g-20261123-0201');
+      const table = partitionOf('kn_chunks', 'g-20261123-0201');
+      expect(await columnsOf(table)).toEqual([]);
+
+      expect(await addChunkColumns(owner)).toBe(true);
+      await writer.store(d, 'g-20261123-0201', partsDoc('a'));
+      await writer.promote(d, 'g-20261123-0201');
+
+      expect(await columnsOf('kn_chunks')).toEqual(partsColumns);
+      expect(await columnsOf(table)).toEqual(partsColumns);
+      const { rows } = await admin.query(
+        `select conversion::text, seq_from, seq_to, text_start, text_end from kn_chunks
+          where generation = 'g-20261123-0201' order by position`,
+      );
+      expect(rows).toEqual([
+        { conversion: '42', seq_from: 0, seq_to: 0, text_start: 0, text_end: 30 },
+        { conversion: '42', seq_from: 1, seq_to: 1, text_start: 40, text_end: 70 },
+      ]);
+    });
+
+    it('a standalone generation that lacks columns its parent has gets them when it attaches', async () => {
+      await withoutColumns();
+      const d = dataset('digdir/deler-feste', 8);
+      const writer = writerFor();
+      await writer.prepare(d, 'g-20261123-0301');
+      await admin.query(
+        `alter table kn_chunks ${partsColumns.map((c) => `add column ${c} integer`).join(', ')}`,
+      );
+
+      await writer.promote(d, 'g-20261123-0301');
+
+      expect(await columnsOf(partitionOf('kn_chunks', 'g-20261123-0301'))).toEqual(partsColumns);
+      await withoutColumns();
+      expect(await addChunkColumns(owner)).toBe(true);
+    });
+
+    it('searches do not wait while the chunk columns step waits on a generation being written', async () => {
+      await withoutColumns();
+      const d = dataset('digdir/deler-skrives', 8);
+      const writer = writerFor();
+      await writer.prepare(d, 'g-20261123-0401');
+      const busy = await admin.connect();
+      try {
+        await busy.query('begin');
+        await busy.query(
+          `lock table ${partitionOf('kn_chunks', 'g-20261123-0401')} in row exclusive mode`,
+        );
+        const step = addChunkColumns(owner, { lockTimeoutMs: 3000 });
+        // Until the step waits for the lock on the table being written.
+        for (let i = 0; i < 100; i++) {
+          const { rows } = await admin.query(
+            `select 1 from pg_locks where relation = to_regclass($1) and not granted`,
+            [partitionOf('kn_chunks', 'g-20261123-0401')],
+          );
+          if (rows.length > 0) break;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+
+        const search = await admin.connect();
+        try {
+          await search.query(`set lock_timeout = '100ms'`);
+          await expect(search.query(`select count(*) from kn_chunks`)).resolves.toBeDefined();
+        } finally {
+          await search.query('reset lock_timeout');
+          search.release();
+        }
+        expect(await step).toBe(false);
+      } finally {
+        await busy.query('rollback');
+        busy.release();
+      }
+      expect(await addChunkColumns(owner)).toBe(true);
+    });
+
+    it('a generation table that lacks the columns its parent has gets them from the next step', async () => {
+      expect(await addChunkColumns(owner)).toBe(true);
+      const d = dataset('digdir/deler-etter', 8);
+      const writer = writerFor();
+      await writer.prepare(d, 'g-20261123-0501');
+      const table = partitionOf('kn_chunks', 'g-20261123-0501');
+      // As when it was prepared while the step ran.
+      await admin.query(
+        `alter table ${table} ${partsColumns.map((c) => `drop column ${c}`).join(', ')}`,
+      );
+
+      expect(await addChunkColumns(owner)).toBe(true);
+
+      expect(await columnsOf(table)).toEqual(partsColumns);
+    });
+
+    it('only one chunk columns step waits on kn_chunks at a time', async () => {
+      await withoutColumns();
+      const other = await admin.connect();
+      try {
+        // Another worker's step, already waiting on kn_chunks.
+        await other.query(`select pg_advisory_lock(hashtext('genai-chunk-columns'))`);
+
+        expect(await addChunkColumns(owner, { lockTimeoutMs: 3000 })).toBe(false);
+        expect(await columnsOf('kn_chunks')).toEqual([]);
+      } finally {
+        await other.query(`select pg_advisory_unlock(hashtext('genai-chunk-columns'))`);
+        other.release();
+      }
+      expect(await addChunkColumns(owner)).toBe(true);
+      expect(await columnsOf('kn_chunks')).toEqual(partsColumns);
+    });
+
+    it('a table that has the chunk columns needs no turn behind another step', async () => {
+      expect(await addChunkColumns(owner)).toBe(true);
+      const other = await admin.connect();
+      try {
+        await other.query(`select pg_advisory_lock(hashtext('genai-chunk-columns'))`);
+
+        expect(await addChunkColumns(owner)).toBe(true);
+      } finally {
+        await other.query(`select pg_advisory_unlock(hashtext('genai-chunk-columns'))`);
+        other.release();
+      }
+    });
+
+    it('the chunk columns step answers false after its lock timeout and leaves the migration alone', async () => {
+      await withoutColumns();
+      const holder = await admin.connect();
+      try {
+        await holder.query('begin');
+        await holder.query(`lock table kn_chunks in access share mode`);
+
+        const started = Date.now();
+        expect(await addChunkColumns(owner, { lockTimeoutMs: 200 })).toBe(false);
+        expect(Date.now() - started).toBeLessThan(3000);
+        await expect(
+          migrateKnowledgeServer(owner, { lockTimeoutMs: 300 }),
+        ).resolves.toBeUndefined();
+      } finally {
+        await holder.query('rollback');
+        holder.release();
+      }
+      expect(await addChunkColumns(owner)).toBe(true);
+      expect(await columnsOf('kn_chunks')).toEqual(partsColumns);
+    });
   });
 
   it('attaching a generation does not scan it', async () => {
@@ -568,7 +754,7 @@ describe('generations as partitions on the knowledge server', () => {
   });
 
   it('knowledge writes are refused where there is no owner pool, as in the API', () => {
-    const api = pgvectorEngine({ pool: admin, knowledge: { reader: owner } });
+    const api = pgvectorEngine({ knowledge: { reader: owner } });
     expect(() => api.writer.connect(endpoint, { signal })).toThrow(
       new KnowledgeError('unavailable', 'knowledge data is written by the worker'),
     );

@@ -138,7 +138,12 @@ describe('the Logg page of a service', () => {
       within(from)
         .getAllByRole('option')
         .map((o) => o.textContent),
-    ).toEqual(['Alle brukerflater og nøkler', 'Meg', 'Ingrid Berg', 'Nøkkel: Saksbehandling']);
+    ).toEqual([
+      'Alle egne løsninger og API-nøkler',
+      'Meg',
+      'Ingrid Berg',
+      'Nøkkel: Saksbehandling',
+    ]);
     fireEvent.change(from, { target: { value: 'api-key:skey-sak' } });
     await waitFor(() => expect(asked.at(-1)?.get('actor')).toBe('api-key:skey-sak'));
     expect(await screen.findByText(/^1 til 25 av 30 /)).toBeTruthy();

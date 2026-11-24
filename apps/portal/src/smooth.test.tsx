@@ -225,7 +225,7 @@ describe('a smooth portal', () => {
         /\/service-drafts$/,
       ],
     ],
-    ['Datasett', '#/developer', '#/datasets', [datasetList, /\/catalog\?kind=dataset$/]],
+    ['Dokumentsamlinger', '#/developer', '#/datasets', [datasetList, /\/catalog\?kind=dataset$/]],
     ['Innstillinger', '#/developer', '#/settings', [/\/settings$/, /\/settings\/effective$/]],
     ['Logg', '#/developer', '#/log', [logRuns, logTestRuns, /\/services$/]],
   ];

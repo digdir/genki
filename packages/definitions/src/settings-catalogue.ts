@@ -264,7 +264,7 @@ export const catalogueSettings: PlatformSetting[] = [
     nullable(z.string().min(1)),
     null,
     'synthesis',
-    'Replacement system prompt for the answering model; empty uses the built-in prompt.',
+    'System prompt for the answering model; it replaces the built-in prompt, or for agent-loop is added after its built-in sections. Empty uses only the built-in prompt.',
     [agentLoop('instructions'), rag('instructions')],
   ),
   setting(

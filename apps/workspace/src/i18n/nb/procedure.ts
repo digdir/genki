@@ -5,6 +5,7 @@ export const procedure = defineNamespace({
   plan_queries: 'Forsto spørsmålet',
   inspect_filters: 'Så på hvilke kilder tråden leser fra',
   source_facts: 'Så på hva kilden inneholder',
+  service_facts: 'Så på fakta om tjenesten',
   search: 'Lette etter steder som handler om spørsmålet',
   read_chunks: 'Leste de relevante delene nøye',
   rerank_results: 'Valgte ut det som svarer på spørsmålet',

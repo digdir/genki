@@ -1,3 +1,4 @@
+import type { DefinitionKind } from './definition-kinds';
 export interface OperatorSession {
   name: string;
   roles: string[];
@@ -156,6 +157,9 @@ export interface ModelUsage {
 
 export interface OperatorModel {
   id: string;
+  kind?: string;
+  kindFrom?: 'listing' | 'operator' | 'name';
+  listedEndpoints?: string[];
   endpoint: string;
   deployment: string;
   family?: string;
@@ -761,7 +765,7 @@ export interface SettingsGrid {
 }
 
 export interface TenantDefinition {
-  kind: 'Service' | 'StepFlow';
+  kind: DefinitionKind;
   id: string;
   name: string;
   latestVersion: number;
@@ -786,7 +790,7 @@ export interface DefinitionVersion extends VersionSummary {
 }
 
 export interface TenantDefinitionHistory {
-  kind: 'Service' | 'StepFlow';
+  kind: DefinitionKind;
   tenant: string;
   id: string;
   latest: DefinitionVersion;

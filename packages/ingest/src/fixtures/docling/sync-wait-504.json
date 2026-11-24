@@ -1,6 +1,0 @@
-{
-  "status": 504,
-  "body": {
-    "detail": "Conversion is taking too long. The maximum wait time is configure as DOCLING_SERVE_MAX_SYNC_WAIT=10."
-  }
-}

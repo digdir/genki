@@ -24,14 +24,22 @@ import {
   exhaustionNudge,
   readEvaluatorSystemPrompt,
 } from '@genai/strategy-agent-loop';
+import { createPool } from '@genai/providers-postgres';
 import { resolveCatalog } from './catalogs.js';
 import { Hono } from 'hono';
 import { createAdmin } from './admin.js';
 import { createApp } from './app.js';
 import { appendVersion, InMemoryConfigEntryStore, platformScope } from '@genai/composition';
 import { callerFrom, createPlatform, serviceRequirement } from './composition.js';
+import {
+  localDefinitionSources,
+  readGitDefinitions,
+  seedDefinitions,
+} from './definition-sources.js';
+import { withoutUnknownVariantModels } from './seed-variants.js';
 import { kernelTaskReader, toTimeline } from './timeline.js';
 import { policyKind } from './building-blocks.js';
+import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -40,6 +48,7 @@ afterEach(async () => {
 
 const config = join(import.meta.dirname, '..', 'config', 'local');
 const yaml = (file: string) => parseYaml(readFileSync(join(config, file), 'utf8')) as unknown;
+const kudosOnTypesense = () => seedOnTypesense(yaml('knowledge.yaml'));
 
 type Schema = {
   type?: string;
@@ -265,22 +274,68 @@ const modelReply = (body: Record<string, unknown>) => {
       return toolTurns === 0
         ? tool('state-organisation', { action: 'under', unit: '932384469' })
         : text('Dette er virksomhetene.');
+    if (offered.includes('service_facts'))
+      return toolTurns === 0 ? tool('service_facts', {}) : text('Jeg er versjon to.');
     if (offered.includes('source_facts'))
       return toolTurns === 0 ? tool('source_facts', { newest: 3 }) : text('Kudos har dette.');
     if (toolTurns === 0) return tool('search', { queries: ['tildelingsbrev Digdir 2025'] });
+    if (toolTurns === 1 && typeof asked === 'string' && asked.includes('sorter kildene'))
+      return {
+        status: 200,
+        json: {
+          ...completion(''),
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: '',
+                tool_calls: [
+                  ['read_chunks', { chunk_ids: ['c1', 'c2'] }],
+                  ['rerank_results', { query: 'tildelingsbrev Digdir 2025' }],
+                ].map(([name, args]) => ({
+                  id: `call_${String(name)}`,
+                  type: 'function',
+                  function: { name, arguments: JSON.stringify(args) },
+                })),
+              },
+              finish_reason: 'tool_calls',
+            },
+          ],
+        },
+      };
     if (toolTurns === 1) return tool('read_chunks', { chunk_ids: ['c1', 'c2'] });
     return text(answer);
   }
-  if (system === readEvaluatorSystemPrompt) return text(allSupported(messages[1]?.content ?? ''));
+  if (system === readEvaluatorSystemPrompt)
+    return text(
+      String(messages[1]?.content ?? '').includes('sorter kildene')
+        ? JSON.stringify({
+            status: 'gap-remaining',
+            scope_assessment: 'aligned',
+            remaining_gaps: [],
+          })
+        : allSupported(messages[1]?.content ?? ''),
+    );
   if (system === evaluatorSystemPrompt)
     return text(
-      JSON.stringify({
-        status: 'sufficient',
-        reasoning: 'covered',
-        missing_info: [],
-        contradiction_detected: false,
-        suggested_strategy: 'finalize',
-      }),
+      JSON.stringify(
+        String(messages[1]?.content ?? '').includes('sorter kildene')
+          ? {
+              status: 'insufficient',
+              reasoning: 'read more',
+              missing_info: ['mer'],
+              contradiction_detected: false,
+              suggested_strategy: 'read-more',
+            }
+          : {
+              status: 'sufficient',
+              reasoning: 'covered',
+              missing_info: [],
+              contradiction_detected: false,
+              suggested_strategy: 'finalize',
+            },
+      ),
     );
   if (messages.at(-1)?.content === exhaustionNudge) return text(answer);
   if (format?.json_schema) return text(JSON.stringify(sample(format.json_schema.schema)));
@@ -296,36 +351,46 @@ const boot = async (
     prices?: Parameters<typeof createPlatform>[0]['prices'];
     log?: InMemoryEventLog;
     configEntries?: InMemoryConfigEntryStore;
+    definitions?: Parameters<typeof createPlatform>[0]['definitions'];
+    /** Boots on the shipped seed with no Typesense setting or secret at all. */
+    seedOnly?: boolean;
   } = {},
 ) => {
   const model = await fakeHttp(modelReply);
   const search = await fakeHttp(typesenseReply);
-  const colbert = await fakeHttp((body) => ({
-    status: 200,
-    json: (body.documents as unknown[]).map((_, i) => ({
-      index: i,
-      score: 1 - i * 0.1,
-      rank: i + 1,
-    })),
-  }));
-  servers.push(model, search, colbert);
-  const env = {
+  servers.push(model, search);
+  const env: Record<string, string> = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
-    TYPESENSE_URL: search.url,
-    COLBERT_API_URL: colbert.url,
+    ...(extra.seedOnly ? {} : { TYPESENSE_URL: search.url }),
   };
   const platform = await createPlatform({
     catalogs: {
       models: resolveCatalog(extra.models ?? yaml('models.yaml'), 'models', env).catalog,
-      knowledge: resolveCatalog(extra.knowledge ?? yaml('knowledge.yaml'), 'datasets', env).catalog,
+      knowledge: resolveCatalog(
+        extra.knowledge ?? (extra.seedOnly ? yaml('knowledge.yaml') : kudosOnTypesense()),
+        'datasets',
+        env,
+      ).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     ...(extra.settings ? { settings: extra.settings } : {}),
     ...(extra.prices ? { prices: extra.prices } : {}),
     ...(extra.log ? { log: extra.log } : {}),
     ...(extra.configEntries ? { configurables: { store: extra.configEntries } } : {}),
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
-    definitions: (plugins) => new InMemoryDefinitionStore(plugins),
+    secrets: envSecrets(
+      extra.seedOnly
+        ? { FOUNDRY_OPENAI_KEY: 'm' }
+        : { FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' },
+    ),
+    // A knowledge server as the API has outside tests; nothing here searches it, so it never connects.
+    ...(extra.seedOnly
+      ? {
+          knowledgeServer: {
+            reader: createPool({ connectionString: 'postgres://127.0.0.1:1/none' }),
+          },
+        }
+      : {}),
+    definitions: extra.definitions ?? ((plugins) => new InMemoryDefinitionStore(plugins)),
     policy: access?.policy ?? { decide: async () => ({ allow: true }) },
     authenticate:
       access?.authenticate ??
@@ -353,7 +418,7 @@ const boot = async (
     },
   });
   platform.mount(app);
-  return { platform, app, model, search, colbert };
+  return { platform, app, model, search };
 };
 
 const mcp = (
@@ -375,7 +440,7 @@ const mcp = (
 
 describe('the composed platform', () => {
   it('serves a service published after boot under its public MCP tool name, end to end', async () => {
-    const { platform, app, search, colbert } = await boot();
+    const { platform, app, search } = await boot();
 
     const published = await platform.definitions.publish(
       yaml('services/kunnskapsassistenten-retrieve-only.yaml'),
@@ -407,7 +472,6 @@ describe('the composed platform', () => {
       ]),
     );
     expect(search.seen.every((r) => r.path === '/multi_search')).toBe(true);
-    expect(colbert.seen.length).toBeGreaterThan(0);
   });
 
   it("applies KA's retrieve-filter-by override to every chunk search, so a filter matching nothing returns no chunks", async () => {
@@ -543,6 +607,41 @@ describe('the composed platform', () => {
     expect(facts?.content).toContain('"source": "Kudos"');
   });
 
+  it('tells the agent the version a run uses and when it was published, through service-facts@1', async () => {
+    const { platform, app, model } = await boot(undefined, {
+      definitions: (plugins) =>
+        new InMemoryDefinitionStore(plugins, () => new Date('2026-10-06T22:30:00Z')),
+    });
+    const service = yaml('services/kunnskapsassistenten.yaml') as {
+      metadata: Record<string, unknown>;
+      spec: Record<string, unknown>;
+    };
+    const definition = {
+      ...service,
+      metadata: { ...service.metadata, id: 'ka-service-facts' },
+      spec: { ...service.spec, tools: ['service-facts@1'] },
+    };
+    for (const reason of ['first', 'second'])
+      expect((await platform.definitions.publish(definition, 'kari@digdir.no', reason)).ok).toBe(
+        true,
+      );
+
+    const res = await mcp(app, 'tools/call', {
+      name: 'ka-service-facts__default',
+      arguments: { query: 'Hvilken versjon er du?' },
+    });
+
+    expect(((await res.json()) as { result: { isError: boolean } }).result.isError).toBe(false);
+    const facts = model.seen
+      .flatMap((r) => (r.body.messages as Message[] | undefined) ?? [])
+      .find((m) => m.role === 'tool')?.content;
+    expect(facts).toContain('"version": 2');
+    expect(facts).toContain('"published": "2026-10-07"');
+    expect(facts).toContain('"environment": "prod"');
+    expect(facts).toContain('"name": "GPT-5.6 Terra"');
+    expect(facts).not.toMatch(/kari@digdir\.no|"second"|foundry/);
+  });
+
   it('validates a service definition that grants state-organisation@1 and refuses an unknown version', async () => {
     const { platform } = await boot();
     const service = yaml('services/kunnskapsassistenten.yaml') as {
@@ -638,7 +737,7 @@ describe('the composed platform', () => {
   });
 
   it('offers owner_orgnr filter values only when a dataset of the calling service declares the field', async () => {
-    const knowledge = yaml('knowledge.yaml') as {
+    const knowledge = kudosOnTypesense() as {
       datasets: { id: string; filters: Record<string, string> }[];
     };
     const declaring = {
@@ -1472,7 +1571,7 @@ describe('the composed platform', () => {
     });
   });
 
-  it('refuses at publish a service whose dataset, model or reranker is not configured', async () => {
+  it('refuses at publish a service whose dataset or model is not configured', async () => {
     const platform = await createPlatform({
       catalogs: {
         models: resolveCatalog(yaml('models.yaml'), 'models', {}).catalog,
@@ -1496,7 +1595,6 @@ describe('the composed platform', () => {
       'spec.model.primary',
       'spec.variants[1].model',
       'spec.knowledge.datasets[0].dataset',
-      'spec.knowledge.reranker',
     ]);
   });
 });
@@ -1601,7 +1699,7 @@ describe('a draft test run', () => {
 
 describe('settings and datasets at run time', () => {
   const twoDatasets = () => {
-    const catalog = structuredClone(yaml('knowledge.yaml')) as {
+    const catalog = structuredClone(kudosOnTypesense()) as {
       datasets: {
         id: string;
         aliases?: string[];
@@ -2098,5 +2196,146 @@ describe('MCP conversations, scope and wire metadata', () => {
 
     expect(baseline).toBeGreaterThan(0);
     expect(filtered).toBe(0);
+  });
+});
+
+describe('a service without a reranker', () => {
+  type ServiceYaml = {
+    metadata: Record<string, unknown>;
+    spec: { knowledge: Record<string, unknown> } & Record<string, unknown>;
+  };
+  /** Kunnskapsassistenten as seeded, under another id, with no reranker and rerank asked for. */
+  const withoutReranker = (id: string): ServiceYaml => {
+    const service = yaml('services/kunnskapsassistenten.yaml') as ServiceYaml;
+    const knowledge = { ...service.spec.knowledge };
+    delete knowledge.reranker;
+    return {
+      ...service,
+      metadata: { ...service.metadata, id },
+      spec: {
+        ...service.spec,
+        knowledge: { ...knowledge, retrieval: { maxPerDocument: 10, rerank: { enabled: true } } },
+      },
+    };
+  };
+  const toolTexts = (model: FakeServer) =>
+    model.seen
+      .flatMap((r) => (r.body.messages as Message[] | undefined) ?? [])
+      .filter((m) => m.role === 'tool')
+      .map((m) => String(m.content ?? ''));
+  const ask = async (app: Parameters<typeof mcp>[0], name: string, query: string) => {
+    const res = await mcp(app, 'tools/call', { name, arguments: { query } });
+    return (await res.json()) as { result: { isError: boolean } };
+  };
+
+  it('the API starts and seeds its services and catalog without Typesense or ColBERT settings', async () => {
+    const { platform } = await boot(undefined, { seedOnly: true });
+    const admin = createAdmin({
+      store: platform.definitions,
+      plugins: platform.plugins,
+      settings: new SettingsRegistry([]),
+      extensions: platform.extensions,
+    });
+    const seeded = withoutUnknownVariantModels(
+      readGitDefinitions(localDefinitionSources(config, {}), '991825827').definitions,
+      (id) => platform.plugins.models.has(id),
+    );
+
+    const outcomes = await seedDefinitions(admin, platform.definitions, seeded.definitions);
+
+    expect([...(platform.plugins.rerankers ?? [])]).toEqual([]);
+    expect(
+      outcomes.filter((o) => o.state === 'skipped' && JSON.stringify(o.errors).includes('rerank')),
+    ).toEqual([]);
+    const published = outcomes.flatMap((o) => (o.state === 'published' ? [o.file] : []));
+    for (const service of ['kunnskapsassistenten.yaml', 'public-docs-agent.yaml'])
+      expect(published).toContainEqual(expect.stringContaining(`services/${service}`));
+  });
+
+  it('agent search says nothing about reranking when the service has no reranker', async () => {
+    const { platform, app, model } = await boot();
+    expect(
+      (await platform.definitions.publish(withoutReranker('ka-uten-omrangering'), 'test', 'test'))
+        .ok,
+    ).toBe(true);
+    model.seen.length = 0;
+
+    const answered = await ask(app, 'ka-uten-omrangering__default', 'Hva står i tildelingsbrevet?');
+
+    expect(answered.result.isError).toBe(false);
+    const search = toolTexts(model).find((t) => t.startsWith('Search pass'));
+    expect(search).toContain('Search pass 1: found');
+    expect(search?.split('<untrusted_data')[0]).not.toMatch(/rerank|ranking/i);
+  });
+
+  it('rerank_results says it kept the search order when the service has no reranker', async () => {
+    const { platform, app, model } = await boot();
+    expect(
+      (await platform.definitions.publish(withoutReranker('ka-uten-omrangering'), 'test', 'test'))
+        .ok,
+    ).toBe(true);
+    model.seen.length = 0;
+
+    const answered = await ask(
+      app,
+      'ka-uten-omrangering__default',
+      'Hva står i tildelingsbrevet? Les og sorter kildene.',
+    );
+
+    expect(answered.result.isError).toBe(false);
+    const rerank = toolTexts(model).find((t) => /^(Reranked|No reranker)/.test(t));
+    expect(rerank).toMatch(/^No reranker: kept the search order of 2 chunks\./);
+  });
+
+  it('a service that names a reranker no catalog holds is refused at publish', async () => {
+    const { app } = await boot();
+    const named = withoutReranker('ka-med-ukjent-omrangering');
+    named.spec.knowledge = { ...named.spec.knowledge, reranker: 'avviklet' };
+    named.spec.riskConfirmation = { reasons: ['Ansatte bruker svarene selv.'] };
+
+    const res = await app.request('/definitions', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer kari',
+        'change-reason': 'Publiserer med en omrangering katalogen ikke har',
+      },
+      body: JSON.stringify({ definition: named }),
+    });
+
+    expect(res.status).toBe(422);
+    const problem = (await res.json()) as { errors: { path: string; message: string }[] };
+    expect(problem.errors).toEqual([
+      { path: 'spec.knowledge.reranker', message: 'unknown reranker avviklet' },
+    ]);
+  });
+
+  it('the API starts when a stored service names a reranker the catalogue no longer holds', async () => {
+    let stored: InMemoryDefinitionStore | undefined;
+    await boot(undefined, {
+      definitions: (plugins) =>
+        (stored = new InMemoryDefinitionStore({ ...plugins, rerankers: new Set(['avviklet']) })),
+    });
+    const retired = withoutReranker('ka-med-avviklet-omrangering');
+    retired.spec.knowledge = { ...retired.spec.knowledge, reranker: 'avviklet' };
+    expect((await stored?.publish(retired, 'test', 'test'))?.ok).toBe(true);
+    expect(
+      (await stored?.publish(withoutReranker('ka-uten-omrangering'), 'test', 'test'))?.ok,
+    ).toBe(true);
+
+    if (!stored) throw new Error('the first boot made no store');
+    const kept = stored;
+    const { platform, app } = await boot(undefined, { definitions: () => kept });
+
+    const ids = (await platform.definitions.capabilities()).map((c) => c.service.id);
+    expect(ids).toEqual(
+      expect.arrayContaining(['ka-med-avviklet-omrangering', 'ka-uten-omrangering']),
+    );
+    expect((await ask(app, 'ka-uten-omrangering__default', 'tildelingsbrev')).result.isError).toBe(
+      false,
+    );
+    expect(
+      (await ask(app, 'ka-med-avviklet-omrangering__default', 'tildelingsbrev')).result.isError,
+    ).toBe(true);
   });
 });

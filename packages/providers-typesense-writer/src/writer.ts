@@ -1,5 +1,4 @@
 import { authHeaders, type Credential, withoutTrailingSlashes } from '@genai/kernel';
-import { KnowledgeError } from '@genai/port-knowledge';
 import folder from './schemas/folder.json' with { type: 'json' };
 import website from './schemas/website.json' with { type: 'json' };
 
@@ -24,7 +23,6 @@ export interface TypesenseWriterOptions {
   baseURL: string;
   credential: Credential;
   schemas: ContractSchemas;
-  sharedClusterUrls?: (string | undefined)[];
   embeddings?: boolean;
   batchSize?: number;
   timeoutMs?: number;
@@ -32,35 +30,7 @@ export interface TypesenseWriterOptions {
   signal?: AbortSignal;
 }
 
-export class SharedClusterRefused extends KnowledgeError {
-  constructor(host: string) {
-    super(
-      'forbidden',
-      `refusing to write to ${host}: it is the shared, search-only Typesense cluster`,
-    );
-    this.name = 'SharedClusterRefused';
-  }
-}
-
 const hostOf = (url: string) => new URL(url).hostname.toLowerCase().replace(/\.$/, '');
-
-const safeHost = (url: string | undefined) => {
-  if (!url) return undefined;
-  try {
-    return hostOf(url.includes('://') ? url : `https://${url}`);
-  } catch {
-    return undefined;
-  }
-};
-
-export const refuseSharedCluster = (
-  baseURL: string,
-  sharedClusterUrls: (string | undefined)[] = [process.env.TYPESENSE_URL],
-) => {
-  const host = hostOf(baseURL);
-  if (sharedClusterUrls.map(safeHost).includes(host)) throw new SharedClusterRefused(host);
-  return host;
-};
 
 export interface TypesenseHttpOptions {
   baseURL: string;
@@ -144,7 +114,7 @@ export const generationNames = (names: CollectionNames, generation: string): Col
 };
 
 export const createTypesenseWriter = (options: TypesenseWriterOptions) => {
-  const host = refuseSharedCluster(options.baseURL, options.sharedClusterUrls);
+  const host = hostOf(options.baseURL);
   const batchSize = options.batchSize ?? 200;
   const embeddings = options.embeddings ?? true;
   const { request, json } = typesenseHttp(options);

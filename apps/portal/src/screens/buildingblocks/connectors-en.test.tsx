@@ -27,7 +27,7 @@ const connector: ConnectorView = {
 describe('connectors in English', () => {
   it('summarises pending and failed connections', () => {
     render(inEnglish(<ConnectorsSummary pending={2} connectors={[connector]} />));
-    expect(screen.getByText('Connections to your own databases')).toBeTruthy();
+    expect(screen.getByText('Connections')).toBeTruthy();
     expect(
       screen.getByText(
         '2 new connections are waiting for approval. 1 connection in use, 1 failed.',

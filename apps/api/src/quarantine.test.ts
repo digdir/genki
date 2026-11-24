@@ -49,6 +49,7 @@ const withStoredLeftovers = (inner: DefinitionStore): DefinitionStore => ({
   list: (...args) => inner.list(...args),
   resolve: (...args) => inner.resolve(...args),
   publish: (...args) => inner.publish(...args),
+  remove: (...args) => inner.remove(...args),
   capabilities: async (onInvalid) => [
     ...(await inner.capabilities(onInvalid)),
     ...toCapabilities(retired.definition as ServiceDefinition, 1),

@@ -1,6 +1,5 @@
 import { KnowledgeError, type DatasetConfig } from '@genai/port-knowledge';
 import type { TypesenseDatasetOptions } from '@genai/providers-typesense';
-import { refuseSharedCluster } from './writer.js';
 
 export interface QuestionRow {
   id: string;
@@ -70,12 +69,7 @@ export const questionsFilter = (chunkIds: string[], promptHash?: string) => {
   return promptHash ? `${base} && prompt_hash:=[${literal(promptHash)}]` : base;
 };
 
-export const typesenseEnrichment = (
-  http: Http,
-  baseURL: string,
-  sharedClusterUrls?: (string | undefined)[],
-) => {
-  refuseSharedCluster(baseURL, sharedClusterUrls);
+export const typesenseEnrichment = (http: Http) => {
   const collectionOf = (dataset: Dataset) => {
     const name = dataset.options.collections[questionsCollectionKey];
     if (!name)

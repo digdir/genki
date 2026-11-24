@@ -44,7 +44,6 @@ describe('the knowledge catalog in the worker', () => {
       log: new InMemoryEventLog(),
       tasks: new InMemoryTaskStore(),
       state: new InMemoryStateStore(),
-      knowledgePool: fakePool().pool,
       knowledgeServer: { owner: owner.pool, writer: owner.pool },
     });
     await vi.waitFor(() => expect(syncedDatasets(owner.query)).toEqual(['digdir/kudos']));

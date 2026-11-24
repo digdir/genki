@@ -2,6 +2,7 @@ import type { Principal, Usage } from '@genai/contracts';
 import {
   knowledgeSourceRefusal,
   kudosNarrowing,
+  partsChunkingRefusal,
   pipelineSpec,
   type PipelineSpec,
   type SkipReason,
@@ -103,7 +104,7 @@ export class IngestionUnavailable extends Error {
 }
 
 export const pendingWriteKeyReason =
-  'Real ingestion is pending a separate search write key and a decision by the platform owner. The shared search key is search-only.';
+  'Real ingestion is pending a search write key and a decision by the platform owner.';
 
 export const pendingIngestionBackend = (): IngestionBackend => ({
   name: 'pending',
@@ -592,6 +593,7 @@ export class IngestionService {
           })),
         };
       const refused =
+        partsChunkingRefusal(parsed.data, this.options.jobs?.runsAsJobs(input.dataset) ?? false) ??
         (await this.#kudosNarrowing(input, parsed.data)) ??
         (this.options.jobs?.runsAsJobs(input.dataset)
           ? await this.#knowledgeRefusal(input, parsed.data)

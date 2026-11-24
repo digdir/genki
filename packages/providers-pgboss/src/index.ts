@@ -20,7 +20,7 @@ import {
   type SendOptions,
 } from '@genai/jobs';
 import type { Pool } from 'pg';
-import { PgBoss, type Db, type Queue } from 'pg-boss';
+import { PgBoss, type Db, type JobWithMetadata, type Queue } from 'pg-boss';
 
 export const jobSchema = 'pgboss';
 
@@ -356,15 +356,17 @@ export class PgBossJobQueue implements JobQueue {
     handler: JobHandler<T>,
     options: WorkOptions = {},
   ) {
-    const id = await this.#boss.work<JobData>(
+    const id = await this.#boss.work(
       queue.name,
       {
         batchSize: 1,
         pollingIntervalSeconds: this.#pollingIntervalSeconds,
         // Each of these pollers takes one job, so the process works this many at once.
         localConcurrency: options.concurrency ?? 1,
+        // For the job's singleton key, which a convert job's waits are named by (issue 945).
+        includeMetadata: true,
       },
-      async ([job]) => {
+      async ([job]: JobWithMetadata<JobData>[]) => {
         if (!job) return;
         await handler({
           id: job.id,
@@ -372,6 +374,7 @@ export class PgBossJobQueue implements JobQueue {
           data: admitPayload(queue, job.data),
           retryCount: job.retryCount,
           signal: job.signal,
+          ...(job.singletonKey ? { key: job.singletonKey } : {}),
         });
       },
     );

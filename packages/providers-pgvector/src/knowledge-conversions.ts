@@ -3,6 +3,7 @@ import {
   blankPage,
   conversionKey,
   isPartsDerivation,
+  isPartsKey,
   partsDerivations,
   settingsHash,
   shortEnd,
@@ -14,7 +15,7 @@ import {
   type StoredConversions,
 } from '@genai/port-knowledge';
 import type { Pool } from 'pg';
-import { transaction } from './schema.js';
+import { transaction } from './transaction.js';
 
 /**
  * Waits and the conversion that ends them lock the convert key's row, in their transactions, so a
@@ -27,6 +28,15 @@ const lock = async (client: RecordTransaction, key: string) => {
     key,
   ]);
   await client.query(`select 1 from src_conversion_keys where key = $1 for update`, [key]);
+};
+
+/**
+ * Locks a record's or a run's keys, as `clear` and `release` take them, in JavaScript's string
+ * order (by UTF-16 code unit, the same as byte order for these ASCII keys), never the server's
+ * collation, which skips the dots of a version: the two never wait on each other's locks.
+ */
+const lockAll = async (client: RecordTransaction, keys: Iterable<string>) => {
+  for (const key of [...new Set(keys)].sort()) await lock(client, key);
 };
 
 const acceptedJson = (accepted: readonly AcceptedConverter[]) =>
@@ -66,6 +76,7 @@ interface ConversionRow {
 
 const toConversion = (row: ConversionRow): StoredConversion => ({
   sha256: row.sha256,
+  ...(row.id ? { id: row.id } : {}),
   converter: row.converter,
   version: row.version,
   settings: row.settings,
@@ -172,21 +183,30 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
     const key = conversionKey(target);
     const run = async (client: RecordTransaction) => {
       await lock(client, key);
-      const { rows } = await client.query(
-        `select 1 from src_conversions
-          where sha256 = $1 and converter = $2 and version = $3 and settings_hash = $4
-            and failure is distinct from 'unreachable'
-            -- Waits are for pages until a pipeline asks for parts (issue 635).
-            and derivation <> all($5::text[])
-          limit 1`,
-        [
-          target.sha256,
-          target.converter,
-          target.version,
-          settingsHash(target.settings),
-          partsNames,
-        ],
-      );
+      // A wait on parts is over once the file has parts of any converter, as a parts pipeline
+      // accepts them; a wait on pages, once it has this converter's pages (issue 635).
+      const { rows } = target.parts
+        ? await client.query(
+            `select 1 from src_conversions
+              where sha256 = $1 and failure is distinct from 'unreachable'
+                and derivation = any($2::text[])
+              limit 1`,
+            [target.sha256, partsNames],
+          )
+        : await client.query(
+            `select 1 from src_conversions
+              where sha256 = $1 and converter = $2 and version = $3 and settings_hash = $4
+                and failure is distinct from 'unreachable'
+                and derivation <> all($5::text[])
+              limit 1`,
+            [
+              target.sha256,
+              target.converter,
+              target.version,
+              settingsHash(target.settings),
+              partsNames,
+            ],
+          );
       if (rows.length > 0) return false;
       await client.query(
         `insert into src_conversion_waits (key, dataset, record, generation, run, tenant)
@@ -201,10 +221,27 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
     return given ? run(given) : transaction(writer, run);
   },
 
-  store: (conversion, send) =>
+  store: (conversion, send, jobKey) =>
     transaction(writer, async (client) => {
-      const key = conversionKey(conversion);
-      await lock(client, key);
+      // Parts end the waits on parts, pages the waits on pages (issue 635).
+      const parts = isPartsDerivation(conversion.derivation);
+      const key = conversionKey({ ...conversion, parts });
+      // A job's key names its file and converter; only its version and settings may differ (issue
+      // 945). It waits on parts or pages as the conversion is. A job asked for parts names its
+      // file and may get parts of another converter, as Docling's from Blob for a text-layer job
+      // (issue 635).
+      if (
+        jobKey !== undefined &&
+        (!jobKey.startsWith(
+          parts ? `${conversion.sha256}:` : `${conversion.sha256}:${conversion.converter}:`,
+        ) ||
+          isPartsKey(jobKey) !== parts)
+      )
+        throw new Error('a convert job key names another file or converter');
+      // The job's key first, then the conversion's own, the order a record's ingest takes them:
+      // `clear` locks the key it waited under before, then `wait` locks today's (issue 945).
+      const keys = [...new Set([jobKey ?? key, key])];
+      for (const each of keys) await lock(client, each);
       const { rows: stored } = await client.query<{ id: string }>(
         `insert into src_conversions (sha256, converter, version, settings_hash, settings,
            derivation, derivation_version, pages, output_path, failure, page_count, blank_end)
@@ -246,23 +283,15 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
                "unitTo" integer, "seqFrom" integer, "seqTo" integer, parts jsonb)`,
           [id, JSON.stringify(units.slice(at, at + unitBatch))],
         );
-      // Parts end no wait: the waits are for pages until a pipeline asks for parts (issue 635).
-      if (isPartsDerivation(conversion.derivation)) return { sent: [], busy: [], held: [] };
-      const { rows } = await client.query<{
-        dataset: string;
-        record: string;
-        generation: string;
-        run: string;
-        tenant: string;
-      }>(
-        `delete from src_conversion_waits where key = $1
-         returning dataset, record::text, generation, run, tenant`,
-        [key],
+      const { rows } = await client.query<{ key: string } & ConversionWaiter>(
+        `delete from src_conversion_waits where key = any($1::text[])
+         returning key, dataset, record::text, generation, run, tenant`,
+        [keys],
       );
       const sent: ConversionWaiter[] = [];
       const busy: ConversionWaiter[] = [];
       const held: ConversionWaiter[] = [];
-      for (const waiter of rows) {
+      for (const { key: waitedOn, ...waiter } of rows) {
         // A record with another file still converting gets its index job from that conversion.
         const { rows: other } = await client.query(
           `select 1 from src_conversion_waits where dataset = $1 and record = $2::bigint limit 1`,
@@ -277,11 +306,11 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
           continue;
         }
         // Its index job is still queued or running, and may have read the record before this
-        // conversion: the record keeps waiting, and the convert job is tried again.
+        // conversion: the record keeps waiting under the key it had, and the convert job is tried again.
         await client.query(
           `insert into src_conversion_waits (key, dataset, record, generation, run, tenant)
            values ($1, $2, $3::bigint, $4, $5, $6) on conflict do nothing`,
-          [key, waiter.dataset, waiter.record, waiter.generation, waiter.run, waiter.tenant],
+          [waitedOn, waiter.dataset, waiter.record, waiter.generation, waiter.run, waiter.tenant],
         );
         busy.push(waiter);
       }
@@ -289,20 +318,22 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
     }),
 
   clear: async (client, dataset, record) => {
-    // The keys' locks first, in key order, as a conversion takes them before it ends the same waits.
+    // The keys' locks first, in the order a conversion takes them before it ends the same waits.
     const { rows } = await client.query(
-      `select distinct key from src_conversion_waits
-        where dataset = $1 and record = $2::bigint order by key`,
+      `select distinct key from src_conversion_waits where dataset = $1 and record = $2::bigint`,
       [dataset, record],
     );
-    for (const { key } of rows as { key: string }[]) await lock(client, key);
+    await lockAll(
+      client,
+      (rows as { key: string }[]).map((r) => r.key),
+    );
     await client.query(
       `delete from src_conversion_waits where dataset = $1 and record = $2::bigint`,
       [dataset, record],
     );
   },
 
-  waiting: async (target) => {
+  waiting: async (key) => {
     const { rows } = await writer.query<{
       run: string;
       tenant: string;
@@ -311,7 +342,7 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
     }>(
       `select run, tenant, dataset, record::text from src_conversion_waits
         where key = $1 order by run, dataset, record`,
-      [conversionKey(target)],
+      [key],
     );
     return rows;
   },
@@ -330,8 +361,11 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
         `select distinct key from src_conversion_waits where run = $1 order by key`,
         [run],
       );
-      // In key order, so two runs cancelled together never wait on each other's locks.
-      for (const { key } of keys) await lock(client, key);
+      // In one order, so two runs cancelled together never wait on each other's locks.
+      await lockAll(
+        client,
+        keys.map((k) => k.key),
+      );
       await client.query(`delete from src_conversion_waits where run = $1`, [run]);
       const { rows: still } = await client.query<{ key: string } & ConversionWaiter>(
         `select distinct on (key) key, dataset, record::text, generation, run, tenant

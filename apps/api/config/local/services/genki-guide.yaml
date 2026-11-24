@@ -20,6 +20,7 @@ spec:
     version: 1
     config:
       instructions: prompts/genki-guide.nb.md
+      promptSections: { role: '', reasoning: '', workflow: '', gate: '' }
       budget: { searches: 4, reads: 6, readChars: 12000 }
       temperature: 0.2
   knowledge:

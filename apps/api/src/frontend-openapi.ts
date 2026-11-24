@@ -221,7 +221,7 @@ const Source = z
       .string()
       .optional()
       .describe(
-        "The organisation that published the document, several joined with a comma. Present only when the document's fields name one; on Kudos stored in the knowledge database, the publisher, or the owners when Kudos lists none; Kudos served from Typesense has none.",
+        "The organisation that published the document, several joined with a comma. Present only when the document's fields name one; on Kudos, the publisher, or the owners when Kudos lists none.",
       ),
   })
   .passthrough()
@@ -657,10 +657,18 @@ export const frontendRoutes: RouteConfig[] = [
     summary:
       "Open a document's file: its uploaded original, or a redirect to its source's address (302)",
     description:
-      'Same access as `/api/datasets/{id}`. An uploaded original is only for callers of the organisation that owns the dataset, or a frontend of its service; a PDF is inline, anything else an attachment. With `Accept: application/json` the answer says what the file is instead of sending it.',
+      'Same access as `/api/datasets/{id}`. An uploaded original is only for callers of the organisation that owns the dataset, or a frontend of its service; a PDF is inline, anything else an attachment. A PDF the record lists on an origin in `GENAI_DOCUMENT_FILE_ORIGINS` is read and served by genki, inline (ADR 0066). With `Accept: application/json` the answer says what the file is instead of sending it.',
     request: {
       params: idParam.extend({
         doc: z.string().openapi({ param: { name: 'doc', in: 'path' }, example: '4711' }),
+      }),
+      query: z.object({
+        file: z
+          .string()
+          .optional()
+          .describe(
+            "A PDF the record lists, such as an excerpt's file; served only when it is one of them on an allowed origin.",
+          ),
       }),
     },
     responses: {
@@ -675,6 +683,11 @@ export const frontendRoutes: RouteConfig[] = [
             kind: z.literal('source'),
             url: z.string().describe('http or https, without credentials or a fragment'),
             mediaType: z.string().nullable().describe('null when the address does not show it'),
+          }),
+          z.object({
+            kind: z.literal('served'),
+            mediaType: z.literal('application/pdf'),
+            source: z.string().describe('The remote PDF genki reads and serves at this address'),
           }),
         ]),
         'What the file is (Accept: application/json), or the file itself',

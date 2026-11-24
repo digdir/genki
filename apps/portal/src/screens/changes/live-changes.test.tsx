@@ -96,8 +96,8 @@ describe('Siste endringer on Oversikt', () => {
     await open('#/overview');
 
     const changes = await screen.findByRole('region', { name: 'Siste endringer' });
-    const row = (await within(changes).findByText(/publiserte versjon 7 av/)).closest('span');
-    expect(row?.textContent).toBe('Kari Nordmann publiserte versjon 7 av Røyktest');
+    const row = (await within(changes).findByText(/publiserte utgave 7 av/)).closest('span');
+    expect(row?.textContent).toBe('Kari Nordmann publiserte utgave 7 av Røyktest');
   });
 });
 

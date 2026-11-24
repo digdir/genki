@@ -145,7 +145,7 @@ describe('Slik behandles data', () => {
     ]);
     expect(
       screen.getByText(
-        'Kjører GPT-6 luna i Sverige. Lagrer spørsmål, svar og datasett i Nederland.',
+        'Kjører GPT-6 luna i Sverige. Lagrer spørsmål, svar og dokumentsamlinger i Nederland.',
       ),
     ).toBeTruthy();
     expect(screen.getByText('Kjører Borealis. Data forlater ikke Norge.')).toBeTruthy();

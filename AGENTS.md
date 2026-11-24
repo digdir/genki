@@ -7,7 +7,7 @@ This file is for any coding agent (Claude Code, Copilot, Codex, Cursor and other
 ## Commands
 
 ```sh
-npm start                      # setup, then API, portal, console and workspace
+npm start                      # setup, then API, worker, portal, console and workspace
 npx vitest run <paths>         # the tests you touched, while you work
 npx tsc -b && npx eslint <files>
 npm run boundaries             # dependency rules

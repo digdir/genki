@@ -48,11 +48,16 @@ const convertFields = {
 };
 /**
  * A text-layer job names no converter, as before issue 477, so a worker of the release before reads
- * it; a Docling job names Docling.
+ * it; a Docling job names Docling. A job whose records wait on the file's parts, not its pages, says
+ * `parts: true` (issue 635); a job without it is a pages job, as every job was before.
  */
+const docling = { converter: z.literal('docling') };
+const parts = { parts: z.literal(true) };
 const convertPayload = z.union([
   z.strictObject(convertFields),
-  z.strictObject({ ...convertFields, converter: z.literal('docling') }),
+  z.strictObject({ ...convertFields, ...docling }),
+  z.strictObject({ ...convertFields, ...parts }),
+  z.strictObject({ ...convertFields, ...docling, ...parts }),
 ]);
 const documentPayload = z.strictObject({ run: id, tenant, generation: id, record: id });
 /**

@@ -236,12 +236,9 @@ const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = 
       stream,
     );
   });
-  const search = await fakeHttp(() => ({ status: 200, json: {} }));
-  servers.push(model, search);
+  servers.push(model);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
-    TYPESENSE_URL: search.url,
-    COLBERT_API_URL: search.url,
     // local/echo, whose catalogue entry says norway, for a draft that leaves its residency out.
     ...(options.localModel ? { LOCAL_MODEL_URL: `${model.url}/v1` } : {}),
   };
@@ -254,8 +251,6 @@ const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = 
     },
     secrets: envSecrets({
       FOUNDRY_OPENAI_KEY: 'm',
-      TYPESENSE_KEY: 't',
-      COLBERT_API_KEY: 'c',
       LOCAL_MODEL_KEY: 'l',
     }),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
@@ -2643,7 +2638,7 @@ describe('Langfuse judges on a run', () => {
 
       expect(started.status).toBe(409);
       expect(messages).toEqual([
-        `prosjektet til koblingen lokal har aktive dommere som genki ikke leser: ${judgeRule}; ta dem i bruk eller slå dem av i Langfuse`,
+        `prosjektet til koblingen lokal har aktive automatiske vurderinger som genki ikke leser: ${judgeRule}; ta dem i bruk eller slå dem av i Langfuse`,
         'alle_spenn ville vurdert hvert spenn i testtilfellene; legg til filteret isExperimentItemRootSpan = true, eller hold genkis testkjøringer utenfor med environment none of genki-test-runs',
       ]);
     });
@@ -2790,7 +2785,7 @@ describe('Langfuse judges on a run', () => {
     });
     // The portal asks in bokmål, and the API answers in it.
     expect(translateMessage(error?.message ?? '', 'nb')).toBe(
-      `kvalitetskravet kriterier-minst-80 leser Langfuse-dommeren ${judgeRule} på koblingen lokal, som er rådgivende og aldri stopper en publisering`,
+      `kvalitetskravet kriterier-minst-80 leser den automatiske vurderingen ${judgeRule} i Langfuse på koblingen lokal, som er rådgivende og aldri stopper en publisering`,
     );
     expect(saved.status).toBe(200);
   });

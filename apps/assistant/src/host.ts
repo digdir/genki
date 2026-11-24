@@ -1,4 +1,5 @@
 import type { Locale } from '@genai/i18n';
+import type { RefBlockPayload } from '@genai/ui-assembly';
 import type { AssistantLayout } from '@genai/ui-blocks/builder';
 
 export type Text = string | { nb: string; en: string };
@@ -17,6 +18,7 @@ export interface HostView {
     audience: string;
     altinnResource: string | null;
   };
+  icon?: string | null;
   menu: MenuItem[];
   pages: { id: string; title: Text }[];
 }
@@ -26,6 +28,12 @@ export interface Page {
   title: Text;
   body: Text;
 }
+
+export const showIcon = (icon: string | null | undefined) => {
+  if (!icon?.startsWith('data:image/')) return;
+  const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (link) link.href = icon;
+};
 
 export const textIn = (text: Text, locale: Locale) =>
   typeof text === 'string' ? text : text[locale === 'en' ? 'en' : 'nb'];
@@ -73,7 +81,12 @@ export const loadPage = async (fetcher: typeof fetch, hostname: string, id: stri
     await fetcher(`/api/v1/hosts/${encodeURIComponent(hostname)}/pages/${encodeURIComponent(id)}`),
   );
 
-/** The layout the service runs, read as the signed-in person through its first variant. */
+export interface ShownInterface {
+  layout: AssistantLayout;
+  blocks: Record<string, RefBlockPayload>;
+}
+
+/** The layout the service runs and its pinned blocks, read as the signed-in person through its first variant. */
 export const loadLayout = async (
   fetcher: typeof fetch,
   service: string,
@@ -85,8 +98,8 @@ export const loadLayout = async (
   );
   const model = models?.data.find((m) => m.id.startsWith(`${service}__`))?.id;
   if (!model) return undefined;
-  const shown = await found<{ layout?: AssistantLayout }>(
+  const shown = await found<{ layout?: AssistantLayout; blocks?: Record<string, RefBlockPayload> }>(
     await fetcher(`/api/v1/models/${encodeURIComponent(model)}/interface`, { headers }),
   );
-  return shown?.layout;
+  return shown?.layout ? { layout: shown.layout, blocks: shown.blocks ?? {} } : undefined;
 };

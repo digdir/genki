@@ -76,12 +76,9 @@ const boot = async () => {
         }
       : { status: 200, json: completion('Saken gjelder en tilskuddssøknad.') },
   );
-  const idle = await fakeHttp(() => ({ status: 200, json: {} }));
-  fakes.push(model, idle);
+  fakes.push(model);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
-    TYPESENSE_URL: idle.url,
-    COLBERT_API_URL: idle.url,
   };
   const platform = await createPlatform({
     catalogs: {
@@ -89,7 +86,7 @@ const boot = async () => {
       knowledge: resolveCatalog(yaml('knowledge.yaml'), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm' }),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: { decide: async () => ({ allow: true }) },
     authenticate: async (request) =>

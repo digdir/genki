@@ -1,21 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { followChanges, LocalChangeFeed, refreshEverywhere } from './change-feed.js';
-import { discoverWithRetry } from './discovery-retry.js';
 
 const idle = { reload: async () => undefined };
 
-const replica = async (feed: LocalChangeFeed, listing: () => Promise<{ failed: never[] }>) => {
-  let up = false;
-  let calls = 0;
-  const discovery = await discoverWithRetry({
+const replica = (feed: LocalChangeFeed) => {
+  const seen = { listed: 0, loaded: 0 };
+  const discovery = {
     refresh: async () => {
-      calls += 1;
-      if (!up) return { failed: [{ endpoint: 'foundry', error: '408' }] };
-      return listing();
+      seen.listed += 1;
+      return { failed: [] };
     },
-    maxAttempts: 1,
-    schedule: () => ({}),
-  });
+    loadDiscovered: async () => {
+      seen.loaded += 1;
+    },
+  };
   followChanges(feed, {
     settings: idle,
     supportSessions: idle,
@@ -24,56 +22,28 @@ const replica = async (feed: LocalChangeFeed, listing: () => Promise<{ failed: n
     models: discovery,
     toolConnections: idle,
   });
-  return {
-    discovery,
-    calls: () => calls,
-    recover: () => {
-      up = true;
-    },
-  };
+  return { discovery, seen };
 };
 
 describe('model discovery over the change feed', () => {
-  it('a change-feed refresh shares the in-flight discovery and clears a failed state', async () => {
+  it('a model-classifications change loads the stored listings and lists nothing', async () => {
     const feed = new LocalChangeFeed();
-    let release: (value: { failed: never[] }) => void = () => undefined;
-    const node = await replica(
-      feed,
-      () =>
-        new Promise((resolve) => {
-          release = resolve;
-        }),
-    );
-    expect(node.discovery.state()).toMatchObject({ state: 'failed' });
-    node.recover();
+    const node = replica(feed);
 
-    const operator = node.discovery.refresh();
-    const followed = feed.emit('model-classifications');
-    release({ failed: [] });
-    await Promise.all([operator, followed]);
+    await feed.emit('model-classifications');
 
-    expect(node.calls()).toBe(2);
-    expect(node.discovery.state()).toEqual({ state: 'ok', attempts: 2 });
+    expect(node.seen).toEqual({ listed: 0, loaded: 1 });
   });
 
-  it('an operator refresh reaches the other replicas through the feed', async () => {
+  it('an operator refresh lists on one replica and the others load what it stored', async () => {
     const feed = new LocalChangeFeed();
-    const own = await replica(feed, async () => ({ failed: [] }));
-    const other = await replica(new LocalChangeFeed(), async () => ({ failed: [] }));
-    followChanges(feed, {
-      settings: idle,
-      supportSessions: idle,
-      catalog: { refresh: async () => undefined },
-      definitions: { sync: async () => undefined },
-      models: other.discovery,
-      toolConnections: idle,
-    });
-    own.recover();
-    other.recover();
+    const own = replica(new LocalChangeFeed());
+    const other = replica(feed);
 
     await refreshEverywhere(own.discovery, { announce: (topic) => feed.emit(topic) });
 
-    expect(other.discovery.state()).toMatchObject({ state: 'ok' });
+    expect(own.seen.listed).toBe(1);
+    expect(other.seen).toEqual({ listed: 0, loaded: 1 });
   });
 
   it('announces to the other replicas even when the local refresh throws', async () => {

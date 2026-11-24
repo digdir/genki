@@ -35,6 +35,7 @@ const nb = {
   api: { label: 'Modell-API' },
   tokenParam: { label: 'Parameter for lengste svar' },
   maxInputLength: { label: 'Lengste tekst inn (tegn)' },
+  connection: { label: 'Tilkobling', values: { knowledge: 'Kunnskapsserveren' } },
 };
 
 const en: Record<
@@ -77,6 +78,7 @@ const en: Record<
   api: { label: 'Model API' },
   tokenParam: { label: 'Parameter for the longest answer' },
   maxInputLength: { label: 'Longest input text (characters)' },
+  connection: { label: 'Connection', values: { knowledge: 'The knowledge server' } },
 };
 
 export const pluginManifestSchemaLabels = {

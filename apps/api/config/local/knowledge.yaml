@@ -1,17 +1,17 @@
 endpoints:
-  kudos-typesense:
-    engine: typesense
-    baseURL: ${TYPESENSE_URL}
-    auth: { kind: api-key, secret: secret://env/typesense-key }
-  platform-pg:
+  # The knowledge server (ADR 0042): every pgvector dataset, shared with every organisation as the
+  # default for new datasets and connectors. A stored entry of the same id, as in test, beats this one.
+  kunnskapsserveren:
+    name: Kunnskapsserveren
     engine: pgvector
-    options: { connection: platform }
+    # Written out, though it is the default: a release before issue 151 reads a missing one as platform.
+    options: { connection: knowledge }
     sharing: { tenants: '*' }
 datasets:
   - id: digdir/kudos
     name: Kudos
     aliases: [public-sector-knowledge/default, public-sector-knowledge/kudos]
-    endpoint: kudos-typesense
+    endpoint: kunnskapsserveren
     # global, so a switch may embed it with the global models while #131 decides where Kudos may be processed.
     residency: global
     links: kudos-legacy
@@ -23,90 +23,33 @@ datasets:
       doc_num: multiselect
       title: text
     valueTypes: { concerned_years: integer }
-    options:
-      collections:
-        docs: KUDOS_preprod_v4_documents_ab897fbdedfa
-        chunks: KUDOS_preprod_v4_chunks_ab897fbdedfa
-        phrases: KUDOS_preprod_v4_phrases_ab897fbdedfa
-      docFields: [url, title, total_chunks, orgs_long, orgs_short, file_sha256, files, publish_date]
-      maxFacetValues: 1000
-      profiles:
-        phrase:
-          collection: phrases
-          queryBy: [search_phrase, phrase_vec]
-          textField: search_phrase
-          include: [chunk_id, search_phrase, doc_num]
-          exclude: [phrase_vec]
-          score: fusion
-          params:
-            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
-        metadata:
-          collection: chunks
-          queryBy: [metadata]
-          textField: metadata
-          include: [chunk_id, metadata]
-          params:
-            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
-        content:
-          collection: chunks
-          queryBy: [content_markdown]
-          textField: content_markdown
-          include: [chunk_id, content_markdown]
-          params:
-            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
-        doc-title:
-          collection: docs
-          queryBy: [title]
-          textField: title
-          include: [doc_num, total_chunks, title]
-          params:
-            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
   - id: digdir/public-docs
     name: Offentlige nettsider
     aliases: [digdir/default]
-    endpoint: kudos-typesense
+    endpoint: kunnskapsserveren
     residency: global
-    options:
-      collections:
-        docs: website_documents_ab897fbdedfa
-        chunks: website_chunks_ab897fbdedfa
-        phrases: website_phrases_ab897fbdedfa
-      docFields: [url, title, total_chunks]
-      profiles:
-        phrase:
-          collection: phrases
-          queryBy: [search_phrase, phrase_vec]
-          textField: search_phrase
-          include: [chunk_id, search_phrase, doc_num]
-          exclude: [phrase_vec]
-          score: fusion
-          params:
-            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
-        metadata:
-          collection: chunks
-          queryBy: [metadata]
-          textField: metadata
-          include: [chunk_id, metadata]
-          params:
-            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
-        content:
-          collection: chunks
-          queryBy: [content_markdown]
-          textField: content_markdown
-          include: [chunk_id, content_markdown]
-          params:
-            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
-        doc-title:
-          collection: docs
-          queryBy: [title]
-          textField: title
-          include: [doc_num, total_chunks, title]
-          params:
-            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
+  - id: digdir/kudos-parts
+    name: Kudos fra deler
+    description: Et utvalg av Kudos delt opp side for side fra konverteringens deler, uten topp- og bunntekst, til sammenligning med sidene i digdir/kudos (issue 635)
+    endpoint: kunnskapsserveren
+    # The generation it is read by; the kudos-parts pipeline fills it at its first run.
+    generation: g-20261123-4f2a91
+    residency: global
+    embedding: { model: foundry/text-embedding-3-small, dimensions: 1536 }
+    filters:
+      type: multiselect
+      concerned_years: multiselect
+      orgs_short: multiselect
+      orgs_long: multiselect
+      doc_num: multiselect
+      title: text
+    valueTypes: { concerned_years: integer }
   - id: digdir/genki-docs
     name: GenKI-dokumentasjon
     description: Dokumentasjonen til GenKI selv, lest inn fra filene i koden som kjører
-    endpoint: platform-pg
+    endpoint: kunnskapsserveren
+    # The generation it is read by; the folder pipeline fills it at its first run.
+    generation: g-20261120-9d0c5e
     residency: global
     embedding: { model: foundry/text-embedding-3-small, dimensions: 1536 }
     options: { textSearchConfig: english }

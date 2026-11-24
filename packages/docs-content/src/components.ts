@@ -224,10 +224,10 @@ export const componentsByBlock: Record<string, Component[]> = {
       capabilities: [
         'Flerspråklige embeddingsmodeller med norsk dekning',
         'Norske embeddingsmodeller fra NbAiLab',
-        'Cross-encoder- og ColBERT-rerankere',
+        'Rerankere bak en port, ingen satt opp ennå',
         'Versjonert i katalogen, bytte krever reindeksering',
       ],
-      status: 'bygd',
+      status: 'delvis',
     },
     {
       id: 'tale',
@@ -454,12 +454,12 @@ export const componentsByBlock: Record<string, Component[]> = {
       description:
         'Første søk henter mange kandidater raskt. En reranker leser spørsmål og kandidat sammen og gir en mer presis rangering, så bare de beste bitene sendes til modellen. Det gir bedre svar og lavere kostnad, fordi konteksten blir kortere.',
       capabilities: [
-        'Cross-encoder eller ColBERT-reranker bak en port',
+        'Reranker bak en port, koblet til som en modell, ingen satt opp ennå',
         'Hent 30 til 50 kandidater, send 5 til 10 videre',
         'Terskel som fjerner svake treff i stedet for å fylle opp',
         'Reranker-modell innenfor residenskravet',
       ],
-      status: 'bygd',
+      status: 'delvis',
     },
     {
       id: 'kontekst',

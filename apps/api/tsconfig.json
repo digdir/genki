@@ -63,9 +63,6 @@
       "path": "../../packages/providers-anthropic"
     },
     {
-      "path": "../../packages/providers-colbert"
-    },
-    {
       "path": "../../packages/providers-openai"
     },
     {

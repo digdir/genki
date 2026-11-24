@@ -12,3 +12,5 @@ export * from './operation.js';
 export * from './apis.js';
 export * from './citation-markers.js';
 export * from './capability-checks.js';
+export * from './kinds.js';
+export * from './discovery.js';

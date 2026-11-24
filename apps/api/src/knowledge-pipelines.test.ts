@@ -106,6 +106,30 @@ describe('pipelines into a dataset on the knowledge database', () => {
     }
   });
 
+  it('a parts strategy is refused for a source other than kudos', async () => {
+    const parts = { chunking: { strategy: { kind: 'parts-unit', splitMaxLength: 4000 } } };
+    const folder = await boot().save(onKnowledge, 'docs', parts);
+    expect(messages(folder)).toEqual([
+      'a parts chunking reads stored conversion parts, which only a kudos source has yet',
+    ]);
+    const kudos = await boot().save(onKnowledge, 'kudos', {
+      ...parts,
+      source: { kind: 'kudos', types: ['Årsrapport'] },
+    });
+    expect(kudos.ok).toBe(true);
+  });
+
+  it('a parts strategy is refused for a dataset off the knowledge database', async () => {
+    const parts = { chunking: { strategy: { kind: 'parts-unit', splitMaxLength: 4000 } } };
+    const elsewhere = await boot().save(onPlatform, 'kudos', {
+      ...parts,
+      source: { kind: 'kudos', types: ['Årsrapport'] },
+    });
+    expect(messages(elsewhere)).toEqual([
+      'a parts chunking needs a dataset on the knowledge database, where conversion parts are stored',
+    ]);
+  });
+
   it('a disabled pipeline keeps its documents', async () => {
     const { service, save, start } = boot();
     expect((await save(onKnowledge, 'docs', {})).ok).toBe(true);
