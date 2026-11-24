@@ -250,7 +250,7 @@ const reportOf = (c: Chunk): ReportInfo | undefined => {
 const reportPageTolerance = 0.05;
 /** Two hits are the same page when this share of the shorter hit's words is in the longer one. */
 const samePageShorterShare = 0.8;
-/** The shared words are also this share of the longer hit, so it is not two pages. */
+/** The shared words are also this share of the longer hit, so a much longer hit stays apart. */
 const samePageLongerShare = 0.75;
 /** Below this many words one word is a large share, so 0.8 of both hits' words together is needed. */
 const samePageShareMinWords = 20;
