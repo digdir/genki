@@ -33,6 +33,7 @@ import {
   NotAsked,
   type AskParams,
   type AssistantApi,
+  type DatasetRef,
 } from './api.js';
 import { Assistant } from './Assistant.js';
 import type { AssistantProfile, FieldSpec } from './profile.js';
@@ -756,6 +757,197 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
       />,
     );
 
+  // On a hostname the host's tenant is the organisation number, and Kudos is digdir's.
+  const drawHosted = (storage: AssistantStorage, api: AssistantApi) =>
+    render(
+      <Assistant
+        api={api}
+        layout={kaLayout}
+        service="ka"
+        tenant="991825827"
+        profile={profile}
+        storage={storage}
+        threadInUrl
+      />,
+    );
+
+  it('asks a shared collection’s facets under the tenant that owns it, not the host’s', async () => {
+    const { api } = fakeApi();
+    drawHosted(memory().storage, api);
+    await waitFor(() =>
+      expect(api.loadFacets).toHaveBeenCalledWith(
+        expect.anything(),
+        { key: 'kudos', tenant: 'digdir' },
+        expect.anything(),
+      ),
+    );
+    const tenants = vi.mocked(api.loadFacets).mock.calls.map(([, dataset]) => dataset.tenant);
+    expect(tenants.filter((t) => t !== 'digdir')).toEqual([]);
+  });
+
+  it('asks a chosen collection’s facets only once genki has said who owns it', async () => {
+    const { kept, storage } = memory();
+    kept.set('corpus', 'genki-docs');
+    const { api } = fakeApi();
+    let list: (found: { key: string; label: string; tenant: string }[]) => void = () => {};
+    api.loadCorpora = vi.fn(() => new Promise((resolve) => (list = resolve)));
+    drawHosted(storage, api);
+    await waitFor(() => expect(api.loadFields).toHaveBeenCalledWith('genki-docs'));
+    await screen.findByRole('textbox', { name: questionField });
+    expect(api.loadFacets).not.toHaveBeenCalled();
+    list([{ key: 'genki-docs', label: 'GenKI-dokumentasjon', tenant: 'genki' }]);
+    await waitFor(() =>
+      expect(api.loadFacets).toHaveBeenCalledWith(
+        expect.anything(),
+        { key: 'genki-docs', tenant: 'genki' },
+        expect.anything(),
+      ),
+    );
+    expect(vi.mocked(api.loadFacets).mock.calls).toHaveLength(1);
+  });
+
+  it('a question to a chosen shared collection carries that collection’s owner', async () => {
+    const { kept, storage } = memory();
+    kept.set('corpus', 'genki-docs');
+    const { api, asked } = fakeApi();
+    api.loadCorpora = vi.fn(async () => [
+      { key: 'kudos', label: 'Kudos', tenant: 'digdir' },
+      { key: 'genki-docs', label: 'GenKI-dokumentasjon', tenant: 'genki' },
+    ]);
+    drawHosted(storage, api);
+    await waitFor(() =>
+      expect(api.loadFacets).toHaveBeenCalledWith(
+        expect.anything(),
+        { key: 'genki-docs', tenant: 'genki' },
+        expect.anything(),
+      ),
+    );
+    await ask();
+    expect(asked[0]?.dataset).toEqual({ key: 'genki-docs', tenant: 'genki' });
+  });
+
+  it('a question to a chosen collection with no owner named goes under the host’s tenant, not the service’s own collection’s owner', async () => {
+    const { kept, storage } = memory();
+    kept.set('corpus', 'genki-docs');
+    const { api, asked } = fakeApi();
+    drawHosted(storage, api);
+    await waitFor(() =>
+      expect(api.loadFacets).toHaveBeenCalledWith(
+        expect.anything(),
+        { key: 'genki-docs', tenant: '991825827' },
+        expect.anything(),
+      ),
+    );
+    await ask();
+    expect(asked[0]?.dataset).toEqual({ key: 'genki-docs', tenant: '991825827' });
+  });
+
+  it('takes a chosen collection’s owner from /v1/models when /api/datasets fails', async () => {
+    const { kept, storage } = memory();
+    kept.set('corpus', 'genki-docs');
+    const { api } = fakeApi();
+    const row = rows[0] as ModelRow;
+    api.loadModels = vi.fn(async () => [
+      {
+        ...row,
+        _datasets: [
+          ...(row._datasets ?? []),
+          { tenant: 'genki', 'dataset-config-key': 'genki-docs', filters: [] },
+        ],
+      },
+    ]);
+    api.loadCorpora = vi.fn(async () => {
+      throw new Error('genki answered 500');
+    });
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    onTestFinished(() => quiet.mockRestore());
+    drawHosted(storage, api);
+    await waitFor(() =>
+      expect(api.loadFacets).toHaveBeenCalledWith(
+        expect.anything(),
+        { key: 'genki-docs', tenant: 'genki' },
+        expect.anything(),
+      ),
+    );
+    const tenants = vi.mocked(api.loadFacets).mock.calls.map(([, dataset]) => dataset.tenant);
+    expect(tenants.filter((t) => t !== 'genki')).toEqual([]);
+  });
+
+  // The list of collections fails once, and answers with genki-docs's owner the next time.
+  const listFailsOnce = (api: AssistantApi) => {
+    api.loadCorpora = vi
+      .fn<AssistantApi['loadCorpora']>()
+      .mockRejectedValueOnce(new Error('genki answered 500'))
+      .mockResolvedValue([{ key: 'genki-docs', label: 'GenKI-dokumentasjon', tenant: 'genki' }]);
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    onTestFinished(() => quiet.mockRestore());
+  };
+
+  it('never asks a chosen collection’s facets under the host’s tenant when /api/datasets fails', async () => {
+    const { kept, storage } = memory();
+    kept.set('corpus', 'genki-docs');
+    const { api } = fakeApi();
+    listFailsOnce(api);
+    drawHosted(storage, api);
+    expect(await screen.findByText('Klarte ikke å hente filtrene.')).toBeTruthy();
+    expect(api.loadFacets).not.toHaveBeenCalled();
+  });
+
+  it('reloads the collections on the filter’s Try again and asks the facets under their owner', async () => {
+    const { kept, storage } = memory();
+    kept.set('corpus', 'genki-docs');
+    const { api } = fakeApi();
+    listFailsOnce(api);
+    drawHosted(storage, api);
+    await screen.findByText('Klarte ikke å hente filtrene.');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
+    });
+    await waitFor(() =>
+      expect(api.loadFacets).toHaveBeenCalledWith(
+        expect.anything(),
+        { key: 'genki-docs', tenant: 'genki' },
+        expect.anything(),
+      ),
+    );
+    expect(api.loadCorpora).toHaveBeenCalledTimes(2);
+    const tenants = vi.mocked(api.loadFacets).mock.calls.map(([, dataset]) => dataset.tenant);
+    expect(tenants).not.toContain('991825827');
+  });
+
+  it('holds a question to a chosen collection until genki has said who owns it', async () => {
+    const { kept, storage } = memory();
+    kept.set('corpus', 'genki-docs');
+    const { api, asked } = fakeApi();
+    let list: (found: { key: string; label: string; tenant: string }[]) => void = () => {};
+    api.loadCorpora = vi.fn(() => new Promise((resolve) => (list = resolve)));
+    drawHosted(storage, api);
+    await send();
+    expect(asked).toEqual([]);
+    await act(async () =>
+      list([{ key: 'genki-docs', label: 'GenKI-dokumentasjon', tenant: 'genki' }]),
+    );
+    await waitFor(() => expect(asked).toHaveLength(1));
+    expect(asked[0]?.dataset).toEqual({ key: 'genki-docs', tenant: 'genki' });
+  });
+
+  it('never sends a question to a chosen collection under the host’s tenant when /api/datasets fails, and asks the list again', async () => {
+    const { kept, storage } = memory();
+    kept.set('corpus', 'genki-docs');
+    const { api, asked } = fakeApi();
+    api.loadCorpora = vi.fn(async () => {
+      throw new Error('genki answered 500');
+    });
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    onTestFinished(() => quiet.mockRestore());
+    drawHosted(storage, api);
+    await screen.findByText('Klarte ikke å hente filtrene.');
+    await send();
+    await waitFor(() => expect(api.loadCorpora).toHaveBeenCalledTimes(2));
+    await screen.findByText('Klarte ikke å hente filtrene.');
+    expect(asked).toEqual([]);
+  });
+
   it('keeps Kilder’s own heading when it is the secondary panel’s only tool', async () => {
     drawKa(memory().storage);
     await screen.findByRole('textbox', { name: questionField });
@@ -853,7 +1045,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     await waitFor(() =>
       expect(api.loadFacets).toHaveBeenCalledWith(
         { type: ['Årsrapport'] },
-        'kudos',
+        { key: 'kudos', tenant: 'digdir' },
         expect.anything(),
         expect.anything(),
       ),
@@ -955,7 +1147,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     await waitFor(() =>
       expect(api.loadFacets).toHaveBeenCalledWith(
         { type: ['Årsrapport'] },
-        'kudos',
+        { key: 'kudos', tenant: 'digdir' },
         expect.anything(),
         expect.anything(),
       ),
@@ -4439,12 +4631,12 @@ describe('the page around the blocks', () => {
       { id: 'year', label: 'År' },
     ]);
     // Both chosen types are every type in Kudos, and two of three in the other collection.
-    api.loadFacets = vi.fn(async (_selection: unknown, dataset: string) => [
+    api.loadFacets = vi.fn(async (_selection: unknown, dataset: DatasetRef) => [
       {
         id: 'type',
         label: 'Dokumenttyper',
         options: [
-          ...(dataset === 'kudos' ? [] : [{ value: 'Evaluering', count: 1 }]),
+          ...(dataset.key === 'kudos' ? [] : [{ value: 'Evaluering', count: 1 }]),
           { value: 'Årsrapport', count: 3 },
           { value: 'Tildelingsbrev', count: 2 },
         ],
@@ -4475,7 +4667,7 @@ describe('the page around the blocks', () => {
     await waitFor(() =>
       expect(api.loadFacets).toHaveBeenCalledWith(
         { type: [] },
-        'kudos',
+        { key: 'kudos', tenant: 'digdir' },
         expect.anything(),
         expect.anything(),
       ),
@@ -4484,7 +4676,7 @@ describe('the page around the blocks', () => {
     await waitFor(() =>
       expect(api.loadFacets).toHaveBeenCalledWith(
         { type: ['Årsrapport', 'Tildelingsbrev'] },
-        'genki-docs',
+        expect.objectContaining({ key: 'genki-docs' }),
         expect.anything(),
         expect.anything(),
       ),

@@ -60,6 +60,12 @@ export interface Turn {
 /** A thread in the list, with the service it was made for. */
 export type ThreadRow = ThreadItem & { service?: string | undefined };
 
+/** A collection and the tenant that owns it; without one, the host's. */
+export interface DatasetRef {
+  key: string;
+  tenant?: string | undefined;
+}
+
 export interface AskParams {
   question: string;
   /** The model id: the service and its variant, `kunnskapsassistenten__default`. */
@@ -82,13 +88,13 @@ export interface AssistantApi {
   loadFields(dataset: string): Promise<readonly FieldSpec[]>;
   loadFacets(
     selection: FilterSelection,
-    dataset: string,
+    dataset: DatasetRef,
     fields: readonly FieldSpec[],
     /** The values each field has, for a field with more chosen than genki takes. */
     lists?: readonly FilterField[],
   ): Promise<FilterField[]>;
   /** The line under a document's title in «Dokumenter», where the profile says how to find it. */
-  loadAbout(dataset: string, documentId: string): Promise<readonly string[] | undefined>;
+  loadAbout(dataset: DatasetRef, documentId: string): Promise<readonly string[] | undefined>;
   /** Makes the thread first when there is none, then asks into it, as kunnskapsassistenten does. */
   ask(params: AskParams): AsyncGenerator<StreamEvent, void>;
 }
@@ -461,10 +467,11 @@ export const createGenkiApi = ({
     return (await response.json()) as T;
   };
 
-  const getFacets = <T>(dataset: string, fields: string, filter?: FilterSet | object) => {
+  // A shared collection's facets are asked under its owner's tenant, as a question is.
+  const getFacets = <T>(dataset: DatasetRef, fields: string, filter?: FilterSet | object) => {
     const query = new URLSearchParams({
-      tenant,
-      'dataset-config-key': dataset,
+      tenant: dataset.tenant || tenant,
+      'dataset-config-key': dataset.key,
       fields,
       ...(filter ? { filter: JSON.stringify(filter) } : {}),
     });
@@ -587,12 +594,17 @@ export const createGenkiApi = ({
 
     loadCorpora: async () => {
       const body = await getJson<{
-        datasets: { id: string; name: string; description: string | null }[];
+        datasets: { id: string; tenant?: string; name: string; description: string | null }[];
       }>('/api/datasets');
       return body.datasets.map((d) => {
         const own = corpusProfile(d.id);
         const description = own?.description ?? d.description;
-        return { key: d.id, label: own?.label ?? d.name, ...(description ? { description } : {}) };
+        return {
+          key: d.id,
+          label: own?.label ?? d.name,
+          ...(d.tenant ? { tenant: d.tenant } : {}),
+          ...(description ? { description } : {}),
+        };
       });
     },
 
@@ -646,10 +658,10 @@ export const createGenkiApi = ({
       ),
 
     loadAbout: (dataset, documentId) => {
-      const about = corpusProfile(dataset)?.about;
+      const about = corpusProfile(dataset.key)?.about;
       const number = Number(documentId);
       if (!about || !Number.isInteger(number)) return Promise.resolve(undefined);
-      const key = `${dataset}:${documentId}`;
+      const key = `${dataset.tenant || tenant}/${dataset.key}:${documentId}`;
       const cached = aboutCache.get(key);
       if (cached) return cached;
       const filter = {

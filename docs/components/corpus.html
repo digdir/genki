@@ -126,8 +126,10 @@
               <li>
                 A collection is a <code>CorpusOption</code>: <code>key</code>, the platform's
                 <code>dataset-config-key</code>; <code>label</code>, what the reader sees, of which
-                a sentence uses the part before a comma; and <code>description</code>, what is in
-                it, in the dataset's own words.
+                a sentence uses the part before a comma; <code>description</code>, what is in it, in
+                the dataset's own words; and <code>tenant</code>, if set, the tenant that owns it,
+                which its facets, questions and the line under each document are asked under;
+                without it, the host's.
               </li>
               <li>
                 <code>CorpusLine</code>: <code>corpus</code>, the collection searched;
