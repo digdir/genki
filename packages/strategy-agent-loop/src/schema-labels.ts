@@ -15,8 +15,8 @@ const nb = {
   'budget.reads': { label: 'Flest dokumenter som leses' },
   'budget.readChars': { label: 'Flest tegn som leses' },
   'budget.chunksPerRead': {
-    label: 'Flest biter per lesing',
-    help: 'Så mange biter (om lag en side hver) gir én lesing av et område. Ikke satt gir 10.',
+    label: 'Flest tekstbiter per lesing',
+    help: 'Så mange tekstbiter gir én lesing av et område. Ikke satt gir 10.',
   },
   'budget.seconds': {
     label: 'Lengste tid (sekunder)',
@@ -86,7 +86,7 @@ const en: Record<keyof typeof nb, LabelText> = {
   'budget.readChars': { label: 'Most characters read' },
   'budget.chunksPerRead': {
     label: 'Most chunks per read',
-    help: 'How many chunks (about a page each) one read of a range returns. Not set gives 10.',
+    help: 'How many chunks one read of a range returns. Not set gives 10.',
   },
   'budget.seconds': {
     label: 'Longest time (seconds)',

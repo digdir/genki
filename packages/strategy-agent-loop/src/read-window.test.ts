@@ -133,7 +133,7 @@ describe('range reads', () => {
       },
     });
     expect(toolMessages(out.loops[2])[1]).toContain(
-      'This read was cut to the read cap of 10 chunks. Returned chunk_index 9–18 of doc_num="dA". Left out chunk_index 0–8, 19. To read them, call read_chunks with {"doc_num": "dA", "chunk_range": {"from": 0, "to": 8}}.',
+      'This read was cut to the read cap of 10 chunks. Returned chunk_index 9–18 of doc_num="dA". Left out chunk_index 0–8, 19.',
     );
   });
 
@@ -203,6 +203,72 @@ describe('range reads', () => {
       },
     });
     expect(out.loops.flatMap((l) => toolMessages(l)).join('\n')).not.toContain('This read was cut');
+  });
+
+  it('a read that leaves out two spans names a call for each', async () => {
+    const r = searches([hit(13, 1.71)]);
+    const out = await run({
+      retrieval: r.impl,
+      config: withBudget({}),
+      scripts: {
+        primary: { loop: readRange(0, 19), read: [() => readSignal('gap-remaining')] },
+      },
+    });
+    expect(toolMessages(out.loops[2])[1]).toContain(
+      'To read them, call read_chunks with {"doc_num": "dA", "chunk_range": {"from": 0, "to": 8}} and with {"doc_num": "dA", "chunk_range": {"from": 19, "to": 19}}.',
+    );
+  });
+
+  it('a first range read past the end uses the length the search reported', async () => {
+    const short = new Map<string, Chunk>(
+      [...report].slice(0, 12).map(([id, c]) => [id, { ...c, totalChunks: 12 }]),
+    );
+    const r = retrieval(
+      {
+        search: async () => ({
+          chunks: [{ ...hit(10, 1), totalChunks: 12, rank: 1 }],
+        }),
+      },
+      short,
+    );
+    await run({
+      retrieval: r.impl,
+      config: withBudget({}),
+      scripts: { primary: { loop: readRange(0, 30) } },
+    });
+    expect(ranges(r)).toEqual([['dA', 2, 11]]);
+  });
+
+  it('a read trimmed after the fetch says budget, not read cap', async () => {
+    // The search reports 100 characters a chunk, but each holds 1,500.
+    const long = new Map<string, Chunk>(
+      [...report].map(([id, c]) => [id, { ...c, content: 'x'.repeat(1500) }]),
+    );
+    const r = retrieval(
+      {
+        search: async () => ({
+          chunks: Array.from({ length: 20 }, (_, i) => ({
+            ...hit(i, i === 13 ? 1.71 : 0.1),
+            contentLength: 100,
+            rank: i + 1,
+          })),
+        }),
+      },
+      long,
+    );
+    const out = await run({
+      retrieval: r.impl,
+      config: withBudget({ readChars: 12000 }),
+      scripts: {
+        primary: { loop: readRange(0, 19), read: [() => readSignal('gap-remaining')] },
+      },
+    });
+    expect(ranges(r)).toEqual([['dA', 9, 18]]);
+    const note = toolMessages(out.loops[2])[1];
+    expect(note).toContain(
+      'This read was cut to fit the read budget left: 12000 characters and 6 reads.',
+    );
+    expect(note).not.toContain('read cap');
   });
 
   it('budget.chunksPerRead sets the cap', async () => {

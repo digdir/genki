@@ -266,6 +266,8 @@ export class Workspace {
   sourceFactsRead = false;
   serviceFactsRead = false;
   lastSearchWindow: SearchWindow | undefined;
+  /** How many chunks each document has, as searches and reads reported it. */
+  readonly documentLengths = new Map<string, number>();
 
   constructor(readonly limits: BudgetLimits) {}
 
@@ -324,7 +326,15 @@ export class Workspace {
       ...(extra.filters?.length ? { filters: extra.filters } : {}),
       ...(extra.attribution ? { attribution: extra.attribution } : {}),
     });
-    for (const c of found) this.seen.add(c.chunkId);
+    for (const c of found) {
+      this.seen.add(c.chunkId);
+      if (
+        c.document !== undefined &&
+        c.totalChunks !== undefined &&
+        Number.isInteger(c.totalChunks)
+      )
+        this.documentLengths.set(c.document, c.totalChunks);
+    }
     this.queries = [...new Set([...this.queries, ...queries])];
     return fresh;
   }
@@ -758,7 +768,7 @@ const knownTotalChunks = (workspace: Workspace, document: string) =>
   [...workspace.chunks.values()].find(
     (c) =>
       c.document === document && c.totalChunks !== undefined && Number.isInteger(c.totalChunks),
-  )?.totalChunks;
+  )?.totalChunks ?? workspace.documentLengths.get(document);
 
 // A range past the document's last chunk is cut to it, when the length is known.
 const withinDocument = (workspace: Workspace, document: string, r: ChunkRange): ChunkRange => {
@@ -972,6 +982,8 @@ const spans = (positions: number[]) => {
   return out;
 };
 
+const plural = (n: number, word: string) => (n === 1 ? word : `${word}s`);
+
 const spanText = (xs: [number, number][]) =>
   xs.map(([a, b]) => (a === b ? `${a}` : `${a}–${b}`)).join(', ');
 
@@ -1001,15 +1013,19 @@ export const rangeCutNote = (o: {
   for (let i = o.requested.from; i <= to; i++)
     if (!returned.has(i) && !o.alreadyRead.has(i)) leftOut.push(i);
   const missing = spans(leftOut);
-  const first = missing[0];
-  if (!first) return undefined;
+  if (missing.length === 0) return undefined;
   return (
     (o.cappedByCount
-      ? `This read was cut to the read cap of ${o.chunksPerRead} chunks.`
-      : `This read was cut to fit the read budget left: ${o.remaining} characters and ${o.readsRemaining} reads.`) +
+      ? `This read was cut to the read cap of ${o.chunksPerRead} ${plural(o.chunksPerRead, 'chunk')}.`
+      : `This read was cut to fit the read budget left: ${o.remaining} ${plural(o.remaining, 'character')} and ${o.readsRemaining} ${plural(o.readsRemaining, 'read')}.`) +
     ` Returned chunk_index ${spanText(spans([...returned]))} of doc_num="${o.document}".` +
     ` Left out chunk_index ${spanText(missing)}.` +
-    ` To read them, call read_chunks with {"doc_num": "${o.document}", "chunk_range": {"from": ${first[0]}, "to": ${first[1]}}}.`
+    ` To read them, call read_chunks with ${missing
+      .map(
+        ([from, to]) =>
+          `{"doc_num": "${o.document}", "chunk_range": {"from": ${from}, "to": ${to}}}`,
+      )
+      .join(' and with ')}.`
   );
 };
 
