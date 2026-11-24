@@ -163,3 +163,38 @@ describe('citation markers in a stored conversation turn', () => {
     expect(assistant?.chunks?.map((c) => c.chunkId)).toEqual(['c1', 'c2']);
   });
 });
+
+describe('the words a marker rests on', () => {
+  const quote = { type: 'TextQuoteSelector', exact: 'Andre', prefix: '', suffix: '' };
+  const located = {
+    citations: [
+      { index: 1, chunkId: 'c1', document: 'd1' },
+      { index: 2, chunkId: 'c2', document: 'd1', quote },
+    ],
+    citeBy: 'excerpt',
+  };
+
+  it('carries the cited words on their marker in structuredContent and on the stored turn', async () => {
+    const { structured, assistant } = await storedTurns(located);
+
+    expect(structured.markers).toEqual([
+      { marker: '1', chunk_id: 'c1', document: 'd1' },
+      { marker: '2', chunk_id: 'c2', document: 'd1', quote },
+    ]);
+    expect(assistant?.markers).toEqual(structured.markers);
+  });
+
+  it('leaves out a quote that is not a TextQuoteSelector', () => {
+    const { structured } = defaultOutput([
+      answer({
+        citations: [{ index: 1, chunkId: 'c1', document: 'd1', quote: { exact: 7 } }],
+        citeBy: 'excerpt',
+      }),
+      sources,
+    ]);
+
+    expect(structuredContent(structured, 'conv').markers).toEqual([
+      { marker: '1', chunk_id: 'c1', document: 'd1' },
+    ]);
+  });
+});

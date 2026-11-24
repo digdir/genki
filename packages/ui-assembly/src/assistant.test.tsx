@@ -4108,6 +4108,43 @@ describe('Kilder in the next look', () => {
   };
   const fold = () => document.querySelector<HTMLDetailsElement>('details.uib-sources-others');
 
+  it('marks the words a followed footnote rests on in its excerpt, in kunnskapsassistenten’s next look', async () => {
+    const quote = {
+      type: 'TextQuoteSelector' as const,
+      exact: 'Rapporteringen skjer hvert år.',
+      prefix: '',
+      suffix: '',
+    };
+    const { api } = fakeApi();
+    api.loadThread = vi.fn(async () => ({
+      title: 'En gammel tråd',
+      turns: [
+        {
+          id: 'm1',
+          question: 'Hva er fast?',
+          askedAt: 1,
+          answer: {
+            text: answer,
+            status: 'complete' as const,
+            sources: [read, source],
+            markers: [{ marker: '1', chunkId: 'c1', documentId: '42', quote }],
+            created: 2,
+          },
+        },
+      ],
+    }));
+    history.replaceState(null, '', '/?t=t-old');
+    draw(fromTemplate('knowledge-assistant-next').layout, api, true);
+    await showKilder();
+    fireEvent.click(document.querySelector('.uib-answer-mark') as HTMLElement);
+
+    await waitFor(() =>
+      expect(document.querySelector('mark.uib-sources-cited')?.textContent).toBe(
+        'Rapporteringen skjer hvert år.',
+      ),
+    );
+  });
+
   it('shows each cited excerpt as a card, and a footnote shows it whole, marked in the answer', async () => {
     drawStored('knowledge-assistant-next');
     await showKilder();

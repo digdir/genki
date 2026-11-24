@@ -13,6 +13,8 @@ export interface SearchHit {
   start: number;
   /** Index one past the last character. */
   end: number;
+  /** Drawn with this class instead of the highlight's own, such as the words a footnote rests on. */
+  className?: string | undefined;
 }
 
 /** Shortest query we act on. One character matches nearly everything. */

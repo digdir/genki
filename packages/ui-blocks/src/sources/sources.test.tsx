@@ -927,3 +927,103 @@ describe('the dev boards’ «Kilder» tool, `variant="tool"` (dev-kilder-hoyre)
     ).toContain('Utdrag 1');
   });
 });
+
+describe('the words a footnote rests on', () => {
+  const findings: SourceDocument = {
+    index: 3,
+    title: 'Evaluering av E6 Ranheim–Værnes',
+    documentId: 'kudos:842734b0',
+    excerpts: [
+      {
+        chunkId: 'kudos:842734b0-12',
+        text: '# 7. Hovedfunn\n\nHovedfunnene er inndelt i tre deler. Valget av **kontraktstrategi** var en direkte årsak, jf. kap. 5. Makspris ble satt for lavt.\n\n| Post | 2023 |\n| --- | --- |\n| Drift | 1 204 |',
+        position: 12,
+      },
+    ],
+  };
+  const quote = (exact: string, prefix = '', suffix = '') => ({
+    type: 'TextQuoteSelector' as const,
+    exact,
+    prefix,
+    suffix,
+  });
+  const marks = () =>
+    [...document.querySelectorAll('mark.uib-sources-cited')].map((m) => m.textContent).join('');
+
+  it('«Kilder» marks the quoted words in the excerpt a footnote opens', async () => {
+    render(
+      <Sources
+        sources={[findings]}
+        citations={cite('kudos:842734b0-12')}
+        target={{
+          chunkId: 'kudos:842734b0-12',
+          quote: quote(
+            'Valget av **kontraktstrategi** var en direkte årsak, jf. kap. 5.',
+            'tre deler. ',
+            ' Makspris',
+          ),
+        }}
+      />,
+    );
+    await frame();
+
+    expect(marks()).toBe('Valget av kontraktstrategi var en direkte årsak, jf. kap. 5.');
+  });
+
+  it('marks a cited table row', async () => {
+    render(
+      <Sources
+        sources={[findings]}
+        citations={cite('kudos:842734b0-12')}
+        target={{ chunkId: 'kudos:842734b0-12', quote: quote('| Drift | 1 204 |') }}
+      />,
+    );
+    await frame();
+
+    expect(marks()).toBe('Drift · 1 204');
+  });
+
+  it('«Kilder» shows the excerpt unmarked when the marker has no quote', async () => {
+    render(
+      <Sources
+        sources={[findings]}
+        citations={cite('kudos:842734b0-12')}
+        target={{ chunkId: 'kudos:842734b0-12' }}
+      />,
+    );
+    await frame();
+
+    expect(document.querySelector('mark')).toBeNull();
+  });
+
+  it('marks nothing when the quoted words are not in the excerpt', async () => {
+    render(
+      <Sources
+        sources={[findings]}
+        citations={cite('kudos:842734b0-12')}
+        target={{ chunkId: 'kudos:842734b0-12', quote: quote('Ord som ikke står der.') }}
+      />,
+    );
+    await frame();
+
+    expect(document.querySelector('mark')).toBeNull();
+  });
+
+  it('a search highlight and a citation highlight in the same excerpt both show', async () => {
+    render(
+      <Sources
+        sources={[findings]}
+        citations={cite('kudos:842734b0-12')}
+        target={{
+          chunkId: 'kudos:842734b0-12',
+          quote: quote('Valget av **kontraktstrategi** var en direkte årsak, jf. kap. 5.'),
+        }}
+      />,
+    );
+    await frame();
+    fireEvent.change(screen.getByLabelText('Søk i kildene'), { target: { value: 'årsak' } });
+
+    expect(document.querySelector('mark.uib-sources-mark')?.textContent).toBe('årsak');
+    expect(marks()).toBe('Valget av kontraktstrategi var en direkte , jf. kap. 5.');
+  });
+});

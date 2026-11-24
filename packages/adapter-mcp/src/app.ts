@@ -38,12 +38,14 @@ import {
   requiresQuery,
   resourceLinks,
   structuredContent,
+  textQuote,
   toolEntry,
   type Authenticator,
   type CapabilityEntry,
   type CapabilityResolver,
   type History,
   type OverridePolicy,
+  type TextQuote,
   type ToolOutput,
 } from './tools.js';
 
@@ -58,6 +60,7 @@ export interface TurnMarker {
   marker: string;
   chunk_id: string;
   document: string;
+  quote?: TextQuote;
 }
 
 export interface ConversationTurn {
@@ -196,9 +199,10 @@ const turnMarkers = (v: unknown): TurnMarker[] =>
     const marker = text(m.marker);
     const chunkId = text(m.chunk_id);
     const document = text(m.document);
+    const quote = textQuote(m.quote);
     return marker === undefined || chunkId === undefined || document === undefined
       ? []
-      : [{ marker, chunk_id: chunkId, document }];
+      : [{ marker, chunk_id: chunkId, document, ...(quote ? { quote } : {}) }];
   });
 
 const assistantTurn = (output: ToolOutput, task: string): ConversationTurn => {

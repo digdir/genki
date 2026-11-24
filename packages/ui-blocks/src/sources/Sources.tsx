@@ -44,6 +44,7 @@ import {
   type SourceCitation,
 } from './pairing.js';
 import { SourcesSearch } from './SourcesSearch.js';
+import { citedHits, citedRange } from './citedRange.js';
 import type { SourceDocument, SourceExcerpt, SourceSelection, SourceTarget } from './types.js';
 
 /**
@@ -805,8 +806,15 @@ const SourceItem = ({
           rows.map((row, i) => {
             const { text, excerpt, key } = row;
             const isOpen = openRows.has(key);
-            const rowHits = hitsFor(hits, key);
             const here = excerpt !== undefined && excerpt.chunkId === active;
+            const searchHits = hitsFor(hits, key);
+            const cited =
+              here && target?.quote ? citedRange(text, row.flat, target.quote) : undefined;
+            const rowHits = cited
+              ? [...searchHits, ...citedHits(key, cited, searchHits, 'uib-sources-cited')].sort(
+                  (a, b) => a.start - b.start,
+                )
+              : searchHits;
             // Only a cited excerpt is numbered and links back; an uncited one comes last, says so.
             const n = byExcerpt && excerpt ? pairing.numbers.get(excerpt.chunkId) : undefined;
             const uses =
@@ -1298,6 +1306,7 @@ export const Sources = ({
           request={item.target}
           onReturn={item.onReturn}
           level={headingLevel}
+          quotes={citations?.map((c) => c.quote)}
         />
       ) : sources?.length ? (
         <>

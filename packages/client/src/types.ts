@@ -58,10 +58,20 @@ export interface Source {
   publishedAt?: string;
 }
 
+/** The words a marker rests on, found word for word in its excerpt's text (W3C TextQuoteSelector). */
+export interface TextQuote {
+  type: 'TextQuoteSelector';
+  exact: string;
+  prefix: string;
+  suffix: string;
+}
+
 export interface AnswerMarker {
   marker: string;
   chunkId: string;
   documentId: string;
+  /** Present when the model cited sentences of the excerpt; highlight `exact` in the excerpt. */
+  quote?: TextQuote;
 }
 
 export interface Usage {

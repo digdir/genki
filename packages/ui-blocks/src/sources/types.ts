@@ -35,9 +35,19 @@ export interface SourceSelection {
   excerpt?: SourceExcerpt;
 }
 
+/** The words a footnote rests on, in its excerpt's text (W3C TextQuoteSelector, ADR 0052). */
+export interface TextQuote {
+  type: 'TextQuoteSelector';
+  exact: string;
+  prefix: string;
+  suffix: string;
+}
+
 /** Where a footnote sends the reader. */
 export interface SourceTarget {
   chunkId?: string | undefined;
   documentId?: string | undefined;
   index?: number | undefined;
+  /** The words the footnote rests on, marked in the excerpt it opens. */
+  quote?: TextQuote | undefined;
 }

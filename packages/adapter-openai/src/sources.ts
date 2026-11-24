@@ -51,11 +51,32 @@ export interface SourceExcerpt {
   markers?: string[];
 }
 
+/** The words a marker rests on, in its excerpt's text (W3C TextQuoteSelector, ADR 0052). */
+export interface TextQuote {
+  type: 'TextQuoteSelector';
+  exact: string;
+  prefix: string;
+  suffix: string;
+}
+
 export interface AnswerMarker {
   marker: string;
   chunk_id: string;
   document: string;
+  quote?: TextQuote;
 }
+
+const quoteOf = (raw: unknown): TextQuote | undefined => {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const { type, exact, prefix, suffix } = raw as Record<string, unknown>;
+  if (type !== 'TextQuoteSelector') return undefined;
+  return typeof exact === 'string' &&
+    exact &&
+    typeof prefix === 'string' &&
+    typeof suffix === 'string'
+    ? { type: 'TextQuoteSelector', exact, prefix, suffix }
+    : undefined;
+};
 
 export const excerptLength = 300;
 
@@ -108,6 +129,7 @@ interface PartCitation {
   index: number;
   chunkId: string;
   document?: string;
+  quote?: unknown;
 }
 
 const markedPart = (parts: Part[]) =>
@@ -136,12 +158,14 @@ export const markersOf = (parts: Part[]): AnswerMarker[] => {
   const byId = new Map(sourcesOf(parts).map((r) => [r.chunkId, r]));
   return citationsIn(marked).flatMap((c) => {
     const found = byId.get(c.chunkId);
+    const quote = quoteOf(c.quote);
     return found
       ? [
           {
             marker: String(c.index),
             chunk_id: c.chunkId,
             document: c.document ?? found.document ?? c.chunkId,
+            ...(quote ? { quote } : {}),
           },
         ]
       : [];

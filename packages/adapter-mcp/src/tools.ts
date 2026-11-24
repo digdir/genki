@@ -117,6 +117,18 @@ export const defaultOutputSchema: JSONSchema = {
           },
           chunk_id: { type: 'string' },
           document: { type: 'string' },
+          quote: {
+            type: 'object',
+            description:
+              'Present when the model cited sentences of the excerpt: the cited words as a W3C TextQuoteSelector, found word for word in the excerpt text.',
+            properties: {
+              type: { type: 'string', const: 'TextQuoteSelector' },
+              exact: { type: 'string' },
+              prefix: { type: 'string' },
+              suffix: { type: 'string' },
+            },
+            required: ['type', 'exact', 'prefix', 'suffix'],
+          },
         },
         required: ['marker', 'chunk_id', 'document'],
       },
@@ -505,6 +517,25 @@ const textOf = (parts: Part[], fields: Record<string, unknown> | undefined) => {
     : JSON.stringify(fields, null, 2);
 };
 
+export interface TextQuote {
+  type: 'TextQuoteSelector';
+  exact: string;
+  prefix: string;
+  suffix: string;
+}
+
+/** A W3C TextQuoteSelector as the strategy puts it on a citation, or none. */
+export const textQuote = (raw: unknown): TextQuote | undefined => {
+  if (!isRecord(raw) || raw.type !== 'TextQuoteSelector') return undefined;
+  const { exact, prefix, suffix } = raw;
+  return typeof exact === 'string' &&
+    exact !== '' &&
+    typeof prefix === 'string' &&
+    typeof suffix === 'string'
+    ? { type: 'TextQuoteSelector', exact, prefix, suffix }
+    : undefined;
+};
+
 const markersIn = (parts: Part[], known: Set<string>) => {
   const marked = parts.find(
     (p) =>
@@ -516,18 +547,22 @@ const markersIn = (parts: Part[], known: Set<string>) => {
   const citations = (marked?.meta?.citations ?? []) as unknown[];
   return citations
     .filter(
-      (c): c is { index: number; chunkId: string; document?: string } =>
+      (c): c is { index: number; chunkId: string; document?: string; quote?: unknown } =>
         isRecord(c) &&
         typeof c.index === 'number' &&
         typeof c.chunkId === 'string' &&
         known.has(c.chunkId),
     )
     .sort((a, b) => a.index - b.index)
-    .map((c) => ({
-      marker: String(c.index),
-      chunk_id: c.chunkId,
-      document: c.document ?? c.chunkId,
-    }));
+    .map((c) => {
+      const quote = textQuote(c.quote);
+      return {
+        marker: String(c.index),
+        chunk_id: c.chunkId,
+        document: c.document ?? c.chunkId,
+        ...(quote ? { quote } : {}),
+      };
+    });
 };
 
 export const defaultOutput = (parts: Part[]): ToolOutput => {
