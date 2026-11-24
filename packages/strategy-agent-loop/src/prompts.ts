@@ -196,7 +196,7 @@ export const agentTools: ToolSpec[] = [
 
 /** Shown with excerpts whose sentences carry ids (#971). */
 export const sentenceRule =
-  "Each sentence, heading, list item and table row in an excerpt starts with an id such as ⟨4⟩. Cite the sentences a claim rests on as [N:4], or [N:4-6] for sentences that follow each other, where N is the excerpt's number. Never copy the ⟨4⟩ ids into the answer.";
+  "Each sentence, heading, list item and table row in an excerpt starts with an id such as ⟨4⟩. Cite the sentences a claim rests on as [N:4], [N:4-6] for sentences that follow each other, or [N:4, 9] for sentences apart, where N is the excerpt's number. Never copy the ⟨4⟩ ids into the answer.";
 
 const pageRule =
   'Write a page as plain text, such as "s. 67", never as a number in square brackets: [N] is only for citing a source.';

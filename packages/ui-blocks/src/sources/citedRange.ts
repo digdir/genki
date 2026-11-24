@@ -15,11 +15,7 @@ const nth = (text: string, part: string, n: number) => {
   return at;
 };
 
-/**
- * Where a footnote's quote is in an excerpt as drawn: `flat` is the excerpt's visible text, `text`
- * its markdown. The quote is drawn on its own and found in the drawing; the prefix says which
- * copy when the words are there more than once. None when the words are not in the excerpt.
- */
+/** Where a footnote's quote is in the excerpt as drawn; the prefix picks the copy. None if absent. */
 export const citedRange = (
   text: string,
   flat: string,

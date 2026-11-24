@@ -125,13 +125,23 @@ describe('citing the sentences of an excerpt', () => {
 
     expect(out.text).toBe('Turnover var 8 prosent [1].');
     expect(out.meta?.citations).toEqual([{ index: 1, chunkId: 'c2', document: 'd2' }]);
-    expect(out.notices).toContainEqual({ stage: 'sentence-citations', located: 0, missed: 1 });
+    expect(out.notices).toContainEqual({
+      stage: 'sentence-citations',
+      located: 0,
+      missed: 1,
+      cited: 1,
+    });
   });
 
   it('counts the citations that got a location in the run', async () => {
     const out = await answerFrom('Tre deler [1:1]. Turnover [2].');
 
-    expect(out.notices).toContainEqual({ stage: 'sentence-citations', located: 1, missed: 0 });
+    expect(out.notices).toContainEqual({
+      stage: 'sentence-citations',
+      located: 1,
+      missed: 0,
+      cited: 2,
+    });
   });
 
   it('never lets a sentence id point into another excerpt', () => {
@@ -201,5 +211,62 @@ describe('citing the sentences of an excerpt', () => {
     expect(deltas(out).length).toBeGreaterThan(0);
     for (const text of deltas(out)) expect(text).not.toMatch(/\[\d+:\d/);
     expect(deltas(out).join('')).not.toContain(':1]');
+  });
+
+  it('drops a marker that leads to no excerpt, so it never takes the number of a cited place', () => {
+    const texts = new Map([
+      ['c1', 'En. To.'],
+      ['c2', 'Tre.'],
+    ]);
+    const resolved = resolveSentenceMarkers(
+      'A [1:1]. B [1:2]. C [2:1]. D [3]. E [9:2].',
+      new Map([
+        [1, 'c1'],
+        [2, 'c2'],
+      ]),
+      (id) => texts.get(id),
+    );
+
+    expect(resolved.text).toBe('A [1]. B [2]. C [3]. D. E.');
+    expect([...resolved.index]).toEqual([
+      [1, 'c1'],
+      [2, 'c1'],
+      [3, 'c2'],
+    ]);
+  });
+
+  it('gives sentences that are not next to each other a marker each', () => {
+    const resolved = resolveSentenceMarkers(
+      'Svar [1:1, 3].',
+      new Map([[1, 'c1']]),
+      () => 'En. To. Tre.',
+    );
+
+    expect(resolved.text).toBe('Svar [1][2].');
+    expect([...resolved.quotes.values()].map((q) => q.exact)).toEqual(['En.', 'Tre.']);
+  });
+
+  it('keeps a plain excerpt citation for a sentence id it cannot read, and counts it as a miss', () => {
+    const resolved = resolveSentenceMarkers('Svar [1:to].', new Map([[1, 'c1']]), () => 'En.');
+
+    expect(resolved.text).toBe('Svar [1].');
+    expect(resolved.missed).toBe(1);
+  });
+
+  it('counts each cited place once, located or missed, with the citations in all', async () => {
+    const out = await answerFrom('X [2:9]. Y [2:9]. Z [1:1].');
+
+    expect(out.notices).toContainEqual({
+      stage: 'sentence-citations',
+      located: 1,
+      missed: 1,
+      cited: 2,
+    });
+  });
+
+  it('reads no sentence ids when the service cites documents', async () => {
+    const out = await answerFrom('Forholdet er [1:2] [1].', baseConfig);
+
+    expect(out.text).toBe('Forholdet er [1:2] [1].');
   });
 });

@@ -2,6 +2,7 @@ import { normaliseCitationMarkers, untrustedData } from '@genai/port-model';
 import {
   detectInsufficientContext,
   locateSentences,
+  unlocated,
   numberByDocument,
   numberByExcerpt,
   parseCitations,
@@ -139,11 +140,11 @@ const citeDraft = async (
     citeDraftPrompt(context, untrustedData('draft-answer', draft), env.citeBy === 'excerpt'),
   );
   if (written === undefined) return undefined;
-  const located = locateSentences(
-    stripSourceLists(normaliseCitationMarkers(written, (n) => numbered.has(n))),
-    numbered,
-    chunks,
-  );
+  const cleaned = stripSourceLists(normaliseCitationMarkers(written, (n) => numbered.has(n)));
+  const located =
+    env.citeBy === 'excerpt'
+      ? locateSentences(cleaned, numbered, chunks)
+      : unlocated(cleaned, numbered);
   const { text, index } = located;
   if (
     !validateCitations(text, index).grounded ||

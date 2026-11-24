@@ -5,6 +5,7 @@ import {
   numberByDocument,
   locateSentences,
   numberByExcerpt,
+  unlocated,
   pageField,
   type CiteBy,
   parseCitations,
@@ -1030,7 +1031,8 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
       content: `Error executing generate_response: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
-  const located = locateSentences(text, index, ordered);
+  const located =
+    env.citeBy === 'excerpt' ? locateSentences(text, index, ordered) : unlocated(text, index);
   text = located.text;
   index = located.index;
   workspace.lastGeneratedResponse = text;

@@ -1,9 +1,4 @@
-/**
- * Sentence ids for an excerpt the model reads (ADR 0052, #971). A heading, a list item and a
- * table row are one unit each; a paragraph is split into sentences by `Intl.Segmenter`, with the
- * pieces a Norwegian abbreviation cut off glued back on. Offsets are into the excerpt's text as
- * «Kilder» shows it, so a cited range becomes a quote that is found word for word there.
- */
+/** Sentence ids for an excerpt the model reads (#971); offsets are into the text «Kilder» shows. */
 export interface Unit {
   start: number;
   end: number;
