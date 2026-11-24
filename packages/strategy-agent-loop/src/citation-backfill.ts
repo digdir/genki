@@ -81,7 +81,7 @@ const unreadSearchHits = (workspace: Workspace) => {
 // Nothing read answers the question, so a rewrite from it adds only what is beside the point.
 const declineJudged = (workspace: Workspace) => {
   const d = workspace.latestDecision();
-  if (!d) return false;
+  if (!d || ('degraded' in d && d.degraded)) return false;
   if ('reasonCode' in d && d.reasonCode === 'wrong-scope') return true;
   return d.status === 'insufficient' || d.status === 'off-topic';
 };

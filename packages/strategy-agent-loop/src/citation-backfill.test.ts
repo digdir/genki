@@ -337,6 +337,25 @@ describe('a decline after the gate judged the evidence', () => {
     expect(out.notices.filter((n) => n.stage === 'answer-discarded')).toEqual([]);
   });
 
+  it('still rewrites a decline when the model gate could not judge and fell back to a guess', async () => {
+    const out = await run({
+      config: { ...baseConfig, strategy: { ...baseConfig.strategy, ablate: ['read-signal-eval'] } },
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['Hurtigruten billettpriser 2026'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c2', 'c3', 'c4', 'c5'] })]),
+            () => result(decline),
+          ],
+          sufficiency: [() => 'not json'],
+          synth: [() => 'Staten betaler for kystruten [1].'],
+        },
+      },
+    });
+
+    expect(out.notices).toContainEqual({ stage: 'citations', action: 'backfill', adopted: true });
+  });
+
   it("keeps a decline when the last read check found the chunks outside the question's scope", () => {
     const w = workspaceWith((w) => {
       readInto(w, 1, 2);
