@@ -367,8 +367,6 @@ export interface RuntimeInput {
   lastImport?: (dataset: string) => Promise<string | undefined>;
   /** The owner organisation's name for the service-facts@1 tool (ADR 0068). */
   organisationName?: ServiceFactsDeps['organisationName'];
-  /** A model's readable name for the service-facts@1 tool; its family when left out. */
-  modelName?: ServiceFactsDeps['modelName'];
   endpointFetch?: (endpoint: string) => typeof fetch | undefined;
   foreignFetch?: (hosts: string[]) => typeof fetch;
   providerObjects?: ProviderObjectStore;
@@ -767,7 +765,6 @@ export const createRuntime = async (input: RuntimeInput) => {
         definitions: () => late.store,
         models: () => models.describe(),
         organisationName: input.organisationName,
-        modelName: input.modelName,
       }),
       retrieval: async (ctx, config, request) => {
         if (!hasDataset(config as RuntimeConfig)) return undefined;

@@ -1,6 +1,10 @@
 import type { ModelDescription } from '@genai/port-model';
 import { describe, expect, it } from 'vitest';
-import { serviceFactsLookup, type ServiceFactsDeps } from './service-facts.js';
+import {
+  organisationNameFrom,
+  serviceFactsLookup,
+  type ServiceFactsDeps,
+} from './service-facts.js';
 
 const published = (version: number) => ({
   version,
@@ -55,7 +59,7 @@ describe('the service facts lookup', () => {
       draft: false,
       published: '2026-10-03T09:30:00.000Z',
       latest: 4,
-      model: { name: 'gpt-4o', maker: 'OpenAI' },
+      model: { name: 'GPT-4o', maker: 'OpenAI' },
     });
   });
 
@@ -88,5 +92,23 @@ describe('the service facts lookup', () => {
     const found = await ask({}, { modelName: (m) => ({ name: `Readable ${m.family}` }) });
 
     expect(found.model).toEqual({ name: 'Readable gpt-4o' });
+  });
+
+  it('names the organisation from the tenant rows, so the worker answers as the API does', async () => {
+    const name = organisationNameFrom({
+      list: async () => [
+        { orgNumber: '991825827', name: 'Digitaliseringsdirektoratet' },
+        { orgNumber: '974760673' },
+      ],
+    });
+
+    expect(await name('991825827')).toBe('Digitaliseringsdirektoratet');
+    expect(await name('974760673')).toBeUndefined();
+  });
+
+  it('gives the readable name and maker of the family by default, so every runtime names the model alike', async () => {
+    const found = await ask({}, { modelName: undefined });
+
+    expect(found.model).toEqual({ name: 'GPT-4o', maker: 'OpenAI' });
   });
 });

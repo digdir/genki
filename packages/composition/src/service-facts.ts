@@ -1,12 +1,13 @@
 import type { DefinitionStore } from '@genai/definitions';
 import type { ModelDescription } from '@genai/port-model';
 import type { ServiceFactsLookup } from '@genai/strategy-agent-loop';
+import { makerOf, readableModelName } from './model-identity.js';
 
 export interface ServiceFactsDeps {
   definitions: () => Pick<DefinitionStore, 'get'> | undefined;
   models: () => ModelDescription[];
   organisationName?: ((tenant: string) => Promise<string | undefined>) | undefined;
-  /** A readable name and maker; by default the model's family, never its deployment. */
+  /** A readable name and maker; by default from the model's family, never its deployment. */
   modelName?:
     | ((model: ModelDescription) => { name: string; maker?: string | undefined } | undefined)
     | undefined;
@@ -15,8 +16,18 @@ export interface ServiceFactsDeps {
 const unless = <T>(found: Promise<T> | undefined) =>
   found ? found.catch(() => undefined) : Promise.resolve(undefined);
 
-const familyName = (model: ModelDescription) =>
-  model.family ? { name: model.family, ...(model.maker ? { maker: model.maker } : {}) } : undefined;
+/** The family's readable name and the maker, never the deployment. */
+const readableName = (model: ModelDescription) => {
+  if (!model.family) return undefined;
+  const maker = makerOf({ family: model.family, maker: model.maker });
+  return { name: readableModelName(model.family), ...(maker ? { maker } : {}) };
+};
+
+/** The organisation's name from the platform's tenant rows, for a runtime without the API's directory. */
+export const organisationNameFrom =
+  (tenants: { list(): Promise<{ orgNumber: string; name?: string | undefined }[]> }) =>
+  async (tenant: string) =>
+    (await tenants.list()).find((t) => t.orgNumber === tenant)?.name;
 
 /** A published service's capability id is `<tenant>/<service>/<variant>`; drafts and evals are not. */
 const publishedService = (capability: string, tenant: string) => {
@@ -47,6 +58,6 @@ export const serviceFactsLookup =
       draft: !service,
       published: used ? used.publishedAt : undefined,
       latest: latest ? latest.version : undefined,
-      model: model && (deps.modelName ?? familyName)(model),
+      model: model && (deps.modelName ?? readableName)(model),
     };
   };

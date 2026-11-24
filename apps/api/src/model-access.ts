@@ -3,7 +3,7 @@ import { INTERNAL_GRANT_PREFIX } from '@genai/identity';
 import { servesModelPort, type ModelDescription } from '@genai/port-model';
 import type { CatalogRegistry } from './catalog-registry.js';
 import { platformScope } from './config-store.js';
-import { nameSource } from './model-identity.js';
+import { nameSource } from '@genai/composition';
 
 export const candidateRelease = 'candidate';
 
