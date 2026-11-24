@@ -128,7 +128,7 @@ const sameSecret = (a: string, b: string) => {
 const text = (value: unknown) =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
 
-/** The person's name as the browser login reads it: `name`, else the given and family names. */
+/** The person's name: `name`, else the given and family names. */
 export const personName = (claims: Record<string, unknown>) =>
   text(claims.name) ??
   ([text(claims.given_name), text(claims.family_name)].filter(Boolean).join(' ') || undefined);

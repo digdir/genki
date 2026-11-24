@@ -419,6 +419,9 @@ describe('the assistant host', () => {
     expect(await screen.findByRole('button', { name: 'Digitaliseringsdirektoratet' })).toBeTruthy();
     expect(screen.queryByRole('banner')).toBeNull();
     expect(menuEntries()).toEqual(['Om', 'Hjelp', 'Logg ut']);
+    // Named once, as the reader, not again under it as the organisation.
+    const menu = document.querySelector<HTMLElement>('.uib-shell-profile-menu');
+    expect(menu?.textContent?.split('Digitaliseringsdirektoratet')).toHaveLength(2);
   });
 
   it('names the reader «Innlogget» when the login gives neither a name nor an organisation', async () => {
