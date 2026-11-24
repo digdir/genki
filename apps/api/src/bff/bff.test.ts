@@ -10,6 +10,8 @@ import { defaultReservedDomains } from '../hosts.js';
 import {
   createBff,
   loginCookie,
+  organisationsOf,
+  personName,
   safeReturn,
   sessionCookie,
   type BffDeps,
@@ -522,5 +524,26 @@ describe('a return address after login', () => {
     const started = performance.now();
     safeReturn(`/${'/a'.repeat(1000)}${'\\'.repeat(1000)}`);
     expect(performance.now() - started).toBeLessThan(50);
+  });
+});
+
+describe('who a login names', () => {
+  it('reads the person’s name from the given and family names when the ID token has no name', () => {
+    expect(personName({ name: 'Kari Nordmann' })).toBe('Kari Nordmann');
+    expect(personName({ given_name: 'Kari', family_name: 'Nordmann' })).toBe('Kari Nordmann');
+    expect(personName({ name: ' ', family_name: 'Nordmann' })).toBe('Nordmann');
+  });
+
+  it('reads no name from claims that hold none', () => {
+    expect(personName({ pid: PID, sub: 'x' })).toBeUndefined();
+  });
+
+  it('names each organisation once, by the name Altinn gave where it gave one', () => {
+    expect(
+      organisationsOf({
+        authorizedFor: [{ org: ORG_A }, { org: ORG_A }, { org: ORG_B }],
+        orgNames: { [ORG_A]: 'Digitaliseringsdirektoratet' },
+      }),
+    ).toEqual([{ orgNumber: ORG_A, name: 'Digitaliseringsdirektoratet' }, { orgNumber: ORG_B }]);
   });
 });

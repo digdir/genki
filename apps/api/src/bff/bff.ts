@@ -125,6 +125,24 @@ const sameSecret = (a: string, b: string) => {
   return timingSafeEqual(digest(a), digest(b));
 };
 
+const text = (value: unknown) =>
+  typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
+
+/** The person's name as the browser login reads it: `name`, else the given and family names. */
+export const personName = (claims: Record<string, unknown>) =>
+  text(claims.name) ??
+  ([text(claims.given_name), text(claims.family_name)].filter(Boolean).join(' ') || undefined);
+
+/** The organisations a login may act for, each by its name where Altinn gave one. */
+export const organisationsOf = (principal: {
+  authorizedFor?: readonly { org: string }[] | undefined;
+  orgNames?: Readonly<Record<string, string>> | undefined;
+}): Organisation[] =>
+  [...new Set((principal.authorizedFor ?? []).map((a) => a.org))].map((orgNumber) => {
+    const name = principal.orgNames?.[orgNumber];
+    return { orgNumber, ...(name ? { name } : {}) };
+  });
+
 const cookie = (name: string, value: string, maxAgeSeconds: number) =>
   `${name}=${value}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}`;
 
@@ -438,6 +456,13 @@ export const createBff = (deps: BffDeps) => {
         credentials.clientId,
         nonce,
       );
+      const name = personName(claims);
+      // Which claims came, never their values, so a login without a name can be traced.
+      if (!name)
+        log('bff login without a name', {
+          hostname: host.hostname,
+          claims: Object.keys(claims).sort(),
+        });
       const organisations = host.platform
         ? await actFor(actingFor(host), () => deps.organisations(tokens.accessToken))
         : await deps.organisations(tokens.accessToken);
@@ -446,7 +471,7 @@ export const createBff = (deps: BffDeps) => {
         accessExpiresAt: tokens.accessExpiresAt,
         ...(tokens.refreshToken ? { refreshToken: tokens.refreshToken } : {}),
         idToken: tokens.idToken,
-        ...(typeof claims.name === 'string' ? { name: claims.name } : {}),
+        ...(name ? { name } : {}),
         organisations,
         ...(organisations.length === 1 && organisations[0]
           ? { organisation: organisations[0].orgNumber }

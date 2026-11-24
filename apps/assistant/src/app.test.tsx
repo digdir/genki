@@ -360,16 +360,20 @@ describe('the assistant host', () => {
     zones: { primary: [{ block: 'threads' }], main: [{ block: 'chat' }], secondary: [] },
     profile: { assistantName: 'Klarspråkassistenten', suggestions: ['Skriv om dette'] },
   };
-  const signedIn = (layout: unknown, extra: Record<string, () => Response> = {}) => {
+  const kari = {
+    name: 'Kari Nordmann',
+    organisation: '991825827',
+    organisations: [{ orgNumber: '991825827' }],
+    expiresAt: '2026-11-19T18:00:00.000Z',
+  };
+  const signedIn = (
+    layout: unknown,
+    extra: Record<string, () => Response> = {},
+    who: Record<string, unknown> = kari,
+  ) => {
     const routes: Record<string, () => Response> = {
       '/api/v1/hosts/ka.example.no': () => json(view),
-      '/auth/me': () =>
-        json({
-          name: 'Kari Nordmann',
-          organisation: '991825827',
-          organisations: [{ orgNumber: '991825827' }],
-          expiresAt: '2026-11-19T18:00:00.000Z',
-        }),
+      '/auth/me': () => json(who),
       '/api/v1/models': () => json({ data: [{ id: 'klarsprak__default' }] }),
       '/api/v1/models/klarsprak__default/interface': () => json({ layout }),
       ...extra,
@@ -394,6 +398,69 @@ describe('the assistant host', () => {
     expect(screen.queryByRole('banner')).toBeNull();
     expect(screen.queryByRole('group', { name: 'Språk / Language' })).toBeNull();
     expect(screen.getAllByRole('main')).toHaveLength(1);
+  });
+
+  it('draws the reader for a login without a name, named by the organisation the login gave', async () => {
+    const fetcher = signedIn(
+      nextLayout,
+      {},
+      {
+        ...kari,
+        name: null,
+        organisations: [{ orgNumber: '991825827', name: 'Digitaliseringsdirektoratet' }],
+      },
+    );
+    render(
+      <LocaleProvider initialPreference="nb">
+        <App hostname="ka.example.no" path="/" signIn={browser().signIn} fetcher={fetcher} />
+      </LocaleProvider>,
+    );
+
+    expect(await screen.findByRole('button', { name: 'Digitaliseringsdirektoratet' })).toBeTruthy();
+    expect(screen.queryByRole('banner')).toBeNull();
+    expect(menuEntries()).toEqual(['Om', 'Hjelp', 'Logg ut']);
+  });
+
+  it('names the reader «Innlogget» when the login gives neither a name nor an organisation', async () => {
+    const fetcher = signedIn(
+      nextLayout,
+      {},
+      {
+        ...kari,
+        name: null,
+        organisation: null,
+        organisations: [],
+      },
+    );
+    render(
+      <LocaleProvider initialPreference="nb">
+        <App hostname="ka.example.no" path="/" signIn={browser().signIn} fetcher={fetcher} />
+      </LocaleProvider>,
+    );
+
+    expect(await screen.findByRole('button', { name: 'Innlogget' })).toBeTruthy();
+    expect(screen.queryByRole('banner')).toBeNull();
+  });
+
+  it('names the organisation in the profile menu by the name the login gave', async () => {
+    const fetcher = signedIn(
+      nextLayout,
+      {},
+      {
+        ...kari,
+        organisations: [{ orgNumber: '991825827', name: 'Digitaliseringsdirektoratet' }],
+      },
+    );
+    render(
+      <LocaleProvider initialPreference="nb">
+        <App hostname="ka.example.no" path="/" signIn={browser().signIn} fetcher={fetcher} />
+      </LocaleProvider>,
+    );
+
+    await screen.findByRole('button', { name: 'Kari Nordmann' });
+    const menu = document.querySelector<HTMLElement>('.uib-shell-profile-menu');
+    expect(menu?.textContent).toContain('Digitaliseringsdirektoratet');
+    expect(menu?.textContent).not.toContain('991825827');
   });
 
   it('puts the host’s pages and links and «Logg ut» in the profile menu, and no language', async () => {
