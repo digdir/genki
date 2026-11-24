@@ -81,6 +81,8 @@ describe('answer cleanup on adversarial input', () => {
       '[1:'.repeat(40_000),
       `[1:${'1'.repeat(100_000)}`,
       '[1:1-'.repeat(30_000),
+      `[1:${', '.repeat(100_000)}`,
+      `[1:${'1-'.repeat(100_000)}`,
       '⟨'.repeat(100_000),
     ])
       expect(quickly(() => resolveSentenceMarkers(attack, index, text))).toBeLessThan(1000);

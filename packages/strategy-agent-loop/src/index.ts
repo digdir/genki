@@ -1235,6 +1235,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             located: workspace.citations.filter((c) => workspace.citationQuotes.has(c.index))
               .length,
             missed: workspace.sentenceIds.missed,
+            cited: workspace.citations.length,
           },
         };
     }
