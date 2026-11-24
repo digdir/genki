@@ -59,13 +59,19 @@ export interface PolicyDecisionPoint {
   decide(principal: Principal, action: PolicyAction, resource: Ref): Promise<Decision>;
 }
 
+/** How a metered call ended, as the provider said: kept on its usage event. */
+export interface CallEnd {
+  finishReason?: string;
+  refusalCategory?: string;
+}
+
 export interface PortContext {
   tenant: string;
   principal: Principal;
   task: string;
   capability?: string;
   signal: AbortSignal;
-  meter(usage: Usage, model?: Ref): Promise<void>;
+  meter(usage: Usage, model?: Ref, end?: CallEnd): Promise<void>;
   outputLimit?(): number | undefined;
   provenance?(resource: ResourceProvenance): Promise<void>;
   guards?: readonly PayloadGuard[];

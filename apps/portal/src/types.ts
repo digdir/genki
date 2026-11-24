@@ -103,6 +103,8 @@ export interface TimelineStep {
   description?: string;
   depth?: number;
   model?: string;
+  finishReason?: string;
+  refusalCategory?: string;
   iteration?: number;
   warning?: true;
   raw?: unknown;

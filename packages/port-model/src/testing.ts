@@ -1,5 +1,5 @@
 import type { Ref, Usage } from '@genai/contracts';
-import type { PortContext, UseOptions } from '@genai/kernel';
+import type { CallEnd, PortContext, UseOptions } from '@genai/kernel';
 import { gatedModel } from './gate.js';
 import type { ModelPort } from './port.js';
 
@@ -7,7 +7,7 @@ export { fakeHttp, type FakeReply, type FakeServer, type SeenRequest } from '@ge
 
 export interface TestContext {
   ctx: PortContext;
-  metered: { usage: Usage; model?: Ref }[];
+  metered: { usage: Usage; model?: Ref; end?: CallEnd }[];
 }
 
 export const testContext = (signal: AbortSignal = new AbortController().signal): TestContext => {
@@ -17,8 +17,8 @@ export const testContext = (signal: AbortSignal = new AbortController().signal):
     principal: { kind: 'employee', issuer: 'test', subject: 'kari', tenant: '999888777' },
     task: 't1',
     signal,
-    meter: async (usage, model) => {
-      metered.push({ usage, ...(model ? { model } : {}) });
+    meter: async (usage, model, end) => {
+      metered.push({ usage, ...(model ? { model } : {}), ...(end ? { end } : {}) });
     },
   };
   return { ctx, metered };

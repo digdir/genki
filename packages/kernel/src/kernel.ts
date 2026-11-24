@@ -739,7 +739,8 @@ export const createKernel = (options: KernelOptions): StoppableKernel => {
           task: l.task.id,
           capability: l.capability.descriptor.id,
           signal: l.controller.signal,
-          meter: (usage, model) => chargeLive(l, usage, { port, ref, ...(model ? { model } : {}) }),
+          meter: (usage, model, end) =>
+            chargeLive(l, usage, { port, ref, ...(model ? { model } : {}), ...end }),
           outputLimit: () => outputLimit(l),
           provenance: (resource) => recordResource(l, resource),
           ...(useOptions.guards?.length ? { guards: useOptions.guards } : {}),

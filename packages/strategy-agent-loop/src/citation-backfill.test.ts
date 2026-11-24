@@ -219,7 +219,10 @@ describe('settling citations on the final answer', () => {
       readFirst: [],
       refusal: true,
     });
-    expect(settleCitations(refusal, searchedOnly)).toEqual({ action: 'keep', reason: 'refusal' });
+    expect(settleCitations(refusal, searchedOnly)).toEqual({
+      action: 'keep',
+      reason: 'no-answer-text',
+    });
   });
 
   it('carries a cited draft through over a refusal, even a draft the gates rejected', () => {

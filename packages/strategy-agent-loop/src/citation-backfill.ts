@@ -94,7 +94,7 @@ export const settleCitations = (answer: string, workspace: Workspace): CitationS
     if (workspace.citationIndex.size > 0) return { action: 'keep', reason: 'generated-uncited' };
     return refusalBackfillCandidates(workspace).length
       ? { action: 'backfill', readFirst: [], refusal: true }
-      : { action: 'keep', reason: 'refusal' };
+      : { action: 'keep', reason: 'no-answer-text' };
   }
   if (backfillCandidates(workspace).length) return { action: 'backfill', readFirst: [] };
   if (workspace.readChunkIds().size > 0) return { action: 'keep', reason: 'no-supporting-chunks' };

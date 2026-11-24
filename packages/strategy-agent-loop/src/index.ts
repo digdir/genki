@@ -33,6 +33,7 @@ import {
   exhaustionDefaults,
   exhaustionNudge,
   honestMisses,
+  modelRefusals,
   questionLanguage,
   remainingBudgetNote,
   noToolCallNudge,
@@ -666,6 +667,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     let fallbackMessages: ChatMessage[] = initialMessages;
     let phase: 'default' | 'finalize' = 'default';
     let finalized = false;
+    let refused = false;
     let iteration = 0;
     let lastIteration = 0;
     let readNudges = 0;
@@ -720,6 +722,21 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         ...(turn.toolCalls.length ? { toolCalls: turn.toolCalls } : {}),
         ...(turn.continuation === undefined ? {} : { continuation: turn.continuation }),
       };
+
+      // A refusal is not asked again: the same messages get the same refusal.
+      if (
+        turn.finishReason === 'content_filter' &&
+        turn.toolCalls.length === 0 &&
+        blank(turn.content)
+      ) {
+        const category = turn.stopDetail?.category;
+        yield {
+          type: 'kernel.notice',
+          data: { stage: 'model-refused', iteration, ...(category ? { category } : {}) },
+        };
+        refused = true;
+        break;
+      }
 
       if (
         turn.toolCalls.length === 0 ||
@@ -1065,7 +1082,10 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       const cited = Boolean(stored && workspace.citationValidation?.grounded);
       const usable = stored && (cited || !workspace.lastGenerateInsufficient) ? stored : undefined;
       if (usable) answer = usable;
-      else {
+      else if (refused) {
+        answer = modelRefusals[language];
+        yield { type: 'kernel.part.delta', data: { text: answer } };
+      } else {
         yield {
           type: 'kernel.notice',
           data: { stage: finalized ? 'recovered-empty' : 'exhausted', iterations: iteration },
@@ -1111,7 +1131,11 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       }
     }
 
-    if (!clarification && answer !== undefined) {
+    if (
+      !clarification &&
+      answer !== undefined &&
+      !(refused && answer === modelRefusals[language])
+    ) {
       const settlement = settleCitations(answer, workspace);
       let settled: string | undefined;
       if (settlement.action === 'carry-through') settled = workspace.lastGeneratedResponse;
@@ -1166,6 +1190,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     // Only a plain miss in the sources gets the service's own words.
     if (
       foundNothing &&
+      !refused &&
       settings.noAnswerText &&
       answer !== settings.noAnswerText &&
       answer !== exhaustionDefaults[language] &&

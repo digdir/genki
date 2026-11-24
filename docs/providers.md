@@ -171,3 +171,7 @@ Output text becomes `content`; function calls become port tool calls using `call
 Streaming emits `response.output_text.delta` as text chunks. Tool items and argument deltas are assembled by output index; done events replace partial values. Terminal completed or incomplete events supply final usage and status. Failed, error or truncated streams fail without a successful done chunk. Tool and reasoning events stay internal because the port exposes only text deltas and a final result.
 
 The provider runs the same port contract suite for both APIs, plus fake HTTP tests for the mappings and learned recovery. Wire details follow the [official Responses migration guide](https://developers.openai.com/api/docs/guides/migrate-to-responses) and [streaming event reference](https://developers.openai.com/api/reference/resources/responses/streaming-events).
+
+## How a call ended
+
+A chat result carries `finishReason`, and `stopDetail.category` when the provider names why it refused. Anthropic's `stop_reason: "refusal"` becomes `content_filter`, and its `stop_details.category` (such as `reasoning_extraction`) becomes `stopDetail.category`, in `chat` and in the stream's `message_delta`; the explanation text is not kept. The gate puts both on the call's `kernel.usage` event as `finishReason` and `refusalCategory`, and the run view shows them as the «Stopp» row of the model step.

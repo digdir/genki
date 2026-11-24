@@ -20,7 +20,7 @@ import {
   type OperationShape,
   type Walked,
 } from './payload.js';
-import type { PortContext } from './spi.js';
+import type { CallEnd, PortContext } from './spi.js';
 import { addUsage } from './usage-sum.js';
 
 export const residencies = ['norway', 'eu', 'global'] as const;
@@ -149,6 +149,8 @@ export interface GateTarget {
 export interface GatePayload<Res> {
   shape: OperationShape;
   usage?(result: Res): Usage | undefined;
+  /** How the call ended, kept with its usage. */
+  end?(result: Res): CallEnd | undefined;
   provenance?(result: Res): ResourceProvenance | undefined;
   /** Fields the adapter dropped from the provider's answer before it reached the port. */
   dropped?(result: Res): number | undefined;
@@ -568,7 +570,7 @@ export const createGate = (options: GateOptions = {}): Gate => {
     let outcome: GateRecord['outcome'] = refused ? 'refused' : 'ok';
     try {
       if (usage) {
-        await ctx.meter(usage, target.model);
+        await ctx.meter(usage, target.model, payload.end?.(answer.result));
         await outside(ctx)?.meter(ctx, usage, target.model);
       }
       if (refused) {
