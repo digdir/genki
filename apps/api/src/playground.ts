@@ -1,4 +1,9 @@
-import { invalidInputProblem, type SourceRecord } from '@genai/adapter-openai';
+import {
+  invalidInputProblem,
+  markersOf,
+  type AnswerMarker,
+  type SourceRecord,
+} from '@genai/adapter-openai';
 import { sharedRecipeFinder } from '@genai/composition';
 import { failureReason } from './failures.js';
 import { requestLocale, t } from './i18n/index.js';
@@ -114,6 +119,8 @@ export interface PlaygroundResult {
   noAnswer?: true;
   sources: (SourceRecord & { score?: number })[];
   citations?: { index: number; chunkId: string }[];
+  /** The excerpt each `[N]` cites, as `/v1` gives them; left out when none names an excerpt. */
+  markers?: AnswerMarker[];
   clarification?: { question: string; options: string[] };
   byModel: { model: string; inputTokens: number; outputTokens: number; costNok: number }[];
   steps: TimelineStep[];
@@ -892,6 +899,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       const fields = output === 'fields' ? outputFieldsOf(run.parts) : undefined;
       const table = tableOf(run.parts);
       const citations = citationsOf(run.parts);
+      const markers = markersOf(run.parts);
       const clarification = clarificationOf(run.parts);
       return {
         ...(fields ? { fields } : table ? table : { text: run.answer }),
@@ -901,6 +909,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           return score === undefined ? source : { ...source, score };
         }),
         ...(citations.length ? { citations } : {}),
+        ...(markers.length ? { markers } : {}),
         ...(clarification ? { clarification } : {}),
         byModel: run.usage.byModel.map((m) => ({
           model: m.model,

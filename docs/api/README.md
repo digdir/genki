@@ -75,6 +75,10 @@ To announce one, add a line to a new dated entry below that names the operation 
 
 `npm run definitions:compat` checks every YAML or JSON file in the repository that is a service, step flow, skill or block definition (seeds, examples and fixtures) against the current schema, including the strategy, tool and guardrail settings. Models, datasets, rerankers, tools and blocks are not looked up, since each environment has its own. Give it the path to a tenant export (`GET /tenants/{tenant}/export`) or a folder of definitions to check those instead.
 
+### 2026-11-24: the playground gives the excerpt each footnote cites
+
+- `POST /tenants/{tenant}/playground/runs` (and `/stream`) gives `markers: [{ marker, chunk_id, document }]` when each `[N]` in the answer names one excerpt, the same list `/v1` gives ([ADR 0052](../adr/0052-answers-cite-excerpts.md)). A marker whose excerpt is not among the run's sources is left out. Without `markers`, no `[N]` names an excerpt: the answer cites documents, where `[N]` names the N-th document, or it cites no excerpt among the sources. The portal's try view turns the list into the answer's `markers`, as `@genai/client` does for `/v1`.
+
 ### 2026-11-20: archived services and catalog references
 
 - An archived service no longer keeps a catalog model or reranker in use, so `DELETE /operator/catalog/{kind}/{id}` can delete one only archived services name, and a skipped model only they name is marked `unused`.

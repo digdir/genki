@@ -87,6 +87,27 @@ describe('the try view', () => {
     );
   });
 
+  it('pairs a footnote in the answer with the excerpt it cites in the right panel', async () => {
+    const cited = result('Ja, en garasje over 50 m² trenger søknad [1].');
+    if (cited.event !== 'result') throw new Error('expected a result');
+    cited.result.citations = [{ index: 1, chunkId: 'c2' }];
+    cited.result.markers = [{ marker: '1', chunk_id: 'c2', document: 'pbl' }];
+    render(
+      preview(
+        fakeClient(() => [cited]),
+        defaultLayout,
+      ),
+    );
+    await ask('Trenger jeg søknad for en garasje?');
+    const footnote = await screen.findByLabelText('Utdrag 1: Plan- og bygningsloven');
+    expect(footnote.textContent).toBe('[1]');
+    const panel = screen.getByRole('complementary', { name: 'Kilder og dokumentvisning' });
+    const excerpt = within(panel)
+      .getByText('Andre utdrag')
+      .closest('.uib-sources-excerpt') as HTMLElement;
+    expect(within(excerpt).getByText('Utdrag 1')).toBeTruthy();
+  });
+
   it('draws no right panel and no sources when the layout leaves them out', async () => {
     tryOut(fromTemplate('chat-only').layout);
     await ask('Trenger jeg søknad for en garasje?');
