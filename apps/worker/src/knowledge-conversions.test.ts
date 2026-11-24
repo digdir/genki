@@ -81,7 +81,7 @@ import {
 import { stopPostgres } from '@genai/providers-postgres/testing';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { knowledgeWork, replacementRuns } from './knowledge-handlers.js';
+import { givingWayMs, knowledgeWork, replacementRuns } from './knowledge-handlers.js';
 import { conversionRunJobs } from './knowledge-jobs.js';
 
 const ORG = '991825827';
@@ -4394,5 +4394,31 @@ describe('parts chunking (issue 635)', () => {
     expect(await chunks(parts.generation)).toEqual([]);
     expect(pages.sentAgain).toEqual([]);
     expect((await chunks(pages.generation)).length).toBeGreaterThan(0);
+  }, 60_000);
+
+  it('after a missed lock, parts index jobs give way without trying again for two minutes', async () => {
+    await clearConvertJobs();
+    let clock = new Date('2026-11-24T10:00:00Z');
+    let tries = 0;
+    const missed = async () => {
+      tries += 1;
+      return false;
+    };
+    const s = await scenario({ chunking: partsChunking, chunkColumns: missed, now: () => clock });
+    await s.file('en.pdf', reportOf('pause-en'));
+    await s.file('to.pdf', reportOf('pause-to'));
+
+    await ingest(s);
+    await drain(s);
+
+    expect(s.sentAgain.map((j) => j.queue)).toEqual(['knowledge.index', 'knowledge.index']);
+    expect(tries).toBe(1);
+
+    // The first job that comes back two minutes later tries again.
+    clock = new Date(clock.getTime() + givingWayMs);
+    const again = s.sentAgain[0] as (typeof s.sentAgain)[number];
+    await handler(s.work.knowledge, again.queue)(job(again.queue, again.data));
+
+    expect(tries).toBe(2);
   }, 60_000);
 });

@@ -492,6 +492,36 @@ describe('generations as partitions on the knowledge server', () => {
       expect(await columnsOf(table)).toEqual(partsColumns);
     });
 
+    it('only one chunk columns step waits on kn_chunks at a time', async () => {
+      await withoutColumns();
+      const other = await admin.connect();
+      try {
+        // Another worker's step, already waiting on kn_chunks.
+        await other.query(`select pg_advisory_lock(hashtext('genai-chunk-columns'))`);
+
+        expect(await addChunkColumns(owner, { lockTimeoutMs: 3000 })).toBe(false);
+        expect(await columnsOf('kn_chunks')).toEqual([]);
+      } finally {
+        await other.query(`select pg_advisory_unlock(hashtext('genai-chunk-columns'))`);
+        other.release();
+      }
+      expect(await addChunkColumns(owner)).toBe(true);
+      expect(await columnsOf('kn_chunks')).toEqual(partsColumns);
+    });
+
+    it('a table that has the chunk columns needs no turn behind another step', async () => {
+      expect(await addChunkColumns(owner)).toBe(true);
+      const other = await admin.connect();
+      try {
+        await other.query(`select pg_advisory_lock(hashtext('genai-chunk-columns'))`);
+
+        expect(await addChunkColumns(owner)).toBe(true);
+      } finally {
+        await other.query(`select pg_advisory_unlock(hashtext('genai-chunk-columns'))`);
+        other.release();
+      }
+    });
+
     it('the chunk columns step answers false after its lock timeout and leaves the migration alone', async () => {
       await withoutColumns();
       const holder = await admin.connect();

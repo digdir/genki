@@ -490,6 +490,20 @@ export const knowledgeWork = (
   deps: KnowledgeHandlerDeps,
 ): { platform: QueueWork[]; knowledge: QueueWork[]; heavy: QueueWork[] } => {
   const pauses = new EmbeddingPauses();
+  /**
+   * When this worker's chunk columns step last missed its lock: until two minutes after, parts index
+   * jobs give way without trying again, so a busy `kn_chunks` makes searches wait at most once
+   * every two minutes per worker, not once per document (issue 635).
+   */
+  let chunkColumnsMissedAt: number | undefined;
+  const chunkColumnsReady = async (now: Date) => {
+    if (!deps.chunkColumns) return true;
+    if (chunkColumnsMissedAt !== undefined && now.getTime() - chunkColumnsMissedAt < givingWayMs)
+      return false;
+    const ready = await deps.chunkColumns();
+    chunkColumnsMissedAt = ready ? undefined : now.getTime();
+    return ready;
+  };
   /** The converter new convert jobs ask: Docling when the worker has a server, else the text layer. */
   const converterNow = () => (deps.docling ? doclingIdentity.name : textLayer.name);
   /**
@@ -652,7 +666,8 @@ export const knowledgeWork = (
           );
           // A chunk from parts fills columns a page chunk never names; until they are added, a
           // parts index job gives way and keeps its retries, and page pipelines go on (issue 635).
-          if (readsParts(found.chunking) && deps.chunkColumns && !(await deps.chunkColumns())) {
+          // After a missed lock, this worker does not try again for two minutes.
+          if (readsParts(found.chunking) && !(await chunkColumnsReady(now))) {
             await deps.knowledge.sendAgain(queue, job, {
               key: knowledgeKeys.index(job.data.generation, job.data.record),
               startAfter: new Date(now.getTime() + givingWayMs),

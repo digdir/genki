@@ -597,7 +597,8 @@ const chunkColumnsLockTimeoutMs = 1000;
  * waits for it. One statement a table, so the lock is taken once; nullable columns with no default
  * change only the catalog. Tables that have the columns take no lock, so it is cheap to run before
  * every parts write: a generation prepared while it ran gets its columns from the next run. False
- * when a lock was not had in `lockTimeoutMs`, 1 s by default; nothing is changed then.
+ * when a lock was not had in `lockTimeoutMs`, 1 s by default, or another step holds its turn;
+ * nothing is changed then.
  */
 export const addChunkColumns = async (
   owner: Pool,
@@ -615,6 +616,7 @@ export const addChunkColumns = async (
     // The parent last: its lock holds every attached partition, which searches read, so it is
     // taken only once every table being written has its columns.
     const tables = [...standalone.map((g) => partitionOf('kn_chunks', g.generation)), 'kn_chunks'];
+    const changes: { table: string; missing: (typeof chunkPartsColumns)[number][] }[] = [];
     for (const table of tables) {
       const { rows } = await client.query<{ name: string }>(
         `select attname as name from pg_attribute
@@ -624,13 +626,25 @@ export const addChunkColumns = async (
       if (rows.length === 0) continue;
       const has = new Set(rows.map((r) => r.name));
       const missing = chunkPartsColumns.filter(([name]) => !has.has(name));
-      if (missing.length > 0)
-        await client.query(
-          `alter table ${table} ${missing
-            .map(([name, type]) => `add column if not exists ${name} ${type}`)
-            .join(', ')}`,
-        );
+      if (missing.length > 0) changes.push({ table, missing });
     }
+    // One step at a time waits on a table lock, so searches queue behind one ALTER at most; another
+    // step answers false at once and its job gives way.
+    if (changes.length > 0) {
+      const { rows } = await client.query<{ ok: boolean }>(
+        `select pg_try_advisory_xact_lock(hashtext('genai-chunk-columns')) as ok`,
+      );
+      if (!rows[0]?.ok) {
+        await client.query('rollback');
+        return false;
+      }
+    }
+    for (const { table, missing } of changes)
+      await client.query(
+        `alter table ${table} ${missing
+          .map(([name, type]) => `add column if not exists ${name} ${type}`)
+          .join(', ')}`,
+      );
     await client.query('commit');
     return true;
   } catch (error) {
