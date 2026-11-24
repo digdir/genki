@@ -1,4 +1,9 @@
-import { invalidInputProblem, type SourceRecord } from '@genai/adapter-openai';
+import {
+  invalidInputProblem,
+  markersOf,
+  type AnswerMarker,
+  type SourceRecord,
+} from '@genai/adapter-openai';
 import { sharedRecipeFinder } from '@genai/composition';
 import { failureReason } from './failures.js';
 import { requestLocale, t } from './i18n/index.js';
@@ -113,10 +118,9 @@ export interface PlaygroundResult {
   csv?: string;
   noAnswer?: true;
   sources: (SourceRecord & { score?: number })[];
-  /** `document` is the cited excerpt's document, when the strategy names it. */
-  citations?: { index: number; chunkId: string; document?: string }[];
-  /** `excerpt` when each `[N]` names one excerpt; left out, `[N]` names the N-th document. */
-  citeBy?: 'excerpt';
+  citations?: { index: number; chunkId: string }[];
+  /** The excerpt each `[N]` cites, as `/v1` gives them; left out when none names an excerpt. */
+  markers?: AnswerMarker[];
   clarification?: { question: string; options: string[] };
   byModel: { model: string; inputTokens: number; outputTokens: number; costNok: number }[];
   steps: TimelineStep[];
@@ -550,17 +554,13 @@ const citationsOf = (parts: Part[]) =>
     const citations = p.meta?.citations;
     return Array.isArray(citations)
       ? citations.flatMap((c) => {
-          const { index, chunkId, document } = record(c);
+          const { index, chunkId } = record(c);
           return typeof index === 'number' && typeof chunkId === 'string'
-            ? [{ index, chunkId, ...(typeof document === 'string' ? { document } : {}) }]
+            ? [{ index, chunkId }]
             : [];
         })
       : [];
   });
-
-// The first cited part says, as `markersOf` in @genai/adapter-openai reads it.
-const citesExcerpts = (parts: Part[]) =>
-  parts.find((p) => Array.isArray(p.meta?.citations))?.meta?.citeBy === 'excerpt';
 
 const clarificationOf = (parts: Part[]) => {
   const json = parts.find((p) => p.mime === sourcesMime && p.body.kind === 'json');
@@ -899,6 +899,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       const fields = output === 'fields' ? outputFieldsOf(run.parts) : undefined;
       const table = tableOf(run.parts);
       const citations = citationsOf(run.parts);
+      const markers = markersOf(run.parts);
       const clarification = clarificationOf(run.parts);
       return {
         ...(fields ? { fields } : table ? table : { text: run.answer }),
@@ -908,7 +909,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           return score === undefined ? source : { ...source, score };
         }),
         ...(citations.length ? { citations } : {}),
-        ...(citations.length && citesExcerpts(run.parts) ? { citeBy: 'excerpt' as const } : {}),
+        ...(markers.length ? { markers } : {}),
         ...(clarification ? { clarification } : {}),
         byModel: run.usage.byModel.map((m) => ({
           model: m.model,

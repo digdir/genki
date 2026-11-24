@@ -115,26 +115,11 @@ export const sourcesOf = (sources: readonly PlaygroundSource[]): Source[] => {
   return [...documents.values()];
 };
 
-// The excerpt each [N] cites, as `markersOf` in @genai/adapter-openai: only when citing excerpts.
-const markersOf = (
-  result: PlaygroundResult,
-): { marker: string; chunkId: string; documentId: string }[] | undefined => {
-  if (result.citeBy !== 'excerpt') return undefined;
-  const documentOf = new Map(result.sources.map((s) => [s.chunkId, s.document]));
-  const cited = [...(result.citations ?? [])].sort((a, b) => a.index - b.index);
-  const markers = cited.flatMap((c) =>
-    documentOf.has(c.chunkId)
-      ? [
-          {
-            marker: String(c.index),
-            chunkId: c.chunkId,
-            documentId: c.document ?? documentOf.get(c.chunkId) ?? c.chunkId,
-          },
-        ]
-      : [],
-  );
-  return markers.length ? markers : undefined;
-};
+// The excerpt each [N] cites, as the run gives it; none when the run cites documents.
+const markersOf = (result: PlaygroundResult) =>
+  result.markers?.length
+    ? result.markers.map((m) => ({ marker: m.marker, chunkId: m.chunk_id, documentId: m.document }))
+    : undefined;
 
 const answerTextOf = (result: PlaygroundResult) =>
   result.clarification?.question ?? result.text ?? '';

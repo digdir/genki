@@ -77,7 +77,7 @@ To announce one, add a line to a new dated entry below that names the operation 
 
 ### 2026-11-24: the playground gives the excerpt each footnote cites
 
-- `POST /tenants/{tenant}/playground/runs` (and `/stream`) gives `markers: [{ marker, chunk_id, document }]` when each `[N]` in the answer names one excerpt, the same list `/v1` gives ([ADR 0052](../adr/0052-answers-cite-excerpts.md)). A marker whose excerpt is not among the run's sources is left out, and without `markers` `[N]` names the N-th document. The portal's try view turns the list into the answer's `markers`, as `@genai/client` does for `/v1`.
+- `POST /tenants/{tenant}/playground/runs` (and `/stream`) gives `markers: [{ marker, chunk_id, document }]` when each `[N]` in the answer names one excerpt, the same list `/v1` gives ([ADR 0052](../adr/0052-answers-cite-excerpts.md)). A marker whose excerpt is not among the run's sources is left out. Without `markers`, no `[N]` names an excerpt: the answer cites documents, where `[N]` names the N-th document, or it cites no excerpt among the sources. The portal's try view turns the list into the answer's `markers`, as `@genai/client` does for `/v1`.
 
 ### 2026-11-20: archived services and catalog references
 

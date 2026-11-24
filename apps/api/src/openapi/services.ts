@@ -1316,20 +1316,12 @@ const PlaygroundResult = z
         score: z.number().optional(),
       }),
     ),
-    citations: z
-      .array(
-        z.object({
-          index: z.number().int(),
-          chunkId: z.string(),
-          document: z.string().optional().describe("The cited excerpt's document."),
-        }),
-      )
-      .optional(),
-    citeBy: z
-      .literal('excerpt')
+    citations: z.array(z.object({ index: z.number().int(), chunkId: z.string() })).optional(),
+    markers: z
+      .array(z.object({ marker: z.string(), chunk_id: z.string(), document: z.string() }))
       .optional()
       .describe(
-        'Each `[N]` in the answer names one excerpt. Left out, `[N]` names the N-th document.',
+        'The excerpt each `[N]` in the answer cites, in marker order, as `/v1` gives them. Left out when the answer cites documents, where `[N]` names the N-th document, or cites no excerpt among the sources.',
       ),
     clarification: z.object({ question: z.string(), options: z.array(z.string()) }).optional(),
     byModel: z.array(

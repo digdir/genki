@@ -1,6 +1,6 @@
 # 0052 Answers cite excerpts, not whole documents
 
-Status: proposed, 2026-11-03 (prototype, agent loop only; `@genai/client` passes the markers on, 2026-11-10; stored conversation turns keep the markers, 2026-11-12)
+Status: proposed, 2026-11-03 (prototype, agent loop only; `@genai/client` passes the markers on, 2026-11-10; stored conversation turns keep the markers, 2026-11-12; the playground gives them, 2026-11-24)
 
 Left: the `rag` and `step-flow` strategies keep numbering documents.
 
@@ -18,7 +18,7 @@ The agent loop numbers documents for the model: `numberByDocument` gives one `[N
   - MCP: the same list as `structuredContent.markers`, declared in the output schema.
   - `@genai/client`: the same list as `markers` on the answer and on the `sources` stream event, as `{ marker, chunkId, documentId }`, and `markers` on each source and excerpt. The answer has no `markers` when the service cites documents.
   - A stored conversation turn keeps the mapping, and `GET /api/conversations/{id}` returns it on the message: a `/v1` turn keeps the top-level `markers` and the `markers` of each source and excerpt, a turn answered through MCP keeps `structuredContent.markers` as `markers`. A turn stored before this has no `markers` list and reads as it did.
-  - The playground: `citeBy` and `citations[].document` on the run result, which the portal's try view turns into `markers`.
+  - The playground: the same list as `markers` on the run result of `POST /tenants/{tenant}/playground/runs` and `/stream`, left out when the service cites documents. The portal's try view turns it into the answer's `markers`.
 - **Frontends number markers for the reader as they like.** The platform's markers are the numbers in the context; a frontend may show the cited excerpts as 1, 2, 3 in the order the answer first cites them.
 
 ## Why

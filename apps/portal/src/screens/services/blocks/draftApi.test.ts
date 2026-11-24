@@ -177,40 +177,28 @@ describe('the draft API for the try view', () => {
     ]);
   });
 
-  it('pairs each footnote with the excerpt it cites when the run cites excerpts, also in the kept thread', async () => {
+  it('pairs each footnote with the excerpt the run says it cites, also in the kept thread', async () => {
     const cited = result('Ja [1], og nei [2].');
     if (cited.event !== 'result') throw new Error('expected a result');
-    cited.result.citeBy = 'excerpt';
     cited.result.citations = [
       { index: 2, chunkId: 'c1' },
-      { index: 1, chunkId: 'c2', document: 'pbl-2024' },
+      { index: 1, chunkId: 'c2' },
+    ];
+    cited.result.markers = [
+      { marker: '1', chunk_id: 'c2', document: 'pbl' },
+      { marker: '2', chunk_id: 'c1', document: 'pbl' },
     ];
     const { draftApi } = draft({ definition }, () => [cited]);
     const done = (await ask(draftApi, 'Trenger jeg søknad?')).at(-1);
     const markers = [
-      { marker: '1', chunkId: 'c2', documentId: 'pbl-2024' },
+      { marker: '1', chunkId: 'c2', documentId: 'pbl' },
       { marker: '2', chunkId: 'c1', documentId: 'pbl' },
     ];
     expect(done?.type === 'done' && done.answer.markers).toEqual(markers);
     expect((await draftApi.loadThread('draft-1')).turns[0]?.answer?.markers).toEqual(markers);
   });
 
-  it('pairs no footnote with an excerpt that is not among the answer’s sources', async () => {
-    const cited = result('Ja [1], og nei [3].');
-    if (cited.event !== 'result') throw new Error('expected a result');
-    cited.result.citeBy = 'excerpt';
-    cited.result.citations = [
-      { index: 1, chunkId: 'c1' },
-      { index: 3, chunkId: 'ukjent' },
-    ];
-    const { draftApi } = draft({ definition }, () => [cited]);
-    const done = (await ask(draftApi, 'Trenger jeg søknad?')).at(-1);
-    expect(done?.type === 'done' && done.answer.markers).toEqual([
-      { marker: '1', chunkId: 'c1', documentId: 'pbl' },
-    ]);
-  });
-
-  it('pairs no footnote with an excerpt when the run cites documents, since [N] then names a document', async () => {
+  it('pairs no footnote with an excerpt when the run gives no markers, since [N] then names a document', async () => {
     const cited = result('Ja [1].');
     if (cited.event !== 'result') throw new Error('expected a result');
     cited.result.citations = [{ index: 1, chunkId: 'c2' }];

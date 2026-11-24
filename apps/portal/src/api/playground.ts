@@ -204,8 +204,8 @@ export interface PlaygroundResult {
   costNok: number | null;
   dataLocation: Residency | null;
   citations?: PlaygroundCitation[];
-  /** `excerpt` when each `[N]` names one excerpt; left out, `[N]` names the N-th document. */
-  citeBy?: 'excerpt';
+  /** The excerpt each `[N]` cites; left out when no `[N]` names an excerpt among the sources. */
+  markers?: PlaygroundMarker[];
   byModel?: PlaygroundModelUsage[];
   clarification?: PlaygroundClarification;
   steps?: TimelineStep[];
@@ -215,8 +215,13 @@ export interface PlaygroundResult {
 export interface PlaygroundCitation {
   index: number;
   chunkId: string;
-  /** The cited excerpt's document, when the strategy names it. */
-  document?: string;
+}
+
+/** As `/v1` gives it: `marker` as written in the answer, without brackets. */
+export interface PlaygroundMarker {
+  marker: string;
+  chunk_id: string;
+  document: string;
 }
 
 export interface PlaygroundModelUsage {
