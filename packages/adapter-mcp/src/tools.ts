@@ -120,7 +120,7 @@ export const defaultOutputSchema: JSONSchema = {
           quote: {
             type: 'object',
             description:
-              'Present when the model cited sentences of the excerpt: the cited words as a W3C TextQuoteSelector, found word for word in the excerpt text.',
+              'Present when the model cited sentences of the excerpt: the cited words as a W3C TextQuoteSelector, found word for word in the full text of the chunk, which a chunk shown here may cut.',
             properties: {
               type: { type: 'string', const: 'TextQuoteSelector' },
               exact: { type: 'string' },

@@ -64,4 +64,16 @@ describe('sentence ids in an excerpt', () => {
     expect(quoteOf('En. To.', 2, 1)).toBeUndefined();
     expect(quoteOf('En. To.', 0, 1)).toBeUndefined();
   });
+
+  it('ends a sentence at «osv.», «mv.», «etc.» or «mrd.» when the next starts with a capital, and keeps «1,2 mrd. kr.» whole', () => {
+    expect(texts('Dette gjelder lønn, reise osv. Videre gjelder det husleie.')).toEqual([
+      'Dette gjelder lønn, reise osv.',
+      'Videre gjelder det husleie.',
+    ]);
+    expect(texts('Kostnader til drift mv. Neste punkt er etc. Siste.')).toHaveLength(3);
+    expect(texts('Budsjettet er 1,2 mrd. kr. i år. Tallet steg.')).toEqual([
+      'Budsjettet er 1,2 mrd. kr. i år.',
+      'Tallet steg.',
+    ]);
+  });
 });

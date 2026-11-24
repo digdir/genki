@@ -809,7 +809,7 @@ const SourceItem = ({
             const here = excerpt !== undefined && excerpt.chunkId === active;
             const searchHits = hitsFor(hits, key);
             const cited =
-              here && target?.quote ? citedRange(text, row.flat, target.quote) : undefined;
+              here && target?.quote ? citedRange(excerpt.text, row.flat, target.quote) : undefined;
             const rowHits = cited
               ? [...searchHits, ...citedHits(key, cited, searchHits, 'uib-sources-cited')].sort(
                   (a, b) => a.start - b.start,

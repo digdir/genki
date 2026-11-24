@@ -9,7 +9,7 @@ import {
   retrieval,
   run,
 } from './harness.test-utils.js';
-import { resolveSentenceMarkers } from './citations.js';
+import { resolveSentenceMarkers, sentenceIdFilter } from './citations.js';
 import type { AgentLoopRuntimeConfig } from './index.js';
 
 const findings =
@@ -268,5 +268,51 @@ describe('citing the sentences of an excerpt', () => {
     const out = await answerFrom('Forholdet er [1:2] [1].', baseConfig);
 
     expect(out.text).toBe('Forholdet er [1:2] [1].');
+  });
+
+  it('keeps no quote from a draft on an answer the loop wrote itself', async () => {
+    const out = await run({
+      retrieval: retrieval({}, store).impl,
+      config: byExcerpt,
+      scripts: {
+        primary: {
+          loop: [
+            ...readAll,
+            () => result('', [call('generate_response', { query: 'evaluering' })]),
+            () => result('Eget svar om noe annet [1].'),
+          ],
+          read: [() => readSignal('gap-remaining', { scope_assessment: 'ambiguous' })],
+          sufficiency: [() => decision('insufficient', 're-search')],
+          synth: [() => 'Kontraktstrategien var en årsak [1:2].'],
+        },
+      },
+    });
+
+    expect(out.text).toBe('Eget svar om noe annet [1].');
+    expect(out.meta?.citations).toEqual([{ index: 1, chunkId: 'c1', document: 'd1' }]);
+  });
+
+  it('a long sentence id streamed one character at a time never reaches the reader', () => {
+    const shown: string[] = [];
+    const filter = sentenceIdFilter((t) => shown.push(t));
+    for (const ch of 'Svar [12:4-6, 9-11, 14]. Og [3:1, 4, 7, 10, 13, 16, 19].') filter.push(ch);
+    filter.end();
+
+    expect(shown.join('')).toBe('Svar [12]. Og [3].');
+  });
+
+  it('sends the renumbered answer after the stream when the places got their own markers', async () => {
+    const out = await run({
+      retrieval: retrieval({}, store).impl,
+      config: byExcerpt,
+      stream: true,
+      scripts: {
+        primary: { loop: readAll, synth: [() => 'Tre deler [1:1]. Makspris [1:3].'] },
+      },
+    });
+
+    expect(out.text).toBe('Tre deler [1]. Makspris [2].');
+    expect(out.notices).toContainEqual({ stage: 'answer-discarded', reason: 'renumbered' });
+    expect(deltas(out).at(-1)).toBe('Tre deler [1]. Makspris [2].');
   });
 });

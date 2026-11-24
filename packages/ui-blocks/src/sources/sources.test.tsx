@@ -1026,4 +1026,32 @@ describe('the words a footnote rests on', () => {
     expect(document.querySelector('mark.uib-sources-mark')?.textContent).toBe('årsak');
     expect(marks()).toBe('Valget av kontraktstrategi var en direkte , jf. kap. 5.');
   });
+
+  it('marks the copy the prefix names when the same words are in the excerpt twice', async () => {
+    const twice: SourceDocument = {
+      ...findings,
+      excerpts: [
+        {
+          chunkId: 'kudos:842734b0-12',
+          text: '- Det gjelder **lønn**.\n- Annet.\n- Det gjelder **lønn**.',
+          position: 12,
+        },
+      ],
+    };
+    render(
+      <Sources
+        sources={[twice]}
+        citations={cite('kudos:842734b0-12')}
+        target={{
+          chunkId: 'kudos:842734b0-12',
+          quote: quote('- Det gjelder **lønn**.', '- Annet.\n', ''),
+        }}
+      />,
+    );
+    await frame();
+
+    const html = document.querySelector('.uib-sources-quote')?.innerHTML ?? '';
+    expect(html.indexOf('uib-sources-cited')).toBeGreaterThan(html.indexOf('Annet.'));
+    expect(marks()).toBe('• Det gjelder lønn.');
+  });
 });

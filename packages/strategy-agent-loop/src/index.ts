@@ -1211,10 +1211,20 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           ...(settlement.action === 'backfill' ? { adopted: settled !== undefined } : {}),
         },
       };
+      let resent = false;
       if (settled !== undefined && settled !== answer) {
         yield { type: 'kernel.notice', data: { stage: 'answer-discarded', reason: 'uncited' } };
         yield { type: 'kernel.part.delta', data: { text: settled } };
         answer = settled;
+        resent = true;
+      }
+      // Quotes belong to the answer they were read from, never to one the loop wrote itself.
+      if (answer !== workspace.quotedText) {
+        workspace.citationQuotes = new Map();
+        workspace.sentenceIds = { located: 0, missed: 0 };
+      } else if (workspace.restream && !resent) {
+        yield { type: 'kernel.notice', data: { stage: 'answer-discarded', reason: 'renumbered' } };
+        yield { type: 'kernel.part.delta', data: { text: answer } };
       }
       if (citeBy === 'excerpt') {
         const shown = dropUnknownMarkers(answer, workspace.citationIndex);

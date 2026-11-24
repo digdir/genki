@@ -155,6 +155,7 @@ const citeDraft = async (
   workspace.citationIndex = index;
   workspace.citationQuotes = located.quotes;
   workspace.sentenceIds = { located: located.located, missed: located.missed };
+  workspace.quotedText = text;
   workspace.sourceOrder = chunks;
   workspace.citations = parseCitations(text, index);
   for (const c of chunks) if (!workspace.chunks.has(c.chunkId)) workspace.chunks.set(c.chunkId, c);

@@ -6,6 +6,7 @@ import {
   locateSentences,
   numberByExcerpt,
   unlocated,
+  withoutSentenceIds,
   pageField,
   type CiteBy,
   parseCitations,
@@ -1033,6 +1034,7 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
   }
   const located =
     env.citeBy === 'excerpt' ? locateSentences(text, index, ordered) : unlocated(text, index);
+  workspace.restream = located.text !== withoutSentenceIds(text);
   text = located.text;
   index = located.index;
   workspace.lastGeneratedResponse = text;
@@ -1040,6 +1042,7 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
   workspace.citationIndex = index;
   workspace.citationQuotes = located.quotes;
   workspace.sentenceIds = { located: located.located, missed: located.missed };
+  workspace.quotedText = text;
   workspace.citationValidation = validateCitations(text, index);
   workspace.sourceOrder = ordered;
   for (const d of docs) if (!workspace.chunks.has(d.chunkId)) workspace.chunks.set(d.chunkId, d);

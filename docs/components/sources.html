@@ -188,8 +188,9 @@
                 the excerpts one by one. Into an excerpt, the focus goes to its document's title; a
                 step keeps it on the step; «Alle utdrag» puts it back on the card; Escape calls
                 <code>onReturn</code>. <code>onOpenDocument</code> draws «Åpne i dokumentvisning»
-                under the excerpt shown. The words a citation rests on are not marked yet: the
-                contract does not name them (#638).
+                under the excerpt shown. When the footnote's marker carries a <code>quote</code>,
+                the excerpt shown marks those words; the list does the same through
+                <code>target.quote</code> (#971).
               </li>
               <li>
                 <code>foldUncited</code>: the documents the answer read but cites nowhere stand

@@ -96,14 +96,14 @@ export const ExcerptTool = ({
   const highlight = useMemo((): MarkdownHighlight | undefined => {
     if (!quote || !shownText) return undefined;
     const drawn = visibleText(shownText, false);
-    const range = citedRange(shownText, drawn.text, quote);
+    const range = citedRange(shown?.excerpt.text ?? '', drawn.text, quote);
     return range
       ? {
           hits: [{ itemId: 'cited', ...range, className: 'uib-sources-cited' }],
           offsets: drawn.offsets,
         }
       : undefined;
-  }, [quote, shownText]);
+  }, [quote, shownText, shown]);
 
   // Focus: the document on the way in, the step pressed on a step, the card on the way back.
   useEffect(() => {

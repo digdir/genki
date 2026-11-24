@@ -280,6 +280,10 @@ export class Workspace {
   citationQuotes: CitationQuotes = new Map();
   /** Sentence ids in the adopted answer: found in their excerpt, or not. */
   sentenceIds = { located: 0, missed: 0 };
+  /** The resolved answer `citationQuotes` belong to; another answer keeps none of them. */
+  quotedText: string | undefined;
+  /** The resolved answer differs from what the stream showed, so it is sent again. */
+  restream = false;
   attached: Chunk[] = [];
   sourceOrder: Chunk[] = [];
   citationValidation: CitationValidation | undefined;

@@ -23,8 +23,6 @@ const alwaysGlue = new Set([
   'dvs.',
   'kap.',
   'nr.',
-  'mv.',
-  'm.m.',
   'inkl.',
   'evt.',
   'ev.',
@@ -32,12 +30,8 @@ const alwaysGlue = new Set([
   'iht.',
   'pkt.',
   's.',
-  'mill.',
-  'mrd.',
   'mnd.',
   'kl.',
-  'osv.',
-  'etc.',
   'tlf.',
   'prof.',
   'dr.',
@@ -50,7 +44,21 @@ const alwaysGlue = new Set([
   'st.',
 ]);
 // End a sentence unless the next piece starts in lower case or with a digit.
-const glueBeforeLower = new Set(['pst.', 'kr.', 'år.', 'mio.', 'tab.', 'fig.', 'ref.']);
+const glueBeforeLower = new Set([
+  'pst.',
+  'kr.',
+  'år.',
+  'mio.',
+  'mill.',
+  'mrd.',
+  'mv.',
+  'm.m.',
+  'osv.',
+  'etc.',
+  'tab.',
+  'fig.',
+  'ref.',
+]);
 
 const lastWord = (s: string) => {
   const trimmed = s.trimEnd();

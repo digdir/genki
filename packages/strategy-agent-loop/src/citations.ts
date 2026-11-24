@@ -255,7 +255,10 @@ export const resolveSentenceMarkers = (
 
 const streamedSentenceId = /\[(\d{1,3}):[^\]\n]{0,40}\]/g;
 
-const withoutSentenceIds = (text: string) =>
+// A start that may still become `[N:…]` or `⟨N⟩`, as long as the parser reads one.
+const mayBecomeSentenceId = /^(?:\[\d{0,3}(?::[^\]\n]{0,40})?|⟨\d{0,3})$/;
+
+export const withoutSentenceIds = (text: string) =>
   text.replace(streamedSentenceId, '[$1]').replace(copiedSentenceMark, '');
 
 /** Keeps sentence ids out of a streamed answer, holding back a bracket that may still become one. */
@@ -265,7 +268,7 @@ export const sentenceIdFilter = (push: (text: string) => void) => {
     push: (text: string) => {
       held += text;
       const open = Math.max(held.lastIndexOf('['), held.lastIndexOf('⟨'));
-      const waits = open >= 0 && held.length - open <= 16 && !/[\]⟩]/.test(held.slice(open));
+      const waits = open >= 0 && mayBecomeSentenceId.test(held.slice(open));
       const cut = waits ? open : held.length;
       const out = withoutSentenceIds(held.slice(0, cut));
       held = held.slice(cut);
