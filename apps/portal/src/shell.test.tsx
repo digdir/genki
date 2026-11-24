@@ -533,21 +533,19 @@ describe('login through Ansattporten in live mode', () => {
   });
 });
 
-it('shows the Dokumentsamlinger badge on a deep link with the same count as the Trenger oppfølging filter', async () => {
+it('keeps the Dokumentsamlinger menu item free of a follow-up count', async () => {
   const auth = mockAnsattporten(kari);
   await auth.login();
   window.location.hash = '#/services';
   render(<App auth={auth} fetch={mockFetch()} live />);
   const menu = await screen.findByRole('navigation', { name: 'Hovedmeny' });
-  await waitFor(() =>
-    expect(within(menu).getByRole('link', { name: /Dokumentsamlinger/ }).textContent).toBe(
-      'Dokumentsamlinger2',
-    ),
-  );
 
   await go('#/datasets');
 
   expect(await screen.findByText('Trenger oppfølging (2)')).toBeTruthy();
+  expect(within(menu).getByRole('link', { name: /Dokumentsamlinger/ }).textContent).toBe(
+    'Dokumentsamlinger',
+  );
 });
 
 it('derives rights from the old read and write actions the same way as the API', () => {

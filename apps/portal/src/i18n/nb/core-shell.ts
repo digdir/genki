@@ -45,10 +45,6 @@ export const shell = defineNamespace({
   menuProfile: 'Profil',
   menuDeveloper: 'Integrasjoner',
   menuDataHandling: 'Slik behandles data',
-  badgeIngest: {
-    one: '{count} dokumentsamling trenger oppfølging',
-    other: '{count} dokumentsamlinger trenger oppfølging',
-  },
 });
 
 export const app = defineNamespace({
