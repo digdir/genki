@@ -13,6 +13,7 @@ import {
   type BlockTexts,
   type RuntimeBlock,
   type RuntimeBlocks,
+  makerOf,
 } from '@genai/composition';
 import {
   serviceDataLocation,
@@ -78,7 +79,6 @@ import type {
 import type { SinkJudge, TraceConnection } from './trace-connections.js';
 import { requireRight, rightRefused, type Right } from './rights.js';
 import { datasetDataLocation } from './residency.js';
-import { makerOf } from './model-identity.js';
 import { modelDisplayNames } from './model-access.js';
 import { pluginBlockOf, pluginEntries } from './external-plugins.js';
 import { actorNameOf, changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';

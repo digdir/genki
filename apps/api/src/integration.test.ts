@@ -20,6 +20,7 @@ import { createAdmin } from './admin.js';
 import { resolveCatalog } from './catalogs.js';
 import { confirmedAs } from './risk-confirmation.js';
 import { createPlatform, definitionSubject } from './composition.js';
+import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
 
 const tenant = '991825827';
 const other = '974761076';
@@ -190,7 +191,7 @@ const boot = async () => {
   const platform = await createPlatform({
     catalogs: {
       models: resolveCatalog(yaml('models.yaml'), 'models', env).catalog,
-      knowledge: resolveCatalog(yaml('knowledge.yaml'), 'datasets', env).catalog,
+      knowledge: resolveCatalog(seedOnTypesense(yaml('knowledge.yaml')), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),

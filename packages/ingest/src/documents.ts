@@ -4,8 +4,10 @@ import {
   ConversionPending,
   ConversionRefused,
   NoTextLayerError,
+  blankConversion,
   isPdfFile,
-  joinPages,
+  textOfConversion,
+  type ConvertedParts,
   type DocumentConverter,
   type DocumentFile,
 } from './converter.js';
@@ -81,6 +83,8 @@ export interface ReadFile {
   name: string;
   sha256: string;
   pages: string[];
+  /** Its stored parts, when its pipeline chunks parts (issue 635). */
+  parts?: ConvertedParts;
 }
 
 export type ReadDocument = { text: string; title?: string; file?: ReadFile } | { skip: SkipReason };
@@ -117,11 +121,15 @@ export const readDocument = async (
     try {
       const sha256 = createHash('sha256').update(file.bytes).digest('hex');
       const conversion = await options.converter.convert(file);
-      if (isPdfFile(file) && conversion.pages.every((p) => p.trim() === ''))
-        throw new NoTextLayerError(file.name);
+      if (isPdfFile(file) && blankConversion(conversion)) throw new NoTextLayerError(file.name);
       return {
-        text: joinPages(conversion.pages),
-        file: { name: file.name, sha256, pages: conversion.pages },
+        text: textOfConversion(conversion),
+        file: {
+          name: file.name,
+          sha256,
+          pages: conversion.pages,
+          ...(conversion.parts ? { parts: conversion.parts } : {}),
+        },
       };
     } catch (error) {
       if (error instanceof ConversionPending) throw error;

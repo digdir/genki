@@ -116,12 +116,12 @@ To check it: `curl localhost:8080/health` reports `lockdown`, the API log at sta
 | Works on a fresh clone, no secrets                                  | Needs your own settings in `.env.local`                                  |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | Login with test persons, rights, portal, console, workspace         | Real models: `FOUNDRY_OPENAI_*`, `FOUNDRY_CLAUDE_*`                      |
-| Postgres storage, migrations, API keys, conversations, audit        | Kudos and public-docs search: `TYPESENSE_*` (the key may only search)    |
+| Postgres storage, migrations, API keys, conversations, audit        |                                                                          |
 | "Lokal testchat" in the workspace, answered by the local echo model | Embeddings for vector search: Foundry                                    |
 | Your own single-call services on the local model (`local/echo`)     | Traces in Langfuse, Maskinporten, the real Altinn PDP, real Ansattporten |
 | Any model API replayed from response files on `local/replay`        |                                                                          |
 
-Without the Foundry and Typesense settings, the seeded services (Kunnskapsassistenten, Klarspråk, Nynorsk and the rest) are skipped, so "Lokal testchat" is the only service until you add them.
+Without the Foundry settings, the seeded services (Kunnskapsassistenten, Klarspråk, Nynorsk and the rest) are skipped, so "Lokal testchat" is the only service until you add them. The seeded Kudos and public-docs are on the local knowledge server, `kunnskapsserveren`, with no generation, so locally they stay empty and their searches find nothing; the seed's `kudos` pipeline cannot run until the dataset names a generation. genki no longer reads the shared Typesense server (#690).
 
 **Pulling a published service from genki-test.** The seed publishes a service only when it is missing, so a local database keeps the version it first got while genki-test moves on. To bring a newer published version into a running local genki in development mode:
 

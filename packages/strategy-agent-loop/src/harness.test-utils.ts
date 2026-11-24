@@ -39,7 +39,7 @@ export const call = (name: string, args: unknown): ToolCall => ({
   arguments: JSON.stringify(args),
 });
 
-const section = (prompt: string, title: string) => {
+export const section = (prompt: string, title: string) => {
   const start = prompt.indexOf(`${title}\n`);
   if (start < 0) return undefined;
   const rest = prompt.slice(start + title.length + 1);
@@ -298,6 +298,7 @@ export const run = async (opts: {
   parts?: Part[];
   now?: () => Date;
   loopOptions?: AgentLoopOptions;
+  environment?: string;
 }) => {
   const r = opts.retrieval ?? retrieval().impl;
   const requests: unknown[] = [];
@@ -318,14 +319,19 @@ export const run = async (opts: {
     ports: { model: provider, tools: opts.registry ?? new ToolRegistry() },
     policy: { decide: async () => ({ allow: true }) },
   });
-  const started = await kernel.invoke(kari, 'ka', {
-    data: {
-      query: opts.question ?? 'Hva sier tildelingsbrevet til Digdir for 2025?',
-      history: opts.history ?? [],
-      ...(opts.overrides ? { overrides: opts.overrides } : {}),
+  const started = await kernel.invoke(
+    kari,
+    'ka',
+    {
+      data: {
+        query: opts.question ?? 'Hva sier tildelingsbrevet til Digdir for 2025?',
+        history: opts.history ?? [],
+        ...(opts.overrides ? { overrides: opts.overrides } : {}),
+      },
+      ...(opts.parts ? { parts: opts.parts } : {}),
     },
-    ...(opts.parts ? { parts: opts.parts } : {}),
-  });
+    opts.environment ? { environment: opts.environment } : {},
+  );
   const events: Event[] = [];
   for await (const e of started.events) events.push(e);
   const audit: Event[] = [];

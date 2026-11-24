@@ -24,6 +24,7 @@ import {
   exhaustionNudge,
   readEvaluatorSystemPrompt,
 } from '@genai/strategy-agent-loop';
+import { createPool } from '@genai/providers-postgres';
 import { resolveCatalog } from './catalogs.js';
 import { Hono } from 'hono';
 import { createAdmin } from './admin.js';
@@ -38,6 +39,7 @@ import {
 import { withoutUnknownVariantModels } from './seed-variants.js';
 import { kernelTaskReader, toTimeline } from './timeline.js';
 import { policyKind } from './building-blocks.js';
+import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -46,6 +48,7 @@ afterEach(async () => {
 
 const config = join(import.meta.dirname, '..', 'config', 'local');
 const yaml = (file: string) => parseYaml(readFileSync(join(config, file), 'utf8')) as unknown;
+const kudosOnTypesense = () => seedOnTypesense(yaml('knowledge.yaml'));
 
 type Schema = {
   type?: string;
@@ -271,6 +274,8 @@ const modelReply = (body: Record<string, unknown>) => {
       return toolTurns === 0
         ? tool('state-organisation', { action: 'under', unit: '932384469' })
         : text('Dette er virksomhetene.');
+    if (offered.includes('service_facts'))
+      return toolTurns === 0 ? tool('service_facts', {}) : text('Jeg er versjon to.');
     if (offered.includes('source_facts'))
       return toolTurns === 0 ? tool('source_facts', { newest: 3 }) : text('Kudos har dette.');
     if (toolTurns === 0) return tool('search', { queries: ['tildelingsbrev Digdir 2025'] });
@@ -347,26 +352,44 @@ const boot = async (
     log?: InMemoryEventLog;
     configEntries?: InMemoryConfigEntryStore;
     definitions?: Parameters<typeof createPlatform>[0]['definitions'];
+    /** Boots on the shipped seed with no Typesense setting or secret at all. */
+    seedOnly?: boolean;
   } = {},
 ) => {
   const model = await fakeHttp(modelReply);
   const search = await fakeHttp(typesenseReply);
   servers.push(model, search);
-  const env = {
+  const env: Record<string, string> = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
-    TYPESENSE_URL: search.url,
+    ...(extra.seedOnly ? {} : { TYPESENSE_URL: search.url }),
   };
   const platform = await createPlatform({
     catalogs: {
       models: resolveCatalog(extra.models ?? yaml('models.yaml'), 'models', env).catalog,
-      knowledge: resolveCatalog(extra.knowledge ?? yaml('knowledge.yaml'), 'datasets', env).catalog,
+      knowledge: resolveCatalog(
+        extra.knowledge ?? (extra.seedOnly ? yaml('knowledge.yaml') : kudosOnTypesense()),
+        'datasets',
+        env,
+      ).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     ...(extra.settings ? { settings: extra.settings } : {}),
     ...(extra.prices ? { prices: extra.prices } : {}),
     ...(extra.log ? { log: extra.log } : {}),
     ...(extra.configEntries ? { configurables: { store: extra.configEntries } } : {}),
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
+    secrets: envSecrets(
+      extra.seedOnly
+        ? { FOUNDRY_OPENAI_KEY: 'm' }
+        : { FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' },
+    ),
+    // A knowledge server as the API has outside tests; nothing here searches it, so it never connects.
+    ...(extra.seedOnly
+      ? {
+          knowledgeServer: {
+            reader: createPool({ connectionString: 'postgres://127.0.0.1:1/none' }),
+          },
+        }
+      : {}),
     definitions: extra.definitions ?? ((plugins) => new InMemoryDefinitionStore(plugins)),
     policy: access?.policy ?? { decide: async () => ({ allow: true }) },
     authenticate:
@@ -584,6 +607,41 @@ describe('the composed platform', () => {
     expect(facts?.content).toContain('"source": "Kudos"');
   });
 
+  it('tells the agent the version a run uses and when it was published, through service-facts@1', async () => {
+    const { platform, app, model } = await boot(undefined, {
+      definitions: (plugins) =>
+        new InMemoryDefinitionStore(plugins, () => new Date('2026-10-06T22:30:00Z')),
+    });
+    const service = yaml('services/kunnskapsassistenten.yaml') as {
+      metadata: Record<string, unknown>;
+      spec: Record<string, unknown>;
+    };
+    const definition = {
+      ...service,
+      metadata: { ...service.metadata, id: 'ka-service-facts' },
+      spec: { ...service.spec, tools: ['service-facts@1'] },
+    };
+    for (const reason of ['first', 'second'])
+      expect((await platform.definitions.publish(definition, 'kari@digdir.no', reason)).ok).toBe(
+        true,
+      );
+
+    const res = await mcp(app, 'tools/call', {
+      name: 'ka-service-facts__default',
+      arguments: { query: 'Hvilken versjon er du?' },
+    });
+
+    expect(((await res.json()) as { result: { isError: boolean } }).result.isError).toBe(false);
+    const facts = model.seen
+      .flatMap((r) => (r.body.messages as Message[] | undefined) ?? [])
+      .find((m) => m.role === 'tool')?.content;
+    expect(facts).toContain('"version": 2');
+    expect(facts).toContain('"published": "2026-10-07"');
+    expect(facts).toContain('"environment": "prod"');
+    expect(facts).toContain('"name": "GPT-5.6 Terra"');
+    expect(facts).not.toMatch(/kari@digdir\.no|"second"|foundry/);
+  });
+
   it('validates a service definition that grants state-organisation@1 and refuses an unknown version', async () => {
     const { platform } = await boot();
     const service = yaml('services/kunnskapsassistenten.yaml') as {
@@ -679,7 +737,7 @@ describe('the composed platform', () => {
   });
 
   it('offers owner_orgnr filter values only when a dataset of the calling service declares the field', async () => {
-    const knowledge = yaml('knowledge.yaml') as {
+    const knowledge = kudosOnTypesense() as {
       datasets: { id: string; filters: Record<string, string> }[];
     };
     const declaring = {
@@ -1641,7 +1699,7 @@ describe('a draft test run', () => {
 
 describe('settings and datasets at run time', () => {
   const twoDatasets = () => {
-    const catalog = structuredClone(yaml('knowledge.yaml')) as {
+    const catalog = structuredClone(kudosOnTypesense()) as {
       datasets: {
         id: string;
         aliases?: string[];
@@ -2170,8 +2228,8 @@ describe('a service without a reranker', () => {
     return (await res.json()) as { result: { isError: boolean } };
   };
 
-  it('the API starts and seeds its services and catalog without reranker settings', async () => {
-    const { platform } = await boot();
+  it('the API starts and seeds its services and catalog without Typesense or ColBERT settings', async () => {
+    const { platform } = await boot(undefined, { seedOnly: true });
     const admin = createAdmin({
       store: platform.definitions,
       plugins: platform.plugins,

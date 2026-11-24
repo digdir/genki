@@ -40,13 +40,11 @@ param keyVaultSecretNames = [
   'altinn-subscription-key'
   'foundry-openai-key'
   'foundry-claude-key'
-  'typesense-key'
 ]
 
 param appEnv = {
   FOUNDRY_OPENAI_BASE_URL: readEnvironmentVariable('FOUNDRY_OPENAI_BASE_URL', '')
   FOUNDRY_CLAUDE_BASE_URL: readEnvironmentVariable('FOUNDRY_CLAUDE_BASE_URL', '')
-  TYPESENSE_URL: readEnvironmentVariable('TYPESENSE_URL', '')
   LANGFUSE_BASE_URL: readEnvironmentVariable('LANGFUSE_BASE_URL', '')
   LANGFUSE_INSTANCE_RECEIVES_CONTENT: readEnvironmentVariable('LANGFUSE_INSTANCE_RECEIVES_CONTENT', 'false')
 }

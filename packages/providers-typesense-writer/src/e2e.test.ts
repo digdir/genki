@@ -144,14 +144,12 @@ beforeAll(async () => {
     credential: { kind: 'api-key', key: async () => apiKey },
     schemas: contractSchemas(),
     embeddings: false,
-    sharedClusterUrls: [process.env.TYPESENSE_URL],
   });
   folderWriter = createTypesenseWriter({
     baseURL,
     credential: { kind: 'api-key', key: async () => apiKey },
     schemas: folderSchemas,
     embeddings: false,
-    sharedClusterUrls: [process.env.TYPESENSE_URL],
   });
 }, 180_000);
 

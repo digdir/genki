@@ -6,7 +6,13 @@ import {
   type RetrievalComparison,
   type RetrievalRun,
 } from '@genai/eval';
-import { copyOwner, embedIndexDocument, knowledgeSourceRefusal } from '@genai/ingest';
+import {
+  copyOwner,
+  embedIndexDocument,
+  isPartsStrategy,
+  knowledgeSourceRefusal,
+  type PipelineSpec,
+} from '@genai/ingest';
 import { onKnowledgeServer } from '@genai/composition';
 import { residencyAllows, type PortContext } from '@genai/kernel';
 import {
@@ -417,6 +423,12 @@ export const createEngineSwitchesModule =
       return undefined;
     };
 
+    /** A parts chunking reads conversion parts, which only the knowledge database stores (issue 635). */
+    const partsProblem = (pipelines: { id: string; spec: PipelineSpec }[]) => {
+      const parts = pipelines.find((p) => isPartsStrategy(p.spec.chunking.strategy));
+      return parts ? t('operations.switchPartsPipeline', { pipeline: parts.id }) : undefined;
+    };
+
     const exporterOf = (item: CatalogItem, signal: AbortSignal) => {
       try {
         return deps.knowledge.open(
@@ -543,6 +555,10 @@ export const createEngineSwitchesModule =
           ? t('operations.switchMissingModel', { model: embedding.model })
           : undefined;
       const knowledge = onKnowledge(target.id);
+      const pipelines = (await deps.ingestion.list(tenant, item.id)).filter((p) => p.spec.enabled);
+      // A parts pipeline reads parts only the knowledge database has: neither a copy nor a
+      // re-ingestion off it leaves a dataset its pipeline can fill (issue 635).
+      const parts = knowledge ? undefined : partsProblem(pipelines);
       const copyProblem = knowledge
         ? (missingModel ??
           (embedding && !modelAllowed(item, embedding.model)
@@ -553,6 +569,7 @@ export const createEngineSwitchesModule =
             : undefined) ??
           (!copyable(item) ? t('operations.switchKnowledgeCopyExport') : undefined))
         : (missingModel ??
+          parts ??
           (current && embedding && current.model !== embedding.model
             ? t('operations.switchCopyNeedsSameModel', {
                 current: current.model,
@@ -561,14 +578,13 @@ export const createEngineSwitchesModule =
             : !readable(item)
               ? t('operations.switchCannotRead')
               : undefined));
-      const pipelines = (await deps.ingestion.list(tenant, item.id)).filter((p) => p.spec.enabled);
       const reingestProblem =
         missingModel ??
         (pipelines.length === 0
           ? t('operations.switchNoPipeline')
           : knowledge
             ? await knowledgeProblem(tenant, item)
-            : undefined);
+            : parts);
       return {
         target,
         engine,

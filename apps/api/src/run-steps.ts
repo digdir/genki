@@ -252,6 +252,7 @@ const toolTitles: Record<string, [string, ApiKey]> = {
   generate_response: ['model', 'steps.toolGenerate'],
   inspect_filters: ['tool', 'steps.toolInspect'],
   source_facts: ['tool', 'steps.toolSourceFacts'],
+  service_facts: ['tool', 'steps.toolServiceFacts'],
   use_skill: ['tool', 'steps.toolSkill'],
 };
 
@@ -276,6 +277,13 @@ const gateStatus: Record<string, ApiKey> = {
   sufficient: 'steps.gateSufficient',
   insufficient: 'steps.gateInsufficient',
   partial: 'steps.gatePartial',
+};
+
+const gateSources: Record<string, ApiKey> = {
+  'shadow-read-signals': 'steps.gateByReadCheck',
+  'llm-sufficiency-gate': 'steps.gateByModel',
+  'response-validation': 'steps.gateByAnswerCheck',
+  'grounding-gate': 'steps.gateByGrounding',
 };
 
 const nextMoves: Record<string, ApiKey> = {
@@ -1223,6 +1231,14 @@ export class RunMapper {
     const status = String(data.status ?? '');
     const strategy = str(data.strategy);
     const move = strategy ? lookup(nextMoves, strategy) : undefined;
+    const source = str(data.source);
+    const overrode = str(data.overriddenReadStatus);
+    const rows: [string, string][] = [
+      ...(source ? [[t('steps.gateSource'), lookup(gateSources, source)] as [string, string]] : []),
+      ...(overrode
+        ? [[t('steps.gateOverrode'), lookup(readSignals, overrode)] as [string, string]]
+        : []),
+    ];
     this.add(
       this.completed(e, ts, prev, {
         type: 'guard',
@@ -1233,7 +1249,7 @@ export class RunMapper {
         summary: [lookup(gateStatus, status), move ? t('steps.next', { move }) : '']
           .filter(Boolean)
           .join(' · '),
-        blocks: [],
+        blocks: rows.length ? [{ kind: 'kv', rows }] : [],
         ...this.rawOf(data),
       }),
       true,

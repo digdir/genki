@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, relative, resolve, sep } from 'node:path';
 import type { BlobInfo, BlobStore } from '@genai/port-blob';
 import { z } from 'zod';
-import type { ChunkDocumentConfig, ChunkStrategy } from './chunk-document.js';
+import { isPartsStrategy, type ChunkDocumentConfig, type ChunkStrategy } from './chunk-document.js';
 import type { MetadataStyle } from './chunking.js';
 import type { DocumentConverter, DocumentFile } from './converter.js';
 import {
@@ -80,6 +80,14 @@ const chunkStrategy = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('page'),
     splitMaxLength: z.number().int().positive().optional(),
+  }),
+  /**
+   * A unit a chunk, a page of a PDF, from the file's stored conversion parts with no furniture,
+   * split on part boundaries when longer than the limit (ADR 0055, "Chunks and reads").
+   */
+  z.strictObject({
+    kind: z.literal('parts-unit'),
+    splitMaxLength: z.number().int().positive(),
   }),
 ]);
 
@@ -411,18 +419,43 @@ const metadataStyles: Record<PipelineSpec['chunking']['metadataStyle'], Metadata
 };
 
 const strategyOf = (spec: PipelineSpec['chunking']['strategy']): ChunkStrategy =>
-  spec.kind === 'page'
-    ? {
-        kind: 'page',
-        ...(spec.splitMaxLength === undefined ? {} : { splitMaxLength: spec.splitMaxLength }),
-      }
-    : spec.kind === 'fixed-width'
-      ? { kind: 'fixed-width', width: spec.width, overlap: spec.overlap }
-      : {
-          kind: 'header-based',
+  spec.kind === 'parts-unit'
+    ? { kind: 'parts-unit', splitMaxLength: spec.splitMaxLength }
+    : spec.kind === 'page'
+      ? {
+          kind: 'page',
           ...(spec.splitMaxLength === undefined ? {} : { splitMaxLength: spec.splitMaxLength }),
-          ...(spec.overlap === undefined ? {} : { overlap: spec.overlap }),
-        };
+        }
+      : spec.kind === 'fixed-width'
+        ? { kind: 'fixed-width', width: spec.width, overlap: spec.overlap }
+        : {
+            kind: 'header-based',
+            ...(spec.splitMaxLength === undefined ? {} : { splitMaxLength: spec.splitMaxLength }),
+            ...(spec.overlap === undefined ? {} : { overlap: spec.overlap }),
+          };
+
+/**
+ * Why a pipeline cannot use its parts chunking: parts are stored only on the knowledge database, and
+ * only for files a source lists by sha256, which today is only Kudos (issue 635).
+ */
+export const partsChunkingRefusal = (
+  spec: Pick<PipelineSpec, 'source' | 'chunking'>,
+  onKnowledge: boolean,
+): { path: string; message: string } | undefined => {
+  if (!isPartsStrategy(spec.chunking.strategy)) return undefined;
+  if (spec.source.kind !== 'kudos')
+    return {
+      path: 'spec.chunking.strategy.kind',
+      message: 'a parts chunking reads stored conversion parts, which only a kudos source has yet',
+    };
+  if (!onKnowledge)
+    return {
+      path: 'spec.chunking.strategy.kind',
+      message:
+        'a parts chunking needs a dataset on the knowledge database, where conversion parts are stored',
+    };
+  return undefined;
+};
 
 export const chunkingOf = (spec: PipelineSpec['chunking']): ChunkDocumentConfig => ({
   strategy: strategyOf(spec.strategy),

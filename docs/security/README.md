@@ -23,7 +23,7 @@ Out of scope:
 - dev mode (`GENAI_DEV_MODE=true`): the mock Ansattporten, mock Altinn, dev login and in-memory storage are for local development and are insecure by design. A way to turn dev mode on, or reach the mock login, without setting that flag is in scope.
 - the test persons, generated keys and example data in `apps/api/config/local` and in tests
 - the Azure setup in `infra/`, deployed to the test environment only
-- the services the platform calls (Azure AI Foundry, Typesense, Altinn, Ansattporten, Maskinporten, Langfuse) and other Digdir systems such as digdir-headless-rag: report those to their owners
+- the services the platform calls (Azure AI Foundry, Altinn, Ansattporten, Maskinporten, Langfuse, and a search server such as Typesense that an organisation registers) and other Digdir systems such as digdir-headless-rag: report those to their owners
 - model answers that are wrong or unwanted but cross no security boundary, and denial of service by volume
 - findings from automated scanners without a demonstrated impact
 
@@ -50,7 +50,7 @@ When genki runs outside development mode, with the settings below:
 - **Model answers can be wrong.** genki marks every answer as made with AI and shows its sources, but it does not guarantee that an answer is correct.
 - **Masking is not anonymisation.** The PII guardrails catch Norwegian ids, phone numbers, email, account numbers and ICD-10 codes. They do not catch names or free-text health data.
 - **Prompt injection is reduced, not removed.** A model can only use the tools and datasets the service grants. Every strategy marks documents, search hits and tool output as untrusted data and tells the model not to follow instructions in them. A document can still steer an answer within those limits.
-- **The services genki calls** (Azure AI Foundry, Altinn, Ansattporten, Maskinporten, Typesense, Langfuse) are secured by their owners.
+- **The services genki calls** (Azure AI Foundry, Altinn, Ansattporten, Maskinporten, Langfuse, and a search server an organisation registers) are secured by their owners.
 - **Classified information** and systems under sikkerhetsloven are out of scope.
 - **Not production-ready yet.** Before real people log in, genki needs a backend-for-frontend so tokens leave the browser ([ADR 0034](../adr/0034-tokens-in-the-browser.md), proposed), and operators recognised by Entra group outside the locked test environment ([ADR 0035](../adr/0035-operator-login.md), proposed, not built). The [assurance case](assurance-case.md#known-gaps) lists the other known gaps.
 

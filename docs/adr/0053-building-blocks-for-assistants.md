@@ -1,8 +1,8 @@
 # 0053 Building blocks for assistants
 
-Status: proposed, 2026-11-02 (partly built: the package and Approach, used in the workspace; the package's rules and their lint, 2026-11-10; the components from #403 to #413, 2026-11-11)
+Status: proposed, 2026-11-02 (partly built: the package and Approach, used in the workspace; the package's rules and their lint, 2026-11-10; the components from #403 to #413, 2026-11-11; a playground, the Frontend tab of the portal's Prøveområdet, 2026-11-23)
 
-Not built yet: projects, notes, the builder's preview drawing the real components, and a playground.
+Not built yet: projects, notes, and the builder's preview drawing the real components.
 
 Decided in their own records: how an answer's footnotes cite excerpts (ADR 0052); and the layout format and the package that fetches, `@genai/ui-assembly` (ADR 0054).
 

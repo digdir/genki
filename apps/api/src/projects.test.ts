@@ -19,6 +19,7 @@ import { InMemoryIngestionBackend, pipelineSpec } from './ingestion.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { createProjectsModule, projectsModule } from './project-routes.js';
 import { subscriptionStateKind, type SubscriptionState } from './projects.js';
+import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -255,7 +256,7 @@ const boot = async (world: Shared = shared()) => {
   const platform = await createPlatform({
     catalogs: {
       models: resolveCatalog(yaml('models.yaml'), 'models', env).catalog as ModelCatalog,
-      knowledge: resolveCatalog(yaml('knowledge.yaml'), 'datasets', env).catalog,
+      knowledge: resolveCatalog(seedOnTypesense(yaml('knowledge.yaml')), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),

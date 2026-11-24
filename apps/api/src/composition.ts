@@ -13,6 +13,8 @@ import {
   pinnedFetch,
   traceConnectionKind,
   tracingEgress,
+  identityOf,
+  type ConnectionFacts,
 } from '@genai/composition';
 import { inputFieldsSchema, type PriceSpec, type Principal, type Usage } from '@genai/contracts';
 import { createA2aApp } from '@genai/adapter-a2a';
@@ -307,7 +309,6 @@ import { playgroundModule } from './playground.js';
 import { proposalsModule } from './proposals.js';
 import { connectorsModule, privateNetworkRegistry } from './connectors.js';
 import { modelDisplayNames, ownedElsewhere } from './model-access.js';
-import { identityOf, type ConnectionFacts } from './model-identity.js';
 import { qualityModule } from './quality.js';
 import { batchRunsModule } from './batch-run-routes.js';
 import { projectsModule } from './project-routes.js';
@@ -582,7 +583,6 @@ export interface PlatformInput {
   embeddingAdapters?: EmbeddingAdapter[];
   /** Rerank engines for rerankers without an API; none is built in (ADR 0048). */
   rerankAdapters?: RerankAdapter[];
-  searchOnlyClusters?: (string | undefined)[];
   ingestFolderRoot?: string;
   ingestWorkingDirectory?: string;
   ingestParquetMaxBytes?: number;
@@ -1370,6 +1370,8 @@ export const createPlatform = async (input: PlatformInput) => {
   };
 
   const runtime = await createRuntime({
+    organisationName: async (tenant) =>
+      (await directory.list()).find((t) => t.orgNumber === tenant)?.name,
     lastImport: async (dataset) => {
       const item = runtime.catalog.get('dataset', dataset);
       return item ? lastImportAt(config.ingestion, item) : undefined;
@@ -1458,7 +1460,6 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.knowledgeEngines ? { knowledgeEngines: input.knowledgeEngines } : {}),
     ...(input.embeddingAdapters ? { embeddingAdapters: input.embeddingAdapters } : {}),
     ...(input.rerankAdapters ? { rerankAdapters: input.rerankAdapters } : {}),
-    ...(input.searchOnlyClusters ? { searchOnlyClusters: input.searchOnlyClusters } : {}),
     ...(input.configurables?.catalogPolicy
       ? { catalogPolicy: input.configurables.catalogPolicy }
       : {}),

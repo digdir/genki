@@ -34,6 +34,7 @@ import {
   tracesContent,
   tracingEgress,
   withBlockSettings,
+  organisationNameFrom,
 } from '@genai/composition';
 import {
   defaultHeavyThreshold,
@@ -99,6 +100,7 @@ import {
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { openJobQueue, PgBossRunJobs } from '@genai/providers-pgboss';
 import {
+  addChunkColumns,
   knowledgeConversionsOf,
   knowledgeHeavyWork,
   prepareGeneration,
@@ -486,6 +488,11 @@ const knowledgeHandlers =
                   dataset,
                   generation,
                 ),
+              // Before every parts write: it takes no lock once the columns are there (issue 635).
+              chunkColumns: () =>
+                addChunkColumns(
+                  knowledgeServer.pools.owner as Parameters<typeof addChunkColumns>[0],
+                ),
             }
           : {}),
         listingOf: (spec, scope, signal, converter) =>
@@ -704,6 +711,7 @@ const usedTokens = async (tenant: string, since: string) =>
     : 0;
 const runtime = await createRuntime({
   platformTenant,
+  ...(db ? { organisationName: organisationNameFrom(db.tenants) } : {}),
   federatedTokens,
   catalogs: {
     models: catalogs.models.catalog,
@@ -766,7 +774,6 @@ const runtime = await createRuntime({
         discoveredModels: new PostgresDiscoveredModels<DiscoveryListing>(db.runtimePool),
       }
     : {}),
-  searchOnlyClusters: [process.env.TYPESENSE_URL],
   modelDiscovery: modelDiscoveryFromEnv(process.env),
   onWarning: (message) => log('warning', { message }),
   logger: log,

@@ -262,6 +262,7 @@ export class Workspace {
   citationValidation: CitationValidation | undefined;
   noToolCallRetries = 0;
   sourceFactsRead = false;
+  serviceFactsRead = false;
   lastSearchWindow: SearchWindow | undefined;
 
   constructor(readonly limits: BudgetLimits) {}
@@ -483,6 +484,9 @@ export const computeBudgetRefund = (
   };
 };
 
+const explicitlyCovered = (workspace: Workspace, claimId: string) =>
+  workspace.claimCoverage.get(claimId)?.supportLevel === 'explicit';
+
 export const recordReadEvaluation = (
   workspace: Workspace,
   signal: ReadSignal & { chunkIds: string[] },
@@ -514,7 +518,7 @@ export const recordReadEvaluation = (
   workspace.contradictions = [...workspace.contradictions, ...signal.contradictions];
   const gapById = new Map(signal.remainingGaps.map((g) => [g.claimId, g]));
   workspace.openGaps = (workspace.evidencePlan?.requiredClaims ?? [])
-    .filter((c) => !workspace.claimCoverage.has(c.claimId))
+    .filter((c) => !explicitlyCovered(workspace, c.claimId))
     .map((c) => {
       const gap = gapById.get(c.claimId);
       return {
@@ -586,7 +590,7 @@ const repeatedGapStagnation = (workspace: Workspace) => {
 export const aggregateReadSignals = (workspace: Workspace): ShadowDecision => {
   const critical = (workspace.evidencePlan?.requiredClaims ?? []).filter((c) => c.critical);
   const missing = critical
-    .filter((c) => !workspace.claimCoverage.has(c.claimId))
+    .filter((c) => !explicitlyCovered(workspace, c.claimId))
     .map((c) => c.claimId);
   const contradictions = workspace.contradictions;
   const last = workspace.lastReadSignal;
@@ -596,11 +600,13 @@ export const aggregateReadSignals = (workspace: Workspace): ShadowDecision => {
   const ambiguous =
     degraded || last?.status === 'unclear' || scope === 'ambiguous' || scope === 'wrong-scope';
   const unreadCount = nextReadSuggestions(workspace).unreadCount;
+  const gapReported = last?.status === 'gap-remaining' || last?.status === 'conflicting';
+  const covered = missing.length === 0 && !gapReported;
   const suggestedStrategy = contradictions.length
     ? 'finalize'
     : ambiguous
       ? (last?.nextActionHint ?? 're-search')
-      : missing.length === 0
+      : covered
         ? 'finalize'
         : stagnation
           ? 're-search'
@@ -613,7 +619,7 @@ export const aggregateReadSignals = (workspace: Workspace): ShadowDecision => {
       ? 'conflicting'
       : ambiguous
         ? 'ambiguous'
-        : missing.length === 0
+        : covered
           ? 'sufficient'
           : 'insufficient',
     reasonCode: contradictions.length
@@ -626,11 +632,13 @@ export const aggregateReadSignals = (workspace: Workspace): ShadowDecision => {
             ? 'wrong-scope'
             : last?.status === 'unclear'
               ? 'unclear-read-signal'
-              : missing.length === 0
+              : covered
                 ? 'all-critical-claims-covered'
                 : stagnation
                   ? 'repeated-critical-gaps'
-                  : 'critical-gaps-remaining',
+                  : missing.length === 0
+                    ? 'read-reported-gap'
+                    : 'critical-gaps-remaining',
     suggestedStrategy,
     missingClaims: missing,
     contradictions,

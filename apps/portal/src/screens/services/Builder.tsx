@@ -96,6 +96,8 @@ import { gateStopReason, gateStops } from '../quality/QualityOverview';
 import { productionEnvironment } from '../../api/environments';
 import { DraftBar, savedByOf, saverOf, type SaveState, type SavedBy } from './DraftBar';
 import { DiscardDialog } from './DiscardDialog';
+import { newDraftId } from './draft-id';
+import { HandoverNotice } from './HandoverNotice';
 import { PublishDiff, type TestWarning } from './PublishDiff';
 import { SetupForm } from './setup-form';
 import { SetupLayout, type AreaFact, type SidePane } from './setup-layout';
@@ -232,7 +234,7 @@ const areaOf = (detail: string | undefined): SetupArea | undefined =>
       ? areaOfSection[detail]
       : undefined;
 
-export const newDraftId = () => `utkast-${crypto.randomUUID().slice(0, 8)}`;
+export { newDraftId } from './draft-id';
 
 const isAssistantState = (v: string | null): v is AssistantState =>
   !!v && (assistantStates as readonly string[]).includes(v);
@@ -2656,6 +2658,7 @@ export const Builder = ({
             </Paragraph>
           </Alert>
         ) : null}
+        {section === 'setup' ? <HandoverNotice draft={id} /> : null}
         {rebasedNotice !== undefined ? (
           <Alert data-color="success" data-size="sm">
             {t('services.draftRebasedTo', { n: rebasedNotice })}

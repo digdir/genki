@@ -234,7 +234,6 @@ const boot = async (
     knowledgeEngines: [localEngine],
     knowledgeServer: { reader: pool },
     embeddingAdapters: [fakeEmbeddingAdapter()],
-    searchOnlyClusters: [typesenseUrl],
     documentConverter: {
       convert: async () =>
         onePage('# Tildelingsbrev\n\nDepartementet tildeler midler til skyplattformen.'),
@@ -935,6 +934,59 @@ describe('operators switching the engine of a platform dataset', () => {
       id: 'nye-filer',
       index: { endpoint: 'knowledge-pg' },
       embedding: { model: 'fake/embed', dimensions: 8 },
+    });
+  });
+
+  it('a switch to an engine other than the knowledge database cannot re-ingest or copy a parts pipeline', async () => {
+    const entries = new InMemoryConfigEntryStore();
+    const booted = await boot({ entries });
+    const { call } = booted;
+    const id = 'digdir/kudos-deler';
+    await createPlatformDataset(booted, id);
+    const saved = await call(`${operatorBase(id)}/pipelines`, {
+      as: 'drift',
+      body: {
+        id: 'kudos',
+        name: 'Kudos',
+        source: { kind: 'kudos', types: ['Tildelingsbrev'] },
+        chunking: { minimumLength: 1 },
+      },
+    });
+    expect(saved.status).toBe(201);
+    // A pipeline saved with a parts chunking before the refusal, or written past the API.
+    const [entry] = (await entries.latest({ kind: 'ingestion-pipeline' })).filter((e) =>
+      e.id.startsWith(`${id}#`),
+    );
+    if (!entry) throw new Error('no pipeline entry');
+    const spec = entry.spec as { chunking: Record<string, unknown> };
+    await appendVersion(entries, {
+      ...entry,
+      spec: {
+        ...spec,
+        chunking: { ...spec.chunking, strategy: { kind: 'parts-unit', splitMaxLength: 4000 } },
+      },
+      by: 'drift',
+      reason: 'test',
+      at: new Date().toISOString(),
+    });
+
+    const estimate = await json<SwitchEstimate>(
+      await call(`${operatorBase(id)}/engine-switches/estimate?to=lokal&method=reingest`, {
+        as: 'drift',
+      }),
+    );
+
+    // A copy would leave a pipeline whose every document fails to chunk.
+    expect(estimate.copy).toMatchObject({
+      available: false,
+      reason:
+        'Innlesingen kudos deler opp etter konverteringens deler, som bare finnes i kunnskapsdatabasen.',
+    });
+
+    expect(estimate.reingest).toMatchObject({
+      available: false,
+      reason:
+        'Innlesingen kudos deler opp etter konverteringens deler, som bare finnes i kunnskapsdatabasen.',
     });
   });
 

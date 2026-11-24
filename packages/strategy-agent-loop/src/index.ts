@@ -72,12 +72,19 @@ import {
   gateSystemHint,
   groundingDecision,
   responseValidationHint,
+  confidentReadSignalFinalize,
   shadowGateDecision,
   shouldRunResponseValidation,
   standsWhenUnsure,
   type ClarificationRequest,
   type SufficiencyDecision,
 } from './sufficiency.js';
+import {
+  isServiceFactsRef,
+  runServiceFacts,
+  serviceFactsTool,
+  type ServiceFactsLookup,
+} from './service-facts.js';
 import { isSourceFactsRef, runSourceFacts, sourceFactsTool } from './source-facts.js';
 import {
   defaultSearchSettings,
@@ -110,6 +117,7 @@ export * from './prompts.js';
 export * from './service-card.js';
 export * from './read-signals.js';
 export * from './skills.js';
+export * from './service-facts.js';
 export * from './source-facts.js';
 export * from './sources.js';
 export * from './structured.js';
@@ -242,6 +250,8 @@ export const activeFiltersOf = (request: RetrievalRequest): ActiveFilter[] => {
 export interface AgentLoopOptions {
   retrieval: RetrievalFactory;
   now?: () => Date;
+  /** Looks up what service-facts@1 tells that the run itself does not know. */
+  serviceFacts?: ServiceFactsLookup;
 }
 
 const inputSchema = z.looseObject({
@@ -427,7 +437,9 @@ const openExtraTools = async (
   ctx: InvocationContext,
   config: AgentLoopRuntimeConfig,
 ): Promise<ExtraTool[]> => {
-  const refs = (config.tools ?? []).filter((r) => !r.startsWith('rag@') && !isSourceFactsRef(r));
+  const refs = (config.tools ?? []).filter(
+    (r) => !r.startsWith('rag@') && !isSourceFactsRef(r) && !isServiceFactsRef(r),
+  );
   const tools: ExtraTool[] = [];
   for (const ref of refs) {
     const at = ref.lastIndexOf('@');
@@ -439,7 +451,8 @@ const openExtraTools = async (
     if (
       isBuiltinTool(definition.name) ||
       definition.name === useSkillTool.name ||
-      definition.name === sourceFactsTool.name
+      definition.name === sourceFactsTool.name ||
+      definition.name === serviceFactsTool.name
     )
       throw new Error(`tool ${ref} collides with the built-in tool ${definition.name}`);
     tools.push({
@@ -533,9 +546,14 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     const sourceFactsOn = Boolean(
       searchable?.sourceFacts && (config.tools ?? []).some(isSourceFactsRef),
     );
+    const serviceFactsLookup = options.serviceFacts;
+    const serviceFactsOn = Boolean(
+      serviceFactsLookup && (config.tools ?? []).some(isServiceFactsRef),
+    );
     const toolSpecs = [
       ...(searchable ? agentTools : []),
       ...(sourceFactsOn ? [sourceFactsTool] : []),
+      ...(serviceFactsOn ? [serviceFactsTool] : []),
       ...(skills.length ? [useSkillTool] : []),
       ...extra.map((t) => t.spec),
     ];
@@ -715,6 +733,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           Boolean(searchable) &&
           workspace.searches.length === 0 &&
           !workspace.sourceFactsRead &&
+          !workspace.serviceFactsRead &&
           (cutOff || !(await isSmallTalk(query)));
         if (guard && workspace.noToolCallRetries < 2) {
           workspace.noToolCallRetries += 1;
@@ -806,6 +825,13 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           const facts = await runSourceFacts(retrieval, args.value, ctx.signal);
           content = facts.content;
           if (facts.ok) workspace.sourceFactsRead = true;
+        } else if (serviceFactsLookup && serviceFactsOn && call.name === serviceFactsTool.name) {
+          const facts = await runServiceFacts(ctx, serviceFactsLookup, {
+            model: config.model.primary,
+            languages: Array.isArray(config.languages) ? (config.languages as string[]) : [],
+          });
+          content = facts.content;
+          if (facts.ok) workspace.serviceFactsRead = true;
         } else if (skills.length && call.name === useSkillTool.name) {
           content = useSkill(skills, args.value, workspace.loadedSkills);
         } else {
@@ -882,8 +908,10 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           shadowRaw.suggestedStrategy === 'ask-clarification')
           ? enforceSufficiencyLimit(workspace, shadowRaw)
           : undefined;
+      const weakSufficient =
+        shadowCounted?.status === 'sufficient' && !confidentReadSignalFinalize(workspace);
       const shadow =
-        shadowCounted && !(citedDraft && shadowCounted.status !== 'sufficient')
+        shadowCounted && !weakSufficient && !(citedDraft && shadowCounted.status !== 'sufficient')
           ? shadowCounted
           : undefined;
       const lastStatus = workspace.lastReadSignal?.status;
@@ -954,6 +982,12 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
 
       const active = validation ?? grounding ?? sufficiency;
       const activeHint = validationHint ?? hint;
+      const overriddenReadStatus =
+        active?.status === 'sufficient' &&
+        lastStatus !== undefined &&
+        lastStatus !== 'support-found'
+          ? lastStatus
+          : undefined;
       if (active)
         yield {
           type: 'kernel.notice',
@@ -962,6 +996,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             source: active.source,
             status: active.status,
             strategy: active.suggestedStrategy,
+            ...(overriddenReadStatus ? { overriddenReadStatus } : {}),
           },
         };
 

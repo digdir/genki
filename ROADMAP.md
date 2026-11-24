@@ -23,7 +23,7 @@ The goal is a production environment that agencies can use with real people and 
 ### 2. Replace digdir-headless-rag for Kunnskapsassistenten
 
 - Answers at least as good as headless-rag's, shown on a test set that domain experts have reviewed ([#13](https://github.com/digdir/genki/issues/13), [#14](https://github.com/digdir/genki/issues/14), [#15](https://github.com/digdir/genki/issues/15), [#17](https://github.com/digdir/genki/issues/17), [#18](https://github.com/digdir/genki/issues/18)).
-- Kudos on genki's own knowledge database, with genki doing the ingestion ([ADR 0042](docs/adr/0042-the-knowledge-database.md), [#29](https://github.com/digdir/genki/issues/29), [#140](https://github.com/digdir/genki/issues/140) to [#151](https://github.com/digdir/genki/issues/151), [#249](https://github.com/digdir/genki/issues/249), [#250](https://github.com/digdir/genki/issues/250)). Typesense then leaves genki's code ([#150](https://github.com/digdir/genki/issues/150)).
+- Kudos on genki's own knowledge database, with genki doing the ingestion ([ADR 0042](docs/adr/0042-the-knowledge-database.md), [#29](https://github.com/digdir/genki/issues/29), [#140](https://github.com/digdir/genki/issues/140) to [#151](https://github.com/digdir/genki/issues/151), [#249](https://github.com/digdir/genki/issues/249), [#250](https://github.com/digdir/genki/issues/250)). genki no longer reads the shared Typesense server; Typesense stays as an engine an organisation may register for its own server ([#690](https://github.com/digdir/genki/issues/690)).
 - Withdrawing a document on request, and keeping it out ([#178](https://github.com/digdir/genki/issues/178)).
 
 ### 3. Govern every model call the same way
