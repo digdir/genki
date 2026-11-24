@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   detectInsufficientContext,
   numberByDocument,
+  locateSentences,
   numberByExcerpt,
   pageField,
   type CiteBy,
@@ -1005,9 +1006,10 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
   );
   const {
     context,
-    index,
+    index: numbered,
     chunks: ordered,
   } = env.citeBy === 'excerpt' ? numberByExcerpt(docs) : numberByDocument(docs);
+  let index = numbered;
   let text: string;
   try {
     const written = await env.synthesize(
@@ -1028,9 +1030,14 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
       content: `Error executing generate_response: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
+  const located = locateSentences(text, index, ordered);
+  text = located.text;
+  index = located.index;
   workspace.lastGeneratedResponse = text;
   workspace.citations = parseCitations(text, index);
   workspace.citationIndex = index;
+  workspace.citationQuotes = located.quotes;
+  workspace.sentenceIds = { located: located.located, missed: located.missed };
   workspace.citationValidation = validateCitations(text, index);
   workspace.sourceOrder = ordered;
   for (const d of docs) if (!workspace.chunks.has(d.chunkId)) workspace.chunks.set(d.chunkId, d);

@@ -1,4 +1,5 @@
 import { untrustedData } from '@genai/port-model';
+import { numberSentences, quoteOf, type TextQuote } from './sentences.js';
 
 export interface Citation {
   index: number;
@@ -174,12 +175,116 @@ export const numberByExcerpt = <C extends Numberable>(docs: C[]) => {
     context: ordered
       .map(
         (c, i) =>
-          `[${i + 1}] ${untrustedData('source', stripPageMarkers(c.content), { id: documentKey(c), title: c.title, publisher: c.publisher, ...pageAttribute(c) })}`,
+          `[${i + 1}] ${untrustedData('source', numberSentences(excerptText(c.content)), { id: documentKey(c), title: c.title, publisher: c.publisher, ...pageAttribute(c) })}`,
       )
       .join('\n\n'),
     index: new Map(ordered.map((c, i) => [i + 1, c.chunkId])) as CitationIndex,
     chunks: ordered,
   };
+};
+
+export type CitationQuotes = Map<number, TextQuote>;
+
+export interface ResolvedSentences {
+  text: string;
+  index: CitationIndex;
+  quotes: CitationQuotes;
+  located: number;
+  missed: number;
+}
+
+const excerptMarker = /\[(\d{1,3})(?::(\d{1,3})(?:[-–](\d{1,3}))?)?\]/g;
+const copiedSentenceMark = /⟨\d{1,3}⟩ ?/g;
+const sentenceMarker = /\[\d{1,3}:\d{1,3}(?:[-–]\d{1,3})?\]/;
+
+/** The excerpt's text as «Kilder» shows it, which sentence ids and quotes refer to. */
+export const excerptText = (content: string) => stripPageMarkers(content).trim();
+
+/**
+ * Turns `[N:a]` and `[N:a-b]` into plain `[M]` markers, one per cited place, and gives each the
+ * cited sentences as a quote. An id the excerpt lacks keeps a plain citation of the excerpt and
+ * counts as a miss. Text without sentence ids comes back as it was.
+ */
+export const resolveSentenceMarkers = (
+  text: string,
+  index: CitationIndex,
+  textOf: (chunkId: string) => string | undefined,
+): ResolvedSentences => {
+  const cleaned = text.replace(copiedSentenceMark, '');
+  if (!sentenceMarker.test(cleaned))
+    return { text: cleaned, index, quotes: new Map(), located: 0, missed: 0 };
+  const numbers = new Map<string, number>();
+  const next: CitationIndex = new Map();
+  const quotes: CitationQuotes = new Map();
+  let located = 0;
+  let missed = 0;
+  const rewritten = cleaned.replace(
+    excerptMarker,
+    (whole, n: string, from?: string, to?: string) => {
+      const chunkId = index.get(Number(n));
+      if (chunkId === undefined) return whole;
+      const body = textOf(chunkId);
+      const quote =
+        from === undefined || body === undefined
+          ? undefined
+          : quoteOf(body, Number(from), Number(to ?? from));
+      if (from !== undefined) {
+        if (quote) located++;
+        else missed++;
+      }
+      const key = quote ? `${n}:${from}-${to ?? from}` : n;
+      let marker = numbers.get(key);
+      if (marker === undefined) {
+        marker = numbers.size + 1;
+        numbers.set(key, marker);
+        next.set(marker, chunkId);
+        if (quote) quotes.set(marker, quote);
+      }
+      return `[${marker}]`;
+    },
+  );
+  return { text: rewritten, index: next, quotes, located, missed };
+};
+
+const streamedSentenceId = /\[(\d{1,3}):\d{1,3}(?:[-–]\d{1,3})?\]/g;
+
+const withoutSentenceIds = (text: string) =>
+  text.replace(streamedSentenceId, '[$1]').replace(copiedSentenceMark, '');
+
+/**
+ * Keeps sentence ids out of a streamed answer: `[3:4]` goes out as `[3]`, and a bracket that may
+ * still become one is held back until it closes. The final answer is renumbered afterwards.
+ */
+export const sentenceIdFilter = (push: (text: string) => void) => {
+  let held = '';
+  return {
+    push: (text: string) => {
+      held += text;
+      const open = Math.max(held.lastIndexOf('['), held.lastIndexOf('⟨'));
+      const waits = open >= 0 && held.length - open <= 16 && !/[\]⟩]/.test(held.slice(open));
+      const cut = waits ? open : held.length;
+      const out = withoutSentenceIds(held.slice(0, cut));
+      held = held.slice(cut);
+      if (out) push(out);
+    },
+    end: () => {
+      if (held) push(withoutSentenceIds(held));
+      held = '';
+    },
+  };
+};
+
+/** Resolves sentence ids against the excerpts that were numbered for the model. */
+export const locateSentences = (
+  text: string,
+  index: CitationIndex,
+  chunks: { chunkId: string; content: string }[],
+) => {
+  const byId = new Map(chunks.map((c) => [c.chunkId, c.content]));
+  return resolveSentenceMarkers(text, index, (id) => {
+    const content = byId.get(id);
+    return content === undefined ? undefined : excerptText(content);
+  });
 };
 
 const unknownMarker = / ?\[(\d{1,3})\]/g;

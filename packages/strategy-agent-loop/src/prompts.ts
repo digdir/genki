@@ -194,12 +194,16 @@ export const agentTools: ToolSpec[] = [
   },
 ];
 
+/** Shown with excerpts whose sentences carry ids (#971). */
+export const sentenceRule =
+  "Each sentence, heading, list item and table row in an excerpt starts with an id such as ⟨4⟩. Cite the sentences a claim rests on as [N:4], or [N:4-6] for sentences that follow each other, where N is the excerpt's number. Never copy the ⟨4⟩ ids into the answer.";
+
 const pageRule =
   'Write a page as plain text, such as "s. 67", never as a number in square brackets: [N] is only for citing a source.';
 
 export const citationInstruction = `When making claims based on the provided sources, cite them using [N] notation where N is the source number. Every factual claim should have at least one citation. Place citations immediately after the relevant statement. ${pageRule}`;
 
-export const excerptCitationInstruction = `Each excerpt in the context has its own number. When making claims based on the provided sources, cite the excerpt the claim rests on using [N] notation, where N is that excerpt's number. Cite the excerpt, not the document as a whole: when two sentences rest on different excerpts, each cites its own, even when the excerpts come from the same document. Every factual claim should have at least one citation. Place citations immediately after the relevant statement. ${pageRule}`;
+export const excerptCitationInstruction = `Each excerpt in the context has its own number. When making claims based on the provided sources, cite the excerpt the claim rests on using [N] notation, where N is that excerpt's number. ${sentenceRule} Cite the excerpt, not the document as a whole: when two sentences rest on different excerpts, each cites its own, even when the excerpts come from the same document. Every factual claim should have at least one citation. Place citations immediately after the relevant statement. ${pageRule}`;
 
 export const ambiguityInstruction =
   'If the sources contain multiple plausible values, labels, or interpretations, do not hide the ambiguity. Compare the user’s wording to the source labels, preserve the source terminology, and explicitly mention ambiguity when the question is underspecified. Do not silently collapse distinct source labels into one concept. Do not merge or arithmetic-combine values from different labels, sentences, or chunks unless the source explicitly states that they belong together. If one label is clearly the closest semantic match, use it and state that label in the answer. If different chunks describe different scopes or definitions, explain that difference instead of producing a single blended number.';
@@ -259,8 +263,8 @@ export const remainingBudgetNote = (parts: readonly (readonly [string, number, n
 export const readBeforeAnswerNudge =
   'You answered from the search results without reading any document. Search results are only titles and snippets, not evidence. Read the hits you mean to use with read_chunks, then answer from what you read.';
 
-export const citeDraftPrompt = (context: string, draft: string) =>
-  `Add source references to the draft answer below. Put [N] right after each statement a numbered source supports, where N is that source's number. Keep the draft as it is: the same content, order, wording, list items and language. Do not shorten it, leave items out or add facts. Leave a statement without a reference when no source supports it. Do not mention the sources, the context or this task. Reply with the answer only.\n\nSources:\n${context}\n\nDraft answer:\n${draft}`;
+export const citeDraftPrompt = (context: string, draft: string, sentences = false) =>
+  `Add source references to the draft answer below. Put [N] right after each statement a numbered source supports, where N is that source's number.${sentences ? ` ${sentenceRule}` : ''} Keep the draft as it is: the same content, order, wording, list items and language. Do not shorten it, leave items out or add facts. Leave a statement without a reference when no source supports it. Do not mention the sources, the context or this task. Reply with the answer only.\n\nSources:\n${context}\n\nDraft answer:\n${draft}`;
 
 export type AnswerLanguage = 'nb' | 'nn' | 'en';
 
