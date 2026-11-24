@@ -227,7 +227,23 @@ const Source = z
   .passthrough()
   .openapi('Source');
 
-const AnswerMarker = z.object({ marker: z.string(), chunk_id: z.string(), document: z.string() });
+const TextQuote = z
+  .object({
+    type: z.literal('TextQuoteSelector'),
+    exact: z.string(),
+    prefix: z.string(),
+    suffix: z.string(),
+  })
+  .describe(
+    'The words the marker rests on, found word for word in its excerpt text (W3C TextQuoteSelector). Present only when the model cited sentences of the excerpt.',
+  );
+
+const AnswerMarker = z.object({
+  marker: z.string(),
+  chunk_id: z.string(),
+  document: z.string(),
+  quote: TextQuote.optional(),
+});
 
 const ChatRequest = z
   .object({

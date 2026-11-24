@@ -92,10 +92,10 @@ describe('the page the agent sees for each chunk', () => {
 
     const excerpts = await generated('excerpt');
     expect(excerpts).toMatch(
-      /<untrusted_data kind="source" id="d1" title="Rapport 1" page="67">\nInnhold i chunk 1\./,
+      /<untrusted_data kind="source" id="d1" title="Rapport 1" page="67">\n⟨1⟩ Innhold i chunk 1\./,
     );
     expect(excerpts).toMatch(
-      /<untrusted_data kind="source" id="d1" title="Rapport 4" page="68">\nNeste side\./,
+      /<untrusted_data kind="source" id="d1" title="Rapport 4" page="68">\n⟨1⟩ Neste side\./,
     );
     expect(excerpts).toMatch(
       /<untrusted_data kind="source" id="d2" title="Rapport 2" pages="95-98">\n/,

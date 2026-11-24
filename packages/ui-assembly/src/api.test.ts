@@ -184,6 +184,21 @@ describe('the excerpt markers a service names', () => {
 
   const reload = (sources: unknown[]) => reloadTurn({ text: 'Ned [1].', sources });
 
+  it('keeps the words a stored marker rests on when the thread is opened again', async () => {
+    const quote = {
+      type: 'TextQuoteSelector',
+      exact: 'Svartiden var kort.',
+      prefix: '',
+      suffix: '',
+    };
+    const answer = await reloadTurn({
+      sources: [wireSource],
+      markers: [wireMarkers[0], { ...wireMarkers[1], quote }],
+    });
+
+    expect(answer?.markers).toEqual([markers[0], { ...markers[1], quote }]);
+  });
+
   it('leads a stored marker to the excerpt as drawn, also one without an id of its own', async () => {
     const answer = await reload([
       {

@@ -153,6 +153,30 @@ describe('the footnotes in the answer', () => {
     });
   });
 
+  it('hands on the words a footnote rests on with the excerpt it opens', () => {
+    const quote = {
+      type: 'TextQuoteSelector' as const,
+      exact: 'Nkoms totale utgiftsbevilgning for 2021',
+      prefix: '',
+      suffix: ' var',
+    };
+    const onOpenCitation = vi.fn();
+    draw({
+      onOpenCitation,
+      markers: markers.map((m) => (m.marker === '3' ? { ...m, quote } : m)),
+    });
+    fireEvent.click(footnotes()[2] as HTMLElement);
+    fireEvent.click(footnotes()[1] as HTMLElement);
+
+    expect(onOpenCitation).toHaveBeenNthCalledWith(1, 2, {
+      chunkId: 'kudos::2021-1',
+      documentId: 'kudos::2021',
+      index: 1,
+      quote,
+    });
+    expect(onOpenCitation.mock.calls[1]?.[1]).not.toHaveProperty('quote');
+  });
+
   it('draws no footnote, and guesses no excerpt, when the footnotes name only documents', () => {
     const { container } = render(
       <Answer

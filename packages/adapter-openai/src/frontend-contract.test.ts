@@ -575,6 +575,38 @@ describe('/v1 frontend contract: sources', () => {
       expect(turn?.sources?.map((s) => s.markers)).toEqual([['1', '2'], ['3']]);
       expect(turn?.sources?.[0]?.excerpts.map((e) => e.markers)).toEqual([['1'], ['2']]);
     });
+    describe('when the model cited sentences of an excerpt', () => {
+      const quote = {
+        type: 'TextQuoteSelector',
+        exact: 'Tredje',
+        prefix: '',
+        suffix: '',
+      };
+      const located = {
+        ...byExcerpt,
+        meta: {
+          ...byExcerpt.meta,
+          citations: byExcerpt.meta.citations.map((c) => (c.index === 2 ? { ...c, quote } : c)),
+        },
+      };
+      const withQuote = markers.map((m) => (m.marker === '2' ? { ...m, quote } : m));
+
+      it('carries the cited words on their marker as a TextQuoteSelector, and only there', async () => {
+        reply = located;
+        const body = (await (await setup().ask({})).json()) as { markers?: unknown };
+
+        expect(body.markers).toEqual(withQuote);
+      });
+
+      it('sends the quote when the answer is streamed and keeps it on the stored turn', async () => {
+        reply = located;
+        const { ask, stored } = setup();
+        const text = await (await ask({ genai_conversation: true, stream: true })).text();
+
+        expect(text).toContain(`"markers":${JSON.stringify(withQuote)}`);
+        expect(stored.get('conv-1')?.[1]?.markers).toEqual(withQuote);
+      });
+    });
   });
 
   describe('when the chunks carry section headings', () => {

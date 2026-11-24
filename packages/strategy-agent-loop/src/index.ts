@@ -59,6 +59,7 @@ import {
   dropUnknownMarkers,
   numberByPublished,
   parseCitations,
+  sentenceIdFilter,
   sourcesFirst,
   stripPageMarkers,
 } from './citations.js';
@@ -665,6 +666,8 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         `\n\n${untrustedDataNote(config.languages)}`,
       search: searchSettings,
       synthesize: async (system, user) => {
+        const shown =
+          citeBy === 'excerpt' ? sentenceIdFilter(push) : { push, end: () => undefined };
         const written = await synthesisSession.chat(
           {
             purpose: 'answer',
@@ -677,9 +680,10 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           },
           (text) => {
             onStream();
-            push(text);
+            shown.push(text);
           },
         );
+        shown.end();
         const refused = refusalOf(written);
         refusal ??= refused;
         return refused ? undefined : written.content;
@@ -1166,6 +1170,8 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       const marked = chunkIdsToMarkers(answer, [...workspace.chunks.values()], citeBy);
       if (marked) {
         workspace.citationIndex = marked.index;
+        workspace.citationQuotes = new Map();
+        workspace.sentenceIds = { located: 0, missed: 0 };
         workspace.sourceOrder = marked.chunks;
         yield { type: 'kernel.notice', data: { stage: 'answer-discarded', reason: 'chunk-ids' } };
         yield { type: 'kernel.part.delta', data: { text: marked.text } };
@@ -1205,10 +1211,20 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           ...(settlement.action === 'backfill' ? { adopted: settled !== undefined } : {}),
         },
       };
+      let resent = false;
       if (settled !== undefined && settled !== answer) {
         yield { type: 'kernel.notice', data: { stage: 'answer-discarded', reason: 'uncited' } };
         yield { type: 'kernel.part.delta', data: { text: settled } };
         answer = settled;
+        resent = true;
+      }
+      // Quotes belong to the answer they were read from, never to one the loop wrote itself.
+      if (answer !== workspace.quotedText) {
+        workspace.citationQuotes = new Map();
+        workspace.sentenceIds = { located: 0, missed: 0 };
+      } else if (workspace.restream && !resent) {
+        yield { type: 'kernel.notice', data: { stage: 'answer-discarded', reason: 'renumbered' } };
+        yield { type: 'kernel.part.delta', data: { text: answer } };
       }
       if (citeBy === 'excerpt') {
         const shown = dropUnknownMarkers(answer, workspace.citationIndex);
@@ -1222,6 +1238,17 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         }
       }
       workspace.citations = citationsFor(answer, workspace);
+      if (citeBy === 'excerpt' && workspace.citations.length)
+        yield {
+          type: 'kernel.notice',
+          data: {
+            stage: 'sentence-citations',
+            located: workspace.citations.filter((c) => workspace.citationQuotes.has(c.index))
+              .length,
+            missed: workspace.sentenceIds.missed,
+            cited: workspace.citations.length,
+          },
+        };
     }
 
     const foundNothing =
@@ -1275,6 +1302,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       );
       workspace.citations = numbered.citations;
       workspace.citationIndex = numbered.index;
+      workspace.citationQuotes = new Map();
       if (numbered.text !== answer) {
         yield { type: 'kernel.notice', data: { stage: 'answer-discarded', reason: 'renumbered' } };
         yield { type: 'kernel.part.delta', data: { text: numbered.text } };
@@ -1301,10 +1329,12 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
               ? []
               : workspace.citations.map((c) => {
                   const chunk = workspace.chunks.get(c.chunkId);
+                  const quote = workspace.citationQuotes.get(c.index);
                   return {
                     index: c.index,
                     chunkId: c.chunkId,
                     ...(citeBy === 'excerpt' && chunk ? { document: documentKey(chunk) } : {}),
+                    ...(citeBy === 'excerpt' && quote ? { quote } : {}),
                   };
                 }),
             ...(citeBy === 'excerpt' ? { citeBy } : {}),

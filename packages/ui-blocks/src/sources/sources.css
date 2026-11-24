@@ -80,6 +80,16 @@
     color: var(--genai-sources-mark-color, var(--ds-color-warning-text-default));
     border-radius: var(--genai-sources-mark-border-radius, var(--ds-border-radius-sm));
   }
+  /* The words the open footnote rests on: in the host's colour family, apart from the search's yellow. */
+  .uib-sources-cited {
+    background: var(--genai-sources-cited-background, var(--ds-color-surface-tinted));
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: var(--genai-sources-cited-line-color, var(--ds-color-border-default));
+    text-decoration-thickness: var(--genai-sources-cited-line-thickness, 2px);
+    text-underline-offset: var(--genai-sources-cited-line-offset, 0.2em);
+    border-radius: var(--genai-sources-cited-border-radius, var(--ds-border-radius-sm));
+  }
   .uib-sources-mark[data-current='true'] {
     background: var(--genai-sources-mark-current-background, var(--ds-color-warning-base-default));
     color: var(--genai-sources-mark-current-color, var(--ds-color-warning-base-contrast-default));

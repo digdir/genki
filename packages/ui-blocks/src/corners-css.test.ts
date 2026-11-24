@@ -27,7 +27,11 @@ const corners = sheets.flatMap(({ name, css }) =>
 );
 
 // The marks in running text, the highlighter's corner.
-const marks = ['--genai-sources-mark-border-radius', '--genai-conversation-mark-border-radius'];
+const marks = [
+  '--genai-sources-mark-border-radius',
+  '--genai-sources-cited-border-radius',
+  '--genai-conversation-mark-border-radius',
+];
 
 describe('the corners of the blocks', () => {
   it('are xl on every surface and control, round only where round is meant', () => {

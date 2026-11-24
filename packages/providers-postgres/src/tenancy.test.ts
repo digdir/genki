@@ -186,7 +186,12 @@ describe('postgres conversations', () => {
     const created = await conversations.create(kari, { agentId: AGENT, userId: 'kari' });
     const markers = [
       { marker: '1', chunk_id: 'c1', document: 'd1' },
-      { marker: '2', chunk_id: 'c2', document: 'd1' },
+      {
+        marker: '2',
+        chunk_id: 'c2',
+        document: 'd1',
+        quote: { type: 'TextQuoteSelector' as const, exact: 'Andre', prefix: '', suffix: '' },
+      },
     ];
     const sources = [
       {

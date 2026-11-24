@@ -242,7 +242,10 @@ const own = (instructions: string) => ({
 // The run answers with excerpts c7 and c8 of two documents, and the answer part cites as given.
 const citing = (
   platform: Awaited<ReturnType<typeof boot>>['platform'],
-  meta: { citations: { index: number; chunkId: string; document?: string }[]; citeBy?: string },
+  meta: {
+    citations: { index: number; chunkId: string; document?: string; quote?: unknown }[];
+    citeBy?: string;
+  },
 ) => {
   const runDraft = platform.drafts.run.bind(platform.drafts);
   const sources = [
@@ -363,6 +366,17 @@ describe('the playground', () => {
       { index: 1, chunkId: 'c7' },
     ]);
     expect(body).not.toHaveProperty('citeBy');
+  });
+
+  it('gives the words a footnote rests on with its marker, as chat does', async () => {
+    const { platform, run } = await boot();
+    const quote = { type: 'TextQuoteSelector', exact: 'Ventetid.', prefix: '', suffix: '' };
+    citing(platform, {
+      citeBy: 'excerpt',
+      citations: [{ index: 1, chunkId: 'c7', document: 'd1', quote }],
+    });
+    const { body } = await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } });
+    expect(body.markers).toEqual([{ marker: '1', chunk_id: 'c7', document: 'd1', quote }]);
   });
 
   it('pairs no footnote with an excerpt that is not among the answer’s sources', async () => {

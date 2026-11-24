@@ -949,6 +949,33 @@
                 },
                 "document": {
                   "type": "string"
+                },
+                "quote": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "TextQuoteSelector"
+                      ]
+                    },
+                    "exact": {
+                      "type": "string"
+                    },
+                    "prefix": {
+                      "type": "string"
+                    },
+                    "suffix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "exact",
+                    "prefix",
+                    "suffix"
+                  ],
+                  "description": "The words the marker rests on, found word for word in its excerpt text (W3C TextQuoteSelector). Present only when the model cited sentences of the excerpt."
                 }
               },
               "required": [

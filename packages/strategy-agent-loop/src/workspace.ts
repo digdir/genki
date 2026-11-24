@@ -1,4 +1,4 @@
-import type { Citation, CitationIndex, CitationValidation } from './citations.js';
+import type { Citation, CitationIndex, CitationQuotes, CitationValidation } from './citations.js';
 import type { QueryIntent } from './intent.js';
 import type { EvidencePlan, ReadSignal } from './read-signals.js';
 import type { SufficiencyDecision } from './sufficiency.js';
@@ -276,6 +276,14 @@ export class Workspace {
   lastGenerateInsufficient = false;
   citations: Citation[] = [];
   citationIndex: CitationIndex = new Map();
+  /** The cited sentences of each excerpt marker, when the model cited them by id (#971). */
+  citationQuotes: CitationQuotes = new Map();
+  /** Sentence ids in the adopted answer: found in their excerpt, or not. */
+  sentenceIds = { located: 0, missed: 0 };
+  /** The resolved answer `citationQuotes` belong to; another answer keeps none of them. */
+  quotedText: string | undefined;
+  /** The resolved answer differs from what the stream showed, so it is sent again. */
+  restream = false;
   attached: Chunk[] = [];
   sourceOrder: Chunk[] = [];
   citationValidation: CitationValidation | undefined;
