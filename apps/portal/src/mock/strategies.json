@@ -142,12 +142,12 @@
             "id": "reasoning",
             "text": "When you call a tool, you may first say in one short sentence what you are looking for.",
             "title": {
-              "nb": "Begrunnelse",
-              "en": "Reasoning"
+              "nb": "Før verktøykall",
+              "en": "Before a tool call"
             },
             "reason": {
-              "nb": "Gjør hvert steg sporbart i kjøringen. Vi anbefaler å beholde den.",
-              "en": "Makes each step traceable in the run. We recommend keeping it."
+              "nb": "Lar agenten si kort hva den ser etter før et verktøykall, så kjøringen viser det. Vi anbefaler å beholde den.",
+              "en": "Lets the agent say briefly what it looks for before a tool call, so the run shows it. We recommend keeping it."
             }
           },
           {

@@ -3,7 +3,8 @@ import { searchPromptSections, toolsOnlyPromptSections } from './prompts.js';
 
 // Opus 5.5 refuses a turn whose prompt asks it to write out its reasoning
 // (stop_reason refusal, category reasoning_extraction), with 0 output tokens.
-const asksForReasoning = /\b(reasoning|explain|why)\b/i;
+const asksForReasoning =
+  /\b(reason\w*|explain\w*|explanation|why|think\w*|thought\w*|rationale|justif\w*)\b/i;
 
 describe('built-in prompt sections', () => {
   it.each([
