@@ -392,6 +392,8 @@ export const useAssistant = ({
   const corpusKey = (corpusChoice ? chosenCorpus : undefined) ?? ownDataset?.key;
   const [corpora, setCorpora] = useState<CorpusOption[]>([]);
   const [corporaHeard, setCorporaHeard] = useState(false);
+  const [corporaFailed, setCorporaFailed] = useState(false);
+  const [corporaAttempt, setCorporaAttempt] = useState(0);
   useEffect(() => {
     if (!corpusChoice) return;
     let gone = false;
@@ -403,27 +405,42 @@ export const useAssistant = ({
       },
       (error: Error) => {
         console.error('[assistant] corpora', error.message);
-        if (!gone) setCorporaHeard(true);
+        if (gone) return;
+        setCorporaFailed(true);
+        setCorporaHeard(true);
       },
     );
     return () => {
       gone = true;
     };
-  }, [api, corpusChoice]);
-  // Who owns the collection: the service's own from the models, a chosen one from the list.
+  }, [api, corpusChoice, corporaAttempt]);
+  const retryCorpora = useCallback(() => {
+    setCorporaFailed(false);
+    setCorporaHeard(false);
+    setCorporaAttempt((n) => n + 1);
+  }, []);
+  // Owner: the models' for the service's own collection, else the list's, else the models'.
   const corpusTenant =
     corpusKey === ownDataset?.key
       ? ownDataset?.tenant
-      : corpora.find((c) => c.key === corpusKey)?.tenant;
+      : (corpora.find((c) => c.key === corpusKey)?.tenant ??
+        facts?.datasets.find((d) => d.key === corpusKey)?.tenant);
+  // Owner unknown and the list failed: nothing is asked of it, and Try again reloads the list.
+  const ownerLost =
+    corpusKey !== undefined && corpusTenant === undefined && corpusChoice && corporaFailed;
   const ownerHeard =
     corpusTenant !== undefined ||
-    ((models !== undefined || modelsFailed !== undefined) && (!corpusChoice || corporaHeard));
-  // Facets wait for the owner, so a shared collection is never asked under the host's tenant first.
+    (!ownerLost &&
+      (models !== undefined || modelsFailed !== undefined) &&
+      (!corpusChoice || corporaHeard));
+  // Facets wait until genki has said who owns the collection; with no owner named, the host's.
   const dataset = useMemo<DatasetRef | undefined>(
     () =>
       corpusKey && ownerHeard ? { key: corpusKey, tenant: corpusTenant || tenant } : undefined,
     [corpusKey, ownerHeard, corpusTenant, tenant],
   );
+  // A question goes under the same owner as the facets, so it waits for it too.
+  const ownerKnown = !corpusKey || dataset !== undefined;
   const corpusLabel = (key: string) =>
     profile?.corpora?.[key]?.label ?? corpora.find((c) => c.key === key)?.label ?? key;
   const corpus: CorpusOption | undefined = corpusKey
@@ -909,28 +926,29 @@ export const useAssistant = ({
 
   /**
    * Asks now, or as soon as it can: once genki has said what the service backs, which decides the
-   * collection, once the thread is read, and once an answer still coming has ended. A failed
-   * `/v1/models` is tried again; if it or the thread fails, the question waits in the field, under
-   * the failure.
+   * collection, once genki has said who owns it, once the thread is read, and once an answer still
+   * coming has ended. A failed `/v1/models` or `/api/datasets` is tried again; if it or the thread
+   * fails, the question waits in the field, under the failure.
    */
   const send = (question: string, options: Omit<Asking, 'question'> = {}) => {
     const asking = { question, ...options };
-    if (!working && models && view !== 'loading') {
+    if (!working && models && ownerKnown && view !== 'loading') {
       void start(asking);
       return;
     }
     if (modelsFailed) retryModels();
+    if (ownerLost) retryCorpora();
     setWaiting(asking);
   };
   useEffect(() => {
     if (!waiting) return;
-    if (modelsFailed || view === 'error' || view === 'notfound') setWaiting(undefined);
-    else if (models && !working && view !== 'loading') {
+    if (modelsFailed || ownerLost || view === 'error' || view === 'notfound') setWaiting(undefined);
+    else if (models && ownerKnown && !working && view !== 'loading') {
       setWaiting(undefined);
       void start(waiting);
     }
     // `start` is new on every render; what it waits for is what starts it.
-  }, [waiting, models, modelsFailed, working, view]);
+  }, [waiting, models, modelsFailed, ownerKnown, ownerLost, working, view]);
 
   const start = async ({ question: typed, replaces, fromField, about }: Asking) => {
     const controller = new AbortController();
@@ -1023,9 +1041,7 @@ export const useAssistant = ({
         model,
         conversationId: startedIn,
         filters: filtersOf(),
-        dataset: corpusKey
-          ? { tenant: corpusTenant || ownDataset?.tenant || tenant, key: corpusKey }
-          : undefined,
+        dataset: corpusKey ? { tenant: corpusTenant || tenant, key: corpusKey } : undefined,
         steps: approachOn,
         signal: controller.signal,
       })) {
@@ -1383,9 +1399,13 @@ export const useAssistant = ({
     setSelection,
     facets,
     baseFacets,
-    facetsFailed,
+    facetsFailed: ownerLost || facetsFailed,
     // A filter genki cannot take fails the same way again: it is changed, not retried.
-    retryFacets: typeof facetsFailed === 'string' ? undefined : () => setFacetsKey((n) => n + 1),
+    retryFacets: ownerLost
+      ? retryCorpora
+      : typeof facetsFailed === 'string'
+        ? undefined
+        : () => setFacetsKey((n) => n + 1),
     // How many documents the next question reads from, and the collection in all, exactly from the
     // facets; undefined while a count is missing.
     readFrom: filterOn
