@@ -5,7 +5,7 @@ import {
   Workspace,
   type EvidencePlan,
 } from './index.js';
-import { call, readSignal, result, run, section } from './harness.test-utils.js';
+import { call, decision, readSignal, result, run, section } from './harness.test-utils.js';
 
 const gates = (out: Awaited<ReturnType<typeof run>>) =>
   out.notices.filter((n) => n.stage === 'gate');
@@ -61,19 +61,67 @@ describe('the gate after a read check', () => {
         primary: {
           loop: [
             () => result('', [call('search', { queries: ['x'] })]),
-            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
-            () => result('', [call('read_chunks', { chunk_ids: ['c2'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c2', 'c3', 'c4', 'c5'] })]),
+            () => result('', [call('search', { queries: ['y'] })]),
           ],
           read: [covering('gap-remaining', 'explicit')],
-          sufficiency: [() => JSON.stringify({ status: 'sufficient' })],
+          sufficiency: [() => decision('sufficient', 'finalize')],
         },
       },
     });
 
-    expect(loopTurns(out)).toBeGreaterThanOrEqual(3);
-    expect(gates(out)[0]).not.toMatchObject({
+    expect(out.seen.filter((s) => s.kind === 'sufficiency')).toHaveLength(0);
+    expect(gates(out)[0]).toMatchObject({
       source: 'shadow-read-signals',
-      status: 'sufficient',
+      status: 'insufficient',
+      strategy: 're-search',
+    });
+    expect(loopTurns(out)).toBeGreaterThanOrEqual(3);
+  });
+
+  it('a read with only partial support for every claim keeps the loop reading', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c2'] })]),
+          ],
+          read: [covering('support-found', 'partial')],
+        },
+      },
+    });
+
+    expect(gates(out).filter((n) => n.status === 'sufficient')).toEqual([]);
+    expect(loopTurns(out)).toBeGreaterThanOrEqual(3);
+  });
+
+  it('a gap-remaining read with every critical claim explicit gives an insufficient shadow decision', () => {
+    const w = new Workspace({ searches: 4, reads: 6, readChars: 12000 });
+    w.evidencePlan = plan;
+    recordReadEvaluation(w, {
+      status: 'gap-remaining',
+      scopeAssessment: 'aligned',
+      supportedClaims: plan.requiredClaims.map((c) => ({
+        claimId: c.claimId,
+        supportLevel: 'explicit' as const,
+        chunkIds: ['c1'],
+      })),
+      partialClaims: [],
+      remainingGaps: [],
+      contradictions: [],
+      nextActionHint: 'read-more',
+      confidence: 0.9,
+      degraded: false,
+      evaluationMode: 'llm',
+      chunkIds: ['c1'],
+    });
+
+    expect(aggregateReadSignals(w)).toMatchObject({
+      status: 'insufficient',
+      reasonCode: 'read-reported-gap',
+      missingClaims: [],
     });
   });
 
@@ -177,5 +225,6 @@ describe('the gate after a read check', () => {
         strategy: 'finalize',
       }),
     ]);
+    expect(gates(out)[0]).not.toHaveProperty('overriddenReadStatus');
   });
 });
