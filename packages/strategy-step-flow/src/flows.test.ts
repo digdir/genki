@@ -144,6 +144,22 @@ describe('ported headless-rag flows', () => {
     });
   });
 
+  it('fact-checker: reads a page inside the citation bracket as the citation, and leaves a non-source number alone', async () => {
+    const retrieval = stubRetrieval([chunk('c1'), chunk('c2')]);
+    const models = fakeModels({ primary: ['Påstanden stemmer [2, s. 63] men ikke [7, s. 4].'] });
+
+    const out = await run(
+      { flows: allFlows(), entry: 'fact-checker@1', models, retrieval },
+      { data: { claim: 'Digdir har fått økt bevilgning i 2025' } },
+    );
+
+    expect(answerOf(out.result)).toEqual({
+      mime: 'text/plain',
+      body: { kind: 'text', text: 'Påstanden stemmer [1] s. 63 men ikke [7, s. 4].' },
+      meta: { citations: [{ index: 1, chunkId: 'c2' }] },
+    });
+  });
+
   it('ai-overview: plans, reranks, passes the evidence gate and keeps a cited overview', async () => {
     const strong = [
       chunk('c1', { rerankScore: 0.9, document: 'd1' }),

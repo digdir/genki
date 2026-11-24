@@ -380,6 +380,34 @@ describe('rag-single-shot strategy', () => {
     expect(out.text?.meta).toEqual({ citations: [] });
   });
 
+  it('drops a source list line with a page inside the bracket from a refusal, so it cites nothing', async () => {
+    const m = model('Det kan jeg ikke hjelpe med.\n\nKilder: [1, s. 4]', { stream: true });
+    const out = await run(
+      { strategy: { generate: true }, model: { primary: 'primary', tenant: '991825827' } },
+      undefined,
+      m,
+    );
+
+    const streamed = out.events
+      .filter((e) => e.type === 'kernel.part.delta')
+      .map((e) => (e.data as { text: string }).text)
+      .join('');
+    expect(streamed).not.toContain('Kilder');
+    expect(out.text?.body).toEqual({ kind: 'text', text: 'Det kan jeg ikke hjelpe med.' });
+    expect(out.text?.meta).toEqual({ citations: [] });
+  });
+
+  it('reads a page written inside the citation bracket as the citation', async () => {
+    const out = await run(
+      { strategy: { generate: true }, model: { primary: 'primary', tenant: '991825827' } },
+      undefined,
+      model('Fristen er 1. mars [1, s. 63].'),
+    );
+
+    expect(out.text?.body).toEqual({ kind: 'text', text: 'Fristen er 1. mars [1] s. 63.' });
+    expect(out.text?.meta).toEqual({ citations: [{ index: 1, chunkId: expect.any(String) }] });
+  });
+
   it('falls back to the raw question when planning fails and keeps retrieval order when reranking fails', async () => {
     const r = retrieval({
       plan: async () => {

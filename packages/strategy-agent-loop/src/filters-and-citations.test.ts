@@ -121,6 +121,23 @@ describe('agent loop with caller filters', () => {
     expect(out.meta?.citations).toEqual([{ index: 1, chunkId: 'c1' }]);
   });
 
+  it('leaves a bracket with a page whose number is not a source as it is', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['digital veiledning'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+          ],
+          synth: [() => 'Svar [1] og [7, s. 12].'],
+        },
+      },
+    });
+
+    expect(out.text).toBe('Svar [1] og [7, s. 12].');
+    expect(out.meta?.citations).toEqual([{ index: 1, chunkId: 'c1' }]);
+  });
+
   it('a generate_response draft with the page inside the citation bracket passes the grounding gate as cited', async () => {
     const out = await run({
       scripts: {

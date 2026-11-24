@@ -11,6 +11,23 @@ describe('source list lines', () => {
     },
   );
 
+  it.each(['Kilder: [1] s. 4', 'Kilder: [1] s. 4–5, [2] s. 9', '**Kilder:** [1] s. 4 og [2] s. 7'])(
+    'drops a source list line with pages, "%s", at the end of an answer',
+    (line) => {
+      expect(stripSourceLists(`Det kan jeg ikke svare på.\n\n${line}`)).toBe(
+        'Det kan jeg ikke svare på.',
+      );
+    },
+  );
+
+  it('recognises a source list line with pages in linear time', () => {
+    const started = performance.now();
+    stripSourceLists(`kilder: ${'[1, s. 1] s. 1–2 og '.repeat(20_000)}x`);
+    stripSourceLists(`kilder: ${'[1 s. 1'.repeat(30_000)}`);
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(stripSourceLists('Svar.\nKilder: [1, s. 4], [2, s. 9]')).toBe('Svar.');
+  });
+
   it('keeps citations in the text and lines that say more than the numbers', () => {
     const text = 'Fristen er 1. mars [1].\nKildene viser at fristen gjelder alle [2].';
     expect(stripSourceLists(text)).toBe(text);

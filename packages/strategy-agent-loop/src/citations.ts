@@ -223,7 +223,7 @@ export const sourcesFirst = <C extends { chunkId: string }>(first: C[], rest: C[
 };
 
 const sourceListLine =
-  /^[#>-]* ?(kilder|kilde|kjelder|kjelde|sources?|references?) ?:? ?(\[\d+\] ?(?:(?:[-–,.;]|og|and) ?)?)+$/iu;
+  /^[#>-]* ?(kilder|kilde|kjelder|kjelde|sources?|references?) ?:? ?(\[\d+(?:,? s\. ?\d+(?:[-–]\d+)?)?\](?: s\. ?\d+(?:[-–]\d+)?)? ?(?:(?:[-–,.;]|og|and) ?)?)+$/iu;
 
 const isSourceListLine = (line: string) =>
   sourceListLine.test(line.replace(/[*_]/g, '').replace(/\s+/g, ' ').trim());

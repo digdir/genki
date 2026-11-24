@@ -35,6 +35,7 @@ describe('a page written inside the citation bracket', () => {
     ['Se [1, s. 4–5 og 14].', 'Se [1] s. 4–5 og 14.'],
     ['Se [1, s. 104, 175 og 177].', 'Se [1] s. 104, 175 og 177.'],
     ['Se [1, s. 7; 1, s. 46–47].', 'Se [1] s. 7; [1] s. 46–47.'],
+    ['Se [1, s. 63, 64].', 'Se [1] s. 63, 64.'],
   ])('reads "%s" with each source cited and its pages as plain text', (raw, expected) => {
     expect(normaliseCitationMarkers(raw, sources)).toBe(expected);
   });
@@ -51,6 +52,23 @@ describe('a page written inside the citation bracket', () => {
 
   it('leaves a bracket that holds more than a source and a page as it is', () => {
     const text = 'Se [1, s. 4 og videre] og [1, kapittel 2] og [s. 4].';
+    expect(normaliseCitationMarkers(text, sources)).toBe(text);
+  });
+
+  it('reads a bracket longer than 80 characters that names several sources with their pages', () => {
+    const many = (n: number) => n >= 1 && n <= 4;
+    expect(
+      normaliseCitationMarkers(
+        'Se [1, s. 104–105 og 110; 2, s. 175, 177 og 180; 3, s. 213–214 og 220; 4, s. 26–27, 30 og 33].',
+        many,
+      ),
+    ).toBe(
+      'Se [1] s. 104–105 og 110; [2] s. 175, 177 og 180; [3] s. 213–214 og 220; [4] s. 26–27, 30 og 33.',
+    );
+  });
+
+  it('leaves a bracket that is the text of a link as it is', () => {
+    const text = 'Se [1, s. 63](https://example.org/rapport.pdf).';
     expect(normaliseCitationMarkers(text, sources)).toBe(text);
   });
 
@@ -74,6 +92,14 @@ describe('a page written inside the citation bracket', () => {
     ).toBeLessThan(1000);
     expect(
       quickly(() => normaliseCitationMarkers(`[1, s. 1${', 1 og 1–'.repeat(30_000)}]`, sources)),
+    ).toBeLessThan(1000);
+    expect(
+      quickly(() =>
+        normaliseCitationMarkers('[1, s. 1, 1, 1 og 1–1, 1 og 1–1, 1, 1x]'.repeat(10_000), sources),
+      ),
+    ).toBeLessThan(1000);
+    expect(
+      quickly(() => normaliseCitationMarkers('[1, s. 1 og 2–3; 2, s. 4]'.repeat(20_000), sources)),
     ).toBeLessThan(1000);
     expect(normaliseCitationMarkers('Svar [1, s. 63].', sources)).toBe('Svar [1] s. 63.');
   });
