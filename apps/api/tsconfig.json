@@ -18,6 +18,9 @@
       "path": "../../packages/definitions"
     },
     {
+      "path": "../../packages/block-import"
+    },
+    {
       "path": "../../packages/kernel"
     },
     {

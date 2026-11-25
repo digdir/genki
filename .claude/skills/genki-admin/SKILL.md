@@ -1,13 +1,13 @@
 ---
 name: genki-admin
-description: Work on genki services through the genki-admin MCP server - list and read services, check models and strategies, validate and publish a definition, try changes in the playground, and read runs and their timelines. Use when asked to change, test, compare, create or debug a service in a running genki, not the genki code.
+description: Work on genki services through the genki-admin MCP server - list and read services, check models and strategies, validate and publish a definition, try changes in the playground, read runs and their timelines, and make design elements or turn a design into one. Use when asked to change, test, compare, create or debug a service or a design element in a running genki, not the genki code.
 ---
 
 # Working on genki through the admin MCP
 
 The `genki-admin` MCP server (`apps/admin-mcp`, ADR 0046) acts as the person who logged in, with their rights, for one organisation. Everything it publishes is in the version history and Logg under that person's name, so work as carefully as they would in the portal.
 
-If the tools are missing, the server is not set up: see `apps/admin-mcp/README.md`. In read-only mode `publish_definition` is not offered; with paid tools turned off, `run_playground` and `evaluate_change` are not.
+If the tools are missing, the server is not set up: see `apps/admin-mcp/README.md`. In read-only mode `publish_definition` and `save_block` are not offered; with paid tools turned off, `run_playground` and `evaluate_change` are not.
 
 ## The workflow
 
@@ -20,6 +20,16 @@ If the tools are missing, the server is not set up: see `apps/admin-mcp/README.m
 7. **Check the result** with `get_service` and one more playground run.
 
 To **create a service**, start from `new_service_template`, change `metadata.id`, `metadata.name` and `spec.purpose`, validate, and try it with `run_playground` and `yaml`. A new service with a risk class above `minimal` must be published by a person in the portal.
+
+## Design elements
+
+A design element is a `kind: Block` definition a service places in its interface. The tools answer only while Utforming is switched on for the person; if they say it is off, tell the person and stop. Prefer genki's own design elements, then one without code (`tier: declarative`).
+
+1. `list_blocks` and `get_block` to see what the organisation may already use.
+2. Write the YAML, or `import_design` with the design's HTML (`html`, or `htmlPath` when the person names a file) for a proposal. Read its report for what was dropped. A design that needs code is refused for now; say why. Never pass a URL.
+3. `validate_block` and `preview_block` until it is valid and the outline per state is what you meant.
+4. `save_block` with a reason, when the person asks. It saves an edition for this organisation only.
+5. Then stop and tell the person: they put it in a service's testutgave in Utforming and publish the service. No design element tool pins one, publishes a service or shares with everyone, on purpose.
 
 ## Rules
 
