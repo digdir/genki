@@ -128,7 +128,7 @@ export const steps = defineNamespace({
   warnRerank: 'Rerangeringen feilet, så rekkefølgen fra søket ble brukt.',
   discardedTitle: 'Svarutkast forkastet',
   discardedUncited: 'Svaret ble skrevet om for å få med kildehenvisninger.',
-  discardedBeyondDecline: 'Svaret ble kortet ned til avslaget og tilbudet.',
+  discardedBeyondDecline: 'Svaret ble kortet ned til avslaget.',
   discardedGate: 'Et svarutkast ble forkastet fordi kildene ikke holdt.',
   exhaustedTitle: 'Brukte opp rundene',
   exhausted: 'Agenten brukte opp alle rundene ({count}) uten et ferdig svar.',

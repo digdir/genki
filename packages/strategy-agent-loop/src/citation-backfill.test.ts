@@ -36,6 +36,11 @@ const brunostDecline =
 const brunostExtra =
   'Rapporten «Gjennomgang av geiteholdet i Norge» forteller hva brunost lages av:\n\n- **Råvarer:** Brunost lages av myse, melk og fløte.';
 const brunostOffer = 'Jeg kan søke i Kudos etter mer om seterkultur.';
+const fullAnswer = [
+  '**Kort svar:** DFØ konkluderer med at konsulentbruken i staten har flatet ut.',
+  '**Slik har jeg tolket spørsmålet:** Jeg fant ingen DFØ-evaluering med et eget kapittel som heter «Konklusjoner». Det nærmeste er DFØ-notat 2024:1.',
+  '## Hva DFØ konkluderer med\nFunnene peker i samme retning, men DFØ har ikke nok data til å si hvor stor effekten er.',
+].join('\n\n');
 const brunostDraft = `${brunostDecline}\n\n${brunostExtra}\n\n${brunostOffer}`;
 
 const judged = (w: Workspace, status: string) =>
@@ -171,6 +176,7 @@ describe('citation backfill when the agent answers without citing', () => {
     });
 
     expect(r.calls.some((c) => c.op === 'read')).toBe(false);
+    expect(out.sources).toEqual([]);
     expect(out.meta).toEqual({ citations: [], noAnswer: true });
   });
 
@@ -473,8 +479,82 @@ describe('a decline after the gate judged the evidence', () => {
     });
 
     expect(out.text).toBe(`${brunostDecline}\n\n${brunostOffer}`);
+    expect(out.meta).toEqual({ citations: [], noAnswer: true });
     expect(out.notices).toContainEqual({ stage: 'citations', action: 'decline' });
     expect(out.notices).toContainEqual({ stage: 'answer-discarded', reason: 'beyond-decline' });
+  });
+
+  it('adds footnotes to a full answer that mentions finding nothing, after the read check found a gap', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['DFØ konsulentbruk konklusjoner'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result(fullAnswer),
+          ],
+          read: [
+            () =>
+              readSignal('gap-remaining', {
+                supported_claims: [
+                  { claim_id: 'topic-match', support: 'explicit', chunk_ids: ['c1'] },
+                ],
+              }),
+          ],
+          synth: [() => fullAnswer.replace('har flatet ut.', 'har flatet ut [1].')],
+        },
+      },
+    });
+
+    expect(out.text).toContain('har flatet ut [1].');
+    expect(out.notices).toContainEqual({ stage: 'citations', action: 'backfill', adopted: true });
+  });
+
+  it('keeps a short decline after the read check found a gap', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['brunost oppskrift'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result(brunostDecline),
+          ],
+          read: [() => readSignal('gap-remaining')],
+          synth: [() => `${brunostDecline} [1]`],
+        },
+      },
+    });
+
+    expect(out.text).toBe(brunostDecline);
+    expect(out.notices).toContainEqual({
+      stage: 'citations',
+      action: 'keep',
+      reason: 'declined-after-insufficient',
+    });
+  });
+
+  it('does not cut a decline whose first paragraph leads into what follows', () => {
+    const answer =
+      'Jeg fant ikke billettprisene for 2026, men rapporten oppgir disse for 2025:\n\n- Bergen-Kirkenes: 12 000 kroner';
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'insufficient');
+    });
+
+    expect(settleCitations(answer, w)).toEqual({ action: 'backfill', readFirst: [] });
+  });
+
+  it('keeps an offer that opens with «Hvis du vil» after the cut', () => {
+    const offer = 'Hvis du vil, kan jeg søke etter seterkultur.';
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'insufficient');
+    });
+
+    expect(settleCitations(`${brunostDecline}\n\n${brunostExtra}\n\n${offer}`, w)).toEqual({
+      action: 'decline',
+      text: `${brunostDecline}\n\n${offer}`,
+    });
   });
 
   it('cuts a decline with an extra section and no offer to its first paragraph', () => {
@@ -489,7 +569,7 @@ describe('a decline after the gate judged the evidence', () => {
     });
   });
 
-  it('keeps a judged answer whole when its decline is not the first paragraph', () => {
+  it('cites a judged answer whose decline is not its first paragraph', () => {
     const answer =
       'Rapporten beskriver ordningen for kystruten.\n\nJeg fant ikke tallene for 2024.';
     const w = workspaceWith((w) => {
@@ -497,10 +577,7 @@ describe('a decline after the gate judged the evidence', () => {
       judged(w, 'insufficient');
     });
 
-    expect(settleCitations(answer, w)).toEqual({
-      action: 'keep',
-      reason: 'declined-after-insufficient',
-    });
+    expect(settleCitations(answer, w)).toEqual({ action: 'backfill', readFirst: [] });
   });
 
   it('still rewrites a decline with an extra section when the gate judged the evidence sufficient', () => {

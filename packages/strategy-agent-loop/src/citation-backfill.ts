@@ -40,8 +40,7 @@ const refusalPatterns = [
   /\b(could not|couldn't|did not|didn't) find\b/,
 ];
 
-// «Kudos har ingen oppskrift på …»: a name of one or two words that has none of what was asked.
-// «Rapporten har ingen anbefalinger om X, men peker på Y» goes on to answer, so «men» rules it out.
+// «Kudos har ingen oppskrift på …», but not «… har ingen anbefalinger om X, men peker på Y».
 const hasNoOpening = /^[^ ]+( [^ ]+)? har (ingen|ikke|ikkje)(?![\p{L}\p{N}])/u;
 const butWord = /(?<![\p{L}\p{N}])men(?![\p{L}\p{N}])/u;
 
@@ -63,19 +62,27 @@ export const soundsLikeRefusal = (text: string): boolean => {
 };
 
 const offerOpening =
-  /^(jeg kan|eg kan|vil du|ønsker du|ønskjer du|skal jeg|skal eg)(?![\p{L}\p{N}])/u;
+  /^(jeg kan|eg kan|vil du|ønsker du|ønskjer du|skal jeg|skal eg|hvis du vil|om du vil|viss du vil|would you like|i can|shall i)(?![\p{L}\p{N}])/u;
 
-/** A decline's first paragraph and its closing offer, without what the model added between them. */
 const paragraphsOf = (text: string) =>
   text
     .split(/\n[^\S\n]*\n/)
     .map((p) => p.trim())
     .filter(Boolean);
 
+/** A decline's first paragraph and its closing offer, without what the model added between them. */
 export const declineOnly = (text: string): string => {
   const [first = '', ...rest] = paragraphsOf(text);
   const last = rest.at(-1);
   return last && offerOpening.test(last.toLowerCase()) ? `${first}\n\n${last}` : first;
+};
+
+const shortDeclineChars = 300;
+
+// A short first paragraph that declines, not one that leads into a list («… for 2025:»).
+const opensWithDecline = (answer: string) => {
+  const first = paragraphsOf(answer)[0] ?? '';
+  return first.length <= shortDeclineChars && !first.endsWith(':') && soundsLikeRefusal(first);
 };
 
 export type CitationSettlement =
@@ -133,16 +140,18 @@ export const settleCitations = (answer: string, workspace: Workspace): CitationS
     return { action: 'carry-through' };
   if (refusal) {
     if (workspace.citationIndex.size > 0) return { action: 'keep', reason: 'generated-uncited' };
-    if (declineJudged(workspace)) {
-      // Nothing read answers the question, so a section after an opening decline adds only what is beside it.
+    if (!declineJudged(workspace))
+      return refusalBackfillCandidates(workspace).length
+        ? { action: 'backfill', readFirst: [], refusal: true }
+        : { action: 'keep', reason: 'no-answer-text' };
+    // A section after an opening decline adds only what is beside the question.
+    if (opensWithDecline(answer)) {
       const decline = declineOnly(answer);
-      return decline === answer.trim() || !soundsLikeRefusal(paragraphsOf(answer)[0] ?? '')
+      return decline === answer.trim()
         ? { action: 'keep', reason: 'declined-after-insufficient' }
         : { action: 'decline', text: decline };
     }
-    return refusalBackfillCandidates(workspace).length
-      ? { action: 'backfill', readFirst: [], refusal: true }
-      : { action: 'keep', reason: 'no-answer-text' };
+    // Only mentions finding nothing: cite it as the answer it is.
   }
   if (backfillCandidates(workspace).length) return { action: 'backfill', readFirst: [] };
   if (workspace.readChunkIds().size > 0) return { action: 'keep', reason: 'no-supporting-chunks' };

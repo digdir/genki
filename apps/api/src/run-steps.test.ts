@@ -687,7 +687,7 @@ describe('the run mapper', () => {
 
     expect(mapper.steps.map((s) => [s.title, s.summary])).toEqual([
       ['Kontrollerte kildehenvisningene', 'Beholdt avslaget uten det som ble lagt til etter det'],
-      ['Svarutkast forkastet', 'Svaret ble kortet ned til avslaget og tilbudet.'],
+      ['Svarutkast forkastet', 'Svaret ble kortet ned til avslaget.'],
     ]);
   });
 

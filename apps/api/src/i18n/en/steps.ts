@@ -130,7 +130,7 @@ export const steps = {
   warnRerank: 'Reranking failed, so the order from the search was used.',
   discardedTitle: 'Draft answer discarded',
   discardedUncited: 'The answer was rewritten to include citations.',
-  discardedBeyondDecline: 'The answer was cut to the decline and its offer.',
+  discardedBeyondDecline: 'The answer was cut to the decline.',
   discardedGate: 'A draft answer was discarded because the sources did not hold.',
   exhaustedTitle: 'Used up the rounds',
   exhausted: 'The agent used up all its rounds ({count}) without a finished answer.',
