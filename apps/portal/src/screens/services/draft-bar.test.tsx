@@ -320,7 +320,18 @@ describe('the publish page', () => {
   });
 
   it('keeps the list of setup parts as a sticky rail below the draft bar', async () => {
-    await openService('#/services/rapportassistenten/setup');
+    await openService('#/services/rapportassistenten/setup/purpose', {
+      reply: (url, method) =>
+        method === 'PUT' && url.endsWith('/rapportassistenten/draft')
+          ? new Response(JSON.stringify({ title: 'Nede', status: 503 }), {
+              status: 503,
+              headers: { 'content-type': 'application/problem+json' },
+            })
+          : undefined,
+    });
+    await screen.findByLabelText('Instruksjoner til tjenesten');
+    fireEvent.change(instructions(), { target: { value: 'Svar kort.' } });
+    await screen.findByRole('region', { name: 'Lagring' }, { timeout: 3000 });
     const nav = screen.getByRole('navigation', { name: 'Deler av oppsettet' });
     expect(nav.classList).toContain('sticky-rail');
     expect(nav.matches('.draft-bar ~ * .sticky-rail')).toBe(true);
