@@ -81,4 +81,33 @@ describe.skipIf(process.platform === 'win32')('the app headers', () => {
       expect(bffFor({ APP: app }).auth).toBe('');
     },
   );
+
+  it('maps each old hostname in GENAI_REDIRECT_HOSTS to its new one, and nothing without it', () => {
+    headersFor({
+      APP: 'portal',
+      GENAI_REDIRECT_HOSTS:
+        'portal.genki-test.digdir.cloud=portal.genki.digdir.cloud,a.example.test=b.example.test',
+    });
+    const dir = dirs.at(-1) ?? '';
+    expect(readFileSync(join(dir, 'tmp/redirects.conf'), 'utf8')).toBe(
+      'portal.genki-test.digdir.cloud portal.genki.digdir.cloud;\na.example.test b.example.test;\n',
+    );
+    headersFor({ APP: 'portal' });
+    expect(readFileSync(join(dirs.at(-1) ?? '', 'tmp/redirects.conf'), 'utf8')).toBe('');
+  });
+
+  it.each(['a.test=b.test;return 200', 'A.test=b.test', 'a.test', 'a.test=', '=b.test', 'a=b=c'])(
+    'refuses to start with the redirect %s',
+    (pair) => {
+      expect(() => headersFor({ APP: 'portal', GENAI_REDIRECT_HOSTS: pair })).toThrow();
+    },
+  );
+
+  it('answers 301 from an old hostname with path and query, but never on /healthz', () => {
+    const conf = read('docker/apps/default.conf.template');
+    expect(conf).toContain('return 301 https://$genki_moved_to$request_uri;');
+    expect(conf).toMatch(
+      /map \$uri \$genki_moved_to \{\s*\/healthz "";\s*default \$genki_moved_host;/,
+    );
+  });
 });

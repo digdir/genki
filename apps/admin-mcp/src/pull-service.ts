@@ -11,7 +11,7 @@ import {
 } from './client.js';
 
 export const knownSources: Record<string, string> = {
-  'genki-test': 'https://api.genki-test.digdir.cloud',
+  'genki-test': 'https://api.genki.digdir.cloud',
 };
 
 export const localTenantDefault = '991825827';

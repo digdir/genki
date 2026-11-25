@@ -27,7 +27,7 @@ jobs:
       - id: list
         env:
           DEMO_RECORDER_KEY: ${{ secrets.DEMO_RECORDER_KEY }}
-          DEMO_API_URL: ${{ vars.SMOKE_API_URL || 'https://api.genki-test.digdir.cloud' }}
+          DEMO_API_URL: ${{ vars.SMOKE_API_URL || 'https://api.genki.digdir.cloud' }}
         run: |
           set -euo pipefail
           if [ -z "$DEMO_RECORDER_KEY" ]; then
@@ -56,7 +56,7 @@ jobs:
       - if: steps.list.outputs.count != '0'
         env:
           DEMO_RECORDER_KEY: ${{ secrets.DEMO_RECORDER_KEY }}
-          DEMO_API_URL: ${{ vars.SMOKE_API_URL || 'https://api.genki-test.digdir.cloud' }}
+          DEMO_API_URL: ${{ vars.SMOKE_API_URL || 'https://api.genki.digdir.cloud' }}
         run: node scripts/demo.ts queued
       - if: steps.list.outputs.count != '0'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -155,7 +155,7 @@ jobs:
       - env:
           DEMO_API_KEY: ${{ secrets.SMOKE_API_KEY }}
           DEMO_RECORDER_KEY: ${{ secrets.DEMO_RECORDER_KEY }}
-          DEMO_API_URL: ${{ vars.SMOKE_API_URL || 'https://api.genki-test.digdir.cloud' }}
+          DEMO_API_URL: ${{ vars.SMOKE_API_URL || 'https://api.genki.digdir.cloud' }}
           DEMO_PORTAL_URL: ${{ vars.SMOKE_PORTAL_URL }}
           DEMO_CONSOLE_URL: ${{ vars.SMOKE_CONSOLE_URL }}
         run: node scripts/demo.ts recording --queued
