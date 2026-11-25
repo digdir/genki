@@ -61,4 +61,4 @@ genki goes from a test platform to one environment that agencies depend on (issu
 - A route behind a flag is described in the OpenAPI document like any other route, and its summary names the flag.
 - Removing a flag means removing its entry, its uses and its texts. Its rows stay and are ignored.
 - The removeBy check does not run as a test, because a test that depends on today's date would fail every pull request on the day a flag expires. CI warns instead, and the weekly Flag expiry workflow fails until the flag is removed or its date moved.
-- The first flag is `blockStudio` (owner the lab, removeBy 2027-02-28). Code blocks, their share reviews and the console's review screen are behind it (ADR 0069).
+- The first flag is `blockStudio` (owner the lab, removeBy 2027-02-28). Code blocks, their share reviews and the console's review screen are behind it (ADR 0069), and so are the portal's «Utforming» menu item and page and «Fra Utforming» in a service's «Utforming» tab.

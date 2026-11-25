@@ -10,6 +10,7 @@ import type {
 export const shell = {
   navOverview: 'Overview',
   navServices: 'Services',
+  navDesign: 'Design',
   navSharedServices: 'Shared services',
   navDatasets: 'Document collections',
   navBuildingBlocks: 'Catalogue',

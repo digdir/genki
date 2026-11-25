@@ -7,6 +7,7 @@ import {
   DatabaseIcon,
   HouseIcon,
   MenuHamburgerIcon,
+  PaletteIcon,
   PersonGroupIcon,
   RectangleSectionsIcon,
   SandboxIcon,
@@ -28,7 +29,7 @@ import {
 } from 'react';
 import type { ApiClient } from './api';
 import { Icon, type IconComponent } from './components/Icon';
-import { FlagsProvider } from './flags';
+import { useFlag } from './flags';
 import { formatOrgNumber, hasOwnName, organisationName, profileFor } from './data/organisations';
 import { restoringScroll, useEscape, useNarrow } from './hooks';
 import { translator, useT, type PlainKey, type T } from './i18n';
@@ -103,6 +104,15 @@ export const navigationGroups: readonly NavGroup[] = [
     ],
   },
 ];
+
+export const designNavItem: NavItem = {
+  path: '/design',
+  label: 'shell.navDesign',
+  icon: PaletteIcon,
+};
+
+const withDesign = (items: readonly NavItem[]) =>
+  items.flatMap((item) => (item.path === '/services' ? [item, designNavItem] : [item]));
 
 export const navigation: readonly NavItem[] = navigationGroups.flatMap(
   (g): readonly NavItem[] => g.items,
@@ -300,6 +310,7 @@ const NavLinks = ({
   compact?: boolean;
 }) => {
   const t = useT();
+  const studio = useFlag('blockStudio');
   return (
     <div className="nav-groups">
       {navigationGroups.map((group, i) => {
@@ -313,7 +324,7 @@ const NavLinks = ({
               </span>
             ) : null}
             <ul className="nav-list" aria-labelledby={headingId}>
-              {group.items.map((item: NavItem) => {
+              {(studio ? withDesign(group.items) : group.items).map((item: NavItem) => {
                 const active = isActive(path, item);
                 return (
                   <li key={item.path}>
@@ -655,9 +666,7 @@ export const Shell = ({
               <UserNameContext.Provider value={session.name}>
                 <RightsContext.Provider value={rights}>
                   <RightLabelsContext.Provider value={labels}>
-                    <FlagsProvider api={api} tenant={organisation.orgNumber}>
-                      {children}
-                    </FlagsProvider>
+                    {children}
                   </RightLabelsContext.Provider>
                 </RightsContext.Provider>
               </UserNameContext.Provider>

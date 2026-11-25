@@ -106,6 +106,7 @@ const areas: Partial<Record<string, Area>> = {
   },
   'shared-services': { chunk: () => import('./screens/SharedServices') },
   'building-blocks': { chunk: () => import('./screens/BuildingBlocks') },
+  design: { chunk: () => import('./screens/design/Design') },
   developer: { chunk: () => import('./screens/DeveloperTools') },
   settings: {
     chunk: () => import('./screens/Settings'),

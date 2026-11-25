@@ -193,9 +193,11 @@ export const BlocksStep = ({
   run,
   address,
   onFullscreen,
+  refs,
 }: {
   state: BlocksState;
   narrow: boolean;
+  refs?: ReactNode;
   /** The builder assistant. Without it there is no Chat tab. */
   assistant?: ReactNode;
   /** «Kopier oppsettet» and «Lim inn oppsett» under the panels; off where they live elsewhere. */
@@ -239,7 +241,10 @@ export const BlocksStep = ({
       </ToggleGroup>
       {state.tab === 'chat' ? assistant : null}
       {state.tab === 'blocks' ? (
-        <BlocksPanel state={state.state} facts={state.facts} onChange={state.change} />
+        <>
+          <BlocksPanel state={state.state} facts={state.facts} onChange={state.change} />
+          {refs}
+        </>
       ) : null}
       {state.tab === 'templates' ? (
         <TemplatesPanel current={state.template} onPick={state.pick} />

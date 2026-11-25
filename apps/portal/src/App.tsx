@@ -16,6 +16,7 @@ import { EmptyState, Loading, NavigationProgress } from './states';
 import { pendingInputHash, restoreUnsavedInput, saveUnsavedInput } from './unsaved-input';
 import type { Organisation, Session } from './types';
 import { forgetNotYetSaved } from './screens/services/not-yet-saved';
+import { FlagsProvider } from './flags';
 
 const Shell = lazy(() => import('./Shell').then((m) => ({ default: m.Shell })));
 const NoAccess = lazy(() => import('./screens/NoAccess').then((m) => ({ default: m.NoAccess })));
@@ -285,7 +286,7 @@ const Portal = ({
     const reported = serverRights[organisation.orgNumber];
     const effective =
       route.segments.length === 0 ? { ...route, path: '/overview', segments: ['overview'] } : route;
-    return (
+    const shell = (
       <Shell
         session={session}
         organisation={reported ? { ...organisation, actions: reported } : organisation}
@@ -339,6 +340,11 @@ const Portal = ({
           />
         </Suspense>
       </Shell>
+    );
+    return (
+      <FlagsProvider api={api} tenant={organisation.orgNumber}>
+        {shell}
+      </FlagsProvider>
     );
   }
 };

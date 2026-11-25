@@ -1,3 +1,4 @@
+import { isRefBlockId } from '@genai/contracts/blocks';
 import {
   blockSpec,
   fromTemplate,
@@ -23,7 +24,47 @@ export interface BlocksStart {
   layout: AssistantLayout;
   template?: TemplateId;
   held?: readonly HeldBlock[] | undefined;
+  pinned?: readonly PinnedRef[] | undefined;
 }
+
+export interface PinnedRef {
+  zone: Zone;
+  placed: PlacedBlock;
+  at: number;
+}
+
+const isPinnedRef = (placed: PlacedBlock) =>
+  isRefBlockId(placed.block) && typeof placed.ref === 'string';
+
+/** The design elements a layout pins by `ref`, in their zones. */
+export const pinnedRefs = (layout: AssistantLayout): PinnedRef[] =>
+  zones.flatMap((zone) =>
+    layout.zones[zone].flatMap((placed, at) => (isPinnedRef(placed) ? [{ zone, placed, at }] : [])),
+  );
+
+const withoutPinned = (layout: AssistantLayout): AssistantLayout => ({
+  ...layout,
+  zones: Object.fromEntries(
+    zones.map((zone) => [zone, layout.zones[zone].filter((p) => !isPinnedRef(p))]),
+  ) as Record<Zone, PlacedBlock[]>,
+});
+
+const placePins = (layout: AssistantLayout, pinned: readonly PinnedRef[]): AssistantLayout => {
+  if (pinned.length === 0) return layout;
+  const placed = Object.fromEntries(
+    zones.map((zone) => {
+      const list = [...layout.zones[zone]];
+      for (const pin of pinned.filter((p) => p.zone === zone).sort((a, b) => a.at - b.at))
+        list.splice(Math.min(pin.at, list.length), 0, pin.placed);
+      return [zone, list];
+    }),
+  ) as Record<Zone, PlacedBlock[]>;
+  return { ...layout, zones: placed };
+};
+
+/** The local layout with the pins the server's layout holds instead of its own. */
+export const withPinsOf = (local: AssistantLayout, server: unknown): AssistantLayout =>
+  placePins(withoutPinned(local), isAssistantLayout(server) ? pinnedRefs(server) : []);
 
 /** The template a service's interface starts from: Kunnskapsassistenten's next look. */
 export const startTemplate: TemplateId = 'knowledge-assistant-next';
@@ -151,13 +192,25 @@ export const draftLayoutOf = (definition: Record<string, unknown>): unknown => {
   return spec?.interface?.layout;
 };
 
-/** `foreign` when the builder cannot edit the layout without losing something, such as an `x-` block or a `ref`. */
-export const draftStart = (layout: unknown): BlocksStart | 'foreign' | undefined => {
+/** `foreign` when the builder cannot edit the layout without losing something, such as an `x-` block, or a `ref` unless pins are kept aside. */
+export const draftStart = (
+  layout: unknown,
+  keepPins = false,
+): BlocksStart | 'foreign' | undefined => {
   if (layout === undefined) return undefined;
-  const start = startOf(layout, undefined, undefined);
+  const pinned = keepPins && isAssistantLayout(layout) ? pinnedRefs(layout) : [];
+  const start = startOf(
+    pinned.length > 0 && isAssistantLayout(layout) ? withoutPinned(layout) : layout,
+    undefined,
+    undefined,
+  );
   if (!start) return 'foreign';
   const template = templateOf(start.layout);
-  return template ? { ...start, template } : start;
+  return {
+    ...start,
+    ...(template ? { template } : {}),
+    ...(pinned.length > 0 ? { pinned } : {}),
+  };
 };
 
 /** The layout as the draft stores it: the blocks the draft cannot back yet stand where they were chosen. */
@@ -168,7 +221,7 @@ export const storedLayout = (start: BlocksStart): AssistantLayout => {
   for (const entry of start.held ?? [])
     if (!placed[entry.zone].some((p) => p.block === entry.placed.block))
       placed[entry.zone].push(entry.placed);
-  return normalised({ ...start.layout, zones: placed });
+  return placePins(normalised({ ...start.layout, zones: placed }), start.pinned ?? []);
 };
 
 /** The stored layout or the start template; nothing when editing would lose part of it. */

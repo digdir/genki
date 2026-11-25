@@ -162,12 +162,13 @@ import { describeProblem, publishDraft, type PublishProblem } from '../service/p
 import { VersionsSection } from '../service/VersionsSection';
 import { EnvironmentsSection } from '../service/EnvironmentsSection';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
-import type { AssistantLayout } from '@genai/ui-blocks/builder';
+import { isAssistantLayout, type AssistantLayout } from '@genai/ui-blocks/builder';
 import { AdvancedTab } from './AdvancedTab';
 import { ConfirmedTag, FirstPublish, type Left } from './FirstPublish';
 import { InterfaceTab } from './blocks/InterfaceTab';
+import type { PinActions } from './blocks/FromDesign';
 import { LayoutTransfer } from './blocks/LayoutTransfer';
-import { shownLayoutOf } from './blocks/layoutStore';
+import { draftLayoutOf, shownLayoutOf, withPinsOf } from './blocks/layoutStore';
 import { TryViewKeeper } from './blocks/TryViewKeeper';
 import { UnmaskedInputConsent } from './UnmaskedInputConsent';
 import {
@@ -436,6 +437,7 @@ export const Builder = ({
   const editsRef = useRef(0);
   const unsaved = useRef(false);
   const saving = useRef(false);
+  const savingRun = useRef<Promise<void>>(Promise.resolve());
   const draftBlocked = useRef(false);
   const [messages, setMessages] = useState(init.messages);
   const [extra, setExtra] = useState(init.extraCards);
@@ -900,6 +902,8 @@ export const Builder = ({
   const saveDraft = async (): Promise<void> => {
     if (!serverDraft || !unsaved.current || draftBlocked.current || saving.current) return;
     saving.current = true;
+    let settle: () => void = () => undefined;
+    savingRun.current = new Promise<void>((resolve) => (settle = resolve));
     setSaveState('saving');
     const tick = editsRef.current;
     const first = isNew && revisionRef.current === 0;
@@ -939,6 +943,7 @@ export const Builder = ({
       return;
     } finally {
       saving.current = false;
+      settle();
     }
     if (unsaved.current) await saveDraft();
   };
@@ -1238,6 +1243,42 @@ export const Builder = ({
     setFiles(draft.files);
     if (typeof draft.latestVersion === 'number')
       setRebased({ base: draft.baseVersion ?? draft.latestVersion, latest: draft.latestVersion });
+  };
+
+  const [pinDone, setPinDone] = useState(false);
+  const pinTick = useRef(0);
+  const pinActions: PinActions = {
+    beforePin: async (layout?: AssistantLayout) => {
+      while (saving.current) await savingRun.current;
+      if (layout) {
+        writeLayout(layout);
+        definitionRef.current = forTenant(
+          applySpec(serviceRef.current, (d) => ({ interface: { ...d.spec.interface, layout } })),
+          { tenant, id: serviceId, version: current + 1 },
+        ) as unknown as Record<string, unknown>;
+      }
+      await saveDraft();
+      if (unsaved.current || draftBlocked.current)
+        throw new Error(
+          tRef.current(
+            draftBlocked.current ? 'services.draftChangedElsewhere' : 'services.draftSaveFailed',
+          ),
+        );
+      pinTick.current = editsRef.current;
+    },
+    done: pinDone,
+    onPinned: (draft, pinned) => {
+      setPinDone(pinned);
+      keepRevision(draft.revision);
+      const local = draftLayoutOf(definitionRef.current);
+      if (editsRef.current !== pinTick.current && isAssistantLayout(local)) {
+        writeLayout(withPinsOf(local, draftLayoutOf(draft.definition)));
+        return;
+      }
+      unsaved.current = false;
+      setService(asServiceDefinition(draft.definition));
+      setFiles(draft.files);
+    },
   };
 
   const rebaseDraft = async (): Promise<DraftConflict[]> => {
@@ -2043,6 +2084,7 @@ export const Builder = ({
           files={files}
           narrow={narrow}
           onLayout={readOnly ? undefined : writeLayout}
+          pins={!readOnly && serverDraft ? pinActions : undefined}
           fullscreen={detail === 'preview'}
           backHref={`#${servicePath(routeId, 'interface')}`}
           adding={adding}

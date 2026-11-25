@@ -6,6 +6,7 @@ import { stepflowsUi } from './build-stepflowsUi';
 import { batchUi } from './build-batchUi';
 import { playgroundUi } from './build-playgroundUi';
 import { blocksUi } from './build-blocksUi';
+import { designUi } from './build-designUi';
 
 export const build = {
   ...servicesUi,
@@ -16,4 +17,5 @@ export const build = {
   ...playgroundUi,
   ...assistantUi,
   ...blocksUi,
+  ...designUi,
 } as const;
