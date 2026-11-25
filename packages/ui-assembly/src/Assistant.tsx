@@ -910,7 +910,7 @@ export const AssistantView = ({
       />
     ) : undefined;
 
-  // The next look's sizes, the dev-navbar board's at 1720: threads 220, tools 380.
+  // The next look's sizes: threads 252 (dev-navbar's 220 + 32), tools 482 (dev-kilder-hoyre at 1440).
   const nextPrimary: Partial<ShellPanel> = next
     ? { size: threadsWidth, ...profileFoot }
     : profileFoot;
