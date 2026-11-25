@@ -644,11 +644,7 @@ const repeatedGapStagnation = (workspace: Workspace) => {
   return undefined;
 };
 
-/**
- * The left-out part of the last read, when the read cap or budget cut a range read and a
- * search hit in that part scored at least as well as the weakest hit the read returned.
- * Undefined when no read, character or round is left to read it, or no chunk of it fits.
- */
+/** The left-out part of a cut range read holding a hit as good as the weakest one it returned. */
 export const cutReadLeftOutBetterHit = (
   workspace: Workspace,
   { roundsLeft = Number.POSITIVE_INFINITY }: { roundsLeft?: number } = {},
