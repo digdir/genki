@@ -18,6 +18,7 @@ export interface HostView {
     audience: string;
     altinnResource: string | null;
   };
+  languages?: Locale[];
   icon?: string | null;
   menu: MenuItem[];
   pages: { id: string; title: Text }[];
@@ -33,6 +34,13 @@ export const showIcon = (icon: string | null | undefined) => {
   if (!icon?.startsWith('data:image/')) return;
   const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
   if (link) link.href = icon;
+};
+
+export const choosesLanguage = (view: HostView) => (view.languages ?? []).length !== 1;
+
+export const lockedLanguage = (view: HostView, locale: Locale): Locale | undefined => {
+  const languages = view.languages ?? [];
+  return languages.length === 0 || languages.includes(locale) ? undefined : languages[0];
 };
 
 export const textIn = (text: Text, locale: Locale) =>

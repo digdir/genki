@@ -8,7 +8,7 @@ import {
   Spinner,
 } from '@digdir/designsystemet-react';
 import type { Locale } from '@genai/i18n';
-import { useLocale } from '@genai/i18n/react';
+import { LocaleProvider, useLocale } from '@genai/i18n/react';
 import {
   Assistant,
   browserStorage,
@@ -22,12 +22,14 @@ import { Markdown } from '@genai/ui-blocks';
 import { ArrowLeftIcon, ExternalLinkIcon, FileTextIcon } from '@navikt/aksel-icons';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
+  choosesLanguage,
   inLanguage,
   isPageLink,
   loadHost,
   loadLayout,
   type ShownInterface,
   loadPage,
+  lockedLanguage,
   showIcon,
   textIn,
   type HostView,
@@ -232,7 +234,7 @@ const AssistantPane = ({
           colorScheme={colorScheme}
           onColorSchemeChange={setColorScheme}
           language={locale}
-          onLanguageChange={setPreference}
+          {...(choosesLanguage(host) ? { onLanguageChange: setPreference } : {})}
           onNotice={say}
           onFeedback={api.sendFeedback}
           onRename={api.renameThread}
@@ -331,6 +333,7 @@ export const App = ({
   navigate = goTo,
 }: AppProps) => {
   const t = useT();
+  const { locale } = useLocale();
   const bff = useMemo(() => givenBff ?? bffSignIn(fetcher), [givenBff, fetcher]);
   const host = useLoaded<HostView>(() => loadHost(fetcher, hostname), [hostname]);
   const hostFound = host.kind === 'ok';
@@ -443,19 +446,19 @@ export const App = ({
     setSession(undefined);
     void login?.signOut();
   };
-  if (onPage) return <PageView fetcher={fetcher} host={view} id={pageId} />;
-  if (session)
-    return (
-      <AssistantPane
-        fetcher={fetcher}
-        host={view}
-        session={session}
-        signOut={signOutLink}
-        onSignOut={signOut}
-        files={viaBff}
-      />
-    );
-  return (
+  const locked = lockedLanguage(view, locale);
+  const shown = onPage ? (
+    <PageView fetcher={fetcher} host={view} id={pageId} />
+  ) : session ? (
+    <AssistantPane
+      fetcher={fetcher}
+      host={view}
+      session={session}
+      signOut={signOutLink}
+      onSignOut={signOut}
+      files={viaBff}
+    />
+  ) : (
     <div className="ah-signin-page">
       <ServiceName host={view} />
       <main className="ah-main ah-signin-main" id="main">
@@ -463,4 +466,5 @@ export const App = ({
       </main>
     </div>
   );
+  return locked ? <LocaleProvider preference={locked}>{shown}</LocaleProvider> : shown;
 };
