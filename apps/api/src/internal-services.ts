@@ -17,7 +17,7 @@ import { t } from './i18n/index.js';
 interface Viewer {
   hides: boolean;
   signedIn: boolean;
-  internal: Map<string, Promise<boolean>>;
+  internal: Map<string, Promise<unknown>>;
 }
 
 const viewer = new AsyncLocalStorage<Viewer>();
@@ -67,10 +67,10 @@ const internalChecks = new WeakMap<
   (tenant: string, id: string) => Promise<boolean>
 >();
 
-const remembered = (key: string, check: () => Promise<boolean>) => {
+const remembered = <T>(key: string, check: () => Promise<T>): Promise<T> => {
   const seen = viewer.getStore()?.internal;
   if (!seen) return check();
-  const known = seen.get(key) ?? check();
+  const known = (seen.get(key) as Promise<T> | undefined) ?? check();
   seen.set(key, known);
   return known;
 };
@@ -92,7 +92,10 @@ export const isHiddenTask = async (store: DefinitionStore, task: Task) => {
   const [tenant, id] = capability.split('/');
   if (tenant === undefined || id === undefined) return false;
   if (await isHiddenService(store, tenant, id)) return true;
-  const deletions = (await deletedInternalChecks.get(store)?.(tenant, id)) ?? [];
+  const deleted = deletedInternalChecks.get(store);
+  const deletions = deleted
+    ? await remembered(`deleted:${tenant}/${id}`, () => deleted(tenant, id))
+    : [];
   return deletions.some((at) => Date.parse(task.createdAt) <= Date.parse(at));
 };
 
@@ -239,10 +242,10 @@ export const hidingInternalServices = (
     },
     remove: (tenant, definitions) => store.remove(tenant, definitions),
     ...(store.listAcross ? { listAcross: store.listAcross.bind(store) } : {}),
-    publish: async (input, actor, reason, files) => {
+    publish: async (input, actor, reason, files, options) => {
       const refused = await publishRefusals(view, input);
       if (refused.length > 0) return { ok: false, errors: refused };
-      const result = await store.publish(input, actor, reason, files);
+      const result = await store.publish(input, actor, reason, files, options);
       return result.ok || !hidesInternalServices()
         ? result
         : { ok: false, errors: await neutralNames(result.errors) };

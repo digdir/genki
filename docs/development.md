@@ -31,7 +31,7 @@ npm start          # setup, then API, worker, portal, console and workspace; sto
 
 **Native output.** A converter's native output is kept by file sha256, with no tenant (ADR 0042): `<sha256>/<converter>/<version>/<settings hash>.json.gz`, gzipped, with `<settings hash>.meta.json` beside it, where the settings hash is the sha256 of the settings as canonical JSON. The `NativeOutputStore` in `packages/port-blob/src/native-output.ts` builds those paths; uploads keep the tenant-keyed `BlobStore`. In Azure the store is the Blob container `conversions`, reached with the knowledge worker identity (`KNOWLEDGE_AZURE_CLIENT_ID`, required) and never an account key; the worker's convert jobs write a converter's native output there (`nativeOutputStoreFromEnv`), and since the text layer has none, nothing reaches it until Docling (issue 477), though the account key, which the file share mount needs, opens the container too (ADR 0042, Open); the container deletes an earlier version 30 days after that version was written, so an output older than that loses its earlier version at a later lifecycle run once it is replaced or deleted. Locally it is a folder under `DATA_DIR` (`apps/api/.data/conversions`). `scripts/upload-docling-export.ts` copies a Docling export (`<prefix>/<sha256>/docling.json` with `done.json`) into the container once, skipping outputs already there (issue 474); it signs with your az login, or with the account key (`--auth key`), which the worker's native output store never signs with. `npm run conversions:check` writes, reads back and deletes a probe conversion; on the worker in Azure, run `node scripts/conversions-check.ts` with `az containerapp exec`.
 
-**Docling server.** Each environment runs a Docling server for PDF conversions (ADR 0042, issue 476): `genai-<env>-docling`, built from `docker/docling/Dockerfile`, which runs the parser benchmark winner's versions on Debian trixie (Docling 2.146.0, Tesseract 5.5.0 with Debian's Norwegian data) behind docling-serve 1.38.2. It has internal TCP ingress on port 5001 and no other way in, and needs `X-Api-Key` with the Key Vault secret `docling-api-key`, which only the worker and the server get. To run it locally: `docker build -t genai-docling:local docker/docling`, then `docker run --rm -p 127.0.0.1:5001:5001 -e DOCLING_SERVE_API_KEY=<any> genai-docling:local`, and set `DOCLING_URL=http://127.0.0.1:5001` and `DOCLING_API_KEY` to the same key. `node scripts/docling-check.ts <PDF URL or path>` converts one PDF with Tesseract `nor` and TableFormer fast on the async route the worker uses (submit, a poll every 30 s on one connection, the result), prints the seconds, pages and characters, and checks that a request without the key gets 401; on the worker in Azure, run it with `az containerapp exec`. It runs on amd64; on an arm64 Mac Docker emulates it, and a four-page scan took about four minutes.
+**Docling server.** Each environment runs a Docling server for PDF conversions (ADR 0042, issue 476): `genai-<env>-docling`, built from `docker/docling/Dockerfile`, which runs the parser benchmark winner's versions on Debian trixie (Docling 2.146.0, Tesseract 5.5.0 with Debian's Norwegian data) behind docling-serve 1.38.2. It has internal TCP ingress on port 5001 and no other way in, and needs `X-Api-Key` with the Key Vault secret `docling-api-key`, which only the worker and the server get. To run it locally: `docker build -t genai-docling:local docker/docling`, then `docker run --rm --platform linux/amd64 -p 127.0.0.1:5001:5001 -e DOCLING_SERVE_API_KEY=<any> -e DOCLING_SERVE_SINGLE_USE_RESULTS=true -e DOCLING_SERVE_RESULT_REMOVAL_DELAY=1 genai-docling:local` (the last two as in Azure, or the server refuses each next file for 10 minutes while the last result waits), and set `DOCLING_URL=http://127.0.0.1:5001` and `DOCLING_API_KEY` to the same key. `node scripts/docling-check.ts <PDF URL or path>` converts one PDF with Tesseract `nor` and TableFormer fast on the async route the worker uses (submit, a poll every 30 s on one connection, the result), prints the seconds, pages and characters, and checks that a request without the key gets 401; on the worker in Azure, run it with `az containerapp exec`. The image is linux/amd64 only (its `FROM` and its package hashes say so); on an arm64 Mac Docker emulates it, and a four-page scan took about four minutes.
 
 **Seeded conversions.** `npm run conversions:seed` sends one `knowledge.seed` job per two-character sha256 prefix (256), by default for the Docling export of KUDOS (`--converter docling --version 2.123.1 --settings <settings hash>`). The worker lists the native outputs under each prefix, skips files that already have that conversion, and stores the pages `docling-pages` makes, with the Blob path; a file it cannot read is logged as `a seed skipped a file` and left to the text layer. Running it again sends no job for a batch that still waits or runs, and a finished batch sent again only skips. `--derivation docling-parts` stores the parts `docling-parts` makes instead of pages ([ADR 0055](adr/0055-conversion-parts.md)), one row a page in `src_conversion_units`, and an output that is not a Docling document as a refusal; `--prefixes 00,01` sends only those batches, about 158 files each for the export. On the worker in Azure, run `node scripts/conversions-seed.ts` with `az containerapp exec`. The worker logs `knowledge server migrated` with the milliseconds the knowledge server's migrations took at its first knowledge use.
 
@@ -39,20 +39,23 @@ npm start          # setup, then API, worker, portal, console and workspace; sto
 
 `npm run dev:all` runs everything with prefixed, coloured output and refuses to start if a port is taken:
 
-| Process   | Address               | For                                                                 |
-| --------- | --------------------- | ------------------------------------------------------------------- |
-| API       | http://localhost:8080 | The platform, with database migrations and seeded definitions       |
-| Worker    | http://localhost:8081 | Durable jobs, such as runs on the knowledge database; health checks |
-| Portal    | http://localhost:5173 | Agencies: build, test and publish services, datasets and API keys   |
-| Console   | http://localhost:5174 | Digdir operators: tenants, shared services, models, platform health |
-| Workspace | http://localhost:5176 | Employees: chat with published services, with sources and approvals |
-| Model     | http://127.0.0.1:8095 | Local test model, only when `LOCAL_MODEL_URL` points there          |
+| Process   | Address               | For                                                                                              |
+| --------- | --------------------- | ------------------------------------------------------------------------------------------------ |
+| API       | http://localhost:8080 | The platform, with database migrations and seeded definitions                                    |
+| Worker    | http://localhost:8081 | Durable jobs, such as runs on the knowledge database; health checks                              |
+| Portal    | http://localhost:5173 | Agencies: build, test and publish services, datasets and API keys                                |
+| Console   | http://localhost:5174 | Digdir operators: tenants, shared services, models, platform health                              |
+| Workspace | http://localhost:5176 | Employees: chat with published services, with sources and approvals                              |
+| Model     | http://127.0.0.1:8095 | Local test model, only when `LOCAL_MODEL_URL` points there                                       |
+| Blocks    | http://localhost:8090 | The block origin code blocks are framed from (ADR 0069), served by the API on `GENAI_BLOCK_PORT` |
+
+**Code blocks locally.** In dev mode `npm start` sets `GENAI_BLOCK_ORIGIN=http://localhost:8090` and `GENAI_BLOCK_PORT=8090`, so a code block can be saved and its frame and bundle are served on port 8090 from any `localhost` page. Code blocks are behind the `blockStudio` flag too: turn it on for the whole organisation under Profil, Nye funksjoner, or with `GENAI_FLAGS=blockStudio` in `.env.local`. Turned on only for yourself, you can save code blocks, but services draw them only while it is on for the organisation. Without `GENAI_BLOCK_ORIGIN`, or with the flag off, the API refuses code blocks. Outside dev mode the origin must be `https`, on a registrable domain of its own.
 
 **Other ports.** To run a second copy next to one that already runs, give it its own compose project, Postgres port, model port and app ports:
 
 ```sh
 COMPOSE_PROJECT_NAME=genai-second GENAI_POSTGRES_PORT=8110 GENAI_KNOWLEDGE_PORT=8111 GENAI_MODEL_PORT=8104 npm run setup
-GENAI_API_PORT=8100 GENAI_WORKER_PORT=8105 GENAI_PORTAL_PORT=8101 GENAI_CONSOLE_PORT=8102 GENAI_WORKSPACE_PORT=8103 npm run dev:all
+GENAI_API_PORT=8100 GENAI_WORKER_PORT=8105 GENAI_PORTAL_PORT=8101 GENAI_CONSOLE_PORT=8102 GENAI_WORKSPACE_PORT=8103 GENAI_BLOCK_PORT=8106 npm run dev:all
 ```
 
 Setup writes the ports into the new `.env.local`, and `dev:all` points the Vite proxies and the login issuer at the moved API. The mock login accepts registered `http` loopback redirects (`localhost`, `127.0.0.1` or `[::1]`) on any port, for login and logout; every other character must match the registered URI. The default clients in `apps/api/config/local/identity.yaml` therefore work on shifted ports without changes, and `dev:all` names missing callback registrations at start. Real Ansattporten still needs the callback registered for each app's port. Stop the copy's database with `COMPOSE_PROJECT_NAME=genai-second docker compose down -v`.
@@ -181,7 +184,7 @@ Only `.env.local` is loaded automatically. Secrets in config are referenced as `
 
 Where the host serves the BFF (`assistantBffEnabled`, ADR 0034, ADR 0061), the page holds no token: it asks `GET /auth/me`, sends the person to `/auth/login`, and calls genki through `/api/` with the host's session cookie. A Client with its own `oidc` then names its client secret, a tenant secret bound to the issuer's origin, in `oidc.secret`. Where the host serves no BFF, it logs in in the browser with the authorization code flow and PKCE as a public client and keeps the token in `sessionStorage` (`apps/assistant/src/login.ts`).
 
-A cited document's PDF shows in Dokumentvisning through `GET /api/datasets/{id}/documents/{doc}/file` (ADR 0066): an uploaded PDF from genki's own store, or, for a dataset from a remote source, a PDF the document's record lists on an origin in `GENAI_DOCUMENT_FILE_ORIGINS` (comma-separated `https://` origins, none by default), which the API reads and serves itself. The host frames it only where it calls genki through the BFF, with the session cookie.
+A cited document's PDF shows in Dokumentvisning through `GET /api/datasets/{id}/documents/{doc}/file` (ADR 0066): an uploaded PDF from genki's own store, or, for a dataset from a remote source, a PDF the document's record lists on an origin in `GENAI_DOCUMENT_FILE_ORIGINS` (comma-separated `https://` origins, none by default), which the API reads and serves itself. The host frames it only where it calls genki through the BFF, with the session cookie. A PDF on any other site is not framed: Dokumentvisning shows the excerpts and «Les dokumentet». The hosted environments set the list in `infra/env/*.bicepparam` ([infra/README.md](../infra/README.md#settings-and-secrets)).
 
 To run it locally against the mock login in the browser, with the API on its default port:
 
@@ -219,6 +222,38 @@ The Client may instead name its own Ansattporten client in `oidc`, which then lo
 **Tests.** `npm run check` runs prettier, eslint, the type check, dependency boundaries, the apps' size budgets, the `/v1` API and definition compatibility checks ([API changes](api/README.md#api-changes)) and every test. `npm run size` builds the portal, console, workspace, assistant and docs and fails when an app's first load, its entry and the chunks that entry imports up front, grows past its gzip budget in `scripts/size-budget.ts`. Docker must be running: the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers. Run a part with `npx vitest run <paths>` from the repository root, with paths from the root, and narrow it to one test with `-t "<name>"`. Run from inside an app, Vitest misses the root `vitest.config.ts` and fails with `Cannot find package '@genai/...'`. When Docker is not running, the container suites fail with `Could not find a working container runtime strategy`; that is Docker, not the test. Tests never call real models; the live suites skip themselves unless their settings are set.
 
 **Layout check.** With the portal on mock data (`VITE_API=mock npm run dev -w apps/portal`), `node scripts/layout-check.ts --url http://localhost:5173` signs in, follows every link it finds and reports each screen that scrolls sideways at 390, 768, 990 and 1280 px, in light and dark, with the elements that cause it, in `layout-check/report.json` and screenshots. `--dialogs` also opens the dialogs and side panels on each screen and reports one that scrolls as a whole instead of its list; `--only services,log` limits the screens. It needs a Chromium for `playwright-core`, or Chrome installed.
+
+## How to add a feature flag
+
+A bigger feature ships turned off and is switched on per organisation or person without a deploy ([ADR 0071](adr/0071-feature-flags.md)).
+
+1. **Declare it** in `packages/contracts/src/flags.ts`. Every flag is off by default. `selfService: true` lets people try it under Profil, Nye funksjoner, and tenant admins switch it for their organisation; leave it `false` for a switch only operators may turn.
+
+   ```ts
+   myFeature: {
+     description: 'One line on what the flag hides',
+     owner: 'the lab',
+     removeBy: '2027-03-31',
+     selfService: true,
+   },
+   ```
+
+   A self-service flag also needs a name and a line in the portal's `profile` texts and in `flagTexts` in `apps/portal/src/screens/NewFeatures.tsx`; the types say so if you forget.
+
+2. **Guard the route.** It answers `404`, like an unknown route, while the flag is off for the caller:
+
+   ```ts
+   app.get('/tenants/:tenant/my-feature', requireFlag(mounted, 'myFeature'), handler);
+   if (await mounted.flags.on({ principal, tenant }, 'myFeature')) { ... }
+   ```
+
+3. **Hide the screen** with `useFlag('myFeature')` from `apps/portal/src/flags.tsx` (or `apps/console/src/flags.tsx`). It is off while the flags load.
+
+4. **Test with it on.** `<FlagsOn flags={['myFeature']}>` around a component, or `renderAt('#/path', withFlags({ tenant: { myFeature: true } }))` for the whole portal. Test the off case too: the route answers `404`, the screen is gone.
+
+5. **Switch it on.** Locally: `GENAI_FLAGS=myFeature` in `.env.local` (dev mode only; the API refuses to start with it otherwise). In an environment: the console's Funksjonsbrytere page, for an organisation or one person, with a reason; or, for a self-service flag, the person or tenant admin in the portal. Every change is in the audit log.
+
+6. **Remove it** once it is on for everyone, before `removeBy`: delete the entry, the `requireFlag` and `useFlag` calls and its texts. Stored choices for a removed key are ignored. CI warns on every pull request once a flag passes `removeBy`, and the weekly Flag expiry workflow fails until it is removed or its date moved; the rule itself is tested with fixed dates in `packages/contracts/src/flags.test.ts`, which also fails when a registered flag is used nowhere.
 
 ## Repository layout
 

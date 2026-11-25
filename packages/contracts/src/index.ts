@@ -1,8 +1,10 @@
 import type { InputField } from './input-fields.js';
 
+export * from './block-bridge.js';
 export * from './block-fields.js';
 export * from './block-fixtures.js';
 export * from './blocks.js';
+export * from './demo-voices.js';
 export * from './input-fields.js';
 export * from './kudos-earlier-ids.js';
 export * from './run-errors.js';
@@ -155,6 +157,8 @@ export interface Usage {
   inputTokens?: number;
   outputTokens?: number;
   cachedInputTokens?: number;
+  /** Input tokens written to the provider's prompt cache; part of `inputTokens`, like `cachedInputTokens`. */
+  cacheWriteTokens?: number;
   audioSeconds?: number;
   images?: number;
   videoSeconds?: number;

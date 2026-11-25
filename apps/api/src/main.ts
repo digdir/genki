@@ -1,6 +1,8 @@
 import { actingClient, createBff, InMemoryBffSessions, organisationsOf } from './bff/index.js';
 import { remoteFileOriginsFrom } from '@genai/adapter-rest';
 import { platformLoginFrom } from './platform-login.js';
+import { binderTrustFrom } from './binder-token.js';
+import { hostnameSetupFrom } from './hostname-claims.js';
 import {
   assistantHostnameFrom,
   hostedHostnamesFrom,
@@ -28,6 +30,7 @@ import {
 import {
   envSecrets,
   InMemoryEventLog,
+  InMemoryHostnameClaims,
   InMemoryStateStore,
   InMemoryTaskStore,
   type EventLog,
@@ -53,6 +56,8 @@ import type { PolicyDecisionPoint } from '@genai/kernel';
 import { documentConverterFrom, phraseArchiveFrom } from './document-converter.js';
 import { evalSlotLimitsFromEnv, shutdownGraceFromEnv } from './eval-slots.js';
 import { drainBeforeExit } from './shutdown.js';
+import { blockOriginFrom, blockPortFrom, frameAncestorsFrom } from './block-origin.js';
+import { createBlockFrames } from './block-frames.js';
 import { createAdmin, platformActor } from './admin.js';
 import { createAccessPeopleModule, peopleSourceFrom, selectedPeople } from './access-people.js';
 import { draftServices } from './access-draft-services.js';
@@ -75,6 +80,7 @@ import {
   modelDiscoveryFromEnv,
   scheduleModelRelist,
   tenantSampleRate,
+  envFlagsIn,
 } from '@genai/composition';
 import { buildTimeOf, createApp } from './app.js';
 import { defaultSlowRequestMs } from './request-timing.js';
@@ -491,19 +497,34 @@ const processorRecords = processorRecordCheckOf(process.env);
 
 const hostedHostnames = hostedHostnamesFrom(process.env);
 if (platformLogin) hostedHostnames.delete(platformLogin.hostname);
+const hostnameClaims = db?.hostnameClaims ?? new InMemoryHostnameClaims();
 const hosting = {
   hostnames: hostedHostnames,
   reservedDomains: reservedDomainsFrom(process.env),
   assistantHostname: assistantHostnameFrom(process.env),
+  claims: hostnameClaims,
 };
+const blockOrigin = blockOriginFrom(process.env);
+const hostnames = hostnameSetupFrom(process.env, hostnameClaims, hosting);
+const binder = binderTrustFrom(process.env);
+log('hostname claims', {
+  zone: hostnames.zone ?? null,
+  target: Object.keys(hostnames.target),
+  binder: binder !== undefined,
+});
 const platform = await createPlatform({
+  envFlags: envFlagsIn(process.env),
   platformTenant,
+  blockOrigin,
   federatedTokens: federatedAppTokens({
     assertion: managedIdentityTokenSource(process.env.AZURE_CLIENT_ID),
   }),
   appVersion: version,
   ...(process.env.DEMO_RECORDER_KEY_SHA256
     ? { demoRecorderKeyDigest: process.env.DEMO_RECORDER_KEY_SHA256 }
+    : {}),
+  ...(process.env.GENAI_DEMO_RECORDER === 'scheduled'
+    ? { demoRecorder: 'scheduled' as const }
     : {}),
   tracing: {
     ...(process.env.LANGFUSE_BASE_URL ? { instance: process.env.LANGFUSE_BASE_URL } : {}),
@@ -525,6 +546,8 @@ const platform = await createPlatform({
   clients,
   reservedClientIds,
   hosting,
+  hostnames,
+  ...(binder ? { binder } : {}),
   documentFileOrigins: remoteFileOriginsFrom(process.env.GENAI_DOCUMENT_FILE_ORIGINS),
   ...(platformLogin
     ? { platformLogin: { clientId: platformLogin.clientId, audience: platformLogin.audience } }
@@ -677,6 +700,8 @@ void learnAndAnnounce().catch((error: unknown) =>
 );
 const admin = createAdmin({
   platformTenant,
+  blockOrigin: platform.blockOrigin,
+  flags: platform.flags,
   store: platform.definitions,
   lifecycle: platform.lifecycle,
   plugins: platform.plugins,
@@ -919,6 +944,19 @@ const server = serve(
   },
 );
 attachSessionUpgrade(server as unknown as Server, app, platform.liveSessions);
+const blockServer =
+  blockOrigin &&
+  serve(
+    {
+      fetch: createBlockFrames({
+        origin: blockOrigin,
+        store: platform.definitions,
+        frameAncestors: frameAncestorsFrom(process.env, hosting),
+      }).fetch,
+      port: blockPortFrom(process.env),
+    },
+    (info) => log('block origin listening', { port: info.port, origin: blockOrigin }),
+  );
 
 // A deploy stops this instance: start no new test-set case, let the ones running finish, then go.
 const shutdownGraceMs = shutdownGraceFromEnv(process.env);
@@ -939,6 +977,7 @@ const stop = (signal: string) => {
       runsInFlight: platform.kernel.running(),
     });
     server.close();
+    if (blockServer) blockServer.close();
     process.exit(0);
   });
 };

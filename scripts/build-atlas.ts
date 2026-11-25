@@ -80,7 +80,10 @@ export const loadHeadlessRag = () =>
 
 export const loadTraces = () => readYaml<Trace[]>(join(archDir, 'traces.yaml'));
 
+let workspaces: Map<string, string> | undefined;
+
 export const workspacePackages = (): Map<string, string> => {
+  if (workspaces) return workspaces;
   const found = new Map<string, string>();
   for (const group of ['packages', 'apps']) {
     for (const dir of readdirSync(join(repoRoot, group))) {
@@ -93,6 +96,7 @@ export const workspacePackages = (): Map<string, string> => {
       }
     }
   }
+  workspaces = found;
   return found;
 };
 
@@ -106,10 +110,17 @@ const sourceFiles = (dir: string): string[] =>
 
 const importPattern = /(?:from|import\()\s*['"](@genai\/[a-z0-9-]+)/g;
 
-export const importsOf = (file: string): string[] =>
-  [...readFileSync(join(repoRoot, file), 'utf8').matchAll(importPattern)].map(
+const imports = new Map<string, string[]>();
+
+export const importsOf = (file: string): string[] => {
+  const known = imports.get(file);
+  if (known) return known;
+  const found = [...readFileSync(join(repoRoot, file), 'utf8').matchAll(importPattern)].map(
     (m) => m[1] as string,
   );
+  imports.set(file, found);
+  return found;
+};
 
 export const crossModuleImports = (modules: Module[]): Map<string, Witness[]> => {
   const owner = new Map<string, string>();

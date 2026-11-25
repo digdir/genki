@@ -142,6 +142,21 @@ export const profile = {
   themeAuto: 'Follow the system',
   savedHere: 'Saved in this browser',
   notStored: 'The choice lasts until you close the page. The browser does not let us store it.',
+  newFeatures: 'New features',
+  newFeaturesLead:
+    'Try features before they are finished. Your choice applies only to you and can be changed at any time.',
+  flagBlockStudio: 'New design tools',
+  flagBlockStudioText:
+    "Build and edit the design elements of a service's look, with or without code.",
+  flagForYou: 'Turn on for me',
+  flagForOrganisation: 'On for all of {name}',
+  flagFollowOrganisation: "Follow the organisation's choice",
+  flagOnForYou: 'On for you',
+  flagOffForYou: 'Off for you',
+  flagOnForOrganisation: 'On for the whole organisation',
+  flagOn: 'On',
+  flagOff: 'Off',
+  flagFailed: 'The change was not saved. Try again.',
 } satisfies Translation<typeof profileSource>;
 
 export const notFound = {

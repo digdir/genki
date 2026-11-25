@@ -161,7 +161,7 @@ export const MoreSources = ({ service, readOnly }: { service: string; readOnly: 
                 addPage();
               }}
             />
-            <Button variant="secondary" data-size="sm" disabled onClick={addPage}>
+            <Button variant="secondary" data-size="sm" aria-disabled>
               <Icon icon={GlobeIcon} />
               {t('setupList.webPagesAdd')}
             </Button>
@@ -199,7 +199,6 @@ export const MoreSources = ({ service, readOnly }: { service: string; readOnly: 
             <input
               type="file"
               disabled
-              readOnly
               multiple
               accept=".pdf,.doc,.docx,.txt,.md"
               aria-labelledby={`${id}-docs-label`}

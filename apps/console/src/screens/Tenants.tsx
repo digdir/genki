@@ -34,6 +34,9 @@ export const formatOrgNumber = (n: string) => n.replace(/^(\d{3})(\d{3})(\d{3})$
 const quotaLink = (org: string) =>
   `#/support-access?${new URLSearchParams({ tenant: org, tab: 'settings', setting: 'usage.monthlyTokens' }).toString()}`;
 
+export const quotaRequestsHref = (tenant?: string) =>
+  tenant ? `#/quota-requests?${new URLSearchParams({ tenant }).toString()}` : '#/quota-requests';
+
 type Filter = 'all' | TenantStatus;
 
 const filters: { value: Filter; label: PlainKey }[] = [
@@ -73,6 +76,11 @@ export const Tenants = ({ api, now = () => new Date() }: { api: ApiClient; now?:
   const t = useT();
   const f = useFormat();
   const [state, retry] = useAsync((signal) => api.listTenants(signal, { usage: true }), [api]);
+  const [requests] = useAsync(
+    (signal) => api.quotaRequests(signal, 'pending').catch(() => []),
+    [api],
+  );
+  const asking = new Set(requests.status === 'ready' ? requests.data.map((r) => r.tenant) : []);
   const month = f.month(now());
   const notAvailable = t('tenants.notAvailable');
   const [query, setQuery] = useState('');
@@ -254,6 +262,16 @@ export const Tenants = ({ api, now = () => new Date() }: { api: ApiClient; now?:
                                 </Tag>
                               </a>
                             )}
+                            {asking.has(x.orgNumber) ? (
+                              <a
+                                href={quotaRequestsHref(x.orgNumber)}
+                                aria-label={t('tenants.quotaRequestedFor', { name: x.name })}
+                              >
+                                <Tag data-size="sm" data-color="info">
+                                  {t('tenants.quotaRequested')}
+                                </Tag>
+                              </a>
+                            ) : null}
                           </span>
                           {use.percent === undefined ? null : (
                             <Meter percent={use.percent} warn={warn} />

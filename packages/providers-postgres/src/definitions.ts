@@ -17,7 +17,9 @@ import {
   type PluginSchemas,
   type PromptFiles,
   type PublishedVersion,
+  type PublishOptions,
   type PublishResult,
+  stalePublish,
   type ServiceDefinition,
   type SkillDefinition,
   type StepFlowDefinition,
@@ -103,6 +105,7 @@ export class PostgresDefinitionStore implements DefinitionStore {
     actor: string,
     reason: string,
     files: PromptFiles = {},
+    options: PublishOptions = {},
   ): Promise<PublishResult> {
     if (reason.trim().length === 0)
       return { ok: false, errors: [{ path: '', message: 'a reason is required' }] };
@@ -143,7 +146,12 @@ export class PostgresDefinitionStore implements DefinitionStore {
         'select max(version) as version from definition_versions where kind = $1 and tenant = $2 and id = $3',
         [definition.kind, tenant, id],
       );
-      const version = (last.rows[0]?.version ?? 0) + 1;
+      const latest = last.rows[0]?.version ?? 0;
+      if (options.expectedLatest !== undefined && options.expectedLatest !== latest) {
+        await client.query('rollback');
+        return stalePublish(options.expectedLatest, latest);
+      }
+      const version = latest + 1;
       const stored = { ...definition, metadata: { ...definition.metadata, version } } as Definition;
       const inserted = await client.query<VersionRow>(
         `insert into definition_versions (kind, tenant, id, version, definition, files, published_by, published_at, reason)

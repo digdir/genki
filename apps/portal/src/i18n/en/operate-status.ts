@@ -54,6 +54,8 @@ export const statusArea = {
       'A request for more quota is already waiting. Digdir must answer it before you can send a new one.',
     doneTitle: 'The request is sent to Digdir.',
     doneText: 'It also shows in Log, Changes.',
+    approved: 'Digdir approved {amount} million tokens per month {when}.',
+    rejected: 'Digdir turned the request down {when}: {reason}',
     pending:
       'Waiting for Digdir to answer the request for {amount} million tokens per month, sent {when}.',
     overviewText:
@@ -81,7 +83,7 @@ export const statusArea = {
   usageParts: {
     ingestion: 'Ingestion into document collections',
     ingestionSub:
-      'Tokens used to read documents into the document collections. Counts towards the quota.',
+      'Tokens used to read documents into the document collections. Does not count towards the quota.',
   },
   account: {
     email: 'Email',

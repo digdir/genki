@@ -1,3 +1,4 @@
+import type { FlagState } from '@genai/contracts/flags';
 import { translator, type Locale, type T } from './i18n';
 import { definitionKindSegments } from './definition-kinds';
 import { tenantLabel } from './tenant-names';
@@ -63,6 +64,8 @@ import type {
   KnowledgeEndpointItem,
   KnowledgeEngine,
   StoredSecret,
+  FlagChange,
+  OperatorFlag,
   PlatformSecret,
   AccessRequest,
   AnswerSource,
@@ -76,6 +79,8 @@ import type {
   ServiceAnswer,
   SkillShareRequest,
   TenantKey,
+  QuotaRequestRow,
+  QuotaRequestState,
 } from './types';
 
 /** GET /operator/state-register: the register and how the state accounts differ (ADR 0058). */
@@ -101,7 +106,7 @@ export type DemoApp = 'portal' | 'console' | 'workspace';
 export type DemoAudience = 'municipality' | 'state-agency' | 'internal';
 
 export type RecordingStatus = 'queued' | 'running' | 'recorded' | 'failed' | 'cancelled';
-export type RecorderMode = 'job' | 'workflow';
+export type RecorderMode = 'job' | 'scheduled' | 'workflow';
 
 export interface DemoRecording {
   id: string;
@@ -366,7 +371,13 @@ export const createApiClient = ({
     supportHeld: (tenant: string) => held.has(tenant),
     actor: () => actorName?.(),
     listTenants: async (signal?: AbortSignal, options: { usage?: boolean } = {}) => {
-      const tenants = (await call<{ data: Tenant[] }>('GET', '/operator/tenants', { signal })).data;
+      const tenants = (
+        await call<{ data: (Tenant & { usedTokens?: number; monthlyTokens?: number })[] }>(
+          'GET',
+          '/operator/tenants',
+          { signal },
+        )
+      ).data;
       const usage =
         options.usage && tenants.length
           ? await monthUsage(
@@ -374,7 +385,7 @@ export const createApiClient = ({
               signal,
             )
           : new Map<string, MonthUsage['usage']>();
-      return tenants.map((t) => {
+      return tenants.map(({ usedTokens, monthlyTokens, ...t }): Tenant => {
         const used = usage.get(t.orgNumber);
         return {
           ...t,
@@ -385,6 +396,8 @@ export const createApiClient = ({
                 costNok: used.costMicroNok === null ? null : used.costMicroNok / 1_000_000,
               }
             : {}),
+          ...(usedTokens === undefined ? {} : { tokensMillions: usedTokens / 1_000_000 }),
+          ...(monthlyTokens === undefined ? {} : { quotaMillions: monthlyTokens / 1_000_000 }),
         };
       });
     },
@@ -1061,6 +1074,15 @@ export const createApiClient = ({
         body: price,
         headers: { 'change-reason': reason },
       }),
+    flags: async (signal?: AbortSignal) =>
+      (await call<{ data: OperatorFlag[] }>('GET', '/operator/flags', { signal })).data,
+    myFlags: async (signal?: AbortSignal) =>
+      (await call<{ data: FlagState[] }>('GET', '/me/flags', { signal })).data,
+    setFlag: (key: string, change: FlagChange, reason: string) =>
+      call<FlagState>('PUT', `/operator/flags/${encodeURIComponent(key)}`, {
+        body: change,
+        headers: { 'change-reason': reason },
+      }),
     platformSecrets: async (signal?: AbortSignal) =>
       (await call<{ data: PlatformSecret[] }>('GET', '/operator/secrets', { signal })).data,
     saveSecret: (name: string, value: string, reason: string) =>
@@ -1072,6 +1094,25 @@ export const createApiClient = ({
       call<unknown>('DELETE', `/operator/secrets/${encodeURIComponent(name)}`, {
         headers: { 'change-reason': reason },
       }),
+    quotaRequests: async (signal?: AbortSignal, state?: QuotaRequestState) =>
+      (
+        await call<{ data: QuotaRequestRow[] }>(
+          'GET',
+          `/operator/quota-requests${state ? `?state=${state}` : ''}`,
+          { signal },
+        )
+      ).data,
+    decideQuotaRequest: (
+      tenant: string,
+      id: string,
+      decision: Exclude<QuotaRequestState, 'pending'>,
+      reason: string,
+    ) =>
+      call<QuotaRequestRow>(
+        'POST',
+        `/operator/quota-requests/${encodeURIComponent(tenant)}/${encodeURIComponent(id)}/decision`,
+        { body: { decision }, headers: { 'change-reason': reason } },
+      ),
     audit: (tenant: string, session: string, signal?: AbortSignal) =>
       call<AuditEntry[]>('GET', `/tenants/${encodeURIComponent(tenant)}/audit`, {
         signal,

@@ -1,5 +1,5 @@
 import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
-import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises';
+import { link, mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -443,6 +443,25 @@ describe('the playground tool', () => {
       for (const r of refused) expect(r.isError).toBe(true);
     },
   );
+
+  it('sends no document that is a hard link, since it can point at a file outside the folder', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'genki-admin-outside-'));
+    const root = await mkdtemp(join(tmpdir(), 'genki-admin-root-'));
+    await writeFile(join(outside, 'secret.txt'), 'hemmelig');
+    await link(join(outside, 'secret.txt'), join(root, 'brev.txt'));
+    const sent: unknown[] = [];
+
+    const refused = await runTool(
+      adminTools,
+      'run_playground',
+      { service: 'hjelper', question: 'Les brevet', documentPath: 'brev.txt' },
+      { client: fakeClient(sent), spend: { budgetNok: 50, spentNok: 0 }, documentRoot: root },
+    );
+
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toMatch(/hard link/);
+    expect(sent).toEqual([]);
+  });
 
   it('wraps what others wrote as untrusted data', async () => {
     const sent: unknown[] = [];

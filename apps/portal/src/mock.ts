@@ -13,6 +13,7 @@ import { hooksMock } from './mock/hooks';
 import { triggersMock } from './mock/triggers';
 import { environmentsMock } from './mock/environments';
 import { preferencesMock } from './mock/preferences';
+import { flagsMock } from './mock/flags';
 import { onboardingMock } from './mock/onboarding';
 import { playgroundMock } from './mock/playground';
 import { qualityMock } from './mock/quality';
@@ -560,6 +561,7 @@ const featureMocks = {
   triggers: triggersMock,
   environments: environmentsMock,
   preferences: preferencesMock,
+  flags: flagsMock,
   platformStatus: platformStatusMock,
   access: accessMock,
   devtools: devtoolsMock,
@@ -920,6 +922,7 @@ export const mockFetch = (
     featureMocks.hooks(extras.features?.hooks),
     featureMocks.triggers(extras.features?.triggers),
     featureMocks.preferences(extras.features?.preferences),
+    featureMocks.flags(extras.features?.flags),
     featureMocks.platformStatus(
       extras.features?.platformStatus ??
         (import.meta.env.MODE === 'test'

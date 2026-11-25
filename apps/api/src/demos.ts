@@ -47,6 +47,18 @@ export const browserCommands = [
   'pushstate',
 ] as const;
 
+export const commandFlags = [
+  '--name',
+  '--exact',
+  '--text',
+  '--timeout',
+  '--load',
+  '--url',
+] as const;
+
+const flagsAllowed = (c: string[]) =>
+  c.slice(1).every((p) => !p.startsWith('-') || (commandFlags as readonly string[]).includes(p));
+
 export const demoIdPattern = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const languageTag = /^[a-z]{2,3}(?:-[A-Z]{2})?$/;
 
@@ -65,6 +77,9 @@ const command = z
   .max(20)
   .refine((c) => (browserCommands as readonly string[]).includes(c[0] ?? ''), {
     message: `a command starts with one of ${browserCommands.join(', ')}`,
+  })
+  .refine(flagsAllowed, {
+    message: `a command takes only the flags ${commandFlags.join(', ')}`,
   })
   .refine((c) => c[0] !== 'open' || isHttps(c[1] ?? ''), {
     message: 'open needs an https or localhost URL',

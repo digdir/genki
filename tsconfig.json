@@ -20,6 +20,9 @@
       "path": "packages/definitions"
     },
     {
+      "path": "packages/block-import"
+    },
+    {
       "path": "packages/providers-postgres"
     },
     {

@@ -81,6 +81,7 @@ output:
         inputTokens?: { number: { min: 0 } }
         outputTokens?: { number: { min: 0 } }
         cachedInputTokens?: { number: { min: 0 } }
+        cacheWriteTokens?: { number: { min: 0 } }
         requests?: { number: { min: 0 } }
         costMicroNok?: { number: { min: 0 } }
     servedModel: plain

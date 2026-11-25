@@ -1026,7 +1026,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     storage.write('flags', ['filters-right-panel']);
     drawKa(storage);
     await screen.findByRole('textbox', { name: questionField });
-    expect(screen.getByRole('navigation', { name: 'Tidligere samtaler' })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'Tråder' })).toBeTruthy();
     expect(
       screen.getByRole('complementary', { name: 'Filter og kilder', hidden: true }),
     ).toBeTruthy();
@@ -1050,7 +1050,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
         expect.anything(),
       ),
     );
-    fireEvent.click(await screen.findByRole('button', { name: /Tidligere samtaler/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Tråder/ }));
     const signOut = await screen.findByRole('link', { name: 'Logg ut' });
     expect(signOut.getAttribute('href')).toBe('/auth/logout');
     signOut.addEventListener('click', (event) => event.preventDefault());
@@ -1071,7 +1071,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
         threadInUrl
       />,
     );
-    fireEvent.click(await screen.findByRole('button', { name: /Tidligere samtaler/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Tråder/ }));
     expect(await screen.findByText('Testidentitet: test')).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Logg ut' })).toBeNull();
   });
@@ -1110,7 +1110,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     fireEvent.click(settings);
     expect(`${location.pathname}${location.search}${location.hash}`).toBe('/innstillinger');
     expect(await screen.findByRole('heading', { level: 1, name: 'Innstillinger' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /Tidligere samtaler/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Tråder/ }));
     const thread = await screen.findByRole('link', { name: /En gammel tråd/ });
     expect(thread.getAttribute('href')).toBe('/?t=t-old');
     fireEvent.click(thread);
@@ -1133,7 +1133,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     expect(`${location.pathname}${location.search}${location.hash}`).toBe(
       '/prov?layout=abc#innstillinger',
     );
-    fireEvent.click(screen.getByRole('button', { name: /Tidligere samtaler/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Tråder/ }));
     const thread = await screen.findByRole('link', { name: /En gammel tråd/ });
     expect(thread.getAttribute('href')).toBe('/prov?layout=abc&t=t-old');
   });
@@ -1236,12 +1236,12 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
   const entries = () =>
     [...(menu()?.querySelectorAll('li .uib-shell-profile-label') ?? [])].map((e) => e.textContent);
 
-  it('draws the cards frame, with no top bar, and lands on «Tidligere samtaler», titled so, not on the filter', async () => {
+  it('draws the cards frame, with no top bar, and lands on «Tråder», titled so, not on the filter', async () => {
     drawNext();
     await opened();
     expect(document.querySelector('.uib-shell')?.getAttribute('data-frame')).toBe('cards');
-    const nav = screen.getByRole('navigation', { name: 'Tidligere samtaler og filter' });
-    expect(within(nav).getByRole('heading', { level: 2, name: 'Tidligere samtaler' })).toBeTruthy();
+    const nav = screen.getByRole('navigation', { name: 'Tråder og filter' });
+    expect(within(nav).getByRole('heading', { level: 2, name: 'Tråder' })).toBeTruthy();
     expect(within(nav).getByRole('link', { name: 'Ny tråd' })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Kunnskapsassistenten' })).toBeNull();
   });
@@ -1320,8 +1320,8 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
   it('folds the threads’ panel to its button and «Ny tråd», with no avatar (dev-navbar)', async () => {
     drawNext();
     await opened();
-    fireEvent.click(screen.getByRole('button', { name: 'Skjul tidligere samtaler og filter' }));
-    const nav = screen.getByRole('navigation', { name: 'Tidligere samtaler og filter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Skjul tråder og filter' }));
+    const nav = screen.getByRole('navigation', { name: 'Tråder og filter' });
     const rail = nav.querySelector<HTMLElement>('.uib-shell-rail');
     if (!rail) throw new Error('The folded panel has no rail');
     expect(within(rail).getByRole('link', { name: 'Ny tråd' }).getAttribute('href')).toBe('/');
@@ -1331,14 +1331,14 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
       within(nav)
         .getAllByRole('button')
         .map((b) => b.getAttribute('aria-label')),
-    ).toEqual(['Vis tidligere samtaler og filter']);
+    ).toEqual(['Vis tråder og filter']);
   });
 
   it('starts a new thread from «Ny tråd» on the folded threads’ panel', async () => {
     drawNext();
     fireEvent.click(await screen.findByRole('link', { name: 'En gammel tråd' }));
     await screen.findByRole('heading', { level: 1, name: 'En gammel tråd' });
-    fireEvent.click(screen.getByRole('button', { name: 'Skjul tidligere samtaler og filter' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Skjul tråder og filter' }));
     const rail = document.querySelector<HTMLElement>('.uib-shell-rail');
     fireEvent.click(within(rail as HTMLElement).getByRole('link', { name: 'Ny tråd' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Ny tråd' })).toBeTruthy();
@@ -1349,7 +1349,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     drawNext();
     fireEvent.click(await screen.findByRole('link', { name: 'En gammel tråd' }));
     await screen.findByRole('heading', { level: 1, name: 'En gammel tråd' });
-    fireEvent.click(screen.getByRole('button', { name: 'Skjul tidligere samtaler og filter' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Skjul tråder og filter' }));
     const rail = document.querySelector<HTMLElement>('.uib-shell-rail');
     const link = within(rail as HTMLElement).getByRole('link', { name: 'Ny tråd' });
     // Records whether the page took each click; `stay` then keeps jsdom from following the link.
@@ -1453,7 +1453,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
   it('puts the reader at the panel’s foot, pinned, in place of «Innlogget som» and the links', async () => {
     drawNext();
     await opened();
-    const nav = screen.getByRole('navigation', { name: 'Tidligere samtaler og filter' });
+    const nav = screen.getByRole('navigation', { name: 'Tråder og filter' });
     const button = within(nav).getByRole('button', { name: 'Kari Marie Nordmann' });
     expect(button.closest('.uib-shell-foot')?.parentElement?.classList).toContain('uib-shell-box');
     expect(document.querySelector('.uib-threads-signed-in')).toBeNull();
@@ -1898,8 +1898,8 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     await opened();
     expect(document.querySelector('.uib-shell')?.hasAttribute('data-frame')).toBe(false);
     expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['KA']);
-    expect(screen.queryByRole('heading', { level: 2, name: 'Tidligere samtaler' })).toBeNull();
-    expect(screen.getByRole('button', { name: /Tidligere samtaler/ })).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Tråder' })).toBeNull();
+    expect(screen.getByRole('button', { name: /Tråder/ })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Innstillinger' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Kari Marie Nordmann' })).toBeNull();
     expect(document.querySelector('.uia-chat')?.getAttribute('style')).toBeNull();
@@ -1908,7 +1908,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
   it('leaves «Kunnskapsassistenten»’s folded panels and answer as they were: no rails, a card with no label', async () => {
     drawNext(reader, fromTemplate('knowledge-assistant').layout);
     await ask();
-    fireEvent.click(screen.getByRole('button', { name: 'Skjul tidligere samtaler og filter' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Skjul tråder og filter' }));
     expect(document.querySelector('.uib-shell-rail, .uib-shell-rail-foot')).toBeNull();
     expect(screen.queryByRole('link', { name: 'Ny tråd' })).toBeNull();
     expect(document.querySelector('.uib-answer')?.hasAttribute('data-plain')).toBe(false);
@@ -1998,7 +1998,7 @@ describe('the filter in the next look (dev-filter-panel)', () => {
 
   it('draws the filter as its own panel in the threads’ card, for the next question', async () => {
     drawNext(counted().api);
-    const nav = await screen.findByRole('navigation', { name: 'Tidligere samtaler og filter' });
+    const nav = await screen.findByRole('navigation', { name: 'Tråder og filter' });
     expect(nav.contains(filterPanel())).toBe(true);
     expect(within(filterPanel()).getByRole('heading', { level: 2, name: 'Filter' })).toBeTruthy();
     expect(within(filterPanel()).getByText('Gjelder neste spørsmål')).toBeTruthy();
@@ -2288,9 +2288,9 @@ describe('the filter in the next look (dev-filter-panel)', () => {
     };
     const card = () =>
       screen
-        .getByRole('navigation', { name: 'Tidligere samtaler og filter' })
+        .getByRole('navigation', { name: 'Tråder og filter' })
         .querySelector<HTMLElement>('.uib-shell-box');
-    const edge = (name = 'Endre bredde på tidligere samtaler og filter') =>
+    const edge = (name = 'Endre bredde på tråder og filter') =>
       screen.getByRole('separator', { name });
     const columns = () =>
       filterPanel()
@@ -2333,7 +2333,7 @@ describe('the filter in the next look (dev-filter-panel)', () => {
         zones: { ...zones, primary: zones.primary.filter(({ block }) => block !== 'filter') },
       });
       const threads = await screen.findByRole('separator', {
-        name: /^Endre bredde på tidligere samtaler/,
+        name: /^Endre bredde på tråder/,
       });
       expect(threads.getAttribute('aria-valuenow')).toBe('252');
       expect(threads.getAttribute('aria-valuemin')).toBe('252');
@@ -3069,6 +3069,114 @@ describe('the whole document in Dokumentvisning, from the host', () => {
         ),
       );
       expect(documentFile.mock.calls.map(([, , at]) => at?.file)).toEqual([main, attachment]);
+    });
+  });
+
+  // The hosted assistant: the file is asked for at genki's own route, through createGenkiApi.
+  describe('through genki’s file route', () => {
+    const route = '/genki/api/datasets/kudos/documents/42/file';
+    const main = 'https://kudos.dfo.no/dokument/42/filer/hoved.pdf';
+    const attachment = 'https://kudos.dfo.no/dokument/42/filer/vedlegg.pdf';
+    afterEach(() => vi.unstubAllGlobals());
+    // genki's route, answering each question for a file as `answer` says.
+    const genki = (answer: (file: string | null) => object) =>
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string) => {
+          const address = new URL(url, 'http://localhost');
+          if (address.pathname !== route) return new Response('{}', { status: 404 });
+          return new Response(JSON.stringify(answer(address.searchParams.get('file'))), {
+            headers: { 'content-type': 'application/json' },
+          });
+        }),
+      );
+    const viaGenki = () =>
+      createGenkiApi({ baseUrl: '/genki', tenant: 'digdir', profile: { corpora: { kudos: {} } } })
+        .documentFile;
+    // One stored answer citing the document `cited`, at the excerpts its footnotes name.
+    const citing = (cited: typeof source & { url?: string }) => {
+      const { api } = fakeApi();
+      api.loadThread = vi.fn(async () => ({
+        title: 'En gammel tråd',
+        turns: [
+          {
+            id: 'm1',
+            question: 'Hva er fast?',
+            askedAt: 1,
+            answer: {
+              text: cited.excerpts.map((_, i) => `Utdrag [${i + 1}].`).join(' '),
+              status: 'complete' as const,
+              sources: [cited],
+              markers: cited.excerpts.map((e, i) => ({
+                marker: String(i + 1),
+                chunkId: e.chunkId,
+                documentId: '42',
+              })),
+              created: 2,
+            },
+          },
+        ],
+      }));
+      return api;
+    };
+    const kudosDocument = {
+      ...source,
+      url: 'https://kudos.dfo.no/dokument/42',
+      excerpts: [
+        { chunkId: 'c1', text: 'Fast.', page: 12, url: `${main}#page=12` },
+        { chunkId: 'c4', text: 'Vedlegget.', page: 3, url: `${attachment}#page=3` },
+      ],
+    };
+
+    it("opens a PDF on a listed site at the excerpt's page in its own file, not the document's first PDF", async () => {
+      genki((file) => ({ kind: 'served', mediaType: 'application/pdf', source: file ?? main }));
+      await open(viaGenki(), withView(), citing(kudosDocument));
+      fireEvent.click(footnotes()[1] as HTMLElement);
+      await waitFor(() =>
+        expect(frame()?.getAttribute('src')).toBe(
+          `${route}?file=${encodeURIComponent(attachment)}#page=3`,
+        ),
+      );
+    });
+
+    it('shows the excerpts and a «Les dokumentet» link and frames nothing for a PDF on a site not on the list', async () => {
+      const elsewhere = 'https://annen.example/dokument/42.pdf';
+      genki(() => ({ kind: 'source', url: elsewhere, mediaType: 'application/pdf' }));
+      await open(viaGenki(), withView(), citing({ ...source, url: elsewhere }));
+      expect(await screen.findByText('Hele dokumentet kan ikke vises her.')).toBeTruthy();
+      expect(excerptsShown()).toBe(1);
+      expect(screen.getByRole('link', { name: /^Les dokumentet/ }).getAttribute('href')).toBe(
+        elsewhere,
+      );
+      expect(frame()).toBeNull();
+    });
+
+    it('still shows an uploaded PDF', async () => {
+      genki(() => ({ kind: 'original', mediaType: 'application/pdf', name: 'notat.pdf' }));
+      await open(viaGenki());
+      await waitFor(() => expect(frame()?.getAttribute('src')).toBe(route));
+      expect(excerptsShown()).toBe(0);
+    });
+
+    it('shows a document that is not a PDF as its excerpts in order', async () => {
+      genki(() => ({
+        kind: 'original',
+        mediaType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        name: 'notat.docx',
+      }));
+      const word = {
+        ...source,
+        excerpts: [
+          { chunkId: 'c1', text: 'Det tredje avsnittet.', position: 3 },
+          { chunkId: 'c2', text: 'Det første avsnittet.', position: 1 },
+        ],
+      };
+      await open(viaGenki(), withView(), citing(word));
+      expect(await screen.findByText('Hele dokumentet kan ikke vises her.')).toBeTruthy();
+      expect(
+        [...document.querySelectorAll('.uib-document-view-quote')].map((q) => q.textContent),
+      ).toEqual(['Det første avsnittet.', 'Det tredje avsnittet.']);
+      expect(frame()).toBeNull();
     });
   });
 });
@@ -4962,7 +5070,7 @@ describe('the assistant in English', () => {
     await waitFor(() =>
       expect(document.querySelector('.uib-answer')?.textContent).toContain('Reporting is fixed'),
     );
-    expect(screen.getByRole('navigation', { name: 'Previous chats and filter' })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'Threads and filter' })).toBeTruthy();
     expect(document.title).toBe('An old thread – KA');
     expect(words().filter((text) => norwegian.test(text))).toEqual([]);
   });

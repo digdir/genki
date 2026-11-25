@@ -1,0 +1,35 @@
+import type { Translation } from '@genai/i18n';
+import type { quotaRequests as source } from '../nb/quotaRequests';
+
+export const quotaRequests = {
+  title: 'Quota requests',
+  loading: 'Loading the quota requests',
+  noneTitle: 'No quota requests',
+  showAll: 'Show all quota requests',
+  colTenant: 'Organisation',
+  colRequested: 'Asks for',
+  colUsage: 'Quota used now',
+  colAskedBy: 'From',
+  colReason: 'Reason',
+  colStatus: 'Status',
+  colActions: 'Actions',
+  perMonth: '{amount} m per month',
+  usedOfQuota: '{used} of {quota} m ({percent}%)',
+  notAvailable: 'Not available',
+  statePending: 'Waiting',
+  stateApproved: 'Approved',
+  stateRejected: 'Rejected',
+  decidedBy: '{name}, {when}: {reason}',
+  approve: 'Approve',
+  reject: 'Reject',
+  approveFor: 'Approve the quota request from {name}',
+  rejectFor: 'Reject the quota request from {name}',
+  approveTitle: 'Approve {amount} m tokens per month for {name}',
+  rejectTitle: 'Reject the quota request from {name}',
+  approveText:
+    'The quota is set to what they ask for. The organisation sees the answer and the reason.',
+  rejectText: 'The quota stays as it is. The organisation sees the answer and the reason.',
+  approvedFlash: 'Approved. {name} now has {amount} m tokens per month.',
+  rejectedFlash: 'The quota request from {name} is rejected.',
+  decideFailed: 'The decision was not saved. Try again.',
+} satisfies Translation<typeof source>;

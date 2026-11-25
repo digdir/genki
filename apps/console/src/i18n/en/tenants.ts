@@ -33,6 +33,8 @@ export const tenants = {
   colTokens: 'Tokens in {month}',
   colCost: 'Cost',
   colActions: 'Actions',
+  quotaRequested: 'Asks for more quota',
+  quotaRequestedFor: 'Asks for more quota: see the quota request from {name}',
   nearQuota: 'Near the quota',
   servicesFor: 'Services for {name}',
   diagnosticsFor: 'Diagnostics for {name}',

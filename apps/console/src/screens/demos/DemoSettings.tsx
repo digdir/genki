@@ -7,6 +7,13 @@ import { useT } from '../../i18n';
 import { ErrorState, Loading } from '../../states';
 import { DialogError, Flash, PageHeader, ReasonDialog, useFlash } from '../../ui';
 import { actorName, Crumbs, useFileUrl } from './shared';
+import { VoiceSelect } from './VoiceSelect';
+
+const recorderText = {
+  job: 'demos.settingsRecorderJob',
+  scheduled: 'demos.settingsRecorderScheduled',
+  workflow: 'demos.settingsRecorderWorkflow',
+} as const;
 
 const settingsOf = (view: DemoSettingsView): DemoSettings => ({
   voice: view.voice,
@@ -66,9 +73,7 @@ const Form = ({
               when: f.dateTime(new Date(view.updatedAt), 'medium'),
             })
           : t('demos.settingsDefaults')}{' '}
-        {view.recorder === 'job'
-          ? t('demos.settingsRecorderJob')
-          : t('demos.settingsRecorderWorkflow')}
+        {t(recorderText[view.recorder])}
       </Paragraph>
       <div className="demo-detail">
         <form
@@ -78,11 +83,12 @@ const Form = ({
             setSaving(true);
           }}
         >
-          <Textfield
+          <VoiceSelect
+            id="demo-settings-voice"
             label={t('demos.settingsVoice')}
             description={t('demos.settingsVoiceHelp')}
             value={draft.voice}
-            onChange={(e) => set({ voice: e.target.value })}
+            onChange={(voice) => set({ voice })}
           />
           <fieldset className="demo-viewport">
             <legend>{t('demos.settingsViewport')}</legend>

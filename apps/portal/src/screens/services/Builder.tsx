@@ -122,6 +122,7 @@ import { checkFlowInputs } from '../../data/flow-inputs';
 import { hasOperationSteps, operationKindsIn } from '../../data/step-operations';
 import { PublishedTest } from '../service/PublishedTest';
 import { serviceAddress } from '../service/service-address';
+import { activeAddress } from '../service/ServiceAddress';
 import { DraftOutdated, type ConflictPick } from './DraftOutdated';
 import { VersionsTab, type VersionItem } from './VersionsTab';
 import { YamlTab } from './YamlTab';
@@ -977,10 +978,21 @@ export const Builder = ({
     [api, tenant, id, draftBar, Boolean(liveVersion), live, isNew, showsInUse],
     { keepPreviousFor: id },
   );
+  const [claimedHostnames] = useAsync(
+    async (signal) =>
+      (draftBar && liveVersion) || (live && !isNew && showsInUse)
+        ? api.serviceHostnames(tenant, id, signal).catch(() => undefined)
+        : undefined,
+    [api, tenant, id, draftBar, Boolean(liveVersion), live, isNew, showsInUse],
+    { keepPreviousFor: id },
+  );
   const address =
-    hostedClients.status === 'ready'
+    (claimedHostnames.status === 'ready'
+      ? activeAddress(claimedHostnames.data?.hostnames ?? [])
+      : undefined) ??
+    (hostedClients.status === 'ready'
       ? serviceAddress(hostedClients.data?.clients ?? [], id)
-      : undefined;
+      : undefined);
   const inUseVersion =
     pointers.status === 'ready'
       ? (pointers.data?.environments?.find((e) => e.name === productionEnvironment)?.version ??

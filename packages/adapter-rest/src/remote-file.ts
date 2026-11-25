@@ -50,23 +50,30 @@ const httpsPdf = (raw: unknown, mimetype: unknown, origins: readonly string[]) =
   return url.href;
 };
 
+/** A PDF the record lists, with the size the record gives it, if any. */
+export interface ListedPdf {
+  url: string;
+  size?: number;
+}
+
 export const listedPdf = (
   document: DocumentSummary,
   asked: string | undefined,
   origins: readonly string[],
-): string | undefined => {
+): ListedPdf | undefined => {
   const files = Array.isArray(document.fields.files) ? (document.fields.files as unknown[]) : [];
-  const listed = files.flatMap((file) => {
+  const listed = files.flatMap((file): ListedPdf[] => {
     if (typeof file !== 'object' || file === null) return [];
-    const { url, mimetype } = file as { url?: unknown; mimetype?: unknown };
+    const { url, mimetype, size } = file as { url?: unknown; mimetype?: unknown; size?: unknown };
     const pdf = httpsPdf(url, mimetype, origins);
-    return pdf ? [pdf] : [];
+    if (!pdf) return [];
+    return [typeof size === 'number' && Number.isFinite(size) ? { url: pdf, size } : { url: pdf }];
   });
   const own = httpsPdf(document.url, undefined, origins);
-  const all = own ? [...listed, own] : listed;
+  const all = own ? [...listed, { url: own }] : listed;
   if (asked === undefined) return all[0];
   const wanted = normalised(asked);
-  return wanted === undefined ? undefined : all.find((url) => url === wanted);
+  return wanted === undefined ? undefined : all.find((pdf) => pdf.url === wanted);
 };
 
 const normalised = (raw: string) => {

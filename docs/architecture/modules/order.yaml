@@ -23,6 +23,7 @@
 - parity
 - kernel
 - definitions
+- block-import
 - strategy-single-call
 - strategy-rag
 - strategy-agent-loop

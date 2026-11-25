@@ -857,19 +857,20 @@ describe.skipIf(!hasAz && !process.env.CI)('API revisions in the template', () =
       'assistant-host-infra',
     ];
     expect(Object.keys(conditions).sort()).toEqual(
-      [...infrastructure, 'containerapps', 'assistant-host'].sort(),
+      [...infrastructure, 'containerapps', 'assistant-host', 'hostname-binder'].sort(),
     );
     for (const name of infrastructure)
       expect(conditions[name], name).toContain("variables('infra')");
     expect(conditions.containerapps).toBe('');
     expect(conditions['assistant-host']).toBe("[parameters('assistantHostEnabled')]");
+    expect(conditions['hostname-binder']).toBe("[variables('binderJobOn')]");
   });
 
   it('reads no infrastructure module’s outputs unless it deploys the infrastructure', () => {
     // Azure evaluates the references of a module it does not deploy, and the record of an old one can be gone.
     const reads = expressions.filter((e) =>
       Object.keys(conditions)
-        .filter((name) => name !== 'containerapps' && name !== 'assistant-host')
+        .filter((name) => !['containerapps', 'assistant-host', 'hostname-binder'].includes(name))
         .some((name) => e.includes(`resourceId('Microsoft.Resources/deployments', '${name}')`)),
     );
     expect(reads.length).toBeGreaterThan(10);

@@ -5,6 +5,10 @@ export const problems = {
   notSignedIn: 'You are not signed in',
   invalidWrittenStandard: 'Invalid written standard',
   invalidLanguage: 'Invalid language',
+  flagUnknown: 'There is no such feature',
+  flagOperatorOnly: "Only the platform's operators switch this feature on and off",
+  flagInvalidChange: 'Give on as true, false or null',
+  flagPersonalReason: 'Changed for myself under New features',
   reasonTooShort: 'Write a reason of at least {count} characters.',
   toolNotFound: 'The connection has no such tool to decide on',
   invalidRequest: 'Invalid request',
@@ -233,4 +237,18 @@ export const problems = {
   platformSecretUsedBy: '{kind} {id} uses the platform secret',
   platformSecretUsesUnknown:
     'Genki cannot check what uses the platform secret, so it is not deleted',
+  blockStudioOff: 'Code blocks are off for you until the new design tools are on',
+  blockStudioOffForTenant:
+    'The new design tools are not on for the whole organisation that owns the design element',
+  blockShareNotCode: 'Only an edition with code goes to review before it is shared with everyone',
+  blockShareAlreadyShared: 'The edition is already shared with everyone',
+  blockSharePending: 'The design element already has an edition in review',
+  blockShareNotPending: 'The request has already been decided',
+  blockShareNotFound: 'No share request found',
+  blockShareOperatorOnly: 'Only platform operators approve and decline sharing with everyone',
+  blockShareApproved: 'Shared with everyone after review: {reason}',
+  blockShareNotLatest: 'Only the newest edition of the block can be sent to review',
+  blockShareStale:
+    'A newer edition of the block has been saved since this request; the organisation must ask again',
+  requestTooLarge: 'The request is larger than {limit}',
 } satisfies Translation<typeof source>;

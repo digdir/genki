@@ -40,7 +40,10 @@ const RefBlockPayload = z
     frame: z
       .object({ url: z.string(), sha256: z.string(), height: z.number().int().optional() })
       .optional()
-      .openapi({ description: 'A code edition, only when a block origin is set up' }),
+      .openapi({
+        description:
+          'A code edition, only when a block origin is set up and blockStudio is on for the caller, or for the organisation of the service that draws it',
+      }),
   })
   .openapi('RefBlockPayload');
 
@@ -88,6 +91,18 @@ const BlockDetail = BlockSummary.omit({ editions: true })
         inUse: z.number().int().optional(),
       }),
     ),
+    review: z
+      .object({
+        status: z.enum(['pending', 'approved', 'declined']),
+        version: z.number().int(),
+        at: z.string(),
+        reason: z.string().optional(),
+      })
+      .optional()
+      .openapi({
+        description:
+          "The newest request to share the organisation's own block, while blockStudio is on for the caller",
+      }),
   })
   .openapi('BlockDetail');
 
@@ -180,7 +195,58 @@ export const blockRoutes: RouteConfig[] = [
       403: problem(
         "Missing manage-services, or the block's metadata.tenant is another organisation",
       ),
+      413: problem('urn:genai:problem:definition-too-large: the body is over 4 MiB'),
       422: problem('The definition is not a Block'),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/blocks/import',
+    summary:
+      "Turn a design's HTML into a proposed first edition of the organisation's declarative block. A design that needs code is refused for now. Nothing the design points to is fetched, and nothing is saved. Only while blockStudio is on for the caller. Needs manage-services",
+    request: {
+      params: z.object({ tenant }),
+      body: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: z.object({
+              html: z.string().openapi({ description: 'The design as HTML text, at most 512 KiB' }),
+              id: z
+                .string()
+                .regex(/^[a-z0-9][a-z0-9-]{0,62}$/)
+                .openapi({ example: 'kildekort' }),
+              title: z.string().optional(),
+            }),
+          },
+        },
+      },
+    },
+    responses: {
+      200: json(
+        z.object({
+          tier: z.enum(['declarative']),
+          definition: z.record(z.string(), z.unknown()),
+          files: z.record(z.string(), z.string()),
+          report: z.array(
+            z.object({
+              kind: z.enum(['converted', 'dropped', 'text', 'data']),
+              code: z.string(),
+              where: z.string(),
+              message: z.string(),
+            }),
+          ),
+        }),
+        'The proposed block, valid as it stands, and what the import did',
+      ),
+      403: problem('Missing manage-services'),
+      404: problem(
+        'Not signed in, blockStudio is off for the caller, or the tenant is not reachable for the caller',
+      ),
+      413: problem('The body is larger than 1 MiB'),
+      422: problem(
+        'The html, id or title is missing or malformed, or the design is larger than 512 KiB, empty, needs code, or is not valid as a block',
+      ),
     },
   }),
   createRoute({

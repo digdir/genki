@@ -7,20 +7,26 @@ color: '#f2b84b'
 status: App
 packages:
   - '@genai/admin-mcp'
-summary: A local MCP server that lets coding agents list, read, validate, publish and try services through the API, as the person who logged in.
+summary: A local MCP server that lets coding agents list, read, validate, publish and try services, and make design elements, through the API, as the person who logged in.
 description:
   Runs on the developer's machine over stdio and calls the public API only (ADR 0046). The
   person logs in through the browser with Ansattporten, PKCE and a localhost callback, and the token
   stays in memory. Tools list services, read a definition as YAML, validate and publish it with a
   change reason, run the playground with a compared setup, search a dataset as a run does, and list
-  and read runs with their timelines. Secrets, keys, rights and operator routes are left out.
+  and read runs with their timelines. While blockStudio is on for the person, design element tools
+  list, read, validate, preview and import Blocks and save an edition for the organisation; none
+  shares, pins or publishes. Secrets, keys, rights and operator routes are left out.
 responsibilities:
   - MCP tools over the definition, playground, dataset search and task routes
   - Browser login with PKCE and a localhost callback
   - Validate before publish, and a required change reason
+  - Design element tools behind blockStudio that never share with everyone, pin into a service or publish one
 files:
   - apps/admin-mcp/src/main.ts
   - apps/admin-mcp/src/tools.ts
+  - apps/admin-mcp/src/kit.ts
+  - apps/admin-mcp/src/block-tools.ts
+  - apps/admin-mcp/src/block-outline.ts
   - apps/admin-mcp/src/login.ts
   - apps/admin-mcp/src/protocol.ts
 input: Tool calls from a coding agent

@@ -122,12 +122,6 @@ export const clientDefinition = z
           path: ['spec', 'hosted'],
           message: 'only a browser client is hosted, since people log in to it',
         });
-      if (names.length === 0)
-        ctx.addIssue({
-          code: 'custom',
-          path: ['spec', 'hostnames'],
-          message: 'a hosted client needs at least one hostname',
-        });
     } else if (names.length > 0)
       ctx.addIssue({
         code: 'custom',
@@ -163,7 +157,7 @@ export const clientDefinition = z
         message:
           'a browser client logs users in, so it needs an OIDC registration unless it is hosted and logs in through genki’s platform login',
       });
-    if (client.spec.allowedOrigins.length === 0 && names.length === 0)
+    if (client.spec.allowedOrigins.length === 0 && !client.spec.hosted)
       ctx.addIssue({
         code: 'custom',
         path: ['spec', 'allowedOrigins'],

@@ -21,7 +21,9 @@ import {
 import { fixtureSchemaFetch } from '@genai/schema-forms/fixtures';
 import { exampleDescriptors, operationsMock } from './screens/models/operations-mock';
 import type { demosMock } from './screens/demos/mock';
+import { flagsMock } from './screens/flags/mock';
 import { queueMock } from './screens/queue/mock';
+import { quotaRequestsMock } from './screens/quota-requests/mock';
 import { searchEnginesMock } from './screens/search-engines/mock';
 import { translator } from './i18n';
 import { reasonProblem, reasonTooShort } from './reason';
@@ -332,6 +334,7 @@ export const mockFetch = (
   audit: AuditEntry[] = exampleOperatorAudit,
 ): typeof fetch => {
   const sessions = new Map<string, SupportSession>();
+  const flagRoutes = flagsMock(json);
   let shared = structuredClone(exampleShared);
   let queue = structuredClone(exampleLabelQueue);
   const sinkLabels = structuredClone(exampleSinkLabels);
@@ -340,6 +343,27 @@ export const mockFetch = (
   let current = structuredClone(models);
   let blocks = structuredClone(exampleBlocks);
   let onboarding = structuredClone(exampleOnboarding);
+  let blockReviews = [
+    {
+      id: '6f1c2b0e-8c1a-4a55-9d0c-2f7d3c1e9a10',
+      tenant: '974760673',
+      tenantName: 'Brønnøysundregistrene',
+      block: 'figur',
+      version: 2,
+      status: 'pending',
+      requestedBy: 'Kari Nordmann',
+      requestedAt: '2026-11-20T09:30:00Z',
+      reason: 'Flere virksomheter trenger samme figur.',
+      title: { nb: 'Figur', en: 'Figure' },
+      reads: ['answer.text', 'sources.title'],
+      events: ['ask', 'notify'],
+      bytes: 412,
+      sha256: 'a'.repeat(64),
+      sourceFiles: [{ path: 'block/source/figur.ts', bytes: 96 }],
+      bundle: "genki.onRender(() => { document.body.innerHTML = '<script>alert(1)</script>'; });",
+      sources: { 'block/source/figur.ts': 'export const figur = "<script>alert(1)</script>";' },
+    },
+  ];
   const tenantValues = new Map<string, Record<string, unknown>>();
   const tenantKeys = new Map<string, TenantKey[]>([
     [
@@ -733,6 +757,7 @@ export const mockFetch = (
   };
 
   const decisions = queueMock(record);
+  const quotaRoutes = quotaRequestsMock(json, recordAction);
   const endpointKey = '/operator/catalog/entries?kind=model-endpoint';
   const operations = operationsMock(
     () => current,
@@ -922,6 +947,10 @@ export const mockFetch = (
       const s = sessions.get(headers.get('support-session') ?? '');
       return s && s.tenant === tenant ? s : undefined;
     };
+    const flagged = flagRoutes(path, method, reason, body);
+    if (flagged) return flagged;
+    const quota = quotaRoutes(path, method, url.searchParams, reason, body);
+    if (quota) return quota;
 
     if (path === '/operator/onboarding/requests' && method === 'GET') {
       const queued =
@@ -934,6 +963,26 @@ export const mockFetch = (
           ...queued,
         ],
       });
+    }
+    if (path === '/operator/block-share-requests' && method === 'GET') {
+      return json({
+        data: blockReviews.map(({ bundle: _bundle, sources: _sources, ...row }) => row),
+      });
+    }
+    const blockReview = /^\/operator\/block-share-requests\/([^/]+)(?:\/(approve|decline))?$/.exec(
+      path,
+    );
+    if (blockReview) {
+      const found = blockReviews.find((r) => r.id === blockReview[1]);
+      if (!found) return notFound();
+      if (method === 'GET' && !blockReview[2]) return json(found);
+      if (method === 'POST' && blockReview[2]) {
+        if (!reason) return needReason();
+        blockReviews = blockReviews.filter((r) => r !== found);
+        return blockReview[2] === 'approve'
+          ? json({ status: 'approved', version: found.version + 1 })
+          : json({ status: 'declined' });
+      }
     }
     const onboardingDecision = /^\/operator\/onboarding\/requests\/(\d{9})\/decision$/.exec(path);
     if (onboardingDecision && method === 'POST') {

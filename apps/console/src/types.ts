@@ -234,6 +234,7 @@ export interface AuditEntry {
   actorOrg?: string;
   tenantName?: string;
   actionLabel?: string;
+  flag?: { key: string; on?: boolean | null; person?: { self: boolean; name?: string } };
 }
 
 export interface SettingInfo {
@@ -1195,4 +1196,45 @@ export interface AnswerSource {
 export interface ServiceAnswer {
   text: string;
   sources: AnswerSource[];
+}
+
+export interface OperatorFlag {
+  key: string;
+  description: string;
+  owner: string;
+  removeBy: string;
+  selfService: boolean;
+  rows: {
+    tenant: string;
+    tenantName?: string;
+    person?: { issuer: string; subject: string };
+    personName?: string;
+    on: boolean;
+    by: string;
+    byName?: string;
+    at: string;
+    reason: string;
+  }[];
+}
+
+export interface FlagChange {
+  tenant: string;
+  person?: { issuer: string; subject: string };
+  on: boolean | null;
+}
+
+export type QuotaRequestState = 'pending' | 'approved' | 'rejected';
+
+export interface QuotaRequestRow {
+  id: string;
+  tenant: string;
+  tenantName: string;
+  monthlyTokens: number;
+  reason: string;
+  requestedBy: string;
+  requestedByName?: string;
+  requestedAt: string;
+  state: QuotaRequestState;
+  decision?: { by: string; byName?: string; at: string; reason: string };
+  quota?: { usedTokens: number; monthlyTokens: number };
 }

@@ -18,6 +18,9 @@
   "include": ["src", "src/**/*.json"],
   "references": [
     {
+      "path": "../../packages/contracts"
+    },
+    {
       "path": "../../packages/docs-site"
     },
     {

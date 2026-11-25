@@ -135,6 +135,21 @@ export const profile = defineNamespace({
   themeAuto: 'Følg systemet',
   savedHere: 'Lagret i denne nettleseren',
   notStored: 'Valget gjelder til du lukker siden. Nettleseren lar oss ikke lagre det.',
+  newFeatures: 'Nye funksjoner',
+  newFeaturesLead:
+    'Prøv funksjoner før de er ferdige. Valget ditt gjelder bare deg og kan endres når som helst.',
+  flagBlockStudio: 'Ny utforming',
+  flagBlockStudioText:
+    'Bygg og endre designelementer til tjenestens utforming, med eller uten kode.',
+  flagForYou: 'Slå på for meg',
+  flagForOrganisation: 'På for hele {name}',
+  flagFollowOrganisation: 'Følg virksomhetens valg',
+  flagOnForYou: 'På for deg',
+  flagOffForYou: 'Av for deg',
+  flagOnForOrganisation: 'På for hele virksomheten',
+  flagOn: 'På',
+  flagOff: 'Av',
+  flagFailed: 'Endringen ble ikke lagret. Prøv igjen.',
 });
 
 export const notFound = defineNamespace({

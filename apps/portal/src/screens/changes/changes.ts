@@ -26,6 +26,9 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.block.decide': 'changes.blockDecide',
   'platform.block.request': 'changes.blockRequest',
   'platform.block.settings': 'changes.blockSettings',
+  'platform.block-share.request': 'changes.blockShareRequest',
+  'platform.block-share.approve': 'changes.blockShareApprove',
+  'platform.block-share.decline': 'changes.blockShareDecline',
   'platform.catalog.delete': 'changes.catalogDelete',
   'platform.catalog.publish': 'changes.catalogPublish',
   'platform.provider-object.incident': 'changes.providerObjectIncident',
@@ -49,6 +52,13 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.task.review.edit': 'changes.taskReviewEdit',
   'platform.clients.remove': 'changes.clientsRemove',
   'platform.client.hosted': 'changes.clientHosted',
+  'platform.client.hostnames.add': 'changes.clientHostnameAdd',
+  'platform.client.hostnames.remove': 'changes.clientHostnameRemove',
+  'platform.client.hostnames.bind': 'changes.clientHostnameBind',
+  'platform.client.hostnames.verify': 'changes.clientHostnameVerify',
+  'platform.client.hostnames.expire': 'changes.clientHostnameExpire',
+  'platform.client.hostnames.lapse': 'changes.clientHostnameLapse',
+  'platform.service.address': 'changes.serviceAddress',
   'platform.clients.save': 'changes.clientsSave',
   'platform.dataset.enrichment.apply': 'changes.datasetEnrichmentApply',
   'platform.dataset.enrichment.revert': 'changes.datasetEnrichmentRevert',
@@ -154,6 +164,8 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.trigger.pause': 'changes.triggerPause',
   'platform.incident.resolve': 'changes.incidentResolve',
   'platform.incident.save': 'changes.incidentSave',
+  'platform.flag.person': 'changes.flagChangedAny',
+  'platform.flag.tenant': 'changes.flagChangedAny',
   'platform.quota.decide': 'changes.quotaDecide',
   'platform.quota.request': 'changes.quotaRequest',
   'platform.run.cancel': 'changes.taskCancel',
@@ -184,6 +196,7 @@ const areaPrefixes: [string, ChangeArea][] = [
   ['platform.setting.', 'settings'],
   ['platform.quota.', 'settings'],
   ['platform.incident.', 'settings'],
+  ['platform.flag.', 'settings'],
   ['platform.default.', 'settings'],
   ['platform.tracing.', 'settings'],
   ['platform.secrets.', 'settings'],
@@ -276,13 +289,54 @@ const targetOf = (
   };
 };
 
+const flagNameKeys: Record<string, PlainKey> = { blockStudio: 'profile.flagBlockStudio' };
+
+const flagTarget = /^flag:([^:]+)(?::person:.+)?$/;
+
+const flagSentence = (entry: AuditRow, t: T, tenantName: string) => {
+  const key = flagTarget.exec(entry.target)?.[1];
+  if (!key) return undefined;
+  const nameKey = flagNameKeys[key];
+  const name = nameKey ? t(nameKey) : key;
+  const person = entry.action === 'platform.flag.person';
+  const on = entry.flag?.on;
+  const who = entry.flag?.person?.name ?? '';
+  const forWhom = !person
+    ? tenantName
+      ? t('changes.flagForTenant', { organisation: tenantName })
+      : t('changes.flagForTenantUnnamed')
+    : entry.flag?.person?.self
+      ? t('changes.flagForSelf')
+      : who
+        ? t('changes.flagForPerson', { who })
+        : '';
+  if (on === null)
+    return person
+      ? entry.flag?.person?.self
+        ? t('changes.flagUnsetSelf', { name })
+        : who
+          ? t('changes.flagUnsetPerson', { who, name })
+          : t('changes.flagUnsetSomeone', { name })
+      : t('changes.flagUnsetTenant', { name });
+  const verb = on === undefined ? 'changes.flagChanged' : on ? 'changes.flagOn' : 'changes.flagOff';
+  return [t(verb, { name }), forWhom].filter(Boolean).join(' ');
+};
+
 export const changeParts = (
   entry: AuditRow,
   t: T = nbT,
   serviceName: (id: string) => string | undefined = () => undefined,
   catalogName: CatalogName = () => undefined,
   datasetRoute: DatasetRoute = () => undefined,
+  tenantName = '',
 ) => {
+  const flag = flagSentence(entry, t, tenantName);
+  if (flag)
+    return {
+      label: flag,
+      target: undefined,
+      suffix: entry.outcome === 'rejected' ? t('changes.rejectedSuffix') : '',
+    };
   const key = actionKeys[entry.action];
   const target = targetOf(entry, t, serviceName, catalogName, datasetRoute);
   const version = /^Service:[^@]+@(\d+)$/.exec(entry.target)?.[1];
@@ -304,8 +358,15 @@ export const changeParts = (
   };
 };
 
-export const changeText = (entry: AuditRow, t: T = nbT) => {
-  const { label, target, suffix } = changeParts(entry, t);
+export const changeText = (entry: AuditRow, t: T = nbT, tenantName = '') => {
+  const { label, target, suffix } = changeParts(
+    entry,
+    t,
+    () => undefined,
+    () => undefined,
+    () => undefined,
+    tenantName,
+  );
   return `${target ? `${label} ${target.text}` : label}${suffix}`;
 };
 

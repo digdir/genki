@@ -75,6 +75,11 @@ param appEnv = {
   GATEWAY_USAGE_APP_CLIENT_ID: '334f8fa1-437e-4b84-bceb-f320fb60f3ed'
   GATEWAY_USAGE_APP_TENANT: '008e560f-08af-4cec-a056-b35447503991'
   GATEWAY_USAGE_APP_SCOPE: 'api://3eca282e-8b4d-49d6-991f-79849dffd652/.default'
+  // The sites whose cited PDFs the API serves in Dokumentvisning (ADR 0066, infra/README.md).
+  GENAI_DOCUMENT_FILE_ORIGINS: 'https://kudos.dfo.no'
+  // The demo-recorder workflow records what the console queues (ADR 0059).
+  GENAI_DEMO_RECORDER: 'scheduled'
+  DEMO_RECORDER_KEY_SHA256: readEnvironmentVariable('DEMO_RECORDER_KEY_SHA256', '')
 }
 
 // What issue 464 turns when genki-test becomes production; the resource names stay genai-test-*.
@@ -120,9 +125,12 @@ param hostedHostnames = [
 // genki's platform login client for hosted Clients without oidc (infra/README.md, "Platform login").
 param platformLoginClientId = 'dde98722-c952-4172-a5d6-10bdf721680f'
 param platformLoginStage = 'certificates'
+param hostnameBinderEnabled = readEnvironmentVariable('HOSTNAME_BINDER_ENABLED', 'true') != 'false'
+param hostnameBinderAudience = readEnvironmentVariable('HOSTNAME_BINDER_AUDIENCE', '')
 
 param alertsEnabled = true
 param alertEmails = readEnvironmentVariable('ALERT_EMAILS', '')
+param alertMailMaxSeverity = 1
 param healthCheckFrequencySeconds = 300
 // Off until the deploy identity may write a rule scoped to the subscription (infra/README.md, "Backups").
 param serviceHealthAlertEnabled = false

@@ -121,7 +121,22 @@ export const compileStoredServices = (
 
 export type PublishResult =
   | { ok: true; version: PublishedVersion; capabilities: CompiledCapability[] }
-  | { ok: false; errors: ValidationError[] };
+  | { ok: false; errors: ValidationError[]; stale?: true };
+
+export interface PublishOptions {
+  expectedLatest?: number;
+}
+
+export const stalePublish = (expected: number, latest: number): PublishResult => ({
+  ok: false,
+  stale: true,
+  errors: [
+    {
+      path: 'metadata.version',
+      message: `version ${latest} was published since version ${expected}`,
+    },
+  ],
+});
 
 export interface DefinitionStore {
   publish(
@@ -129,6 +144,7 @@ export interface DefinitionStore {
     actor: string,
     reason: string,
     files?: PromptFiles,
+    options?: PublishOptions,
   ): Promise<PublishResult>;
   get(
     kind: Definition['kind'],
@@ -316,6 +332,7 @@ export class InMemoryDefinitionStore implements DefinitionStore {
     actor: string,
     reason: string,
     files: PromptFiles = {},
+    options: PublishOptions = {},
   ): Promise<PublishResult> {
     if (reason.trim().length === 0)
       return { ok: false, errors: [{ path: '', message: 'a reason is required' }] };
@@ -345,7 +362,10 @@ export class InMemoryDefinitionStore implements DefinitionStore {
     if (errors.length > 0) return { ok: false, errors };
 
     const history = this.#definitions.get(key) ?? [];
-    const version = (history.at(-1)?.version ?? 0) + 1;
+    const latest = history.at(-1)?.version ?? 0;
+    if (options.expectedLatest !== undefined && options.expectedLatest !== latest)
+      return stalePublish(options.expectedLatest, latest);
+    const version = latest + 1;
     const stored: PublishedVersion = {
       version,
       definition: structuredClone({ ...definition, metadata: { ...definition.metadata, version } }),

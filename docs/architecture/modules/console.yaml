@@ -17,6 +17,7 @@ responsibilities:
   - New kinds of model API from descriptors (upload, try with made-up data, record fixtures from
     tries, approve or withdraw), kind maturity and processor records (ADR 0047)
   - Operations and support sessions
+  - Review code design elements before they are shared with everyone, approve or decline with a reason (ADR 0069)
 files:
   - apps/console/src/App.tsx
   - apps/console/src/api.ts
@@ -50,4 +51,11 @@ edges:
     witness:
       file: apps/console/src/screens/Schemas.tsx
       imports: '@genai/schema-forms'
+  - to: kernel
+    label: Feature flag keys and states from the flag registry
+    kind: call
+    target: call
+    witness:
+      file: apps/console/src/flags.tsx
+      imports: '@genai/contracts'
 keywords: console operator digdir entra models tenants operations

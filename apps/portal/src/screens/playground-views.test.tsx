@@ -90,8 +90,13 @@ const makeService = () =>
   fireEvent.click(screen.getByRole('button', { name: 'Lag en tjeneste av dette' }));
 
 /** Turns off the first design element that can be turned off; gives its name. */
+const blockSwitches = async () => {
+  fireEvent.click(await screen.findByRole('radio', { name: 'Designelementer' }));
+  return screen.findAllByRole('switch');
+};
+
 const turnOffABlock = async () => {
-  const on = (await screen.findAllByRole('switch')).find(
+  const on = (await blockSwitches()).find(
     (s) => (s as HTMLInputElement).checked && !(s as HTMLInputElement).disabled,
   ) as HTMLInputElement;
   const name = on.getAttribute('aria-label') ?? on.closest('label')?.textContent ?? '';
@@ -101,7 +106,7 @@ const turnOffABlock = async () => {
 };
 
 const switchNamed = async (name: string) =>
-  (await screen.findAllByRole('switch')).find(
+  (await blockSwitches()).find(
     (s) => (s.getAttribute('aria-label') ?? s.closest('label')?.textContent ?? '') === name,
   ) as HTMLInputElement;
 

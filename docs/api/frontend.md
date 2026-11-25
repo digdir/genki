@@ -15,7 +15,7 @@ The rules for these routes are in the [Frontend contract](../frontend-contract.m
 1. `GET /v1/models`: the services the credential may use, with `title`, `_default`, `_chat` and `input_fields`.
 2. `GET /v1/models/{id}/schema`: the input form and the output shape, when the service has a form.
 3. `GET /api/facets?tenant=&dataset-config-key=&fields=`: filter values, when the service has `_datasets`.
-   To open a cited document, `GET /api/datasets/{id}/documents/{doc}/file`: its uploaded original, or a redirect to its source's address when the dataset's documents come from a remote source. A PDF the document's record lists on an origin the operator allows in `GENAI_DOCUMENT_FILE_ORIGINS` is read and served by genki instead, inline and framable by the same site; `?file=<address>` asks for one listed file, such as an excerpt's (ADR 0066). Send `Accept: application/json` to learn what it is first (`kind`, `mediaType`, `url` for a source, `source` for a file genki serves). The original is only for callers of the organisation that owns the dataset, or a frontend of its service.
+   To open a cited document, `GET /api/datasets/{id}/documents/{doc}/file`: its uploaded original, or a redirect to its source's address when the dataset's documents come from a remote source. A PDF the document's record lists on an origin the operator allows in `GENAI_DOCUMENT_FILE_ORIGINS` is read and served by genki instead, inline and framable by the same site; `?file=<address>` asks for one listed file, such as an excerpt's; a file whose record gives a size over 50 MiB is `404 document_file_not_found` (ADR 0066). Send `Accept: application/json` to learn what it is first (`kind`, `mediaType`, `url` for a source, `source` for a file genki serves). The original is only for callers of the organisation that owns the dataset, or a frontend of its service.
 4. `POST /v1/chat/completions` with `"genai_conversation": true` and `"stream": true`.
    When the person stops the answer, `POST /v1/tasks/{task}/cancel` with the `genai-task` header value. Closing the stream does not stop the run.
 5. `GET /api/conversations` and `GET /api/conversations/{id}` to list and reopen.
@@ -25,9 +25,17 @@ The rules for these routes are in the [Frontend contract](../frontend-contract.m
 
 genki's assistant host draws a service on a hostname of its own (ADR 0061). It needs no credential to start:
 
-1. `GET /v1/hosts/{hostname}`: the tenant, service, environment, name, menu and page titles, and `login` with `issuer`, `clientId`, `audience` and `altinnResource` (for a Client without `oidc`, genki's platform login client and the API audience). Any hostname that is not active, including one opened to another tenant, gets `404` with `urn:genai:problem:host-not-found`. Cached 60 seconds.
+1. `GET /v1/hosts/{hostname}`: the tenant, service, environment, name, menu and page titles, and `login` with `issuer`, `clientId`, `audience` and `altinnResource` (for a Client without `oidc`, genki's platform login client and the API audience). Any hostname that is not active, including one opened to another tenant, gets `404` with `urn:genai:problem:host-not-found`. Cached 60 seconds. A hostname claimed as a redirect answers only `{ hostname, redirectTo }`; the host then sends the browser to the same path on `redirectTo`.
 2. `GET /v1/hosts/{hostname}/pages/{id}`: a page's title and Markdown body.
 3. After login with the named client: `GET /v1/models`, then `GET /v1/models/{id}/interface` for the layout, then the sequence above.
+
+## Addresses for a hosted service
+
+A hostname is opened by an operator's parameter file or by a claim of the service owner (ADR 0062). A claim is served, and a signed-in page on it admitted, only while it is `active`.
+
+- `GET /tenants/{tenant}/services/{service}/hostnames`: the service's addresses with their state (`pending-dns`, `binding`, `active`, `failed`, `lapsed`, `removing`, `removed`) and, for an own domain, the three DNS records it needs.
+- `POST /tenants/{tenant}/services/{service}/address` gives a published service with an assistant interface genki's name for it, `<label>.apps.<zone>`, where the label is the service id, or `<label>-2` and on when that is taken. The first publish does this by itself.
+- `POST /tenants/{tenant}/clients/{client}/hostnames` with `{ hostname, environment | redirectTo, reason }` claims an own domain for a hosted Client; `DELETE .../hostnames/{hostname}` removes it. Both need `manage-services`.
 
 ## On genki's assistant host
 

@@ -32,6 +32,8 @@ export const tenants = defineNamespace({
   colTokens: 'Tokens i {month}',
   colCost: 'Kostnad',
   colActions: 'Handlinger',
+  quotaRequested: 'Ber om mer kvote',
+  quotaRequestedFor: 'Ber om mer kvote: se kvoteforespørselen fra {name}',
   nearQuota: 'Nær kvoten',
   servicesFor: 'Tjenester for {name}',
   diagnosticsFor: 'Diagnostikk for {name}',

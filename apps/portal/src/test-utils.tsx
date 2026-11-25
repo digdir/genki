@@ -3,10 +3,14 @@ import { expect } from 'vitest';
 import { App } from './App';
 import { mockAnsattporten } from './auth';
 import { exampleOrganisations, mockFetch } from './mock';
+import type { FlagsMockOptions } from './mock/flags';
 
 document.getAnimations ??= () => [];
 
 export const kari = { name: 'Kari Nordmann', organisations: exampleOrganisations };
+
+export const withFlags = (flags: FlagsMockOptions) =>
+  mockFetch(undefined, undefined, undefined, undefined, { features: { flags } });
 
 export const go = (path: string) =>
   act(() => {

@@ -71,7 +71,7 @@ describe('a Block definition', () => {
   const code = {
     tier: 'code',
     builtIn: undefined,
-    code: { sha256: 'a'.repeat(64), bytes: 120, reads: ['question.text'] },
+    code: { sha256: 'a'.repeat(64), bytes: 12, reads: ['question.text'] },
   };
 
   it('takes a template only on a declarative block and code only on a code block', () => {
@@ -91,15 +91,6 @@ describe('a Block definition', () => {
 
   it('accepts a declarative block once a host draws it', () => {
     expect(errorsOf(chatBlock(declarative))).toEqual([]);
-  });
-
-  it('refuses a code block until a host draws it', () => {
-    expect(errorsOf(chatBlock(code))).toEqual([
-      {
-        path: 'spec.tier',
-        message: 'code blocks are not drawn by any host yet; only built-in blocks can be published',
-      },
-    ]);
   });
 
   it('refuses a file under block/ on anything but a code block', () => {
@@ -198,5 +189,34 @@ describe('a Block definition', () => {
     ]);
     expect(await store.list('991825827')).toEqual([{ kind: 'Block', id: 'chat' }]);
     expect(await store.capabilities()).toEqual([]);
+  });
+
+  it('refuses a publish when a newer edition is published between the check and the publish', async () => {
+    const store = new InMemoryDefinitionStore(plugins);
+    await store.publish(chatBlock(), 'employee:test:kari', 'første utgave');
+    await store.publish(chatBlock(), 'employee:test:kari', 'andre utgave');
+
+    const stale = await store.publish(
+      chatBlock(),
+      'operator:test:drift',
+      'delt med alle',
+      {},
+      {
+        expectedLatest: 1,
+      },
+    );
+    const current = await store.publish(
+      chatBlock(),
+      'operator:test:drift',
+      'delt med alle',
+      {},
+      {
+        expectedLatest: 2,
+      },
+    );
+
+    expect(stale).toMatchObject({ ok: false, stale: true });
+    expect(current.ok).toBe(true);
+    expect((await store.versions('Block', '991825827', 'chat')).length).toBe(3);
   });
 });

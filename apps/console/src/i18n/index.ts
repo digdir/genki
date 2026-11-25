@@ -10,6 +10,7 @@ import { defineTranslations } from '@genai/i18n/react';
 import { api as enApi } from './en/api';
 import { atlas as enAtlas } from './en/atlas';
 import { audit as enAudit } from './en/audit';
+import { blockReviews as enBlockReviews } from './en/blockReviews';
 import { buildingBlocks as enBuildingBlocks } from './en/buildingBlocks';
 import { catalog as enCatalog } from './en/catalog';
 import { common as enCommon } from './en/common';
@@ -20,6 +21,7 @@ import { diagnostics as enDiagnostics } from './en/diagnostics';
 import { endpoints as enEndpoints } from './en/endpoints';
 import { datasetSearch as enDatasetSearch } from './en/datasetSearch';
 import { engineSwitch as enEngineSwitch } from './en/engineSwitch';
+import { flags as enFlags } from './en/flags';
 import { models as enModels } from './en/models';
 import { modelOperations as enModelOperations } from './en/modelOperations';
 import { modelParameters as enModelParameters } from './en/modelParameters';
@@ -30,6 +32,7 @@ import { policies as enPolicies } from './en/policies';
 import { quality as enQuality } from './en/quality';
 import { qualityMatrix as enQualityMatrix } from './en/qualityMatrix';
 import { queue as enQueue } from './en/queue';
+import { quotaRequests as enQuotaRequests } from './en/quotaRequests';
 import { schemas as enSchemas } from './en/schemas';
 import { searchEngines as enSearchEngines } from './en/searchEngines';
 import { settings as enSettings } from './en/settings';
@@ -46,6 +49,7 @@ import { transfer as enTransfer } from './en/transfer';
 import { api } from './nb/api';
 import { atlas } from './nb/atlas';
 import { audit } from './nb/audit';
+import { blockReviews } from './nb/blockReviews';
 import { buildingBlocks } from './nb/buildingBlocks';
 import { catalog } from './nb/catalog';
 import { common } from './nb/common';
@@ -54,6 +58,7 @@ import { connections } from './nb/connections';
 import { apis } from './nb/apis';
 import { datasetSearch } from './nb/datasetSearch';
 import { engineSwitch } from './nb/engineSwitch';
+import { flags } from './nb/flags';
 import { diagnostics } from './nb/diagnostics';
 import { endpoints } from './nb/endpoints';
 import { models } from './nb/models';
@@ -66,6 +71,7 @@ import { policies } from './nb/policies';
 import { quality } from './nb/quality';
 import { qualityMatrix } from './nb/qualityMatrix';
 import { queue } from './nb/queue';
+import { quotaRequests } from './nb/quotaRequests';
 import { schemas } from './nb/schemas';
 import { searchEngines } from './nb/searchEngines';
 import { settings } from './nb/settings';
@@ -84,6 +90,7 @@ export const nb = defineCatalogue({
   api,
   atlas,
   audit,
+  blockReviews,
   buildingBlocks,
   catalog,
   common,
@@ -94,6 +101,7 @@ export const nb = defineCatalogue({
   diagnostics,
   endpoints,
   engineSwitch,
+  flags,
   models,
   modelOperations,
   modelParameters,
@@ -104,6 +112,7 @@ export const nb = defineCatalogue({
   quality,
   qualityMatrix,
   queue,
+  quotaRequests,
   schemas,
   searchEngines,
   settings,
@@ -123,6 +132,7 @@ export const en = {
   api: enApi,
   atlas: enAtlas,
   audit: enAudit,
+  blockReviews: enBlockReviews,
   buildingBlocks: enBuildingBlocks,
   catalog: enCatalog,
   common: enCommon,
@@ -133,6 +143,7 @@ export const en = {
   diagnostics: enDiagnostics,
   endpoints: enEndpoints,
   engineSwitch: enEngineSwitch,
+  flags: enFlags,
   models: enModels,
   modelOperations: enModelOperations,
   modelParameters: enModelParameters,
@@ -143,6 +154,7 @@ export const en = {
   quality: enQuality,
   qualityMatrix: enQualityMatrix,
   queue: enQueue,
+  quotaRequests: enQuotaRequests,
   schemas: enSchemas,
   searchEngines: enSearchEngines,
   settings: enSettings,

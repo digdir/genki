@@ -29,6 +29,16 @@
       "source": "./src/block-fixtures.ts",
       "types": "./dist/block-fixtures.d.ts",
       "default": "./dist/block-fixtures.js"
+    },
+    "./block-bridge": {
+      "source": "./src/block-bridge.ts",
+      "types": "./dist/block-bridge.d.ts",
+      "default": "./dist/block-bridge.js"
+    },
+    "./flags": {
+      "source": "./src/flags.ts",
+      "types": "./dist/flags.d.ts",
+      "default": "./dist/flags.js"
     }
   },
   "scripts": {

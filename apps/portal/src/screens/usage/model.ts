@@ -110,6 +110,7 @@ const unpriced = (u: UsageTotals): UsageTotals => (u.priced === true ? u : { ...
 export const trialRow = 'trial-runs';
 export const gatewayRow = 'gateway';
 export const ingestionRow = 'ingestion';
+export const internalRow = 'internal-services';
 
 const less = (a: UsageTotals, b: UsageTotals): UsageTotals => {
   const priced = (nothing(a) || isPriced(a)) && (nothing(b) || isPriced(b));
@@ -130,6 +131,7 @@ const folded = (
   byService: Record<string, UsageTotals>,
   total: UsageTotals,
   ingestion?: UsageTotals,
+  internal?: UsageTotals,
 ) => {
   const out: Record<string, UsageTotals> = {};
   let trial: UsageTotals | undefined;
@@ -140,8 +142,13 @@ const folded = (
   const counted = Object.values(byService).reduce((a, u) => add(a, u), zeroUsage());
   const gateway = gatewayOf(total);
   const read = ingestion && nonEmpty(ingestion) ? ingestion : undefined;
-  const rest = less(less(less(total, counted), gateway ?? zeroUsage()), read ?? zeroUsage());
+  const hidden = internal && nonEmpty(internal) ? internal : undefined;
+  const rest = [gateway, read, hidden].reduce<UsageTotals>(
+    (left, part) => less(left, part ?? zeroUsage()),
+    less(total, counted),
+  );
   if (nonEmpty(rest)) trial = add(trial ?? zeroUsage(), { ...rest, runs: 0 });
+  if (hidden) out[internalRow] = hidden;
   if (trial) out[trialRow] = trial;
   if (read) out[ingestionRow] = { ...read, runs: 0 };
   if (gateway && nonEmpty(gateway)) out[gatewayRow] = { ...gateway, runs: 0 };
@@ -150,12 +157,13 @@ const folded = (
 
 export const withTrialRows = (report: UsageReport): UsageReport => {
   const daily = report.daily.map((d) =>
-    d.byService ? { ...d, byService: folded(d.byService, d.usage, d.ingestion) } : d,
+    d.byService ? { ...d, byService: folded(d.byService, d.usage, d.ingestion, d.internal) } : d,
   );
   const whole = folded(
     Object.fromEntries(report.byService.map((s) => [s.service, s.usage])),
     report.totals,
     report.ingestion?.usage,
+    report.internal?.usage,
   );
   const titles = new Map(report.byService.map((s) => [s.service, s.title]));
   return {
@@ -167,6 +175,12 @@ export const withTrialRows = (report: UsageReport): UsageReport => {
     }),
   };
 };
+
+/** Tokens the monthly quota counts: ingestion and the AI gateway are outside it. */
+export const quotaTokensOf = (day: UsageReport['daily'][number]) =>
+  tokensOf(day.usage) -
+  tokensOf(day.ingestion ?? zeroUsage()) -
+  tokensOf(gatewayOf(day.usage) ?? zeroUsage());
 
 export const monthUsage = (report: UsageReport) => {
   const now = today(report);
@@ -182,6 +196,7 @@ export const monthUsage = (report: UsageReport) => {
     .reduce((a, [, u]) => add(a, u), zeroUsage());
   return {
     total,
+    quotaTokens: days.reduce((n, d) => n + quotaTokensOf(d), 0),
     services,
     trial: parts[trialRow] ?? zeroUsage(),
     ingestion: parts[ingestionRow] ?? zeroUsage(),
@@ -293,7 +308,7 @@ export const categories = (
     });
   }
   const ids = report.byService.map((s) => s.service);
-  const extra = [trialRow, ingestionRow, gatewayRow];
+  const extra = [internalRow, trialRow, ingestionRow, gatewayRow];
   const ordered = [
     ...usageServices.filter((s) => ids.includes(s.id)).map((s) => s.id),
     ...ids.filter((id) => !usageServices.some((s) => s.id === id) && !extra.includes(id)),
@@ -303,6 +318,14 @@ export const categories = (
     const color = COLORS[i % COLORS.length] ?? '';
     if (id === trialRow)
       return { id, label: t('usage.trialRuns'), sub: t('usage.trialRunsSub'), color, extra: true };
+    if (id === internalRow)
+      return {
+        id,
+        label: t('usage.internalServices'),
+        sub: t('usage.internalServicesSub'),
+        color,
+        extra: true,
+      };
     if (id === ingestionRow)
       return {
         id,
@@ -488,18 +511,30 @@ export const monthStatus = (
   const now = today(report);
   const current = series(report, 0, 'service', f, t).filter((b) => !b.future);
   const days = byDate(report);
-  const dayTotals = Array.from(
-    { length: now.day },
-    (_, i) => days.get(isoDate(now.year, now.month, i + 1))?.usage ?? zeroUsage(),
+  const thisMonth = Array.from({ length: now.day }, (_, i) =>
+    days.get(isoDate(now.year, now.month, i + 1)),
   );
-  const used = dayTotals.reduce((n, u) => n + tokensOf(u), 0);
+  const dayTotals = thisMonth.map((d) => d?.usage ?? zeroUsage());
+  const counted = thisMonth.map((d) => (d ? quotaTokensOf(d) : 0));
+  const countedSum = counted.reduce((n, tokens) => n + tokens, 0);
+  const tenantWide = report.project === undefined && report.environment === undefined;
+  const used = (tenantWide ? report.quota?.usedTokens : undefined) ?? countedSum;
   const spent = dayTotals.reduce((a, u) => add(a, u), zeroUsage());
   const cost = knownCostOf(spent);
   const costAtLeast = isLowerBound(spent);
-  const full = dayTotals.slice(0, -1);
-  const average = full.length ? full.reduce((n, u) => n + tokensOf(u), 0) / full.length : used;
+  const full = counted.slice(0, -1);
+  const average = full.length ? full.reduce((n, tokens) => n + tokens, 0) / full.length : used;
   const remaining = daysIn(now.year, now.month) - now.day;
   const forecast = used + average * remaining;
+  const spentTokens = tokensOf(spent);
+  const fullSpent = dayTotals.slice(0, -1).reduce((n, u) => n + tokensOf(u), 0);
+  const spentAverage = full.length ? fullSpent / full.length : spentTokens;
+  const forecastCost =
+    cost === null
+      ? null
+      : spentTokens
+        ? (cost * (spentTokens + spentAverage * remaining)) / spentTokens
+        : 0;
   const perService = aggregate(current);
   const byModel = aggregate(series(report, 0, 'model', f, t).filter((b) => !b.future));
   const norway = Object.entries(byModel)
@@ -511,8 +546,9 @@ export const monthStatus = (
     cost,
     costAtLeast,
     forecast,
+    forecastCost,
     runs,
-    norwayShare: models && used ? norway / used : null,
+    norwayShare: models && spentTokens ? norway / spentTokens : null,
     perService,
     daysInMonth: daysIn(now.year, now.month),
     quota,

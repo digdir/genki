@@ -138,7 +138,7 @@ export const ServiceSubNav = ({
   return (
     <LinkTabs
       label={t(tabLabels[tab])}
-      className="service-subnav"
+      className="service-subnav sticky-rail"
       orientation="vertical"
       current={current}
       tabs={links.map((s) => ({

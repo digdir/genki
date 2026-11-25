@@ -7,6 +7,7 @@ export type ReasonFreeWrite = 'run' | 'check' | 'personal' | 'feedback' | 'appli
 
 export const reasonFreeWrites: Record<string, ReasonFreeWrite> = {
   'PUT /tenants/:tenant/me/preferences': 'personal',
+  'PUT /tenants/:tenant/me/flags/:key': 'personal',
   'POST /api/conversations': 'personal',
   'PUT /api/conversations/:id': 'personal',
   'DELETE /api/conversations/:id': 'personal',
@@ -26,6 +27,7 @@ export const reasonFreeWrites: Record<string, ReasonFreeWrite> = {
   'POST /tenants/:tenant/definitions/complete': 'check',
   'POST /definitions/validate': 'check',
   'POST /tenants/:tenant/blocks/preview': 'check',
+  'POST /tenants/:tenant/blocks/import': 'check',
   'POST /tenants/:tenant/tracing/connections/:id/check': 'check',
   'POST /tenants/:tenant/services/:id/batch-runs/estimate': 'check',
   'POST /tenants/:tenant/services/:id/assistant/turns': 'run',
@@ -53,9 +55,14 @@ export const reasonFreeWrites: Record<string, ReasonFreeWrite> = {
   'POST /operator/quality/sink-labels/fetch': 'check',
 };
 
-export const bodyReasonWrites = new Set(['POST /support-sessions']);
+export const bodyReasonWrites = new Set([
+  'POST /support-sessions',
+  'POST /tenants/:tenant/clients/:client/hostnames',
+]);
 
 export const writeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+export const selfAuthenticatedWrites = new Set(['POST /internal/hostnames/:id/result']);
 
 export const routeOf = (c: Context) => {
   const route = matchedRoutes(c).find((r) => r.method === c.req.method);
@@ -72,7 +79,7 @@ export const requireChangeReason =
   async (c, next) => {
     if (!writeMethods.has(c.req.method)) return next();
     const route = routeOf(c);
-    if (!route || route in reasonFreeWrites) return next();
+    if (!route || route in reasonFreeWrites || selfAuthenticatedWrites.has(route)) return next();
     if (!(await caller(c.req.raw))) return next();
     const reason =
       changeReasonOf(c) ?? (bodyReasonWrites.has(route) ? await bodyReason(c) : undefined);

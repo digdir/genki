@@ -100,7 +100,7 @@ const urlFields = new Set([
   'url',
   'callback_url',
 ]);
-const urlLike = /[a-z][a-z0-9+.-]*:\/\//i;
+const urlLike = /(?<![a-z0-9+.-])[0-9+.-]*[a-z][a-z0-9+.-]*:\/\//i;
 const dataUrlText = /data:[a-z0-9.+-]{1,127}\/[a-z0-9.+-]{1,127}[;,]/i;
 const modelFieldNames = new Set(['model', 'model_id', 'deployment', 'deployment_id', 'engine']);
 
@@ -759,7 +759,7 @@ interface Bound {
   class: BindClass;
 }
 
-const placeholderPattern = /\{([^}]*)\}/g;
+const placeholderPattern = /\{([^{}]*)\}/g;
 const eventSegment = /^(?:[A-Za-z_][A-Za-z0-9_-]*|\d{1,6})$/;
 
 const eventPath = (at: string, path: string): string[] => {
@@ -989,10 +989,15 @@ const toStep = (
     throw new DescriptorError(`${at}: request.path ${path} is kept out of descriptors`);
   if (path.includes('..') || path.includes('//'))
     throw new DescriptorError(`${at}: request.path ${path} is kept out of descriptors`);
+  const nested = path
+    .split('}')
+    .slice(0, -1)
+    .some((part) => part.indexOf('{') !== part.lastIndexOf('{'));
   for (const [, placeholder = ''] of path.matchAll(placeholderPattern)) {
-    if (placeholder === 'deployment') continue;
+    if (placeholder === 'deployment' && !nested) continue;
     const ref = bound.get(placeholder.replace(/^steps\./, ''));
     if (
+      nested ||
       !placeholder.startsWith('steps.') ||
       !ref ||
       ref.class.kind !== 'shape' ||

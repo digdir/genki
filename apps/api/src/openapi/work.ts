@@ -2866,6 +2866,9 @@ const Day = z.object({
   byModel: z.record(z.string(), Usage),
   testing: Usage.describe('Test-set and playground runs on this day'),
   ingestion: Usage.describe('Ingestion on this day'),
+  internal: UsageWithRuns.describe(
+    'Runs of internal services on this day, counted without naming them',
+  ),
 });
 
 const TenantUsage = z
@@ -2920,6 +2923,9 @@ const TenantUsage = z
       usage: Usage,
       byOrigin: z.array(z.object({ origin: z.string(), usage: Usage })),
     }),
+    internal: z
+      .object({ usage: UsageWithRuns })
+      .describe('Runs of internal services, which count towards the quota but are not named'),
     quota: z
       .object({
         usedTokens: z.number().int(),
@@ -2929,7 +2935,9 @@ const TenantUsage = z
         alert: z.boolean().describe('True once this month has used alertPercent of the quota'),
       })
       .optional()
-      .describe('The monthly token quota, for the calendar month, whatever days asks for'),
+      .describe(
+        'The monthly token quota for the calendar month (UTC), whatever days asks for. It counts every run but the builder assistant, internal services included, and not ingestion or the AI gateway',
+      ),
   })
   .openapi('TenantUsage');
 
@@ -2945,6 +2953,17 @@ const AuditRecord = z
     outcome: z.enum(['applied', 'rejected']),
     target: z.string(),
     reason: z.string(),
+    flag: z
+      .object({
+        key: z.string(),
+        on: z.boolean().nullable().optional().describe('Null when the personal choice was removed'),
+        person: z
+          .object({ self: z.boolean(), name: z.string().optional() })
+          .optional()
+          .describe('Set when the change concerned one person'),
+      })
+      .optional()
+      .describe('What a feature flag change did, for platform.flag.* entries'),
   })
   .openapi('AuditRecord');
 
@@ -3156,7 +3175,16 @@ const operationsRoutes: RouteConfig[] = [
     responses: {
       200: json(
         z.object({
-          data: z.array(QuotaRequest.extend({ tenant: z.string(), tenantName: z.string() })),
+          data: z.array(
+            QuotaRequest.extend({
+              tenant: z.string(),
+              tenantName: z.string(),
+              quota: z
+                .object({ usedTokens: z.number().int(), monthlyTokens: z.number().int() })
+                .optional()
+                .describe("The tenant's use this calendar month and its current monthly quota"),
+            }),
+          ),
         }),
         'Requests',
       ),
@@ -3168,7 +3196,7 @@ const operationsRoutes: RouteConfig[] = [
     method: 'post',
     path: '/operator/quota-requests/{tenant}/{id}/decision',
     summary:
-      'Approve or reject a quota request; the quota itself is changed with usage.monthlyTokens in a support session',
+      "Approve or reject a quota request; approving sets the tenant's usage.monthlyTokens to the amount asked for, audited in the tenant's log",
     description: described(operator, audited),
     request: {
       params: z.object({ tenant, id: pathParam('id', '7d4c1b3e-1f0a-4e2b-9c8d-5a6b7c8d9e0f') }),
@@ -3177,7 +3205,7 @@ const operationsRoutes: RouteConfig[] = [
     },
     responses: {
       200: json(QuotaRequest, 'Decided'),
-      400: problem('Invalid decision or missing change reason'),
+      400: problem('Invalid decision, missing change reason, or a quota the setting refuses'),
       404: problem('No such request'),
       409: problem(`${quotaRequestDecidedType}: the request is already decided`),
       ...operatorOnly,

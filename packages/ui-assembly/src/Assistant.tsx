@@ -154,6 +154,7 @@ export const Assistant = ({ mainId, frameWidth, refBlocks, ...options }: Assista
     mainId={mainId}
     frameWidth={frameWidth}
     refBlocks={refBlocks}
+    host={options.tenant}
   />
 );
 
@@ -332,11 +333,13 @@ export const AssistantView = ({
   mainId = 'main-content',
   frameWidth,
   refBlocks = {},
+  host,
 }: {
   assistant: AssistantState;
   mainId?: string | undefined;
   frameWidth?: number | undefined;
   refBlocks?: RefBlocks | undefined;
+  host?: string | undefined;
 }) => {
   const t = useT();
   const approachHeadingId = useId();
@@ -397,6 +400,17 @@ export const AssistantView = ({
         state={blockState(turn)}
         settings={placed.settings as Record<string, boolean | string> | undefined}
         level={level}
+        locale={blockContext.locale}
+        host={host}
+        handlers={{
+          onAsk: a.setDraft,
+          onOpenDocument: (index) => {
+            const target = turn ?? latestTurn;
+            if (!target) return;
+            if (sourcesOn) a.showSources(target.id, { index });
+            else if (documentOn) a.openDocument(target.id, { index }, 'answer');
+          },
+        }}
       />
     </BlockHostContext.Provider>
   );
@@ -916,9 +930,9 @@ export const AssistantView = ({
   const nextPrimary: Partial<ShellPanel> = next
     ? { size: threadsWidth, ...profileFoot }
     : profileFoot;
-  const threadsTitle = next ? { title: t('builder.threads') } : {};
+  const threadsTitle = next ? { title: t('threads.heading') } : {};
 
-  const threadsAndFilter = phrase(t, [t('builder.threads'), t('builder.filter')]);
+  const threadsAndFilter = phrase(t, [t('threads.heading'), t('builder.filter')]);
   let primary: ShellPanel | undefined;
   if (twoViews) {
     primary =
@@ -943,7 +957,7 @@ export const AssistantView = ({
                 }}
               >
                 <ArrowLeftIcon aria-hidden />
-                {t('builder.threads')}
+                {t('threads.heading')}
               </Button>
             ),
             pinnedRef: setFilterPin,
@@ -953,7 +967,7 @@ export const AssistantView = ({
           };
   } else if (threadsOn) {
     primary = {
-      label: filterPanel ? threadsAndFilter : t('builder.threads'),
+      label: filterPanel ? threadsAndFilter : t('threads.heading'),
       ...threadsTitle,
       children: threadList,
       ...footPart,
@@ -987,9 +1001,9 @@ export const AssistantView = ({
       ...nextPrimary,
     };
   } else if (foot) {
-    primary = { label: t('builder.settings'), foot, footPinned: true };
+    primary = { label: t('shell.profileSettings'), foot, footPinned: true };
   } else if (profile) {
-    primary = { label: t('builder.settings'), ...nextPrimary };
+    primary = { label: t('shell.profileSettings'), ...nextPrimary };
   }
   if (unavailable.primary.length > 0 || refs.primary.length > 0) {
     const placeholders = [
@@ -1028,8 +1042,8 @@ export const AssistantView = ({
   };
   if (nextSettings)
     primary = {
-      label: t('builder.settings'),
-      title: t('builder.settings'),
+      label: t('shell.profileSettings'),
+      title: t('shell.profileSettings'),
       children: (
         <SettingsMenu
           pages={settingsPageIds.map((id) => ({

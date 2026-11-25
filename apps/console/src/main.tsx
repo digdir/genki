@@ -9,7 +9,6 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { ansattportenLogin, mockEntra, operatorRole } from './auth';
 import { setting } from './runtime-config';
-import { mockFetch } from './mock';
 import { isSilentCallback, silentFrame } from './silent-frame';
 
 const useMock = setting('API') === 'mock';
@@ -40,21 +39,25 @@ const auth = useMock
       silent: silentFrame(window),
     });
 const root = document.getElementById('root');
+const apiFetch = async (): Promise<typeof fetch> =>
+  useMock ? (await import('./mock')).mockFetch() : send;
 
 if (root && !isSilentCallback(window)) {
-  createRoot(root).render(
-    <StrictMode>
-      <LocaleProvider
-        initialPreference={language.load()}
-        detected={navigator.languages}
-        onPreferenceChange={language.save}
-        title={{
-          nb: 'Driftskonsoll – Fellesløsning for generativ KI',
-          en: 'Operations console – Generative AI platform',
-        }}
-      >
-        <App auth={auth} fetch={useMock ? mockFetch() : send} live={!useMock} />
-      </LocaleProvider>
-    </StrictMode>,
+  void apiFetch().then((fetch) =>
+    createRoot(root).render(
+      <StrictMode>
+        <LocaleProvider
+          initialPreference={language.load()}
+          detected={navigator.languages}
+          onPreferenceChange={language.save}
+          title={{
+            nb: 'Driftskonsoll – Fellesløsning for generativ KI',
+            en: 'Operations console – Generative AI platform',
+          }}
+        >
+          <App auth={auth} fetch={fetch} live={!useMock} />
+        </LocaleProvider>
+      </StrictMode>,
+    ),
   );
 }

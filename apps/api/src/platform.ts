@@ -1,9 +1,11 @@
+import { withFlagDetails } from './flag-audit.js';
 import { isHiddenAuditTarget } from './internal-services.js';
 import { refusedAsArchived, serviceArchived, serviceArchivedType } from './archived-services.js';
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { toJSONSchema } from 'zod';
 import type { Principal, Task } from '@genai/contracts';
+import { testRunnerScope } from '@genai/identity';
 import {
   apiIdPattern,
   operationKindPattern,
@@ -72,7 +74,9 @@ export interface PlatformApiOptions {
   >;
   organisationName?: (orgNumber: string) => string | undefined;
   registeredName?: (orgNumber: string) => Promise<string | undefined>;
-  tenantQuota?: (tenant: string) => Promise<{ usedPercent: number }>;
+  tenantQuota?: (
+    tenant: string,
+  ) => Promise<{ usedPercent: number; usedTokens?: number; monthlyTokens?: number }>;
   lifecycle?: (tenant: string, service: string) => Promise<{ state: string }>;
   names?: ActorNames;
   drafts?: Pick<ServiceDrafts, 'followPublish'>;
@@ -222,6 +226,17 @@ const AuditEntry = z
     outcome: z.enum(['applied', 'rejected']),
     target: z.string(),
     reason: z.string(),
+    flag: z
+      .object({
+        key: z.string(),
+        on: z.boolean().nullable().optional().describe('Null when the personal choice was removed'),
+        person: z
+          .object({ self: z.boolean(), name: z.string().optional() })
+          .optional()
+          .describe('Set when the change concerned one person'),
+      })
+      .optional()
+      .describe('What a feature flag change did, for platform.flag.* entries'),
   })
   .openapi('AuditEntry');
 
@@ -358,6 +373,16 @@ const OperatorTenant = z
     status: z.enum(['active', 'onboarding', 'paused']),
     services: z.number().int(),
     quotaUsedPercent: z.number(),
+    usedTokens: z
+      .number()
+      .int()
+      .optional()
+      .describe('Tokens used this calendar month, as quota enforcement counts them'),
+    monthlyTokens: z
+      .number()
+      .int()
+      .optional()
+      .describe('The monthly token quota, from usage.monthlyTokens'),
   })
   .openapi('OperatorTenant');
 
@@ -1057,9 +1082,8 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     }
     const directory = (await options.tenantDirectory?.()) ?? [];
     const orgs = [...new Set([...directory.map((d) => d.orgNumber), ...counts.keys()])].sort();
-    const used = await Promise.all(
-      orgs.map(async (org) => (await options.tenantQuota?.(org))?.usedPercent ?? 0),
-    );
+    const showsTokens = !principal.scopes?.includes(testRunnerScope);
+    const quotas = await Promise.all(orgs.map((org) => options.tenantQuota?.(org)));
     const looked = await Promise.all(
       orgs.map(async (org) => {
         const entry = directory.find((d) => d.orgNumber === org)?.name;
@@ -1075,12 +1099,19 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         data: orgs.map((orgNumber, i) => {
           const entry = directory.find((d) => d.orgNumber === orgNumber);
           const count = counts.get(orgNumber) ?? 0;
+          const quota = quotas[i];
           return {
             orgNumber,
             name: looked[i] ?? orgNumber,
             status: entry?.status ?? (count > 0 ? ('active' as const) : ('onboarding' as const)),
             services: count,
-            quotaUsedPercent: used[i] ?? 0,
+            quotaUsedPercent: quota?.usedPercent ?? 0,
+            ...(showsTokens && quota?.usedTokens !== undefined
+              ? { usedTokens: quota.usedTokens }
+              : {}),
+            ...(showsTokens && quota?.monthlyTokens !== undefined
+              ? { monthlyTokens: quota.monthlyTokens }
+              : {}),
           };
         }),
       },
@@ -1390,9 +1421,10 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const names = await options.names?.namesOf(
       entries.filter((e) => e.actor.startsWith('employee:')).map((e) => e.actor),
     );
+    const detailed = await withFlagDetails(entries, { events: admin.events, names: options.names });
     return c.json(
       {
-        data: entries.map((e) => {
+        data: detailed.map((e) => {
           const actorName = e.actor.startsWith('employee:') ? names?.get(e.actor) : undefined;
           return actorName ? { ...e, actorName } : e;
         }),

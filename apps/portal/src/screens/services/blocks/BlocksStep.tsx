@@ -68,7 +68,6 @@ export const useBlocksState = (
     });
   }, [keep, state.layout, state.held, template]);
   const [mode, setMode] = useState<PreviewMode>('try');
-  // Maler first: a template is the quickest way to a whole look, the blocks after.
   const [tab, setTab] = useState<LeftTab>('templates');
   const [width, setWidth] = useState(380);
   const [height, setHeight] = useState(720);

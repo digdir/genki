@@ -62,6 +62,9 @@ jobs:
       OPERATOR_CLIENT_IDS: ${{ vars.OPERATOR_CLIENT_IDS }}
       KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
       ALERT_EMAILS: ${{ vars.ALERT_EMAILS }}
+      DEMO_RECORDER_KEY_SHA256: ${{ vars.DEMO_RECORDER_KEY_SHA256 }}
+      HOSTNAME_BINDER_AUDIENCE: ${{ vars.HOSTNAME_BINDER_AUDIENCE }}
+      HOSTNAME_BINDER_ENABLED: ${{ vars.HOSTNAME_BINDER_ENABLED }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0

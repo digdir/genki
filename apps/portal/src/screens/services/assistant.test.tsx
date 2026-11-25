@@ -96,10 +96,15 @@ const interfaceReply = () => ({
 
 const blocksSwitcher = 'Designelementer og maler';
 
-const documentView = () =>
-  within(screen.getByRole('group', { name: 'Høyre' })).getByRole('switch', {
+const documentView = () => {
+  const blocks = screen.queryByRole('radio', {
+    name: 'Designelementer',
+  }) as HTMLInputElement | null;
+  if (blocks && !blocks.checked) fireEvent.click(blocks);
+  return within(screen.getByRole('group', { name: 'Høyre' })).getByRole('switch', {
     name: 'Dokumentvisning',
   }) as HTMLInputElement;
+};
 
 const askForDocumentView = async (turns: AssistantTurnRequest[] = []) => {
   sessionStorage.clear();

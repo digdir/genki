@@ -1,9 +1,10 @@
+# check=skip=FromPlatformFlagConstDisallowed
 # The Docling server for PDF conversions (ADR 0042, issue 476), built to match the parser benchmark's winner
 # (benchmarks/ingestion/blocks, run 2, docling-tess): Python 3.13 on Debian trixie, Tesseract 5.5.0 with Debian's
 # Norwegian data, Docling 2.146.0, docling-core 2.105.0, docling-ibm-models 4.0.4, CPU torch 2.15.0. docling-serve
 # 1.38.2 serves it. The version is part of each conversion's key, so an upgrade here converts files again only when
 # they have no kept conversion. The settings it runs with are set in infra/modules/containerapps.bicep.
-FROM python:3.13-slim-trixie@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
+FROM --platform=linux/amd64 python:3.13-slim-trixie@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
 
 # Debian's mirrors keep only a package's newest build, so the packages are not pinned by version (a rebuild such as
 # +b2 would fail every deploy); the build stops instead if Tesseract is no longer 5.5.0 or the Norwegian data is not
@@ -23,9 +24,10 @@ ENV PIP_NO_CACHE_DIR=1 \
 
 # CPU torch from PyTorch's own index first, then every other package at the version in requirements.txt, so each
 # build installs the same code. requirements.txt is what PyPI offered when the benchmark run started (see its header).
-RUN pip install --index-url https://download.pytorch.org/whl/cpu torch==2.15.0+cpu torchvision==0.29.2+cpu
+COPY requirements-torch.txt /tmp/requirements-torch.txt
+RUN pip install --require-hashes --no-deps --index-url https://download.pytorch.org/whl/cpu -r /tmp/requirements-torch.txt
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-deps -r /tmp/requirements.txt && pip check \
+RUN pip install --require-hashes --no-deps -r /tmp/requirements.txt && pip check \
     && python -c "import torch, sys; sys.exit(0 if torch.__version__ == '2.15.0+cpu' else 'torch replaced: ' + torch.__version__)"
 
 # Only the models the conversion uses: Heron layout and TableFormer. Baked in, so a replica fetches nothing.

@@ -23,7 +23,7 @@ import type { EffectiveSetting, ModelOption, Residency, UsageReport } from '../.
 import { daysThisMonth } from '../../usage-window';
 import { quotaFacts } from '../quota/model';
 import { QuotaRequestAction } from '../quota/QuotaRequest';
-import { monthStatus, monthUsage, tokensOf } from '../usage/model';
+import { monthStatus, monthUsage } from '../usage/model';
 import { lastSaveOf, savedByText, settingErrorText } from './model';
 
 interface Choice {
@@ -350,7 +350,7 @@ export const CommonSettings = ({
     );
   const settingsQuota = typeof quotaValue === 'number' ? quotaValue : null;
   const facts = loaded
-    ? quotaFacts(loaded.report, settingsQuota, tokensOf(monthUsage(loaded.report).total))
+    ? quotaFacts(loaded.report, settingsQuota, monthUsage(loaded.report).quotaTokens)
     : undefined;
   const millions = (tokens: number) =>
     f.number(tokens / 1_000_000, { maximumFractionDigits: 1, minimumFractionDigits: 0 });

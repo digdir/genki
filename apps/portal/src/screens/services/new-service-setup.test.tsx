@@ -85,11 +85,13 @@ describe('Oppsett of a new service', () => {
       within(side).getByRole('textbox', { name: 'Skriv til assistenten' }).getAttribute('rows'),
     ).toBe('3');
     // The heading and the line stand together in the middle until the first message.
-    expect(
-      within(side)
-        .getByRole('complementary', { name: 'Byggeassistent' })
-        .hasAttribute('data-empty'),
-    ).toBe(true);
+    const panel = within(side).getByRole('complementary', { name: 'Byggeassistent' });
+    expect(panel.hasAttribute('data-empty')).toBe(true);
+    fireEvent.change(within(panel).getByLabelText('Skriv til assistenten'), {
+      target: { value: 'Hva kan du hjelpe med?' },
+    });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(panel.hasAttribute('data-empty')).toBe(false));
   });
 
   it('lists what an area lacks only after the person presses Publiser', async () => {
@@ -121,9 +123,10 @@ describe('Oppsett of a new service', () => {
     expect(within(pages).getByText('Kommer')).toBeTruthy();
     expect((webField() as HTMLInputElement).disabled).toBe(true);
     expect(
-      (within(pages).getByRole('button', { name: 'Legg til nettside' }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+      within(pages)
+        .getByRole('button', { name: 'Legg til nettside' })
+        .getAttribute('aria-disabled'),
+    ).toBe('true');
 
     const documents = within(sources).getByRole('group', { name: 'Egne dokumenter' });
     expect(within(documents).getByText('Kommer')).toBeTruthy();

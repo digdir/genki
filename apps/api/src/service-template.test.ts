@@ -99,7 +99,7 @@ describe('the service draft template', () => {
     const { status, body } = await template(request);
 
     expect(status).toBe(200);
-    expect(admin.check(body.definition, {})).toEqual([]);
+    expect(await admin.check(body.definition, {}, kari)).toEqual([]);
     expect(body.definition.metadata.tenant).toBe(tenant);
     expect(body.definition.spec.strategy).toEqual({
       id: 'rag-single-shot',

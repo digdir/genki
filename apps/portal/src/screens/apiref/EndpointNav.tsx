@@ -24,7 +24,7 @@ export const EndpointNav = ({
     }))
     .filter((g) => g.eps.length);
   return (
-    <nav aria-label={t('apiref.navLabel')} className="ar-nav">
+    <nav aria-label={t('apiref.navLabel')} className="ar-nav sticky-rail">
       <Field data-size="sm">
         <Label htmlFor="ep-sok">{t('apiref.searchLabel')}</Label>
         <Search data-size="sm">

@@ -29,6 +29,7 @@ import { clock, placeName } from './dev-format';
 import { servicePath } from './sections';
 import { ClientForm, draftOf, slugFrom, specOf, type ClientDraft } from './ClientForm';
 import { problemText, ServiceKeys } from './ServiceKeys';
+import { ServiceAddress } from './ServiceAddress';
 import {
   browserSnippet,
   channelKeys,
@@ -652,6 +653,7 @@ export const ServiceChannels = ({
         ) : null}
       </div>
       {flashAlert}
+      <ServiceAddress api={api} tenant={tenant} service={service} canManage={canManage} />
       <ServiceKeys
         api={api}
         tenant={tenant}

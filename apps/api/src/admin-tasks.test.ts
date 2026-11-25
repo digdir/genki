@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
-import { reasonFreeWrites } from './change-reason.js';
+import { reasonFreeWrites, selfAuthenticatedWrites } from './change-reason.js';
 import { bootPlatform, digdir, testService } from './testkit.js';
 
 const kari: Principal = {
@@ -16,6 +16,9 @@ const reason = 'Endring i testen';
 const notAdminChanges = reasonFreeWrites;
 
 const throughAdminTasks = [
+  'POST /tenants/:tenant/blocks/:id/share-requests',
+  'POST /operator/block-share-requests/:rid/approve',
+  'POST /operator/block-share-requests/:rid/decline',
   'DELETE /operator/catalog/:kind/:id',
   'DELETE /operator/datasets/:dataset/pipelines/:id',
   'POST /operator/datasets/:dataset/fields',
@@ -69,6 +72,8 @@ const throughAdminTasks = [
   'POST /operator/datasets/:id/engine-switches/:sid/retry',
   'POST /operator/datasets/:id/engine-switches/:sid/rollback',
   'POST /operator/incidents',
+  'PUT /operator/flags/:key',
+  'PUT /tenants/:tenant/flags/:key',
   'POST /operator/incidents/:id/resolve',
   'POST /operator/model-endpoints',
   'POST /operator/onboarding/requests/:id/decision',
@@ -200,6 +205,10 @@ const throughAdminTasks = [
   'PUT /tenants/:tenant/catalog/:kind/:id',
   'PUT /tenants/:tenant/clients/:id',
   'PUT /tenants/:tenant/clients/:id/hosted',
+  'POST /tenants/:tenant/clients/:client/hostnames',
+  'DELETE /tenants/:tenant/clients/:client/hostnames/:hostname',
+  'POST /tenants/:tenant/services/:service/address',
+  'POST /internal/hostnames/:id/result',
   'PUT /tenants/:tenant/connectors/:id/credentials',
   'PUT /tenants/:tenant/datasets/:dataset/pipelines/:id',
   'PUT /tenants/:tenant/datasets/:id',
@@ -383,7 +392,7 @@ describe('the change-reason header', () => {
           )
           .map((r) => `${r.method} ${r.path}`),
       ),
-    ].filter((route) => !(route in reasonFreeWrites));
+    ].filter((route) => !(route in reasonFreeWrites) && !selfAuthenticatedWrites.has(route));
 
   const concrete = (template: string) =>
     template.replace(':tenant', digdir).replace(/:[A-Za-z]+(\{[^}]*\})?/g, 'x');

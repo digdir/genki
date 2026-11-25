@@ -54,7 +54,7 @@ export const templates: Readonly<Record<TemplateId, Readonly<Record<Zone, readon
     secondary: ['sources', 'document-view'],
   },
   'with-projects': {
-    primary: ['projects', 'threads'],
+    primary: ['threads', 'projects'],
     main: ['approach', 'chat'],
     secondary: ['sources', 'document-view'],
   },

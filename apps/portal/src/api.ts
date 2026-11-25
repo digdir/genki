@@ -14,6 +14,7 @@ import { hooksApi } from './api/hooks';
 import { tracingApi } from './api/tracing';
 import { triggersApi } from './api/triggers';
 import { preferencesApi } from './api/preferences';
+import { flagsApi } from './api/flags';
 import { onboardingApi } from './api/onboarding';
 import { ApiError } from './api/error';
 import { playgroundApi, type PlaygroundInputField } from './api/playground';
@@ -51,6 +52,8 @@ import type {
   ClientSpec,
   ClientView,
   ClientsView,
+  HostnameView,
+  ServiceHostnamesView,
   ServiceKeyView,
   IntegrationsView,
   Overview,
@@ -73,6 +76,7 @@ export interface AuditRow {
   outcome: 'applied' | 'rejected';
   target: string;
   reason: string;
+  flag?: { key: string; on?: boolean | null; person?: { self: boolean; name?: string } };
 }
 
 export interface ConfigEntry {
@@ -202,6 +206,7 @@ const featureClients = (ctx: ApiContext) => ({
   tracing: tracingApi(ctx),
   triggers: triggersApi(ctx),
   preferences: preferencesApi(ctx),
+  flags: flagsApi(ctx),
   recipes: recipesApi(ctx),
   platformStatus: platformStatusApi(ctx),
   quotaRequests: quotaRequestsApi(ctx),
@@ -715,6 +720,37 @@ export const createApiClient = ({
         'PUT',
         `${tenantPath(tenant)}/clients/${encodeURIComponent(id)}`,
         client,
+        { 'change-reason': reason },
+      ),
+    serviceHostnames: (tenant: string, service: string, signal?: AbortSignal) =>
+      get<ServiceHostnamesView>(
+        `${tenantPath(tenant)}/services/${encodeURIComponent(service)}/hostnames`,
+        signal,
+      ),
+    assignAddress: (tenant: string, service: string, reason: string) =>
+      request<HostnameView>(
+        'POST',
+        `${tenantPath(tenant)}/services/${encodeURIComponent(service)}/address`,
+        {},
+        { 'change-reason': reason },
+      ),
+    addHostname: (
+      tenant: string,
+      client: string,
+      body: { hostname: string; environment?: string; redirectTo?: string; apex?: boolean },
+      reason: string,
+    ) =>
+      request<HostnameView>(
+        'POST',
+        `${tenantPath(tenant)}/clients/${encodeURIComponent(client)}/hostnames`,
+        body,
+        { 'change-reason': reason },
+      ),
+    removeHostname: (tenant: string, client: string, hostname: string, reason: string) =>
+      request<HostnameView>(
+        'DELETE',
+        `${tenantPath(tenant)}/clients/${encodeURIComponent(client)}/hostnames/${encodeURIComponent(hostname)}`,
+        {},
         { 'change-reason': reason },
       ),
     removeClient: (tenant: string, id: string, reason: string) =>

@@ -1,0 +1,43 @@
+id: block-import
+plane: runtime
+name: Block import
+note: Design HTML to a Block
+icon: config
+color: '#46d7c8'
+status: Library
+packages:
+  - '@genai/block-import'
+summary: Turns a design's HTML into a proposed declarative Block, without fetching or saving anything, and says why when a design needs code.
+description:
+  Parses the HTML with parse5, which runs no script and fetches nothing, and turns it into a
+  declarative template with bokmål text keys and bindings to the field list (ADR 0067). A design
+  that only code can draw, or that is over the template limits, is refused with the reason. The
+  result is validated before it is handed back, and a report says what was converted or dropped.
+responsibilities:
+  - Turn headings, text, lists, links, tables, details and Designsystemet classes into a template
+  - Refuse, by a stable code, a design that needs code
+  - Report what was converted, dropped or left as text, by a stable code
+files:
+  - packages/block-import/src/index.ts
+  - packages/block-import/src/declarative.ts
+  - packages/block-import/src/report.ts
+  - packages/block-import/src/tree.ts
+input: Design HTML, at most 512 KiB
+output: A proposed Block definition and a report
+replaces: []
+edges:
+  - to: definitions
+    label: Validates the proposal as a Block
+    kind: call
+    target: call
+    witness:
+      file: packages/block-import/src/index.ts
+      imports: '@genai/definitions'
+  - to: kernel
+    label: The field list and the template language
+    kind: call
+    target: call
+    witness:
+      file: packages/block-import/src/declarative.ts
+      imports: '@genai/contracts'
+keywords: import design html claude artifact block template designelement utforming

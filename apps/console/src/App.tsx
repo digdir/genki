@@ -10,12 +10,15 @@ import { Catalog } from './screens/Catalog';
 import { BuildingBlocks } from './screens/BuildingBlocks';
 import { Diagnostics } from './screens/Diagnostics';
 import { Forward, Models } from './screens/Models';
+import { BlockReviews } from './screens/BlockReviews';
 import { Onboarding } from './screens/Onboarding';
 import { Operations } from './screens/Operations';
 import { PlatformDefaults } from './screens/PlatformDefaults';
 import { PlatformSecrets } from './screens/PlatformSecrets';
+import { FlagsProvider, WhenFlag } from './flags';
 import { Policies } from './screens/Policies';
 import { pendingCount, Queue } from './screens/Queue';
+import { QuotaRequests } from './screens/QuotaRequests';
 import { Quality } from './screens/Quality';
 import { Settings } from './screens/Settings';
 import { SharedServices } from './screens/SharedServices';
@@ -45,6 +48,7 @@ const QualityMatrix = lazy(() =>
   import('./screens/QualityMatrix').then((m) => ({ default: m.QualityMatrix })),
 );
 const Demos = lazy(() => import('./screens/Demos').then((m) => ({ default: m.Demos })));
+const Flags = lazy(() => import('./screens/Flags').then((m) => ({ default: m.Flags })));
 import type { OperatorSession } from './types';
 
 const inputStore = (): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> => {
@@ -76,6 +80,8 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
   const [badges, setBadges] = useState<NavBadges>({});
   const [queued, setQueued] = useState<number | undefined>();
   const [decided, setDecided] = useState(0);
+  const [quotaPending, setQuotaPending] = useState<number | undefined>();
+  const [quotaDecided, setQuotaDecided] = useState(0);
   const [expired, setExpired] = useState(false);
   const hash = useHashRoute();
   const endSession = useCallback(() => {
@@ -170,6 +176,18 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     return () => controller.abort();
   }, [api, authorized, decided]);
 
+  useEffect(() => {
+    if (!authorized) return;
+    const controller = new AbortController();
+    api.quotaRequests(controller.signal, 'pending').then(
+      (rows) => {
+        if (!controller.signal.aborted) setQuotaPending(rows.length);
+      },
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, [api, authorized, quotaDecided]);
+
   const login = async () => {
     if (busy) return;
     setBusy(true);
@@ -260,6 +278,11 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
       </Suspense>
     );
   const page = allPages.find((p) => p.path === current);
+  const notFound = (
+    <EmptyState title={t('shell.notFound')}>
+      <Paragraph>{t('shell.notFoundHelp')}</Paragraph>
+    </EmptyState>
+  );
   const screens: Record<string, () => React.ReactNode> = {
     '/tenants': () => <Tenants api={api} />,
     '/queue': () => (
@@ -267,6 +290,13 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
         api={api}
         tab={params.get('tab') ?? undefined}
         onDecided={() => setDecided((n) => n + 1)}
+      />
+    ),
+    '/quota-requests': () => (
+      <QuotaRequests
+        api={api}
+        tenant={params.get('tenant') ?? undefined}
+        onDecided={() => setQuotaDecided((n) => n + 1)}
       />
     ),
     '/tenants/services': () => (
@@ -280,11 +310,21 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     '/onboarding': () => <Onboarding api={api} live={live} />,
     '/models': () => <Models api={api} params={params} />,
     '/platform-secrets': () => <PlatformSecrets api={api} />,
+    '/flags': () => (
+      <Suspense fallback={null}>
+        <Flags api={api} />
+      </Suspense>
+    ),
     '/model-operations': () => <Forward to="/models" params={apisTab} />,
     '/catalog': () => <Catalog api={api} tab={params.get('tab') ?? undefined} />,
     '/policies': () => <Policies api={api} tab={params.get('tab') ?? undefined} />,
     '/building-blocks': () => (
       <BuildingBlocks api={api} initial={params.get('block') ?? undefined} live={live} />
+    ),
+    '/block-reviews': () => (
+      <WhenFlag flag="blockStudio" otherwise={notFound}>
+        <BlockReviews api={api} />
+      </WhenFlag>
     ),
     '/shared-services': () => <SharedServices api={api} />,
     '/demos': () => (
@@ -325,22 +365,28 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
   const render = Object.hasOwn(screens, current) ? screens[current] : undefined;
   return (
     <SupportProvider api={api}>
-      <Shell
-        session={session}
-        path={current}
-        badges={queued === undefined ? badges : { ...badges, queue: queued }}
-        onLogout={logout}
-        health={api.health}
-        readOnlyInLockdown={api.readOnlyInLockdown}
-      >
-        {render ? (
-          render()
-        ) : (
-          <EmptyState title={page ? t(page.label) : t('shell.notFound')}>
-            <Paragraph>{t('shell.notFoundHelp')}</Paragraph>
-          </EmptyState>
-        )}
-      </Shell>
+      <FlagsProvider load={api.myFlags}>
+        <Shell
+          session={session}
+          path={current}
+          badges={{
+            ...badges,
+            ...(queued === undefined ? {} : { queue: queued }),
+            ...(quotaPending === undefined ? {} : { quotaRequests: quotaPending }),
+          }}
+          onLogout={logout}
+          health={api.health}
+          readOnlyInLockdown={api.readOnlyInLockdown}
+        >
+          {render ? (
+            render()
+          ) : (
+            <EmptyState title={page ? t(page.label) : t('shell.notFound')}>
+              <Paragraph>{t('shell.notFoundHelp')}</Paragraph>
+            </EmptyState>
+          )}
+        </Shell>
+      </FlagsProvider>
     </SupportProvider>
   );
 };

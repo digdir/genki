@@ -9,6 +9,15 @@ models:
     chat: { input-token: 0, output-token: 0 }
   ai-gateway/sigma2-qwen3.8-27b:
     chat: { input-token: 0, output-token: 0 }
+  # Claude on Foundry bills at Anthropic's standard USD rates (platform.claude.com/docs/en/about-claude/pricing, 2026-11-25) at 9.27 kr per USD, the rate of the Azure entries above. Haiku 5.5 is its rate for prompts up to 100,000 tokens
+  foundry-claude/claude-fable-5-1:
+    chat: { input-token: 0.0000927, output-token: 0.0004635, cached-input-token: 0.0000023175 }
+  foundry-claude/claude-haiku-5-5:
+    chat: { input-token: 0.000000927, output-token: 0.000004635, cached-input-token: 0.0000000927 }
+  foundry-claude/claude-opus-5-5:
+    chat: { input-token: 0.00003708, output-token: 0.0001854, cached-input-token: 0.000001854 }
+  foundry-claude/claude-sonnet-5-5:
+    chat: { input-token: 0.00001854, output-token: 0.0000927, cached-input-token: 0.000000927 }
   foundry-openai/gpt-4.1:
     chat: { input-token: 0.000019, output-token: 0.0000762 }
   foundry-openai/gpt-4.1-mini:
@@ -44,6 +53,14 @@ models:
     chat: { input-token: 0.0000222497, output-token: 0.0001112484 }
   foundry-openai/gpt-6.1-terra:
     chat: { input-token: 0.0000111248, output-token: 0.0000556242 }
+  foundry-openai/gpt-image-2:
+    edit-image:
+      {
+        input-token: 0.00004635,
+        cached-input-token: 0.0000115875,
+        image-input-token: 0.00007416,
+        image-output-token: 0.0002781,
+      }
   foundry-openai/gpt-oss-120b:
     chat: { input-token: 0.0000014, output-token: 0.0000057 }
   foundry-openai/o1-mini-2m-tps:

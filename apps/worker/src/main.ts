@@ -67,6 +67,7 @@ import {
 } from '@genai/jobs';
 import {
   envSecrets,
+  hostTargetFrom,
   InMemoryEventLog,
   InMemoryStateStore,
   InMemoryTaskStore,
@@ -159,6 +160,7 @@ import { startQueueStats } from './queue-stats.js';
 import { reconcileKnowledgeRuns } from './reconciler.js';
 import { runProgress } from './run-progress.js';
 import { scheduleUsagePolls, usagePollWork, type PolledSource } from './usage-poll.js';
+import { auditEntry, authoritativeDns, scheduleHostnameDns } from './hostname-dns.js';
 import { createWorker, ownTenantOnly } from './worker.js';
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
@@ -1048,6 +1050,18 @@ const providerObjectSweep = db
     })
   : undefined;
 
+const hostnameDnsLease = leases?.lease('genai-worker-hostname-dns');
+const hostnameDns = db
+  ? scheduleHostnameDns({
+      claims: db.hostnameClaims,
+      dns: authoritativeDns(),
+      target: hostTargetFrom(process.env),
+      audit: (entry) => db.adminRecords.appendAudit(auditEntry(entry, new Date())),
+      log,
+      ...(hostnameDnsLease ? { active: () => hostnameDnsLease.tryAcquire() } : {}),
+    })
+  : undefined;
+
 const stoppedRunsLease = leases?.lease('genai-worker-stopped-runs');
 const stoppedRunTasks = db?.tasks.withLease({ instance: `sweep:${randomUUID()}` });
 const failStopped = async () => {
@@ -1151,6 +1165,7 @@ const stop = () => {
   exchangeRate?.stop();
   stateRegister?.stop();
   providerObjectSweep?.stop();
+  hostnameDns?.stop();
   if (stoppedRunSweep) clearInterval(stoppedRunSweep);
   if (knowledgeReconciler) clearInterval(knowledgeReconciler);
   if (nightWindowTimer) clearInterval(nightWindowTimer);
@@ -1170,6 +1185,7 @@ const stop = () => {
     await lease?.release();
     await retentionLease?.release();
     await sweepLease?.release();
+    await hostnameDnsLease?.release();
     await knowledgeRunsLease?.release();
     await db?.runtimePool.end();
     await db?.pool.end();

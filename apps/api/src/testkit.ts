@@ -3,6 +3,7 @@ import { refusingArchivedPublishes } from './archived-services.js';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { Principal } from '@genai/contracts';
+import type { FlagKey } from '@genai/contracts/flags';
 import {
   InMemoryDefinitionStore,
   platformSettings,
@@ -276,11 +277,18 @@ export interface BootOptions {
   blobStore?: BlobStore;
   fakeKey?: string;
   demoRecorderKeyDigest?: string;
+  demoRecorder?: 'scheduled';
   configEntries?: InMemoryConfigEntryStore;
+  blockOrigin?: string;
+  envFlags?: FlagKey[];
+  now?: () => number;
   federatedTokens?: FederatedTokens;
   onWarning?: (message: string) => void;
   discoveredModels?: DiscoveredModelStore;
   policy?: (inner: PolicyDecisionPoint, configEntries: ConfigEntryStore) => PolicyDecisionPoint;
+  appLockdown?: boolean;
+  hostnames?: Parameters<typeof createPlatform>[0]['hostnames'];
+  binder?: Parameters<typeof createPlatform>[0]['binder'];
 }
 
 export const bootPlatform = async (options: BootOptions = {}) => {
@@ -314,11 +322,17 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     ...(options.processorRecords ? { processorRecords: options.processorRecords } : {}),
     ...(options.blobStore ? { blobStore: options.blobStore } : {}),
     ...(options.federatedTokens ? { federatedTokens: options.federatedTokens } : {}),
+    ...(options.blockOrigin ? { blockOrigin: options.blockOrigin } : {}),
+    ...(options.envFlags ? { envFlags: options.envFlags } : {}),
+    ...(options.now ? { now: options.now } : {}),
     ...(options.onWarning ? { onWarning: options.onWarning } : {}),
     ...(options.discoveredModels ? { discoveredModels: options.discoveredModels } : {}),
+    ...(options.hostnames ? { hostnames: options.hostnames } : {}),
+    ...(options.binder ? { binder: options.binder } : {}),
     ...(options.demoRecorderKeyDigest
       ? { demoRecorderKeyDigest: options.demoRecorderKeyDigest }
       : {}),
+    ...(options.demoRecorder ? { demoRecorder: options.demoRecorder } : {}),
     modules: options.modules ?? [...platformModules, onboardingModule, maskinportenClientsModule],
     policy: (options.policy ?? ((inner) => inner))(
       altinnPolicy({
@@ -351,6 +365,8 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     models: modelAdmin,
     tenants: () => platform.directory.list(),
     lifecycle: platform.lifecycle,
+    flags: platform.flags,
+    ...(options.blockOrigin ? { blockOrigin: options.blockOrigin } : {}),
   });
   const app = createApp('test', {
     modelDiscovery: platform.modelDiscovery.state,
@@ -364,7 +380,9 @@ export const bootPlatform = async (options: BootOptions = {}) => {
       tenantGate: platform.tenantGate,
       registered: platform.registered,
       caller: platform.caller,
+      ...(options.appLockdown ? { lockdown: true } : {}),
       unmaskedInput: platform.unmaskedInput,
+      tenantQuota: platform.quota,
       environments: (tenant, service) => environmentsOf(configEntries, tenant, service),
       tasks: kernelTaskReader(platform.kernel, {
         kind: 'operator',

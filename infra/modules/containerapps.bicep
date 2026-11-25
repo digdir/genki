@@ -28,7 +28,7 @@ param doclingImage string
 @description('Most Docling replicas at once; each converts one PDF at a time. 24 × 4 vCPU (issue 922): one conversion uses about 2.6 cores however many it gets, so more replicas, not bigger ones, convert more pages an hour.')
 param doclingMaxReplicas int = 24
 
-@description('Memory of a Docling replica in GiB, with 4 vCPU (Consumption allows at most 8). The memory alert and the idle restart read it (issue 922).')
+@description('Memory of a Docling replica in GiB, with 4 vCPU (Consumption allows at most 8). The out-of-memory alert and the idle restart read it (issue 922).')
 param doclingMemoryGiB int = 8
 param appVersion string
 param workerVersion string = ''

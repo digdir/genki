@@ -1,5 +1,6 @@
 import type {
   EnvironmentTier,
+  Flags,
   LiveDescriptorRegistry,
   OperationGovernanceStore,
   OperationTry,
@@ -50,11 +51,13 @@ import type { TrackedWork } from './tracked-work.js';
 
 export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   platformTenant: string;
+  blockOrigin?: string;
   catalog: CatalogRegistry;
   definitions: DefinitionStore;
   plugins: PluginSchemas;
   settings: SettingsRegistry;
   configEntries: ConfigEntryStore;
+  flags: Flags;
   models: ModelRouter;
   knowledge: KnowledgeRouter;
   writers: IndexWriterRouter;
@@ -82,6 +85,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   /** The platform's own version, recorded as the commit of the eval runs it starts. */
   appVersion?: string;
   demoRecorderKeyDigest?: string;
+  demoRecorder?: 'scheduled';
   /** Resolves a tenant's secret references, only for the hosts each secret is set for. */
   tenantSecrets?: TenantSecrets;
   /** The egress rules every outbound call to a tenant's own endpoint follows (ADR 0015). */

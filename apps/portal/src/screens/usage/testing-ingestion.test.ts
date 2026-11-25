@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { UsageReport, UsageTotals } from '../../types';
-import { ingestionRow, monthUsage, trialRow, withTrialRows } from './model';
+import { createFormat } from '@genai/i18n';
+import { translator } from '../../i18n';
+import {
+  ingestionRow,
+  internalRow,
+  monthStatus,
+  monthUsage,
+  trialRow,
+  withTrialRows,
+} from './model';
 
 const u = (tokens: number): UsageTotals => ({
   inputTokens: tokens,
@@ -47,5 +56,84 @@ describe('Statistikk: testing og innlesing per dag', () => {
     const rows = withTrialRows(report).byService;
     expect(rows.find((r) => r.service === ingestionRow)?.usage.inputTokens).toBe(500);
     expect(rows.find((r) => r.service === trialRow)?.usage.inputTokens).toBe(300);
+  });
+});
+
+describe('the monthly quota', () => {
+  const withInternal: UsageReport = {
+    ...report,
+    totals: u(2400),
+    daily: [
+      { ...day('2026-10-01'), usage: u(1200), internal: u(200) },
+      { ...day('2026-10-02'), usage: u(1200), internal: u(200) },
+    ],
+    internal: { usage: u(400) },
+  };
+
+  it('counts runs of internal services in their own row, not as trial runs', () => {
+    const folded = withTrialRows(withInternal);
+    const first = folded.daily[0]?.byService ?? {};
+    expect(first[internalRow]?.inputTokens).toBe(200);
+    expect(first[trialRow]?.inputTokens).toBe(150);
+    expect(folded.byService.find((r) => r.service === internalRow)?.usage.inputTokens).toBe(400);
+  });
+
+  it('counts internal services among the services, and leaves ingestion out of the quota', () => {
+    const month = monthUsage(withTrialRows(withInternal));
+    expect(month.services.inputTokens).toBe(1600);
+    expect(month.quotaTokens).toBe(1900);
+  });
+
+  it('leaves the AI gateway out of the quota', () => {
+    const viaGateway: UsageReport = {
+      ...report,
+      daily: report.daily.map((d) => ({
+        ...d,
+        usage: { ...d.usage, bySource: [{ source: 'gateway', usage: u(100) }] },
+      })),
+    };
+    expect(monthUsage(viaGateway).quotaTokens).toBe(1300);
+  });
+
+  it('shows the used quota the API counts, the number that blocks services', () => {
+    const counted = {
+      ...report,
+      quota: {
+        usedTokens: 1777,
+        monthlyTokens: 10_000,
+        usedPercent: 17.8,
+        alertPercent: 80,
+        alert: false,
+      },
+    };
+    const status = monthStatus(counted, 10_000, null, createFormat('nb'), translator('nb'));
+    expect(status.used).toBe(1777);
+  });
+
+  it('keeps a project view to its own usage, not the tenant-wide quota', () => {
+    const scoped = {
+      ...report,
+      project: 'p1',
+      quota: {
+        usedTokens: 9999,
+        monthlyTokens: 10_000,
+        usedPercent: 99,
+        alertPercent: 80,
+        alert: true,
+      },
+    };
+    const status = monthStatus(scoped, 10_000, null, createFormat('nb'), translator('nb'));
+    expect(status.used).toBe(1500);
+  });
+
+  it('forecasts the cost from all spent tokens, ingestion included', () => {
+    const status = monthStatus(report, 10_000, null, createFormat('nb'), translator('nb'));
+    expect(status.forecastCost).toBeCloseTo((2000 / 1e6) * (31 / 2), 9);
+  });
+
+  it('forecasts the month from the tokens the quota counts', () => {
+    const status = monthStatus(report, 10_000, null, createFormat('nb'), translator('nb'));
+    expect(status.used).toBe(1500);
+    expect(status.forecast).toBe(1500 + 750 * 29);
   });
 });

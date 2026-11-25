@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, platformSettings, SettingsRegistry } from '@genai/definitions';
 import { createAuthenticator, trustedEntraScope } from '@genai/identity';
@@ -10,6 +10,7 @@ import { callerFrom, createPlatform, platformModules } from './composition.js';
 import { InMemoryConfigEntryStore, platformScope } from './config-store.js';
 import { InMemoryTenantApiKeys } from './routes/portal-routes.js';
 import { kernelTaskReader } from './timeline.js';
+import { deletedInternalServiceKind } from './internal-services.js';
 import { digdir, files, other, testService } from './testkit.js';
 
 const servers: FakeServer[] = [];
@@ -65,8 +66,36 @@ const answer = {
   },
 };
 
+const streamed = {
+  status: 200,
+  sse: [
+    {
+      data: {
+        id: 'c',
+        object: 'chat.completion.chunk',
+        created: 0,
+        model: 'gpt',
+        choices: [{ index: 0, delta: { content: 'Svar.' }, finish_reason: 'stop' }],
+      },
+    },
+    {
+      data: {
+        id: 'c',
+        object: 'chat.completion.chunk',
+        created: 0,
+        model: 'gpt',
+        choices: [],
+        usage: answer.json.usage,
+      },
+    },
+    { data: '[DONE]' },
+  ],
+};
+
 const boot = async () => {
-  const model = await fakeHttp(() => answer);
+  const model = await fakeHttp((body: Record<string, unknown>) =>
+    body.stream ? streamed : answer,
+  );
   servers.push(model);
   const keys = new InMemoryTenantApiKeys();
   const authenticator = createAuthenticator({ apiKeys: keys });
@@ -183,7 +212,7 @@ const boot = async () => {
     send('/v1/chat/completions', as, {
       body: { model: `${service}__default`, messages: [{ role: 'user', content: 'Hei' }] },
     });
-  return { app, send, key, keyId, run, platform };
+  return { app, send, key, keyId, run, platform, configEntries };
 };
 
 const portal = { 'genki-surface': 'portal' };
@@ -390,6 +419,72 @@ describe('an internal service', () => {
     expect(usage.byService.map((r) => r.service)).not.toContain('smoke');
     expect(detail.status).toBe(404);
     expect(seen.data.map((t) => t.id)).toContain(task);
+  });
+
+  it('is looked up as deleted once per request, however many runs the log lists', async () => {
+    const { send, run, key, configEntries } = await boot();
+    const caller = await key();
+    for (let i = 0; i < 4; i++) await run(caller, 'klarsprak');
+    const history = vi.spyOn(configEntries, 'history');
+
+    const log = (await (await send(`/tenants/${digdir}/tasks`, 'eva')).json()) as {
+      data: unknown[];
+    };
+
+    const deletionReads = history.mock.calls.filter(
+      ([kind]) => kind === deletedInternalServiceKind,
+    );
+    expect(log.data).toHaveLength(4);
+    expect(deletionReads).toHaveLength(1);
+  });
+
+  it('counts the same in the usage this month a tenant admin sees right after the test-runner key', async () => {
+    const { send, run, key } = await boot();
+    const runner = await key({ testRunner: true });
+    await run(runner, 'smoke');
+    const thisMonth = async (as: string, headers: Record<string, string> = {}) =>
+      (
+        (await (await send(`/tenants/${digdir}/overview`, as, { headers })).json()) as {
+          usageThisMonth?: { inputTokens: number; outputTokens: number };
+        }
+      ).usageThisMonth;
+
+    const seenByRunner = await thisMonth(runner, portal);
+    const seenByAdmin = await thisMonth('eva');
+
+    expect(seenByRunner?.inputTokens).toBeGreaterThan(0);
+    expect(seenByAdmin).toEqual(seenByRunner);
+  });
+
+  it('counts its runs towards the quota and the usage totals a tenant admin sees, without naming it', async () => {
+    const { send, run, key } = await boot();
+    const runner = await key({ testRunner: true });
+    const caller = await key();
+    await run(runner, 'smoke');
+    await run(caller, 'klarsprak');
+
+    type Tokens = { inputTokens: number; outputTokens: number };
+    const usage = (await (await send(`/tenants/${digdir}/usage`, 'eva')).json()) as {
+      totals: Tokens & { runs: number };
+      daily: { internal: Tokens & { runs: number } }[];
+      byService: { service: string; usage: Tokens }[];
+      internal: { usage: Tokens & { runs: number } };
+      quota: { usedTokens: number };
+    };
+    const tokens = (u: Tokens) => u.inputTokens + u.outputTokens;
+    const [shown] = usage.byService;
+
+    expect(usage.byService.map((r) => r.service)).toEqual(['klarsprak']);
+    expect(tokens(usage.internal.usage)).toBeGreaterThan(0);
+    expect(usage.internal.usage.runs).toBe(1);
+    expect(usage.totals.runs).toBe(2);
+    expect(usage.daily.reduce((n, d) => n + tokens(d.internal), 0)).toBe(
+      tokens(usage.internal.usage),
+    );
+    expect(tokens(usage.totals)).toBe(
+      tokens(usage.internal.usage) + (shown ? tokens(shown.usage) : 0),
+    );
+    expect(usage.quota.usedTokens).toBe(tokens(usage.totals));
   });
 
   it('keeps a draft of an internal service out of the draft list for a tenant admin', async () => {

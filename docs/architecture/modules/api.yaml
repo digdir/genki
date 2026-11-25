@@ -27,6 +27,7 @@ responsibilities:
     move or withdraw them, audited (ADR 0047)
   - List the operations a step may call in a tenant, with their typed input and the models that offer each kind
   - List the interface blocks an organisation may use across publishers, preview one, pin an edition in a service draft, and serve each pinned edition with the interface (ADR 0067)
+  - Serve code blocks' frames, bundles and bridge runtime on the block origin, a listener of its own with none of the API's routes, and send each code edition shared with everyone to one operator's review (ADR 0069)
 files:
   - apps/api/src/main.ts
   - apps/api/src/composition.ts
@@ -44,6 +45,9 @@ files:
   - apps/api/src/step-operations.ts
   - apps/api/src/block-catalogue.ts
   - apps/api/src/interface-blocks.ts
+  - apps/api/src/block-frames.ts
+  - apps/api/src/block-import-routes.ts
+  - apps/api/src/block-reviews.ts
 input: Environment and catalogs at boot; HTTP at runtime
 output: A running platform on :8080
 replaces:
@@ -178,6 +182,13 @@ edges:
     witness:
       file: apps/api/src/composition.ts
       imports: '@genai/conversations'
+  - to: block-import
+    label: Turns a design's HTML into a proposed Block
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/block-import-routes.ts
+      imports: '@genai/block-import'
   - to: definitions
     label: Composes Definitions & settings
     kind: call

@@ -215,14 +215,16 @@ const UsageFigures = ({
   const f = useFormat();
   const usage = monthUsage(report);
   const missing = report.totals.unpricedModels ?? [];
-  const used = tokensOf(usage.total);
+  const used = quotaFacts(report, quota, usage.quotaTokens)?.used ?? usage.quotaTokens;
   const pct = quota === null ? 0 : Math.round((used / quota) * 100);
   const parts = [
     { key: 'services', label: t('overview.partServices'), tokens: tokensOf(usage.services) },
     { key: 'trial', label: t('overview.partTrial'), tokens: tokensOf(usage.trial) },
+  ];
+  const outsideQuota = [
     { key: 'ingestion', label: t('usageParts.ingestion'), tokens: tokensOf(usage.ingestion) },
     { key: 'outside', label: t('overview.partOutside'), tokens: tokensOf(usage.gateway) },
-  ].filter((p) => (p.key !== 'outside' && p.key !== 'ingestion') || p.tokens > 0);
+  ].filter((p) => p.tokens > 0);
   return (
     <>
       <p className="usage-figure">
@@ -262,6 +264,12 @@ const UsageFigures = ({
         ))}
       </dl>
       <dl className="usage-facts">
+        {outsideQuota.map((p) => (
+          <div key={p.key}>
+            <dt>{p.label}</dt>
+            <dd className="numeric">{t('overview.millions', { value: millions(f, p.tokens) })}</dd>
+          </div>
+        ))}
         <div>
           <dt>{t('overview.cost')}</dt>
           <dd className="numeric">{costText(f, t, usage.total)}</dd>
@@ -728,7 +736,7 @@ export const Overview = ({ api, tenant, tenantName }: ScreenProps) => {
         </Button>
       ),
     });
-  const facts = report ? quotaFacts(report, quota, tokensOf(monthUsage(report).total)) : undefined;
+  const facts = report ? quotaFacts(report, quota, monthUsage(report).quotaTokens) : undefined;
   if (report && facts?.alert) {
     const { pct } = facts;
     const next = f.month(new Date(now.getFullYear(), now.getMonth() + 1, 1));
@@ -837,7 +845,7 @@ export const Overview = ({ api, tenant, tenantName }: ScreenProps) => {
               <Heading level={2} data-size="xs" id="changes-h">
                 {t('overview.changes')}
               </Heading>
-              <LiveChanges api={api} tenant={tenant} limit={3} />
+              <LiveChanges api={api} tenant={tenant} tenantName={tenantName} limit={3} />
               <a href="#/log/changes">{t('overview.seeLog')}</a>
             </section>
           </aside>

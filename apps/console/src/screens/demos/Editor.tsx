@@ -26,7 +26,16 @@ import { useT } from '../../i18n';
 import { ErrorState, Loading } from '../../states';
 import { DialogError, ReasonDialog } from '../../ui';
 import { commandsText, parseCommands } from './commands';
-import { appLabel, audienceLabel, clock, Crumbs, demoHref, requestRecording } from './shared';
+import {
+  appLabel,
+  audienceLabel,
+  canRecord,
+  clock,
+  Crumbs,
+  demoHref,
+  requestRecording,
+} from './shared';
+import { VoiceSelect } from './VoiceSelect';
 
 const idPattern = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
@@ -471,10 +480,21 @@ const EditorForm = ({
                 />
               ))}
             </Fieldset>
-            <Textfield
+            <VoiceSelect
+              id="demo-voice"
               label={t('demos.fieldVoice')}
+              description={t('demos.fieldVoiceHelp')}
               value={draft.spec.voice}
-              onChange={(e) => setSpec({ voice: e.target.value })}
+              onChange={(voice, known) =>
+                setSpec({
+                  voice,
+                  language:
+                    known?.language ??
+                    (voice === loaded.initial.voice
+                      ? loaded.initial.language
+                      : draft.spec.language),
+                })
+              }
             />
           </section>
         </div>
@@ -574,12 +594,12 @@ const EditorForm = ({
                         <Button
                           data-size="sm"
                           variant="secondary"
-                          disabled={loaded.recorder !== 'job' || !built.ok}
+                          disabled={!canRecord(loaded.recorder) || !built.ok}
                           onClick={() => setTrying(n)}
                         >
                           {t('demos.tryStep')}
                         </Button>
-                        {loaded.recorder !== 'job' ? (
+                        {!canRecord(loaded.recorder) ? (
                           <Paragraph data-size="sm" className="muted">
                             {t('demos.tryNeedsJob')}
                           </Paragraph>

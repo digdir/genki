@@ -47,6 +47,9 @@ export const actionKey: Record<string, PlainKey> = {
   'platform.block.decide': 'audit.actionBlockDecide',
   'platform.block.request': 'audit.actionBlockRequest',
   'platform.block.settings': 'audit.actionBlockSettings',
+  'platform.block-share.request': 'audit.actionBlockShareRequest',
+  'platform.block-share.approve': 'audit.actionBlockShareApprove',
+  'platform.block-share.decline': 'audit.actionBlockShareDecline',
   'platform.catalog.publish': 'audit.actionCatalogPublish',
   'platform.catalog.delete': 'audit.actionCatalogDelete',
   'platform.clients.save': 'audit.actionClientsSave',
@@ -143,12 +146,36 @@ const keyOf = (e: AuditEntry) => {
   return changed ?? (kind && catalogActionKey[`${e.action}:${kind}`]) ?? actionKey[e.action];
 };
 
+const flagLabelKey = (e: AuditEntry): PlainKey | undefined => {
+  if (e.action !== 'platform.flag.person' && e.action !== 'platform.flag.tenant') return undefined;
+  const on = e.flag?.on;
+  if (on === null) return 'audit.actionFlagUnset';
+  return on === undefined
+    ? 'audit.actionFlagChange'
+    : on
+      ? 'audit.actionFlagOn'
+      : 'audit.actionFlagOff';
+};
+
 export const labelOf = (e: AuditEntry, t: T) => {
+  const flagKey = flagLabelKey(e);
+  if (flagKey) return t(flagKey);
   const key = keyOf(e);
   return e.actionLabel ?? (key ? t(key) : t('audit.otherAction'));
 };
-const targetOf = (e: AuditEntry) => {
+const flagTargetOf = (e: AuditEntry, t: T) => {
+  const key = /^flag:([^:]+)/.exec(e.target)?.[1];
+  if (!key) return undefined;
+  const person = e.flag?.person;
+  if (!person) return key;
+  const who = person.self ? t('audit.flagSelf') : person.name;
+  return who ? t('audit.flagTargetPerson', { key, who }) : key;
+};
+
+const targetOf = (e: AuditEntry, t: T) => {
   if (!e.target || e.target === e.action) return '–';
+  const flag = flagTargetOf(e, t);
+  if (flag) return flag;
   const governed = /^(?:operation-descriptor|operation-kind|operation):(.+)$/.exec(e.target)?.[1];
   if (governed) return governed;
   const catalogued = /^catalog:(?:model-endpoint|model|price)\/(.+?)(?:@\d+)?$/.exec(e.target)?.[1];
@@ -173,16 +200,16 @@ const definitionTarget = (e: AuditEntry) => {
     : undefined;
 };
 
-const targetTextOf = (e: AuditEntry, t: T) => {
+export const targetTextOf = (e: AuditEntry, t: T) => {
   const found = definitionTarget(e);
   return found
     ? `${found.id} (${t('audit.targetVersion', { version: found.version })})`
-    : targetOf(e);
+    : targetOf(e, t);
 };
 
 const Target = ({ entry, t }: { entry: AuditEntry; t: T }) => {
   const found = definitionTarget(entry);
-  if (!found) return <>{targetOf(entry)}</>;
+  if (!found) return <>{targetOf(entry, t)}</>;
   return (
     <>
       <Button

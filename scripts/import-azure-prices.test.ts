@@ -128,12 +128,22 @@ describe('Azure price import', () => {
       ),
     ).toBe(
       [
-        '# Azure Retail Prices API (prices.azure.com), NOK per 1,000 tokens, GlobalStandard, Sweden Central, 2026-10-08',
+        '# Azure Retail Prices API (prices.azure.com), Sweden Central, in kroner per unit (ADR 0048), 2026-10-08',
+        '# Hand-entered entries (Claude via Azure Marketplace at Anthropic list prices, 9.27 kr/USD) are kept as entered',
         'models:',
         '  a/x: { inputPerThousand: 0.1, outputPerThousand: 0 }',
         '  b/y: { inputPerThousand: 2, outputPerThousand: 3 }',
         '',
       ].join('\n'),
     );
+  });
+
+  it('writes a hand-entered unit price as it was entered', () => {
+    expect(
+      renderPrices(
+        { 'foundry-claude/claude-opus-5-5': { chat: { 'input-token': 0.00003708 } } },
+        '2026-11-25',
+      ),
+    ).toContain('  foundry-claude/claude-opus-5-5: { chat: { input-token: 0.00003708 } }');
   });
 });

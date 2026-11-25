@@ -105,10 +105,13 @@ export const clientRegistry = (
   },
 });
 
+export type ClaimedOrigin = (tenant: string, client: string, origin: string) => Promise<boolean>;
+
 export const admitConfined = async (
   clients: ClientStore,
   request: Request,
   principal: Principal,
+  claimedOrigin?: ClaimedOrigin,
 ): Promise<boolean> => {
   const confined = principal.confinedTo;
   if (!confined) return true;
@@ -121,7 +124,8 @@ export const admitConfined = async (
   if (!client || client.definition.spec.service !== confined.service) return false;
   if (!client.definition.spec.channels.includes(channel)) return false;
   const origin = request.headers.get('origin');
-  return !origin || client.definition.spec.allowedOrigins.includes(origin);
+  if (!origin || client.definition.spec.allowedOrigins.includes(origin)) return true;
+  return (await claimedOrigin?.(confined.tenant, confined.client, origin)) === true;
 };
 
 const grantNames = (grant: string, service: string) =>

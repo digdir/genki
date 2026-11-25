@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
+import { remoteFileOriginsFrom } from '@genai/adapter-rest';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 const root = join(import.meta.dirname, '..');
@@ -99,6 +100,23 @@ describe.skipIf(!hasAz && !process.env.CI)('the production switches in the templ
   it('sets the switches only through their parameters, never in appEnv', () => {
     for (const values of [test, prod])
       expect(Object.keys(values.appEnv as object).filter((k) => switches.includes(k))).toEqual([]);
+  });
+
+  it('wires the scheduled demo recorder in genki-test only, with the key digest from the deploy', () => {
+    const testEnv = test.appEnv as Record<string, unknown>;
+    expect(testEnv.GENAI_DEMO_RECORDER).toBe('scheduled');
+    expect(testEnv).toHaveProperty('DEMO_RECORDER_KEY_SHA256');
+    const prodEnv = prod.appEnv as Record<string, unknown>;
+    expect(prodEnv).not.toHaveProperty('GENAI_DEMO_RECORDER');
+    expect(prodEnv).not.toHaveProperty('DEMO_RECORDER_KEY_SHA256');
+  });
+
+  it('lists Kudos for cited PDFs in test and prod, in a form the API reads entry by entry', () => {
+    for (const values of [test, prod]) {
+      const listed = String((values.appEnv as Record<string, unknown>).GENAI_DOCUMENT_FILE_ORIGINS);
+      expect(remoteFileOriginsFrom(listed)).toContain('https://kudos.dfo.no');
+      expect(remoteFileOriginsFrom(listed)).toHaveLength(listed.split(',').length);
+    }
   });
 
   it('turns the parameters into app settings that are left out when off', () => {

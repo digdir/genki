@@ -121,6 +121,44 @@ describe('the assistant host', () => {
     expect(screen.getByRole('link', { name: 'Help' })).toBeTruthy();
   });
 
+  it('keeps a service in one language to it, with no language choice, whatever the browser asks for', async () => {
+    const bokmal = { ...view, languages: ['nb'] };
+    draw('/', genki({ '/api/v1/hosts/ka.example.no': () => json(bokmal) }), 'en');
+
+    expect(await screen.findByRole('link', { name: 'Klarspråkassistenten' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Logg inn' })).toBeTruthy();
+    expect(screen.queryByRole('group', { name: 'Språk / Language' })).toBeNull();
+    expect(document.documentElement.lang).toBe('nb');
+  });
+
+  it('offers the language choice under «Innstillinger» when the service speaks more than one', async () => {
+    history.replaceState(null, '', '/innstillinger');
+    const fetcher = signedIn(
+      {
+        ...nextLayout,
+        zones: { ...nextLayout.zones, primary: [{ block: 'threads' }, { block: 'settings' }] },
+      },
+      { '/api/v1/hosts/ka.example.no': () => json({ ...view, languages: ['nb', 'en'] }) },
+    );
+    render(
+      <LocaleProvider preference="nb">
+        <App
+          hostname="ka.example.no"
+          path="/innstillinger"
+          signIn={browser().signIn}
+          fetcher={fetcher}
+        />
+      </LocaleProvider>,
+    );
+
+    await screen.findByRole('heading', { level: 1, name: 'Generelt' });
+    const rows = [...document.querySelectorAll('.uib-settings-row-title')].map(
+      (r) => r.textContent,
+    );
+    expect(rows).toContain('Språk');
+    history.replaceState(null, '', '/');
+  });
+
   it('says there is no assistant on a hostname genki does not know', async () => {
     draw('/', genki({}));
 
@@ -290,6 +328,47 @@ describe('the assistant host', () => {
     expect(await screen.findByText('Innloggingen mislyktes. Prøv igjen.')).toBeTruthy();
     expect(asked).toEqual([]);
     expect(screen.queryByRole('button', { name: 'Logg ut' })).toBeNull();
+  });
+
+  it('sends a visitor on a redirect hostname to the same path on the hostname it names', async () => {
+    const went: string[] = [];
+    render(
+      <LocaleProvider preference="nb">
+        <App
+          hostname="qa.example.no"
+          path="/sider/om?q=1"
+          signIn={browser().signIn}
+          navigate={(to) => went.push(to)}
+          fetcher={genki({
+            '/api/v1/hosts/qa.example.no': () =>
+              json({ hostname: 'qa.example.no', redirectTo: 'ka.example.no' }),
+          })}
+        />
+      </LocaleProvider>,
+    );
+
+    await vi.waitFor(() => expect(went).toEqual(['https://ka.example.no/sider/om?q=1']));
+  });
+
+  it('never follows a redirect to something that is not a hostname', async () => {
+    const went: string[] = [];
+    render(
+      <LocaleProvider preference="nb">
+        <App
+          hostname="qa.example.no"
+          path="//evil.example/x"
+          signIn={browser().signIn}
+          navigate={(to) => went.push(to)}
+          fetcher={genki({
+            '/api/v1/hosts/qa.example.no': () =>
+              json({ hostname: 'qa.example.no', redirectTo: 'evil.example/x?' }),
+          })}
+        />
+      </LocaleProvider>,
+    );
+
+    await screen.findByText('Her er det ingen assistent.');
+    expect(went).toEqual([]);
   });
 
   it('signs in through the host’s BFF when it serves one, and comes back to the same address', async () => {
@@ -523,6 +602,35 @@ describe('the assistant host', () => {
     const language = screen.getByRole('group', { name: 'Språk' });
     fireEvent.click(within(language).getByRole('radio', { name: 'Engelsk' }));
     expect(chosen).toEqual(['en']);
+    history.replaceState(null, '', '/');
+  });
+
+  it('draws a service in one language in it, with no language under «Innstillinger», for a reader in English', async () => {
+    history.replaceState(null, '', '/innstillinger');
+    const fetcher = signedIn(
+      {
+        ...nextLayout,
+        zones: { ...nextLayout.zones, primary: [{ block: 'threads' }, { block: 'settings' }] },
+      },
+      { '/api/v1/hosts/ka.example.no': () => json({ ...view, languages: ['nb'] }) },
+    );
+    render(
+      <LocaleProvider preference="en">
+        <App
+          hostname="ka.example.no"
+          path="/innstillinger"
+          signIn={browser().signIn}
+          fetcher={fetcher}
+        />
+      </LocaleProvider>,
+    );
+
+    await screen.findByRole('heading', { level: 1, name: 'Generelt' });
+    const rows = [...document.querySelectorAll('.uib-settings-row-title')].map(
+      (r) => r.textContent,
+    );
+    expect(rows).not.toContain('Språk');
+    expect(screen.queryByRole('group', { name: 'Språk' })).toBeNull();
     history.replaceState(null, '', '/');
   });
 

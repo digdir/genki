@@ -182,15 +182,19 @@ param healthCheckFrequencySeconds int = 300
 
 param alertThresholds object = {
   errorRatePercent: 5
-  errorRateMinRequests: 20
+  errorRateMinRequests: 100
+  errorMinFailures: 10
   latencySeconds: 5
-  latencyMinRequests: 50
+  latencyMinRequests: 100
   modelFailures: 5
   queueWaitMinutes: 30
   workerFailures: 3
   altinnFailures: 3
   loginKeyFailures: 1
+  doclingKills: 3
 }
+
+param alertMailMaxSeverity int = 4
 
 @description('Deploys the generic assistant host (ADR 0061) in its own environment, with its own identity and Key Vault (ADR 0062).')
 param assistantHostEnabled bool = false
@@ -221,6 +225,18 @@ param platformLoginStage string = 'none'
 
 @description('Hostnames the assistant host serves, each { hostname or subdomain, tenant, stage, apex? }: a subdomain becomes <subdomain>.apps.<dnsZoneName>, stage as customDomainsStage, apex for a zone apex. See infra/README.md, "Hosted hostnames".')
 param hostedHostnames array = []
+
+@description('The hostname binder job, its identity and the apps.<dnsZoneName> zone it writes (ADR 0062, "Later: self-service claims"). Needs assistantHostEnabled and an existing host app; its role and policy are infra/hostname-binder-access.bicep, applied by an owner.')
+param hostnameBinderEnabled bool = false
+
+@description('The Entra audience the binder asks a token for and the API accepts from it, api://<client id> of genki\'s API app registration.')
+param hostnameBinderAudience string = ''
+
+@description('Passes the host app\'s current custom domains through each deploy, so the binder\'s stay bound. Follows hostnameBinderEnabled; keep it true after turning the binder off, or the next deploy unbinds them. Needs the host app to exist.')
+param keepBoundDomains bool = hostnameBinderEnabled
+
+@description('The most hostnames the assistant host app takes from self-service claims. 0 leaves the API\'s default.')
+param hostnameLimit int = 0
 
 param minReplicas int = 1
 param maxReplicas int = 3
@@ -254,6 +270,9 @@ var servedNames = concat(hostedNames, assistantNames)
 var platformLoginOn = assistantHostEnabled && assistantBffEnabled && !empty(platformLoginClientId) && !empty(dnsZoneName)
 var platformLoginHostname = platformLoginOn ? 'login.apps.${dnsZoneName}' : ''
 var loginNames = platformLoginOn ? [{ hostname: platformLoginHostname, tenant: '', stage: platformLoginStage }] : []
+var binderOn = assistantHostEnabled && hostnameBinderEnabled
+var keptOn = assistantHostEnabled && keepBoundDomains
+var binderJobOn = binderOn && !empty(hostnameBinderAudience)
 var suffix = uniqueString(resourceGroup().id)
 var allTags = union(tags, { system: 'genki', environment: environmentName })
 var postgresServerName = '${baseName}-pg-${suffix}'
@@ -283,6 +302,20 @@ resource appIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-3
   name: '${baseName}-api-id'
   location: location
   tags: allTags
+}
+
+resource binderIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (binderOn) {
+  name: '${baseName}-binder-id'
+  location: location
+  tags: allTags
+}
+
+resource existingHost 'Microsoft.App/containerApps@2025-02-02-preview' existing = {
+  name: '${baseName}-assistant'
+}
+
+resource existingHostedEnv 'Microsoft.App/managedEnvironments@2025-02-02-preview' existing = {
+  name: '${baseName}-hosted-env'
 }
 
 resource backupIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (backupsEnabled) {
@@ -563,6 +596,16 @@ module apps 'modules/containerapps.bicep' = {
       GENAI_ASSISTANT_HOSTNAME: assistantHostEnabled ? (hostnames.?assistant ?? '') : ''
       PLATFORM_LOGIN_CLIENT_ID: platformLoginOn ? platformLoginClientId : ''
       PLATFORM_LOGIN_HOSTNAME: platformLoginHostname
+      GENAI_HOSTNAME_BINDER_PRINCIPAL_ID: binderOn ? binderIdentity!.properties.principalId : ''
+      GENAI_HOSTNAME_BINDER_AUDIENCE: binderOn ? hostnameBinderAudience : ''
+      GENAI_HOSTNAME_BINDER_TENANT_ID: binderOn ? tenant().tenantId : ''
+      GENAI_DNS_ZONE: binderOn && createDnsZone ? dnsZoneName : ''
+      GENAI_ASSISTANT_HOST_FQDN: binderOn ? existingHost.properties.configuration.ingress.fqdn : ''
+      GENAI_ASSISTANT_HOST_VERIFICATION_ID: binderOn
+        ? existingHostedEnv.properties.customDomainConfiguration.customDomainVerificationId
+        : ''
+      GENAI_ASSISTANT_HOST_STATIC_IP: binderOn ? existingHostedEnv.properties.staticIp : ''
+      GENAI_HOSTNAME_LIMIT: binderOn && hostnameLimit > 0 ? string(hostnameLimit) : ''
     }
     webSettings: {
       ansattportenIssuer: ansattportenIssuer
@@ -650,6 +693,28 @@ module assistantHost 'modules/assistant-host.bicep' = if (assistantHostEnabled) 
     ansattportenIssuer: ansattportenIssuer
     bffProxyKey: assistantBffEnabled
     hostedHostnames: concat(servedNames, loginNames)
+    keptDomains: keptOn ? existingHost.properties.configuration.ingress.?customDomains ?? [] : []
+  }
+}
+
+module hostnameBinder 'modules/hostname-binder.bicep' = if (binderJobOn) {
+  name: 'hostname-binder'
+  dependsOn: [assistantHost]
+  params: {
+    name: baseName
+    location: location
+    tags: allTags
+    registryName: registryName
+    workerImage: workerImage
+    identityId: binderOn ? binderIdentity!.id : ''
+    identityClientId: binderOn ? binderIdentity!.properties.clientId : ''
+    identityPrincipalId: binderOn ? binderIdentity!.properties.principalId : ''
+    apiUrl: 'https://${apps.outputs.fqdn}'
+    audience: hostnameBinderAudience
+    dnsZoneName: createDnsZone ? dnsZoneName : ''
+    reservedHostnames: map(concat(servedNames, loginNames), h => h.hostname)
+    actionGroupId: alertsEnabled && infra ? alerts!.outputs.actionGroupId : ''
+    mailWrites: 2 <= alertMailMaxSeverity
   }
 }
 
@@ -674,6 +739,7 @@ module alerts 'modules/alerts.bicep' = if (alertsEnabled && infra) {
     postgresUserConnections: postgresConnections.maxConnections[postgresSkuName] - postgresConnections.reservedConnections
     backupJobName: apps.outputs.platformBackupJobName
     serviceHealthAlert: serviceHealthAlertEnabled
+    mailMaxSeverity: alertMailMaxSeverity
   }
 }
 
@@ -682,6 +748,7 @@ var budgetNotifications = [
   { threshold: 100, type: 'Actual' }
   { threshold: 100, type: 'Forecasted' }
 ]
+var infraBudgetNotifications = filter(budgetNotifications, n => n.type == 'Actual')
 module infraBudget 'modules/budget.bicep' = if (alertsEnabled && infra && infraBudgetAmount > 0) {
   name: 'budget-infra'
   params: {
@@ -689,7 +756,7 @@ module infraBudget 'modules/budget.bicep' = if (alertsEnabled && infra && infraB
     amount: infraBudgetAmount
     startDate: budgetStartDate
     actionGroupId: alertsEnabled && infra ? alerts!.outputs.actionGroupId : ''
-    notifications: budgetNotifications
+    notifications: infraBudgetNotifications
   }
 }
 
@@ -769,6 +836,7 @@ module dns 'modules/dns.bicep' = if (createDnsZone && !empty(dnsZoneName) && inf
       : []
     hostedTarget: assistantHostEnabled ? assistantHost!.outputs.fqdn : ''
     hostedVerificationId: assistantHostEnabled ? assistantHost!.outputs.verificationId : ''
+    appsZone: binderOn
   }
 }
 
@@ -804,6 +872,13 @@ output assistantHost object = assistantHostEnabled
       verificationId: assistantHost!.outputs.verificationId
       vaultName: take('${baseName}-hostkv', 24)
       dnsRecords: assistantHost!.outputs.dnsRecords
+    }
+  : {}
+output hostnameBinder object = binderOn
+  ? {
+      jobName: binderJobOn ? hostnameBinder!.outputs.jobName : ''
+      identityName: binderIdentity!.name
+      principalId: binderIdentity!.properties.principalId
     }
   : {}
 @description('Whether this deploy applied the infrastructure, and the fingerprint it applied: deploy.yml compares the last full deploy\'s fingerprint with its own.')
