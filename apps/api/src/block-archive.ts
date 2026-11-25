@@ -4,6 +4,7 @@ import {
   parseBlockRef,
   type DefinitionStore,
   type ServiceDefinition,
+  type ValidationError,
 } from '@genai/definitions';
 import type { Context } from 'hono';
 import { enterTenant } from './access.js';
@@ -14,7 +15,7 @@ import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 import { t } from './i18n/index.js';
 import { hidesInternalServices, seeingInternalServices } from './internal-services.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
-import { serviceDrafts } from './service-drafts.js';
+import { serviceDraftKind, serviceDrafts } from './service-drafts.js';
 import { environmentsOf } from './service-environments.js';
 import { lifecycleOf } from './service-lifecycle.js';
 
@@ -50,21 +51,58 @@ type Tree = Record<string, unknown>;
 const isRecord = (value: unknown): value is Tree =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const pins = (definition: unknown, publisher: string, id: string) => {
+const placedRefs = (definition: unknown) => {
   const spec = isRecord(definition) && isRecord(definition.spec) ? definition.spec : undefined;
   const shown = spec && isRecord(spec.interface) ? spec.interface : undefined;
   const layout = shown && isRecord(shown.layout) ? shown.layout : undefined;
   const zones = layout && isRecord(layout.zones) ? layout.zones : {};
-  return blockZones.some((zone) => {
+  return blockZones.flatMap((zone) => {
     const placed = zones[zone];
-    return (
-      Array.isArray(placed) &&
-      placed.some((p) => {
-        const target = isRecord(p) && typeof p.ref === 'string' ? parseBlockRef(p.ref) : undefined;
-        return target?.publisher === publisher && target.id === id;
-      })
-    );
+    return Array.isArray(placed)
+      ? placed.flatMap((p, i) => {
+          const target =
+            isRecord(p) && typeof p.ref === 'string' ? parseBlockRef(p.ref) : undefined;
+          return target
+            ? [
+                {
+                  ...target,
+                  ref: p.ref as string,
+                  path: `spec.interface.layout.zones.${zone}[${i}].ref`,
+                },
+              ]
+            : [];
+        })
+      : [];
   });
+};
+
+const pins = (definition: unknown, publisher: string, id: string) =>
+  placedRefs(definition).some((r) => r.publisher === publisher && r.id === id);
+
+/** A ref to an archived block that none of the `before` definitions already placed. */
+export const archivedRefProblems = async (
+  deps: {
+    definitions: Pick<DefinitionStore, 'get'>;
+    configEntries: Pick<ConfigEntryStore, 'history'>;
+  },
+  definition: unknown,
+  before: unknown[],
+): Promise<ValidationError[]> => {
+  const kept = new Set(before.flatMap((d) => placedRefs(d).map((r) => `${r.publisher}/${r.id}`)));
+  const problems: ValidationError[] = [];
+  for (const placed of placedRefs(definition)) {
+    if (kept.has(`${placed.publisher}/${placed.id}`)) continue;
+    const latest = await deps.definitions.get('Block', placed.publisher, placed.id);
+    if (
+      latest &&
+      (await isBlockArchived(deps.configEntries, placed.publisher, placed.id, latest.version))
+    )
+      problems.push({
+        path: placed.path,
+        message: t('problems.blockArchivedRef', { ref: placed.ref }),
+      });
+  }
+  return problems;
 };
 
 /** Every not archived service whose draft, latest or environment-pinned version pins the block. */
@@ -79,29 +117,35 @@ export const blockUsers = (
   seeingInternalServices(async () => {
     const { definitions, configEntries } = deps;
     const drafts = serviceDrafts(configEntries, definitions);
-    const services = definitions.listAcross
+    const published = definitions.listAcross
       ? await definitions.listAcross('Service')
       : (await definitions.list(publisher))
           .filter((e) => e.kind === 'Service')
           .map((e) => ({ tenant: publisher, id: e.id }));
+    const drafted = (await configEntries.latest({ kind: serviceDraftKind }))
+      .filter((e) => !e.deleted)
+      .map((e) => ({ tenant: e.scope, id: e.id }));
+    const services = new Map(
+      [...published, ...drafted].map((s) => [`${s.tenant}/${s.id}`, s] as const),
+    );
     const users: BlockUser[] = [];
-    for (const { tenant, id: service } of services) {
-      const latest = await definitions.get('Service', tenant, service);
-      if (!latest) continue;
+    for (const { tenant, id: service } of services.values()) {
       if ((await lifecycleOf(configEntries, tenant, service)).state === 'archived') continue;
-      const draft = await drafts.draftOf(tenant, service);
+      const latest = await definitions.get('Service', tenant, service);
+      const draft = (await drafts.draftOf(tenant, service))?.spec.definition;
       const pinned = Object.values(await environmentsOf(configEntries, tenant, service)).flatMap(
-        (p) => (p.version !== undefined && p.version !== latest.version ? [p.version] : []),
+        (p) => (p.version !== undefined && p.version !== latest?.version ? [p.version] : []),
       );
-      const versions = [latest.definition, draft?.spec.definition];
+      const versions = [latest?.definition, draft];
       for (const version of new Set(pinned))
         versions.push((await definitions.get('Service', tenant, service, version))?.definition);
-      if (versions.some((d) => pins(d, publisher, id)))
+      const named = (latest?.definition ?? draft) as ServiceDefinition | undefined;
+      if (named && versions.some((d) => pins(d, publisher, id)))
         users.push({
           tenant,
           service,
-          name: (latest.definition as ServiceDefinition).metadata.name ?? service,
-          internal: isInternalService(latest.definition as ServiceDefinition),
+          name: named.metadata?.name ?? service,
+          internal: isInternalService(named),
         });
     }
     return users;

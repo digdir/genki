@@ -174,6 +174,7 @@ export const problems = {
   blockNotPinned: 'The block is not in the service draft',
   blockNotFound: 'No edition of the block that this organisation may use',
   blockInUseTitle: 'The block is in use',
+  blockArchivedRef: 'The design element {ref} is deleted and cannot be placed',
   blockUsedBy: 'The service {service} uses the block',
   blockUsedByOthers: '{count} services in other organisations use the block',
   blockOtherTenant: 'The block belongs to another organisation than the one in the address',

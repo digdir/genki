@@ -177,6 +177,7 @@ export const problems = defineNamespace({
   blockNotPinned: 'Blokken er ikke i testutgaven',
   blockNotFound: 'Fant ingen utgave av blokken som virksomheten kan bruke',
   blockInUseTitle: 'Blokken er i bruk',
+  blockArchivedRef: 'Designelementet {ref} er slettet og kan ikke legges inn',
   blockUsedBy: 'Tjenesten {service} bruker blokken',
   blockUsedByOthers: '{count} tjenester hos andre virksomheter bruker blokken',
   blockOtherTenant: 'Blokken tilhører en annen virksomhet enn den i adressen',

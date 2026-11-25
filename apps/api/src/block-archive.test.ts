@@ -44,6 +44,26 @@ const withLayout = (id: string, tenant: string) => {
   };
 };
 
+const pinning = (id: string, tenant: string, blockId: string) => {
+  const service = withLayout(id, tenant);
+  return {
+    ...service,
+    spec: {
+      ...service.spec,
+      interface: {
+        layout: {
+          version: 1,
+          zones: {
+            primary: [],
+            main: [{ block: 'ref', ref: `${tenant}/${blockId}@1` }],
+            secondary: [],
+          },
+        },
+      },
+    },
+  };
+};
+
 const boot = async (studio = true) => {
   const booted = await bootPlatform({
     people,
@@ -172,6 +192,22 @@ describe("archiving an organisation's own block", () => {
     expect(await refused.json()).toMatchObject({ usedBy: [{ tenant: other, service: 'svarer' }] });
   });
 
+  it('refuses to archive a block pinned only in a service draft', async () => {
+    const { save, archive, send } = await boot();
+    await save('ola', block(other, 'kort'));
+    const drafted = await send(`/tenants/${other}/services/utkast/draft`, 'ola', {
+      method: 'PUT',
+      body: { definition: pinning('utkast', other, 'kort'), files },
+      reason: 'Nytt utkast med kortet',
+    });
+    expect(drafted.status, await drafted.clone().text()).toBe(200);
+
+    const refused = await archive('kort');
+
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({ usedBy: [{ tenant: other, service: 'utkast' }] });
+  });
+
   it("refuses with 409 a block shared with everyone that another organisation's service pins, without naming it", async () => {
     const { seed, archive, pin } = await boot();
     await seed(block(other, 'delt', 'everyone'));
@@ -227,5 +263,40 @@ describe("archiving an organisation's own block", () => {
 
     expect((await archive('kort')).status).toBe(404);
     expect(await listed()).toContain('kort');
+  });
+});
+
+describe('a reference to an archived block', () => {
+  it('is refused when a service draft places it', async () => {
+    const { save, archive, send } = await boot();
+    await save('ola', block(other, 'kort'));
+    await archive('kort');
+
+    const refused = await send(`/tenants/${other}/services/utkast/draft`, 'ola', {
+      method: 'PUT',
+      body: { definition: pinning('utkast', other, 'kort'), files },
+      reason: 'Nytt utkast med kortet',
+    });
+
+    expect(refused.status).toBe(422);
+    expect(await refused.json()).toMatchObject({
+      errors: [{ path: 'spec.interface.layout.zones.main[0].ref' }],
+    });
+  });
+
+  it('is refused when POST /definitions publishes it', async () => {
+    const { save, archive, send } = await boot();
+    await save('ola', block(other, 'kort'));
+    await archive('kort');
+
+    const refused = await send('/definitions', 'ola', {
+      body: { definition: pinning('svarer', other, 'kort'), files },
+      reason: 'Publiserer med kortet',
+    });
+
+    expect(refused.status).toBe(422);
+    expect(JSON.stringify(await refused.json())).toContain(
+      'spec.interface.layout.zones.main[0].ref',
+    );
   });
 });

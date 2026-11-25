@@ -251,7 +251,7 @@ import { serviceDrafts } from './service-drafts.js';
 import { resolveInterfaceBlocks } from './interface-blocks.js';
 import { codeBlockProblems } from './block-bundles.js';
 import { blockFrameUrl } from './block-origin.js';
-import { blockArchiveModule } from './block-archive.js';
+import { archivedRefProblems, blockArchiveModule } from './block-archive.js';
 import { blockCatalogueModule } from './block-catalogue.js';
 import { blockReviewsModule, createBlockReviewsModule } from './block-reviews.js';
 import { blockImportModule } from './block-import-routes.js';
@@ -1733,6 +1733,9 @@ export const createPlatform = async (input: PlatformInput) => {
           await hostedByGenki(clients, d.metadata.tenant, d.metadata.id),
         ),
         ...(await blockRefProblems(store, d)),
+        ...(await archivedRefProblems({ definitions: store, configEntries }, d, [
+          (await store.get('Service', d.metadata.tenant, d.metadata.id))?.definition,
+        ])),
       ];
       const unsearchable = [
         ...blockProblems,
