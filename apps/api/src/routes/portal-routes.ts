@@ -53,8 +53,9 @@ import { mayGiveTestRunnerKeys, testRunnerRefusedType } from '../test-runner.js'
 import { fileInputOf } from '../runtime-documents.js';
 import type { ServiceHealth } from '../service-health.js';
 import { pausedMessage, type LifecycleView } from '../service-lifecycle.js';
-import { isHiddenTask, shownKeys } from '../internal-services.js';
+import { hidesInternalServices, isHiddenTask, shownKeys } from '../internal-services.js';
 import { rightBeyondHolder } from '../key-policies.js';
+import { timedStep } from '../request-timing.js';
 
 export type TaskChannel = 'api-key' | 'interface' | 'api' | 'playground' | 'batch';
 
@@ -880,8 +881,11 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         const spec = (latest?.definition.spec ?? {}) as Record<string, unknown>;
         const output = (spec.output ?? {}) as { kind?: unknown };
         const primary = (spec.model as { primary?: unknown } | undefined)?.primary;
-        const health = await deps.serviceHealth?.(tenant, d.id);
-        const lifecycle = (await deps.lifecycle?.(tenant, d.id)) ?? { state: 'active' as const };
+        const [health, state] = await Promise.all([
+          deps.serviceHealth?.(tenant, d.id),
+          deps.lifecycle?.(tenant, d.id),
+        ]);
+        const lifecycle = state ?? { state: 'active' as const };
         const by = latest ? people?.get(latest.publishedBy) : undefined;
         return {
           id: d.id,
@@ -1175,22 +1179,26 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       return at >= from.getTime() && at <= to.getTime();
     };
     const since = from.toISOString();
-    const [tasks, testRuns] = await Promise.all([
-      tasksSince(tenant, since, true).then((found) =>
-        found.filter(
-          (t) =>
-            within(t.createdAt) &&
-            (project === undefined || projectOf.get(t.id)?.project === project) &&
-            (environment === undefined || environmentOf(t) === environment),
+    const [tasks, testRuns] = await timedStep('usageTasks', () =>
+      Promise.all([
+        tasksSince(tenant, since, true).then((found) =>
+          found.filter(
+            (t) =>
+              within(t.createdAt) &&
+              (project === undefined || projectOf.get(t.id)?.project === project) &&
+              (environment === undefined || environmentOf(t) === environment),
+          ),
         ),
-      ),
-      !scoped
-        ? tenantTestRunsSince(tenant, since).then((found) =>
-            found.filter((t) => within(t.createdAt)),
-          )
-        : Promise.resolve([]),
-    ]);
-    const usage = await usageByTask([...tasks, ...testRuns].map((t) => t.id));
+        !scoped
+          ? tenantTestRunsSince(tenant, since).then((found) =>
+              found.filter((t) => within(t.createdAt)),
+            )
+          : Promise.resolve([]),
+      ]),
+    );
+    const usage = await timedStep('usageEvents', () =>
+      usageByTask([...tasks, ...testRuns].map((t) => t.id)),
+    );
     let totals = empty();
     const daily = new Map<string, Tally>();
     const byService = new Map<string, Tally>();
@@ -1309,7 +1317,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       string,
       { subject?: UsageSubject; tally: Tally; cost: Money; rate?: CurrencyRate }
     >();
-    const gateway = gatewayRead ? await gatewayRead : undefined;
+    const gateway = gatewayRead ? await timedStep('gateway', () => gatewayRead) : undefined;
     for (const row of combine(gateway?.rows ?? [], counting) as AssignedUsageRow[]) {
       const { tally, rate } = gatewayTally(row, gateway?.rates ?? []);
       const date = day(row.start);
@@ -1439,6 +1447,34 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     };
   };
 
+  const monthlyUsage = new Map<
+    string,
+    { at: number; totals: Promise<ReturnType<typeof usageView>> }
+  >();
+  const monthlyUsageTtlMs = 30_000;
+  const monthlyUsageKey = (tenant: string, from: Date) =>
+    `${hidesInternalServices()}:${tenant}:${from.toISOString()}`;
+  const freshMonthTotals = (tenant: string, from: Date, to: Date) => {
+    const cached = monthlyUsage.get(monthlyUsageKey(tenant, from));
+    return cached && to.getTime() - cached.at < monthlyUsageTtlMs ? cached.totals : undefined;
+  };
+  const monthTotals = (
+    tenant: string,
+    from: Date,
+    to: Date,
+    preloaded?: Promise<GatewayWindow>,
+  ) => {
+    const cached = freshMonthTotals(tenant, from, to);
+    if (cached) return cached;
+    const key = monthlyUsageKey(tenant, from);
+    const totals = usageOver(tenant, from, to, undefined, preloaded).then((u) => u.totals);
+    monthlyUsage.set(key, { at: to.getTime(), totals });
+    totals.catch(() => {
+      if (monthlyUsage.get(key)?.totals === totals) monthlyUsage.delete(key);
+    });
+    return totals;
+  };
+
   app.get('/tenants/:tenant/overview', async (c) => {
     const g = await guard(c);
     if (g instanceof Response) return g;
@@ -1448,15 +1484,21 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     const weekAgo = new Date(start.getTime() - weekMs).toISOString();
     const monthStart = month.toISOString();
     const seesUsage = requireRight(g.principal, g.tenant, 'view-usage').ok;
-    const window = await tasksSince(g.tenant, monthStart < weekAgo ? monthStart : weekAgo, true);
-    const [caps, summaries, latest, usage, connections, qualityWarnings] = await Promise.all([
-      capabilitiesOf(g.tenant),
-      serviceSummaries(g.tenant),
-      window.length >= 5 ? window : tasksSince(g.tenant, undefined, true),
-      seesUsage ? usageOver(g.tenant, month, start) : undefined,
-      deps.connections.list(g.tenant),
-      deps.qualityWarnings?.(g.tenant),
-    ]);
+    const windowRead = timedStep('tasks', () =>
+      tasksSince(g.tenant, monthStart < weekAgo ? monthStart : weekAgo, true),
+    );
+    const [window, caps, summaries, latest, usage, connections, qualityWarnings] =
+      await Promise.all([
+        windowRead,
+        capabilitiesOf(g.tenant),
+        timedStep('services', () => serviceSummaries(g.tenant)),
+        windowRead.then((found) =>
+          found.length >= 5 ? found.slice() : tasksSince(g.tenant, undefined, true),
+        ),
+        seesUsage ? timedStep('usage', () => monthTotals(g.tenant, month, start)) : undefined,
+        timedStep('connections', () => deps.connections.list(g.tenant)),
+        timedStep('qualityWarnings', async () => deps.qualityWarnings?.(g.tenant)),
+      ]);
     const services = summaries.map((s) => ({
       id: s.id,
       name: s.name,
@@ -1467,13 +1509,15 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       runsThisWeek: s.runsThisWeek,
     }));
     const recent = latest.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
-    const recentUsage = seesUsage ? await usageByTask(recent.map((t) => t.id)) : undefined;
+    const recentUsage = seesUsage
+      ? await timedStep('recentUsage', () => usageByTask(recent.map((t) => t.id)))
+      : undefined;
     return c.json({
       services,
       recentTasks: recent.map((t) =>
         recentUsage ? taskRow(caps, t, recentUsage.get(t.id)) : taskBase(caps, t),
       ),
-      ...(usage ? { usageThisMonth: usage.totals } : {}),
+      ...(usage ? { usageThisMonth: usage } : {}),
       qualityWarnings: qualityWarnings ?? [],
       review: {
         pendingToolChanges: connections.reduce((n, s) => n + s.pending.length, 0),
@@ -1728,12 +1772,6 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     return c.json(outcome.value);
   });
 
-  const monthlyUsage = new Map<
-    string,
-    { at: number; totals: Promise<ReturnType<typeof usageView>> }
-  >();
-  const monthlyUsageTtlMs = 30_000;
-
   app.get('/operator/usage', async (c) => {
     const principal = await deps.authenticate(c.req.raw);
     if (!principal) return problem(c, 401, 'Unauthorized');
@@ -1748,28 +1786,19 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     ].slice(0, 200);
     const to = now();
     const from = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), 1));
-    const fresh = (orgNumber: string) => {
-      const cached = monthlyUsage.get(`${orgNumber}:${from.toISOString()}`);
-      return !cached || to.getTime() - cached.at >= monthlyUsageTtlMs;
-    };
-    const uncached = tenants.filter(fresh);
+    const uncached = tenants.filter((orgNumber) => !freshMonthTotals(orgNumber, from, to));
     const gatewayRows =
       deps.gatewayUsage && uncached.length > 0 ? gatewayWindow(uncached, from, to) : undefined;
     gatewayRows?.catch(() => undefined);
     const data = await Promise.all(
       tenants.map(async (orgNumber) => {
-        const key = `${orgNumber}:${from.toISOString()}`;
-        const cached = monthlyUsage.get(key);
-        if (cached && to.getTime() - cached.at < monthlyUsageTtlMs)
-          return { orgNumber, usage: await cached.totals };
-        const own = gatewayRows?.then((w) => ({
-          rows: w.rows.filter((r) => r.tenant === orgNumber),
-          rates: w.rates,
-        }));
-        const totals = usageOver(orgNumber, from, to, undefined, own).then((u) => u.totals);
-        monthlyUsage.set(key, { at: to.getTime(), totals });
-        totals.catch(() => monthlyUsage.delete(key));
-        return { orgNumber, usage: await totals };
+        const own = uncached.includes(orgNumber)
+          ? gatewayRows?.then((w) => ({
+              rows: w.rows.filter((r) => r.tenant === orgNumber),
+              rates: w.rates,
+            }))
+          : undefined;
+        return { orgNumber, usage: await monthTotals(orgNumber, from, to, own) };
       }),
     );
     return c.json({ from: from.toISOString(), to: to.toISOString(), data });
@@ -1838,10 +1867,11 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
           : actorIdOf(t, g.tenant) === actor));
     const keep = (row: PortalTaskRow) =>
       (!status || row.status === status) && (!from || row.at >= from);
-    const tasks =
+    const tasks = await timedStep('tasks', () =>
       c.req.query('origin') === 'playground'
-        ? await playgroundRuns(g.tenant, keep)
-        : await tenantTasks(g.tenant, keep);
+        ? playgroundRuns(g.tenant, keep)
+        : tenantTasks(g.tenant, keep),
+    );
     const byId = new Map(tasks.map((t) => [t.id, t]));
     const rows = tasks
       .map((t) => taskBase(caps, t))
@@ -1862,16 +1892,18 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         )
       : rows;
     const shown = matching.slice(offset, offset + limit).map((r) => byId.get(r.id) as Task);
-    const [views, failures] = await Promise.all([
-      taskViews(
-        g.tenant,
-        caps,
-        shown,
-        requireRight(g.principal, g.tenant, 'manage-services').ok,
-        requireRight(g.principal, g.tenant, 'view-usage').ok,
-      ),
-      failuresOf(shown.filter((t) => t.status === 'failed').map((t) => t.id)),
-    ]);
+    const [views, failures] = await timedStep('views', () =>
+      Promise.all([
+        taskViews(
+          g.tenant,
+          caps,
+          shown,
+          requireRight(g.principal, g.tenant, 'manage-services').ok,
+          requireRight(g.principal, g.tenant, 'view-usage').ok,
+        ),
+        failuresOf(shown.filter((t) => t.status === 'failed').map((t) => t.id)),
+      ]),
+    );
     const data = views.map((view) => {
       const failure = failures.get(view.id);
       return failure ? { ...view, failure } : view;
