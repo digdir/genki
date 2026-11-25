@@ -540,8 +540,8 @@ export const createGenkiApi = ({
         return { url: address, mediaType: 'application/pdf', source: answer.source };
       if (answer.kind === 'original' && pdfType(answer.mediaType))
         return { url: base, mediaType: 'application/pdf' };
-      if (answer.kind === 'source' && pdfType(answer.mediaType))
-        return { url: answer.url, mediaType: 'application/pdf', source: answer.url };
+      // A PDF on a site genki doesn't serve from (`kind: 'source'`) is not framed: many sites, Kudos
+      // among them, forbid it. The view shows the excerpts and «Les dokumentet» instead.
       return undefined;
     },
     sendFeedback: async ({ runId, rating, reasons, comment }) => {

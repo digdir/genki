@@ -731,4 +731,33 @@ describe('a remote PDF genki serves', () => {
       ),
     ).toEqual(['https://kudos.dfo.no', 'https://d.example']);
   });
+
+  it('says there is no file to show when the record lists the remote PDF as larger than 50 MiB', async () => {
+    const big = 'https://kilde.example/dokument/4715/filer/stor.pdf';
+    const withBig = documentReply([
+      {
+        doc_num: '4715',
+        title: 'Stor rapport',
+        url: 'https://kilde.example/dokument/4715',
+        files: [{ url: big, mimetype: 'application/pdf', size: 50 * 1024 * 1024 + 1 }],
+      },
+    ]);
+    const { asked, fetcher } = source(pdfBytes);
+    const { app } = await setup(withBig, remote(fetcher));
+    const asking = `${fileOf('4715')}?file=${encodeURIComponent(big)}`;
+    const json = { authorization: 'Bearer kari', accept: 'application/json' };
+
+    const answers = [
+      await app.request(asking, { headers: json }),
+      await app.request(fileOf('4715'), { headers: json }),
+      await get(app, asking),
+      await get(app, fileOf('4715')),
+    ];
+
+    for (const res of answers) {
+      expect(res.status).toBe(404);
+      expect(await res.json()).toMatchObject({ code: 'document_file_not_found' });
+    }
+    expect(asked).toEqual([]);
+  });
 });
