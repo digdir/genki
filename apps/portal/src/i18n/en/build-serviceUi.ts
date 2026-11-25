@@ -174,6 +174,8 @@ export const serviceUi = {
     inUse: 'In use',
     tryIt: 'Try',
     testService: 'Test the service',
+    openService: 'Open the service',
+    opensInNewTab: '(opens in a new tab)',
     publish: 'Publish',
     ownersOnly: 'Only owners can publish',
     testStatus: "Saved to the test edition at once. Users don't get it until you publish.",

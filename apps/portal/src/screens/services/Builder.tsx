@@ -9,7 +9,7 @@ import {
   TabsPanel,
   TabsTab,
 } from '@digdir/designsystemet-react';
-import { PlayIcon, TrashIcon } from '@navikt/aksel-icons';
+import { ExternalLinkIcon, PlayIcon, TrashIcon } from '@navikt/aksel-icons';
 import { BackLink } from '../../components/BackLink';
 import { Icon } from '../../components/Icon';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -121,6 +121,7 @@ import { setAt } from '../../definition-path';
 import { checkFlowInputs } from '../../data/flow-inputs';
 import { hasOperationSteps, operationKindsIn } from '../../data/step-operations';
 import { PublishedTest } from '../service/PublishedTest';
+import { serviceAddress } from '../service/service-address';
 import { DraftOutdated, type ConflictPick } from './DraftOutdated';
 import { VersionsTab, type VersionItem } from './VersionsTab';
 import { YamlTab } from './YamlTab';
@@ -959,6 +960,18 @@ export const Builder = ({
     [api, tenant, id, draftBar, liveVersion?.version, pointerRound],
     { keepPreviousFor: id },
   );
+  const [hostedClients] = useAsync(
+    async (signal) =>
+      draftBar && liveVersion
+        ? api.listClients(tenant, id, signal).catch(() => undefined)
+        : undefined,
+    [api, tenant, id, draftBar, Boolean(liveVersion)],
+    { keepPreviousFor: id },
+  );
+  const address =
+    hostedClients.status === 'ready'
+      ? serviceAddress(hostedClients.data?.clients ?? [], id)
+      : undefined;
   const inUseVersion =
     pointers.status === 'ready'
       ? (pointers.data?.environments?.find((e) => e.name === productionEnvironment)?.version ??
@@ -2503,6 +2516,15 @@ export const Builder = ({
                   }}
                   {...(live ? { onCopy: () => void copyService() } : {})}
                 />
+              ) : null}
+              {address && !archived ? (
+                <Button asChild variant="secondary" data-size="sm">
+                  <a href={address} target="_blank" rel="noopener noreferrer">
+                    {t('edition.openService')}
+                    <Icon icon={ExternalLinkIcon} />
+                    <span className="visually-hidden"> {t('edition.opensInNewTab')}</span>
+                  </a>
+                </Button>
               ) : null}
               {fresh ? (
                 <Button asChild variant="secondary" data-size="sm">

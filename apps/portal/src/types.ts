@@ -424,6 +424,8 @@ export interface ClientSpec {
     postLogoutRedirectUris?: string[];
   };
   webhook?: { url: string; events: WebhookEvent[]; secret: string };
+  hosted?: boolean;
+  hostnames?: { hostname: string; environment?: string }[];
 }
 
 export interface WebhookDelivery {
