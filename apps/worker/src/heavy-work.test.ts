@@ -676,6 +676,41 @@ describe('a VACUUM that outlives its worker (issue 948)', () => {
     ]);
   });
 
+  it('starts no heavy session once the worker is stopping, and leaves none tracked', async () => {
+    const running = heavyRunning();
+    const t = deps(
+      {
+        running,
+        server: server({
+          state: vi.fn(async () => 'standalone' as const),
+          build: vi.fn(async (_d, _g, options: { onBackend?: (pid: number) => void }) => {
+            options.onBackend?.(7);
+            // The worker begins to stop while the reconciler's build runs.
+            await cancelHeavyWork({ ...t.deps, running });
+          }),
+          vacuum: vi.fn(async (_g, options: { onBackend?: (pid: number) => void }) => {
+            options.onBackend?.(8);
+            return undefined;
+          }),
+        }),
+      },
+      night,
+    );
+    const finished = await finishRun(
+      t.deps,
+      async () => undefined,
+    )({
+      id: 'run-1',
+      dataset: dataset.id,
+      generation: 'g-docs-3',
+    } as Parameters<ReturnType<typeof finishRun>>[0]);
+    // The run's VACUUM never started: it is tried again on a later pass.
+    expect(finished).toBe(false);
+    expect(t.deps.server.terminate).toHaveBeenCalledWith(7);
+    expect(t.deps.server.terminate).not.toHaveBeenCalledWith(8);
+    expect([...running.backends]).toEqual([]);
+  });
+
   it('forgets every backend of a job once it ends', async () => {
     const t = deps(
       {

@@ -234,6 +234,8 @@ const tracked = (deps: HeavyDeps, onBackend?: (pid: number) => void) => {
   const pids = new Set<number>();
   return {
     onBackend: (backend: number) => {
+      // Called before the session's long statement: a stopping worker starts no more heavy work.
+      if (deps.running?.stopping) throw new Error('the worker is stopping');
       pids.add(backend);
       deps.running?.backends.add(backend);
       onBackend?.(backend);
@@ -622,11 +624,15 @@ export const finishRun =
           await report(run.id, { buildSent: 1 }, 'add');
           return false;
         }
-        await deps.server.build(
-          await datasetConfig(deps, generation),
-          generation,
-          maintenance(deps),
-        );
+        const built = tracked(deps);
+        try {
+          await deps.server.build(await datasetConfig(deps, generation), generation, {
+            ...maintenance(deps),
+            onBackend: built.onBackend,
+          });
+        } finally {
+          built.done();
+        }
         await closingVacuumOf(deps, run.id, generation, {}, { afterBuild: true });
         return true;
       }
