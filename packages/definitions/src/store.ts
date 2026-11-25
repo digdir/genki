@@ -1,3 +1,4 @@
+import type { Principal } from '@genai/contracts';
 import { toCapabilities, type CompiledCapability } from './compile.js';
 import { checkFlowSettings } from './flow-settings.js';
 import { checkPromptFiles, type PromptFiles } from './prompts.js';
@@ -125,6 +126,8 @@ export type PublishResult =
 
 export interface PublishOptions {
   expectedLatest?: number;
+  /** Ignored by the store. */
+  publisher?: Principal;
 }
 
 export const stalePublish = (expected: number, latest: number): PublishResult => ({

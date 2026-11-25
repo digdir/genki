@@ -2,8 +2,7 @@ import type { DefinitionKind } from './definition-kinds';
 export interface OperatorSession {
   name: string;
   roles: string[];
-  token: string;
-  idToken?: string;
+  token?: string;
 }
 
 export type TenantStatus = 'active' | 'onboarding' | 'paused';

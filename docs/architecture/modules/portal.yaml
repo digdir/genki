@@ -18,7 +18,7 @@ responsibilities:
 files:
   - apps/portal/src/App.tsx
   - apps/portal/src/api.ts
-  - apps/portal/src/oidc.ts
+  - apps/portal/src/bff-login.ts
   - apps/portal/src/yaml.ts
 input: Agency admin actions
 output: Publish and admin requests
@@ -49,13 +49,6 @@ edges:
     witness:
       file: apps/portal/src/api.ts
       contains: /api/datasets
-  - to: ansattporten
-    label: OIDC sign-in
-    kind: http
-    target: http
-    witness:
-      file: apps/portal/src/oidc.ts
-      contains: ansattporten
   - to: schema-forms
     label: Renders strategy and plugin parameters from JSON Schema
     kind: call

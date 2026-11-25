@@ -4,10 +4,10 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { screenFile, sessionFor } from './browser.ts';
+import { screenFile, signIn } from './browser.ts';
 import { estimateOf, playgroundVersionOf, priceOf } from './extra.ts';
 import { loadPlan } from './client.ts';
-import { finalOutcome, main, portalClientIdOf, reviewDecision } from './run.ts';
+import { finalOutcome, main, reviewDecision } from './run.ts';
 
 const asked = { asked: true, prs: 2, healthy: true, runsToday: 1, maxPerDay: 3 };
 
@@ -47,28 +47,76 @@ describe('the outcome', () => {
 });
 
 describe('the browser', () => {
-  it('reads the portal’s client id from its runtime config', () => {
-    expect(
-      portalClientIdOf('globalThis.__GENKI_CONFIG__ = {"OIDC_CLIENT_ID":"genki-portal"};'),
-    ).toBe('genki-portal');
-    expect(portalClientIdOf('globalThis.__GENKI_CONFIG__ = {};')).toBe('local-portal');
+  const now = Date.parse('2026-11-25T10:00:00Z');
+  const signedInContext = async (app: 'portal' | 'console') => {
+    const routes: { match: (url: URL) => boolean; handle: (route: unknown) => unknown }[] = [];
+    const context = {
+      route: async (match: unknown, handle: unknown) => {
+        routes.push({
+          match: match as (url: URL) => boolean,
+          handle: handle as (route: unknown) => unknown,
+        });
+      },
+    };
+    await signIn(
+      context as unknown as Parameters<typeof signIn>[0],
+      app,
+      'https://portal.example',
+      'smoke-key',
+      '312521172',
+      now,
+    );
+    return async (url: string) => {
+      const seen: { continued?: Record<string, string>; fulfilled?: { body: string } } = {};
+      const route = {
+        request: () => ({ headers: () => ({ accept: 'application/json' }) }),
+        continue: async (o: { headers: Record<string, string> }) => {
+          seen.continued = o.headers;
+        },
+        fulfill: async (o: { body: string }) => {
+          seen.fulfilled = o;
+        },
+      };
+      const hit = routes.find((r) => r.match(new URL(url)));
+      await hit?.handle(route);
+      return { routed: Boolean(hit), ...seen };
+    };
+  };
+
+  it('sends the smoke key only to the app origin’s /api/', async () => {
+    const request = await signedInContext('portal');
+    expect((await request('https://portal.example/api/tenants/t/services')).continued).toEqual({
+      accept: 'application/json',
+      authorization: 'Bearer smoke-key',
+    });
+    for (const url of [
+      'https://portal.example/',
+      'https://portal.example/assets/app.js',
+      'https://portal.example/apiary',
+      'https://portal.example/auth/login',
+      'https://console.example/api/tenants',
+      'https://test.ansattporten.no/api/token',
+      'https://portal.example.evil/api/x',
+    ])
+      expect((await request(url)).continued).toBeUndefined();
   });
 
-  it('gives the portal a session in the platform organisation that has not expired', () => {
-    expect(sessionFor('portal', 't', '312521172', 1000)).toEqual({
+  it('answers /auth/me as signed in for the smoke tenant', async () => {
+    const request = await signedInContext('portal');
+    const me = JSON.parse((await request('https://portal.example/auth/me')).fulfilled?.body ?? '');
+    expect(me).toEqual({
       name: 'Smoke test',
+      organisation: '312521172',
       organisations: [{ orgNumber: '312521172', name: 'Smoke test' }],
-      token: 't',
-      expiresAt: 3_601_000,
+      expiresAt: '2026-11-25T11:00:00.000Z',
     });
+    expect((await request('https://console.example/auth/me')).routed).toBe(false);
   });
 
-  it('gives the console an operator session', () => {
-    expect(sessionFor('console', 't', '1', 0)).toEqual({
-      name: 'Smoke test',
-      roles: ['GenAI.Operator'],
-      token: 't',
-    });
+  it('answers /auth/me on the console as signed in as an operator', async () => {
+    const request = await signedInContext('console');
+    const me = JSON.parse((await request('https://portal.example/auth/me')).fulfilled?.body ?? '');
+    expect(me).toMatchObject({ organisation: '312521172', operator: true });
   });
 
   it('names screenshots after the screen', () => {

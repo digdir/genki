@@ -226,6 +226,7 @@ export const createProjectsApi = ({
       headers: {
         accept: 'application/json',
         'accept-language': locale(),
+        'genai-csrf': '1',
         ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
         ...(bearer ? { authorization: `Bearer ${bearer}` } : {}),
         ...(options.reason ? { 'change-reason': enc(options.reason) } : {}),

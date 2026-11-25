@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
+import { bffProxy, ownLocalhost } from '../../scripts/vite-bff';
 import { defaultClientConditions, defineConfig, type Plugin } from 'vite';
 import { atlasScriptFile, separateAtlasScript } from './src/atlas-page';
 
@@ -24,15 +25,13 @@ const systemAtlas = (): Plugin => ({
 });
 
 export default defineConfig({
-  plugins: [react(), systemAtlas()],
+  plugins: [react(), ownLocalhost('console'), systemAtlas()],
   resolve: { conditions: ['source', ...defaultClientConditions] },
   server: {
     port: 5174,
-    proxy: {
-      '/api': {
-        target: `http://localhost:${process.env.GENAI_API_PORT ?? 8080}`,
-        rewrite: (p) => p.replace(/^\/api/, ''),
-      },
-    },
+    proxy: bffProxy(
+      `http://localhost:${process.env.GENAI_API_PORT ?? 8080}`,
+      process.env.GENAI_PROXY_KEY,
+    ),
   },
 });

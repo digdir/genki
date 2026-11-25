@@ -271,6 +271,7 @@ import {
 import { trackedWork } from './tracked-work.js';
 import { tenantGate } from './tenant-gate.js';
 import { platformOperator, testRunnerView } from './test-runner.js';
+import { isOperator } from './rights.js';
 import { compiledCapabilityCache } from './compiled-capabilities.js';
 import {
   hidingInternalServices,
@@ -1841,7 +1842,7 @@ export const createPlatform = async (input: PlatformInput) => {
         const result = await store.publish(...args);
         if (result.ok) {
           await resync();
-          await addressOnPublish(result.version.definition, args[1]);
+          await addressOnPublish(result.version.definition, args[1], args[4]?.publisher);
         }
         return result;
       },
@@ -1863,13 +1864,21 @@ export const createPlatform = async (input: PlatformInput) => {
     definitions,
     configEntries,
     locked: input.lockdown !== undefined,
+    ...(testRunnerOperator ? { isPlatformOperator: testRunnerOperator } : {}),
     ...(input.reservedClientIds ? { reservedClientIds: input.reservedClientIds } : {}),
     ...(input.now ? { now: () => new Date(input.now?.() ?? 0) } : {}),
   });
-  async function addressOnPublish(definition: { kind: string; metadata: unknown }, by: string) {
+  async function addressOnPublish(
+    definition: { kind: string; metadata: unknown },
+    by: string,
+    publisher: Principal | undefined,
+  ) {
     if (definition.kind !== 'Service' || !hostnameSetup.zone) return;
     const { tenant, id } = definition.metadata as { tenant: string; id: string };
-    const operator = by.startsWith('operator:');
+    const operator =
+      by.startsWith('operator:') ||
+      (publisher !== undefined &&
+        (isOperator(publisher) || testRunnerOperator?.(publisher) === true));
     try {
       const admin = claimHooks.admin;
       if (!admin || !(await wantsAutoAddress(claimDeps(), tenant, id, { operator }))) return;

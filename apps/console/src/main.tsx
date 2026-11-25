@@ -7,9 +7,9 @@ import { LocaleProvider, storedPreference } from '@genai/i18n/react';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
-import { ansattportenLogin, mockEntra, operatorRole } from './auth';
+import { mockEntra, operatorRole } from './auth';
+import { bffLogin } from './bff-login';
 import { setting } from './runtime-config';
-import { isSilentCallback, silentFrame } from './silent-frame';
 
 const useMock = setting('API') === 'mock';
 const language = storedPreference(window.localStorage, 'genai.console.language');
@@ -20,29 +20,19 @@ const send: typeof fetch = (input, init) => {
   headers.set('accept-language', chosen);
   return window.fetch(input, { ...init, headers });
 };
-const origin = window.location.origin;
 const auth = useMock
   ? mockEntra({ name: 'Lise Dahl', roles: [operatorRole] }, 300)
-  : ansattportenLogin({
-      issuer: setting('OIDC_ISSUER') ?? 'http://localhost:8080/mock/ansattporten',
-      clientId: setting('OIDC_CLIENT_ID') ?? 'local-console',
-      redirectUri: `${origin}/callback`,
-      postLogoutRedirectUri: `${origin}/`,
-      tokenEndpoint: setting('OIDC_TOKEN_ENDPOINT') ?? '/api/mock/ansattporten/token',
-      apiBaseUrl: '/api',
-      audience: setting('API_AUDIENCE') ?? 'digdir:genai',
-      resource: setting('ALTINN_RESOURCE') ?? 'urn:altinn:resource:digdir-genai-platform',
+  : bffLogin({
       fetch: send,
-      storage: window.sessionStorage,
       navigate: (url) => window.location.assign(url),
+      here: () => `${window.location.pathname}${window.location.search}${window.location.hash}`,
       locale: () => resolveLocale(document.documentElement.lang),
-      silent: silentFrame(window),
     });
 const root = document.getElementById('root');
 const apiFetch = async (): Promise<typeof fetch> =>
   useMock ? (await import('./mock')).mockFetch() : send;
 
-if (root && !isSilentCallback(window)) {
+if (root) {
   void apiFetch().then((fetch) =>
     createRoot(root).render(
       <StrictMode>

@@ -1,4 +1,10 @@
-import { actingClient, createBff, InMemoryBffSessions, organisationsOf } from './bff/index.js';
+import {
+  actingClient,
+  createBff,
+  InMemoryBffSessions,
+  organisationsOf,
+  platformAppActing,
+} from './bff/index.js';
 import { remoteFileOriginsFrom } from '@genai/adapter-rest';
 import { platformLoginFrom } from './platform-login.js';
 import { binderTrustFrom } from './binder-token.js';
@@ -233,6 +239,7 @@ if (platformLogin)
     hostname: platformLogin.hostname,
     secret: platformLogin.secret !== undefined,
     subjectsKept: platformLogin.subjectKeyKept,
+    apps: platformLogin.apps.map((a) => a.app),
   });
 const registeredClients = clientRegistry(
   clients,
@@ -257,6 +264,7 @@ const { trusted, mock, mockIssuer } = await loginIssuers({
   registeredClients,
   platformLoginClients: platformLogin ? [platformLogin.clientId] : [],
   ...(platformLogin ? { platformLoginKey: platformLogin.subjectKey } : {}),
+  platformAppSession: () => platformAppActing() !== undefined,
   ...(trustedEntra ? { trustedEntra } : {}),
   onKeysNotFetched: (fields) => log('login keys not fetched', fields),
 });
@@ -266,8 +274,8 @@ if (mock) mockRegistration = mockClientSync(mock.clients, audience, (t, n) => cl
 if (mock && platformLogin?.secret)
   mock.clients.register({
     clientId: platformLogin.clientId,
-    redirectUris: [`https://${platformLogin.hostname}/auth/callback`],
-    postLogoutRedirectUris: [`https://${platformLogin.hostname}/auth/logged-out`],
+    redirectUris: [`${platformLogin.origin}/auth/callback`],
+    postLogoutRedirectUris: [`${platformLogin.origin}/auth/logged-out`],
     audience,
     tokenEndpointAuthMethod: 'client_secret_basic',
     clientSecret: platformLogin.secret,
@@ -276,7 +284,10 @@ const operatorSubjects = operatorSubjectsFrom(process.env);
 const operators = operatorDirectory({
   pids: identityFile.operatorPids,
   subjects: operatorSubjects,
-  clientIds: operatorClientIds(process.env),
+  clientIds: [
+    ...operatorClientIds(process.env),
+    ...(platformLogin && platformLogin.apps.length > 0 ? [platformLogin.clientId] : []),
+  ],
   ...(mockIssuer ? { mockIssuer } : {}),
 });
 if (!mock && identityFile.operatorPids.length > 0)
@@ -496,7 +507,9 @@ if (testRunnerKeys)
 const processorRecords = processorRecordCheckOf(process.env);
 
 const hostedHostnames = hostedHostnamesFrom(process.env);
-if (platformLogin) hostedHostnames.delete(platformLogin.hostname);
+if (platformLogin)
+  for (const name of [platformLogin.hostname, ...platformLogin.apps.map((a) => a.hostname)])
+    hostedHostnames.delete(name);
 const hostnameClaims = db?.hostnameClaims ?? new InMemoryHostnameClaims();
 const hosting = {
   hostnames: hostedHostnames,
@@ -925,6 +938,9 @@ const bff = createBff({
     )) !== undefined,
   issuer: ansattportenIssuer,
   platformLogin,
+  platformTenant,
+  isOperator: async (accessToken) =>
+    operators.isOperator((await verifier.verify(accessToken)).principal),
   altinnResource: resource,
   secrets: {
     value: clientSecretOf,

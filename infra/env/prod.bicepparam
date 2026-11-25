@@ -59,10 +59,6 @@ param maskinportenIssuer = readEnvironmentVariable('MASKINPORTEN_ISSUER', '')
 param maskinportenTokenUrl = readEnvironmentVariable('MASKINPORTEN_TOKEN_URL', '')
 param operatorSubjects = readEnvironmentVariable('OPERATOR_SUBJECTS', '')
 param platformTenant = ''
-param portalClientId = readEnvironmentVariable('PORTAL_CLIENT_ID', '')
-param workspaceClientId = readEnvironmentVariable('WORKSPACE_CLIENT_ID', '')
-param consoleClientId = readEnvironmentVariable('CONSOLE_CLIENT_ID', '')
-param consoleTokenEndpoint = readEnvironmentVariable('CONSOLE_TOKEN_ENDPOINT', '')
 
 param hostnames = {
   api: 'api.genki.digdir.cloud'

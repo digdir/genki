@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { createWorkspaceApi, sourcesFrom } from './api';
-import { localDevLogin } from './auth';
 
 interface Call {
   url: string;
@@ -510,20 +509,6 @@ describe('workspace api', () => {
     await expect(
       client(fetcher).sendFeedback({ rating: 'up', reasons: [], comment: '' }),
     ).rejects.toThrow();
-  });
-
-  it('logs in through the local dev login', async () => {
-    const { calls, fetcher } = recorder(() =>
-      Response.json({
-        token: 't',
-        name: 'Per Hansen',
-        organisations: [{ orgNumber: '999888777', name: 'Testetaten' }],
-      }),
-    );
-    const auth = localDevLogin(fetcher);
-    expect((await auth.login()).name).toBe('Per Hansen');
-    expect(auth.current()?.token).toBe('t');
-    expect(calls[0]?.url).toBe('/api/mock/dev-login');
   });
 });
 

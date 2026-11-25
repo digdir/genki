@@ -79,6 +79,8 @@ export type TrustedIssuer =
       registeredClients?: ClientRegistry;
       platformLoginClients?: readonly string[];
       platformLoginKey?: Uint8Array;
+      /** True only while genki's BFF presents a platform app's session; never set from a request. */
+      platformAppSession?: () => boolean;
     }
   | {
       kind: 'maskinporten';
@@ -176,6 +178,7 @@ const trustedEntraLogin = (
   trusted: TrustedEntra,
   payload: JWTPayload,
   registered: RegisteredClient | undefined,
+  appSession = false,
 ): VerifiedIdentity => {
   const claimed = new Set(
     (Array.isArray(payload.groups) ? payload.groups : []).flatMap((g) =>
@@ -187,7 +190,8 @@ const trustedEntraLogin = (
   const userLogin = !operatorLogin && member(trusted.userGroups ?? []);
   const serviceLogin = !operatorLogin && member(trusted.serviceGroups ?? []);
   const clientId = typeof payload.client_id === 'string' ? payload.client_id : undefined;
-  const platformClient = clientId !== undefined && trusted.clientIds.includes(clientId);
+  const platformClient =
+    appSession || (clientId !== undefined && trusted.clientIds.includes(clientId));
   const serviceClient =
     registered !== undefined &&
     clientId !== undefined &&
@@ -237,20 +241,19 @@ const employee = (
   const assurance = assuranceOf(payload.acr);
   if (!assurance) throw new AuthenticationError('insufficient_assurance', 'unknown acr');
   const clientId = typeof payload.client_id === 'string' ? payload.client_id : undefined;
-  if (
-    !registered &&
-    clientId !== undefined &&
-    issuer.platformLoginClients?.includes(clientId) &&
-    !issuer.trustedClients?.includes(clientId)
-  )
+  const platformLogin = clientId !== undefined && issuer.platformLoginClients?.includes(clientId);
+  const appSession =
+    !registered && platformLogin === true && issuer.platformAppSession?.() === true;
+  if (!registered && platformLogin && !appSession && !issuer.trustedClients?.includes(clientId))
     throw new AuthenticationError(
       'invalid_token',
       'a platform login counts only on the hostname it was made for',
     );
   if (assurance === 'entraid' && issuer.trustedEntra)
-    return trustedEntraLogin(issuer.issuer, issuer.trustedEntra, payload, registered);
+    return trustedEntraLogin(issuer.issuer, issuer.trustedEntra, payload, registered, appSession);
   if (
     !registered &&
+    !appSession &&
     issuer.trustedClients &&
     !(typeof payload.client_id === 'string' && issuer.trustedClients.includes(payload.client_id))
   )

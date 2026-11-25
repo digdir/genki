@@ -9,16 +9,19 @@ import {
   Textfield,
 } from '@digdir/designsystemet-react';
 import { useState } from 'react';
-import type { ApiClient } from '../../api';
+import { ApiError, type ApiClient } from '../../api';
 import { CopyButton } from '../../components/CopyButton';
 import { Icon } from '../../components/Icon';
 import { useAsync } from '../../hooks';
-import { useT, type PlainKey } from '../../i18n';
+import { useT, type PlainKey, type T } from '../../i18n';
 import type { HostnameState, HostnameView } from '../../types';
 import { problemText } from './ServiceKeys';
+import { servicePath } from './sections';
 import './service-address.css';
 
-const stateText: Record<Exclude<HostnameState, 'removed'>, PlainKey> = {
+type Visible = Exclude<HostnameState, 'removed'>;
+
+const stateText: Record<Visible, PlainKey> = {
   'pending-dns': 'serviceAddress.stateWaiting',
   binding: 'serviceAddress.stateBinding',
   active: 'serviceAddress.stateActive',
@@ -27,7 +30,7 @@ const stateText: Record<Exclude<HostnameState, 'removed'>, PlainKey> = {
   removing: 'serviceAddress.stateRemoving',
 };
 
-const stateColor: Record<Exclude<HostnameState, 'removed'>, string> = {
+const stateColor: Record<Visible, string> = {
   'pending-dns': 'warning',
   binding: 'info',
   active: 'success',
@@ -52,34 +55,44 @@ export const activeAddress = (hostnames: readonly HostnameView[]) => {
   return name ? `https://${name.hostname}/` : undefined;
 };
 
-export const ServiceAddress = ({
-  api,
-  tenant,
-  service,
-  canManage,
-}: {
-  api: ApiClient;
-  tenant: string;
-  service: string;
-  canManage: boolean;
-}) => {
+export const mainHostname = (hostnames: readonly HostnameView[]) => {
+  const main = hostnames.filter(
+    (h) => h.state !== 'removed' && !h.redirectTo && (h.environment ?? 'prod') === 'prod',
+  );
+  return (
+    main.find((h) => h.state === 'active' && !h.assigned) ??
+    main.find((h) => h.state === 'active') ??
+    main.find((h) => h.assigned) ??
+    main[0]
+  );
+};
+
+const refusals: [RegExp, PlainKey][] = [
+  [/^no_zone/, 'serviceAddress.noZone'],
+  [/^(not_published|no_interface)/, 'serviceAddress.needsApp'],
+  [/^has_address/, 'serviceAddress.hasAddress'],
+  [/^hostname_limit/, 'serviceAddress.limit'],
+];
+
+export const refusalText = (error: unknown, t: T) => {
+  const found = error instanceof ApiError ? error.problem?.errors?.[0] : undefined;
+  if (found?.path === 'principal' && /lockdown/.test(found.message))
+    return t('serviceAddress.operatorsOnly');
+  const known = refusals.find(([code]) => code.test(found?.message ?? ''));
+  return known ? t(known[1]) : problemText(error, t);
+};
+
+const useHostnames = (api: ApiClient, tenant: string, service: string, published = true) => {
   const t = useT();
   const [state, retry] = useAsync(
-    (signal) => api.serviceHostnames(tenant, service, signal).catch(() => undefined),
-    [api, tenant, service],
+    async (signal) =>
+      published ? api.serviceHostnames(tenant, service, signal).catch(() => undefined) : undefined,
+    [api, tenant, service, published],
     { keepPreviousFor: service },
   );
-  const [domain, setDomain] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-
-  if (state.status !== 'ready' || !state.data) return null;
-  const { client, hostnames = [], assigns } = state.data;
-  const shown = hostnames.filter((h) => h.state !== 'removed');
-  const open = activeAddress(shown);
-  const hasAssigned = shown.some((h) => h.assigned || h.managed);
-
-  const act = async (work: () => Promise<unknown>) => {
+  const act = async (work: () => Promise<unknown>, explain = problemText) => {
     setBusy(true);
     setError('');
     try {
@@ -87,12 +100,158 @@ export const ServiceAddress = ({
       retry();
       return true;
     } catch (e) {
-      setError(problemText(e, t));
+      setError(explain(e, t));
       return false;
     } finally {
       setBusy(false);
     }
   };
+  const give = () =>
+    !busy &&
+    void act(() => api.assignAddress(tenant, service, t('serviceAddress.reasonGive')), refusalText);
+  return { state, error, busy, act, give };
+};
+
+const NoAddress = ({
+  service,
+  hasApp,
+  assigns,
+  canManage,
+  busy,
+  onGive,
+}: {
+  service: string;
+  hasApp: boolean;
+  assigns: boolean;
+  canManage: boolean;
+  busy: boolean;
+  onGive: () => void;
+}) => {
+  const t = useT();
+  if (!hasApp)
+    return (
+      <Paragraph data-size="sm" className="meta">
+        {t('serviceAddress.needsApp')}{' '}
+        <Link href={`#${servicePath(service, 'interface')}`}>{t('serviceAddress.toDesign')}</Link>
+      </Paragraph>
+    );
+  if (!assigns)
+    return (
+      <Paragraph data-size="sm" className="meta">
+        {t('serviceAddress.noZone')}
+      </Paragraph>
+    );
+  if (!canManage)
+    return (
+      <Paragraph data-size="sm" className="meta">
+        {t('serviceAddress.none')}
+      </Paragraph>
+    );
+  return (
+    <div>
+      <Button variant="secondary" data-size="sm" aria-disabled={busy || undefined} onClick={onGive}>
+        {t('serviceAddress.give')}
+      </Button>
+    </div>
+  );
+};
+
+export const ServiceWebPage = ({
+  api,
+  tenant,
+  service,
+  published,
+  hasApp,
+  canManage,
+}: {
+  api: ApiClient;
+  tenant: string;
+  service: string;
+  published: boolean;
+  hasApp: boolean;
+  canManage: boolean;
+}) => {
+  const t = useT();
+  const { state, error, busy, give } = useHostnames(api, tenant, service, published);
+  const data = state.status === 'ready' ? state.data : undefined;
+  if (published && !data) return null;
+  const main = mainHostname(data?.hostnames ?? []);
+  const failure = main ? failureText(main.failure) : undefined;
+  return (
+    <div className="stack-xs fe-webpage">
+      {error ? (
+        <Alert data-color="danger" data-size="sm" role="alert">
+          {error}
+        </Alert>
+      ) : null}
+      {main?.state === 'active' ? (
+        <Link href={`https://${main.hostname}/`} target="_blank" rel="noopener noreferrer">
+          {main.hostname}
+          <Icon icon={ExternalLinkIcon} />
+          <span className="visually-hidden"> {t('serviceAddress.opensInNewTab')}</span>
+        </Link>
+      ) : main ? (
+        <>
+          <span>
+            <strong>{main.hostname}</strong>{' '}
+            <Tag data-size="sm" data-color={stateColor[main.state as Visible]}>
+              {t(stateText[main.state as Visible])}
+            </Tag>
+          </span>
+          {main.state === 'binding' ? (
+            <span className="meta">{t('serviceAddress.takesMinutes')}</span>
+          ) : null}
+          {failure ? <span className="meta">{t(failure)}</span> : null}
+        </>
+      ) : null}
+      {!main || (!main.assigned && main.state !== 'active' && hasApp && canManage) ? (
+        <NoAddress
+          service={service}
+          hasApp={hasApp && published}
+          assigns={data?.assigns ?? false}
+          canManage={canManage}
+          busy={busy}
+          onGive={give}
+        />
+      ) : null}
+    </div>
+  );
+};
+
+export const ServiceWebPageSection = (props: Parameters<typeof ServiceWebPage>[0]) => {
+  const t = useT();
+  return (
+    <section aria-labelledby="webpage-h" className="stack-sm">
+      <Heading level={3} data-size="2xs" id="webpage-h">
+        {t('serviceAddress.webPage')}
+      </Heading>
+      <ServiceWebPage {...props} />
+    </section>
+  );
+};
+
+export const ServiceAddress = ({
+  api,
+  tenant,
+  service,
+  hasApp,
+  canManage,
+}: {
+  api: ApiClient;
+  tenant: string;
+  service: string;
+  hasApp: boolean;
+  canManage: boolean;
+}) => {
+  const t = useT();
+  const { state, error, busy, act, give } = useHostnames(api, tenant, service);
+  const [domain, setDomain] = useState('');
+
+  if (state.status !== 'ready' || !state.data) return null;
+  const { client, hostnames = [], assigns } = state.data;
+  const shown = hostnames.filter((h) => h.state !== 'removed');
+  const open = activeAddress(shown);
+  const hasAssigned = shown.some((h) => h.assigned || h.managed);
 
   const add = async () => {
     const hostname = domain.trim().toLowerCase();
@@ -129,14 +288,10 @@ export const ServiceAddress = ({
           {error}
         </Alert>
       ) : null}
-      {shown.length === 0 ? (
-        <Paragraph data-size="sm" className="meta">
-          {t('serviceAddress.none')}
-        </Paragraph>
-      ) : (
+      {shown.length === 0 ? null : (
         <ul className="fe-address-list">
           {shown.map((h) => {
-            const visible = h.state as Exclude<HostnameState, 'removed'>;
+            const visible = h.state as Visible;
             const failure = failureText(h.failure);
             return (
               <li key={h.id ?? h.hostname} className="stack-xs">
@@ -218,20 +373,15 @@ export const ServiceAddress = ({
           })}
         </ul>
       )}
-      {canManage && assigns && !hasAssigned ? (
-        <div>
-          <Button
-            variant="secondary"
-            data-size="sm"
-            aria-disabled={busy || undefined}
-            onClick={() =>
-              !busy &&
-              void act(() => api.assignAddress(tenant, service, t('serviceAddress.reasonGive')))
-            }
-          >
-            {t('serviceAddress.give')}
-          </Button>
-        </div>
+      {shown.length === 0 || (canManage && assigns && hasApp && !hasAssigned) ? (
+        <NoAddress
+          service={service}
+          hasApp={hasApp}
+          assigns={assigns}
+          canManage={canManage}
+          busy={busy}
+          onGive={give}
+        />
       ) : null}
       {canManage && client ? (
         <form

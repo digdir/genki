@@ -128,9 +128,6 @@ export const finalOutcome = (
 ): SmokeReport['outcome'] =>
   outcome === 'pass' && healthyAtStart && !healthyAtEnd ? 'partial' : outcome;
 
-export const portalClientIdOf = (configJs: string) =>
-  /["']?OIDC_CLIENT_ID["']?\s*:\s*["']([^"']+)["']/.exec(configJs)?.[1] ?? 'local-portal';
-
 export const main = async () => {
   const started = Date.now();
   const env = process.env;
@@ -302,13 +299,11 @@ export const main = async () => {
   let browser: Browser | undefined;
   try {
     const { openBrowser } = await import('./browser.ts');
-    const config = await call(`${portal}/config.js`, { timeout: freeTimeout });
     browser = await openBrowser({
       portal,
       console: consoleUrl,
       tenant: plan.tenant,
       key,
-      portalClientId: portalClientIdOf(config.text),
       out,
       redact,
     });
