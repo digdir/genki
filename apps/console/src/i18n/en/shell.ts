@@ -51,7 +51,7 @@ export const shell = {
     other: '{count} quota requests waiting',
   },
   badgeOperations: '{count} failures',
-  completingLogin: 'Completing the sign-in',
+  checkingLogin: 'Checking your sign-in',
   loggedOutTitle: 'You are signed out',
   loggedOutText: 'Your session has expired. Sign in again to continue where you were.',
   retryAfterFailure: '{message} Try again.',
@@ -61,6 +61,8 @@ export const shell = {
   refusedTitle: 'You do not have access to the operations console',
   refusedText:
     "You are signed in as {name}. The operations console is only for Digdir's operations team. Your account is missing the operations role.",
+  refusedNotOperator:
+    "The operations console is only for Digdir's operations team. The account you signed in with is missing the operations role.",
   refusedHelp: 'If you need access, your manager can ask for the operations role for you.',
   notFound: 'Page not found',
   notFoundHelp: 'Check the address, or go to Organisations.',

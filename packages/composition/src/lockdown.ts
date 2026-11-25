@@ -66,6 +66,10 @@ export const operatorClientIds = (env: Env) => groupList(env.OPERATOR_CLIENT_IDS
 
 export const employeeClientIds = (env: Env) => groupList(env.EMPLOYEE_CLIENT_IDS);
 
+/** The portal, workspace and console sign in through the platform login client (ADR 0061). */
+export const platformAppsSignIn = (env: Env) =>
+  Boolean(env.PLATFORM_LOGIN_CLIENT_ID?.trim() && env.PLATFORM_APP_ORIGINS?.trim());
+
 const entraDomain = (env: Env) => env.LOCKDOWN_ENTRA_EMAIL_DOMAIN?.trim().replace(/^@/, '') ?? '';
 
 export const lockdownEntraProblems = (env: Env): string[] => {
@@ -90,10 +94,16 @@ export const lockdownEntraProblems = (env: Env): string[] => {
     ...(emailDomain && !domain.test(emailDomain)
       ? [`LOCKDOWN_ENTRA_EMAIL_DOMAIN must be a domain such as digdir.no, got "${emailDomain}"`]
       : []),
-    ...(isLockdown(env) && entraGroups(env).length > 0 && operatorClientIds(env).length === 0
+    ...(isLockdown(env) &&
+    entraGroups(env).length > 0 &&
+    operatorClientIds(env).length === 0 &&
+    !platformAppsSignIn(env)
       ? ['LOCKDOWN_ENTRA_GROUPS needs OPERATOR_CLIENT_IDS, the client ids whose Entra logins count']
       : []),
-    ...(isLockdown(env) && userGroups(env).length > 0 && operatorClientIds(env).length === 0
+    ...(isLockdown(env) &&
+    userGroups(env).length > 0 &&
+    operatorClientIds(env).length === 0 &&
+    !platformAppsSignIn(env)
       ? ['LOCKDOWN_USER_GROUPS needs OPERATOR_CLIENT_IDS, the client ids whose Entra logins count']
       : []),
     ...(platformClientsAsService.length > 0

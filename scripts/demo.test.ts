@@ -1,12 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  apiKeyScript,
+  browserLaunch,
   cached,
   Cancelled,
   demoOfRecording,
-  demoSessions,
+  demoSignIn,
   failureOf,
   libraryOf,
   managedIdentityTokenUrl,
@@ -26,7 +35,7 @@ import {
   retrying,
   runStep,
   scriptLiteral,
-  sessionScript,
+  signInBrowser,
   srtTime,
   ssml,
   StepFailure,
@@ -272,20 +281,15 @@ describe('demo recordings', () => {
   const apps = {
     portal: 'https://portal.example/',
     console: 'https://console.example',
-    portalClientId: 'abc',
+    workspace: 'https://workspace.example/#/',
     tenant: '312521172',
   };
-  const sessionPrefix = '(()=>{const s=';
-  const sessionSuffix =
-    '[location.origin];if(s&&!sessionStorage.getItem(s[0]))sessionStorage.setItem(s[0],s[1]);})();';
-  const sessionData = (script: string) => {
-    expect(script.startsWith(sessionPrefix)).toBe(true);
-    expect(script.endsWith(sessionSuffix)).toBe(true);
-    return JSON.parse(script.slice(sessionPrefix.length, -sessionSuffix.length)) as Record<
-      string,
-      [string, string]
-    >;
-  };
+  const now = Date.parse('2026-11-13T10:00:00Z');
+  const appOrigins = [
+    'https://portal.example',
+    'https://workspace.example',
+    'https://console.example',
+  ];
   const hostile = [
     '"',
     "'",
@@ -299,22 +303,119 @@ describe('demo recordings', () => {
     '"});alert(1);//',
   ];
 
-  it('puts the key only into the session of the portal or console origin it is on', () => {
-    const sessions = demoSessions('k3y', apps, Date.parse('2026-11-13T10:00:00Z'));
-    expect(Object.keys(sessions).sort()).toEqual([
-      'https://console.example',
-      'https://portal.example',
+  const fetchThrough = (script: string, page = 'https://portal.example/services') => {
+    const sent: { url: string; authorization: string | null }[] = [];
+    const window = {
+      fetch: (input: string, init?: RequestInit) => {
+        sent.push({
+          url: String(input),
+          authorization: new Headers(init?.headers).get('authorization'),
+        });
+        return Promise.resolve(new Response('{}'));
+      },
+    };
+    new Function('window', 'location', script)(window, { href: page });
+    return { fetch: window.fetch, sent };
+  };
+
+  it('sends the demo key only to the app origins’ /api/, never to the issuer or a third party', async () => {
+    const { fetch, sent } = fetchThrough(apiKeyScript('k3y', apps));
+    for (const url of [
+      '/api/tenants/1/me',
+      'https://console.example/api/operator/tenants',
+      'https://workspace.example/api/v1/models',
+      '/auth/me',
+      '/apiary',
+      'https://test.ansattporten.no/api/x',
+      'https://portal.example.evil.no/api/x',
+    ])
+      await fetch(url, { headers: { accept: 'application/json' } });
+    expect(sent.map((c) => c.authorization)).toEqual([
+      'Bearer k3y',
+      'Bearer k3y',
+      'Bearer k3y',
+      null,
+      null,
+      null,
+      null,
     ]);
-    const [portalName, portalValue] = sessions['https://portal.example'] ?? [];
-    expect(portalName).toBe('abc.session');
-    const portal = JSON.parse(portalValue ?? '{}');
-    expect(portal).toMatchObject({ token: 'k3y', organisations: [{ orgNumber: '312521172' }] });
-    expect(portal.expiresAt).toBe(Date.parse('2026-11-13T11:00:00Z'));
-    const [consoleName, consoleValue] = sessions['https://console.example'] ?? [];
-    expect(consoleName).toBe('console.session');
-    expect(JSON.parse(consoleValue ?? '{}').token).toBe('k3y');
-    expect(sessionData(sessionScript(sessions))).toEqual(sessions);
   });
+
+  it('never puts the demo key in the arguments of an agent-browser command', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'demo-launch-'));
+    const commands: string[][] = [
+      browserLaunch('demo', dir, 'nb-NO', { key: 'k3y', apps }),
+      ...demoSignIn(apps, now),
+    ];
+    signInBrowser(apps, now, (...args) => commands.push(args));
+    expect(commands.flat().join(' ')).not.toContain('k3y');
+    const keyFile = join(dir, 'api-key.js');
+    expect(commands[0]).toContain(keyFile);
+    expect(statSync(keyFile).mode & 0o777).toBe(0o600);
+    expect(readFileSync(keyFile, 'utf8')).toContain('k3y');
+  });
+
+  it('launches with no key script when the demo is not signed in', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'demo-launch-'));
+    expect(browserLaunch('demo', dir, 'nb-NO').join(' ')).not.toContain('api-key.js');
+    expect(existsSync(join(dir, 'api-key.js'))).toBe(false);
+  });
+
+  it('routes every app origin’s /auth/me', () => {
+    expect(demoSignIn(apps, now).map((c) => c.slice(0, 3))).toEqual(
+      appOrigins.map((o) => ['network', 'route', `${o}/auth/me`]),
+    );
+  });
+
+  it('answers /auth/me as signed in for the demo tenant', () => {
+    const routes = demoSignIn(apps, now).filter((c) => c[0] === 'network');
+    expect(routes.map((c) => c[3])).toEqual(['--body', '--body', '--body']);
+    expect(JSON.parse(routes[0]?.[4] ?? '')).toEqual({
+      name: 'Demo',
+      organisation: '312521172',
+      organisations: [{ orgNumber: '312521172', name: 'Demo' }],
+      expiresAt: '2026-11-13T11:00:00.000Z',
+    });
+    expect(JSON.parse(routes[1]?.[4] ?? '').operator).toBeUndefined();
+  });
+
+  it('answers /auth/me on the console as signed in as an operator', () => {
+    const route = demoSignIn(apps, now).find((c) => c[2] === 'https://console.example/auth/me');
+    expect(JSON.parse(route?.[4] ?? '')).toMatchObject({
+      organisation: '312521172',
+      operator: true,
+    });
+  });
+
+  it('keeps a hostile key and tenant as data in the sign-in commands and the key script', async () => {
+    for (const value of hostile) {
+      const commands = demoSignIn({ ...apps, tenant: value }, 0);
+      expect(JSON.parse(commands[0]?.[4] ?? '').organisation).toBe(value);
+      expect(() => new Function('window', 'location', apiKeyScript(value, apps))).not.toThrow();
+      if (!/^[\x20-\x7e]*$/.test(value)) continue;
+      const { fetch, sent } = fetchThrough(apiKeyScript(value, apps));
+      await fetch('/api/x');
+      expect(sent[0]?.authorization).toBe(`Bearer ${value}`);
+    }
+  });
+
+  it.each(['network'])(
+    'keeps the key out of the error when agent-browser fails on %s while signing in',
+    (failing) => {
+      const ab = (...args: string[]) => {
+        if (args[0] === failing) throw new Error(`Command failed: agent-browser ${args.join(' ')}`);
+      };
+      let caught: unknown;
+      try {
+        signInBrowser(apps, now, ab);
+      } catch (error) {
+        caught = error;
+      }
+      expect(String(caught)).toBe(
+        'Error: agent-browser could not sign in to https://portal.example',
+      );
+    },
+  );
 
   it('embeds a hostile value in browser code only as one literal that reads back unchanged', () => {
     for (const value of hostile) {
@@ -323,31 +424,6 @@ describe('demo recordings', () => {
       expect(literal.slice(1, -1)).not.toMatch(/(^|[^\\])(\\\\)*"/);
       expect(JSON.parse(literal)).toBe(value);
     }
-  });
-
-  it('keeps a hostile key and tenant as data in the session script', () => {
-    for (const value of hostile) {
-      const sessions = demoSessions(value, { ...apps, tenant: value }, 0);
-      const script = sessionScript(sessions);
-      expect(script.slice(sessionPrefix.length, -sessionSuffix.length)).not.toMatch(
-        /[<>\u2028\u2029]/,
-      );
-      const data = sessionData(script);
-      expect(data).toEqual(sessions);
-      const portal = JSON.parse(data['https://portal.example']?.[1] ?? '{}');
-      expect(portal.token).toBe(value);
-      expect(portal.organisations[0].orgNumber).toBe(value);
-    }
-  });
-
-  it('refuses a portal client id that is not a plain name', () => {
-    for (const value of [...hostile, '', 'a b', 'x'.repeat(129)])
-      expect(() => demoSessions('k3y', { ...apps, portalClientId: value }, 0)).toThrow(
-        /client id that is not a plain name/,
-      );
-    expect(() =>
-      demoSessions('k3y', { ...apps, portalClientId: '0f3c-4e.portal_1' }, 0),
-    ).not.toThrow();
   });
 
   it('records one demo by name and refuses a name that is not a demo', () => {

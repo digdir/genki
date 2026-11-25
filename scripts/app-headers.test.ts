@@ -39,6 +39,15 @@ const headersFor = (env: Record<string, string>) => {
   return readFileSync(join(dir, 'tmp/headers.conf'), 'utf8');
 };
 
+const bffFor = (env: Record<string, string>) => {
+  headersFor(env);
+  const dir = dirs.at(-1) ?? '';
+  return {
+    auth: readFileSync(join(dir, 'tmp/bff.conf'), 'utf8'),
+    api: readFileSync(join(dir, 'tmp/bff-api.conf'), 'utf8'),
+  };
+};
+
 const frameSrc = (headers: string) => /frame-src ([^;]*);/.exec(headers)?.[1];
 
 describe.skipIf(process.platform === 'win32')('the app headers', () => {
@@ -58,4 +67,18 @@ describe.skipIf(process.platform === 'win32')('the app headers', () => {
     expect(/script-src ([^;]*);/.exec(headers)?.[1]).toBe("'self'");
     expect(/connect-src ([^;]*);/.exec(headers)?.[1]).toBe("'self'");
   });
+
+  it.each(['portal', 'workspace', 'console'])(
+    'the %s sends /auth/ and /api/ through the BFF with its hostname and the proxy key',
+    (app) => {
+      const key = 'p'.repeat(40);
+      const { auth, api } = bffFor({ APP: app, GENAI_PROXY_KEY: key });
+      expect(auth).toContain('location /auth/ {');
+      expect(auth).toContain('proxy_pass https://genki_api/bff$request_uri;');
+      expect(auth).toContain('access_log off;');
+      expect(api).toContain('proxy_set_header X-Forwarded-Host $host;');
+      expect(api).toContain(`proxy_set_header GenAI-Proxy-Key "${key}";`);
+      expect(bffFor({ APP: app }).auth).toBe('');
+    },
+  );
 });

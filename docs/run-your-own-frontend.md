@@ -99,7 +99,7 @@ The page's CSP allows scripts and styles from its own origin only and connection
 ## Limits
 
 - One client id, one service. A thread belongs to the organisation and the person's `issuer|sub`, and Ansattporten's `sub` is per client id, so a new client id or issuer gives every person an empty thread list.
-- Ansattporten TEST gives a public client 5-minute access tokens and no refresh token. When the token runs out, the template asks the person to log in again; a frontend can renew it with `prompt=none` in a hidden frame of its own origin, as genki's workspace does, or use a server of its own.
+- Ansattporten TEST gives a public client 5-minute access tokens and no refresh token. When the token runs out, the template asks the person to log in again; a frontend can renew it with `prompt=none` in a hidden frame of its own origin, or use a server of its own.
 - Rate limits, budgets and the service's guardrails apply to your frontend's calls as to every other caller's. A call on a channel the registration does not list, or from an origin it does not list, answers `401`, as a missing token does, so check the registration before you ask the person to log in again. A `403` names an environment the frontend may not use or a right the person lacks.
 - genki-test is one environment with synthetic data. Real people do not log in there.
 

@@ -1,10 +1,10 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseEnv } from 'node:util';
-import { parse as parseYaml } from 'yaml';
 import { npmCommand } from './setup.ts';
 
 export const repoRoot = join(import.meta.dirname, '..');
@@ -71,22 +71,39 @@ export const devPorts = (env: Record<string, string | undefined>) => {
 const unlessSet = (env: Record<string, string | undefined>, values: Record<string, string>) =>
   Object.fromEntries(Object.entries(values).filter(([name]) => !env[name]));
 
+/** The platform login in dev (ADR 0061): plain localhost on the portal's port is the login host, each app has `<app>.localhost`. */
+export const devPlatformLogin = (
+  env: Record<string, string | undefined>,
+  ports: ReturnType<typeof devPorts>,
+) =>
+  unlessSet(env, {
+    GENAI_PROXY_KEY: randomBytes(32).toString('base64url'),
+    PLATFORM_LOGIN_CLIENT_ID: 'genki-platform-login-local',
+    PLATFORM_LOGIN_CLIENT_SECRET: randomBytes(24).toString('base64url'),
+    PLATFORM_LOGIN_HOSTNAME: 'localhost',
+    PLATFORM_LOGIN_ORIGIN: `http://localhost:${ports.portal}`,
+    PLATFORM_APP_ORIGINS: (['portal', 'workspace', 'console'] as const)
+      .map((app) => `${app}=http://${app}.localhost:${ports[app]}`)
+      .join(','),
+  });
+
 export const devProcesses = (env: Record<string, string | undefined>): DevProcess[] => {
   const modelPort = localModelPort(env.LOCAL_MODEL_URL);
   const ports = devPorts(env);
+  const login = devPlatformLogin(env, ports);
+  const proxyKey = { GENAI_PROXY_KEY: login.GENAI_PROXY_KEY ?? env.GENAI_PROXY_KEY ?? '' };
   const api = `http://localhost:${ports.api}`;
   const custom = ports.api !== defaultPorts.api;
   const devMode = !env.GENAI_DEV_MODE || env.GENAI_DEV_MODE === 'true';
-  const apiEnv = custom
-    ? {
-        GENAI_API_PORT: String(ports.api),
-        ...unlessSet(env, {
-          VITE_PUBLIC_API_BASE: api,
-          VITE_ANSATTPORTEN_ISSUER: `${api}/mock/ansattporten`,
-          VITE_OIDC_ISSUER: `${api}/mock/ansattporten`,
-        }),
-      }
-    : {};
+  const apiEnv = {
+    ...(devMode ? proxyKey : {}),
+    ...(custom
+      ? {
+          GENAI_API_PORT: String(ports.api),
+          ...unlessSet(env, { VITE_PUBLIC_API_BASE: api }),
+        }
+      : {}),
+  };
   return [
     ...(modelPort
       ? [
@@ -120,6 +137,7 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
               }
             : {}),
         }),
+        ...(devMode ? login : {}),
         ...(custom ? { PORT: String(ports.api) } : {}),
       },
     },
@@ -139,32 +157,9 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
     vite('console', ports.console, apiEnv),
     vite('workspace', ports.workspace, {
       ...apiEnv,
-      VITE_PORTAL_URL: `http://localhost:${ports.portal}`,
+      VITE_PORTAL_URL: `http://portal.localhost:${ports.portal}`,
     }),
   ];
-};
-
-// Same rule as the mock login in packages/identity/src/mock-ansattporten.ts.
-const withoutLoopbackPort = (uri: string) =>
-  URL.canParse(uri)
-    ? uri.replace(/^(http:\/\/(?:localhost|127\.0\.0\.1|\[::1\]))(?::\d+)?(?=[/?#]|$)/, '$1')
-    : uri;
-
-export const mockAcceptsRedirect = (registered: readonly string[], uri: string): boolean =>
-  registered.includes(uri) ||
-  registered.map(withoutLoopbackPort).includes(withoutLoopbackPort(uri));
-
-export const missingCallbacks = (identityYaml: string, processes: DevProcess[]): string[] => {
-  const clients =
-    (parseYaml(identityYaml) as { clients?: { clientId: string; redirectUris?: string[] }[] })
-      ?.clients ?? [];
-  return processes.flatMap((p) => {
-    const client = clients.find((c) => c.clientId === `local-${p.name}`);
-    const callback = `http://localhost:${p.port}/callback`;
-    return client && !mockAcceptsRedirect(client.redirectUris ?? [], callback)
-      ? [`${client.clientId} ${callback}`]
-      : [];
-  });
 };
 
 const colours = [36, 35, 33, 32, 34, 31];
@@ -290,20 +285,11 @@ const main = async () => {
     process.exit(1);
   }
 
-  const identity = join(repoRoot, 'apps/api/config/local/identity.yaml');
-  const unregistered = existsSync(identity)
-    ? missingCallbacks(readFileSync(identity, 'utf8'), processes)
-    : [];
-  if (unregistered.length)
-    console.warn(
-      `Login will fail: add these callbacks to the clients in apps/api/config/local/identity.yaml: ${unregistered.join(', ')}`,
-    );
-
   const colour = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
   const run = runAll(processes, { cwd: repoRoot, colour, write: (t) => process.stdout.write(t) });
   const ports = devPorts({ ...fileEnv, ...process.env });
   console.log(
-    `API http://localhost:${ports.api}  portal http://localhost:${ports.portal}  console http://localhost:${ports.console}  workspace http://localhost:${ports.workspace}  blocks http://localhost:${ports.block}  (Ctrl-C stops all)`,
+    `API http://localhost:${ports.api}  portal http://portal.localhost:${ports.portal}  console http://console.localhost:${ports.console}  workspace http://workspace.localhost:${ports.workspace}  blocks http://localhost:${ports.block}  (Ctrl-C stops all)`,
   );
   process.on('SIGINT', () => run.stop(0));
   process.on('SIGTERM', () => run.stop(0));

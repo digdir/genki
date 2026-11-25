@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { remoteJwks } from '@genai/identity';
-import { decodeJwt, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from 'jose';
+import { decodeJwt, errors, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from 'jose';
 
 export interface Discovery {
   issuer: string;
@@ -24,6 +24,15 @@ export interface ClientCredentials {
 }
 
 export class TokenRefused extends Error {}
+
+export interface LogoutClaims {
+  jti: string;
+  sid?: string;
+  sub?: string;
+}
+
+const backchannelEvent = 'http://schemas.openid.net/event/backchannel-logout';
+const logoutTokenMaxAgeSeconds = 300;
 
 const discoveryMs = 10 * 60_000;
 const timeoutMs = 10_000;
@@ -144,12 +153,7 @@ export const createOidc = (options: { fetch?: typeof fetch; now?: () => number }
     clientId: string,
     nonce: string,
   ): Promise<JWTPayload> => {
-    let keys = keySets.get(discovery.jwks_uri);
-    if (!keys) {
-      keys = remoteJwks(discovery.jwks_uri, send);
-      keySets.set(discovery.jwks_uri, keys);
-    }
-    const { payload } = await jwtVerify(idToken, keys, {
+    const { payload } = await jwtVerify(idToken, keysFor(discovery), {
       issuer: discovery.issuer,
       audience: clientId,
       algorithms: ['RS256'],
@@ -160,7 +164,47 @@ export const createOidc = (options: { fetch?: typeof fetch; now?: () => number }
     return payload;
   };
 
-  return { discover, token, revoke, verifyIdToken };
+  const keysFor = (discovery: Discovery) => {
+    let keys = keySets.get(discovery.jwks_uri);
+    if (!keys) {
+      keys = remoteJwks(discovery.jwks_uri, send);
+      keySets.set(discovery.jwks_uri, keys);
+    }
+    return keys;
+  };
+
+  /** A back-channel logout token as OpenID Connect Back-Channel Logout 1.0 section 2.6 checks it. */
+  const verifyLogoutToken = async (
+    discovery: Discovery,
+    logoutToken: string,
+    clientId: string,
+  ): Promise<LogoutClaims> => {
+    const { payload } = await jwtVerify(logoutToken, keysFor(discovery), {
+      issuer: discovery.issuer,
+      audience: clientId,
+      algorithms: ['RS256'],
+      currentDate: new Date(now()),
+      clockTolerance: 30,
+      maxTokenAge: logoutTokenMaxAgeSeconds,
+      requiredClaims: ['iat', 'jti', 'events'],
+    }).catch((error: unknown) => {
+      throw error instanceof errors.JOSEError && !(error instanceof errors.JWKSTimeout)
+        ? new TokenRefused(error.code)
+        : error;
+    });
+    const events = payload.events as Record<string, unknown> | undefined;
+    const event = events && typeof events === 'object' ? events[backchannelEvent] : undefined;
+    if (!event || typeof event !== 'object' || Array.isArray(event))
+      throw new TokenRefused('no back-channel logout event');
+    if ('nonce' in payload) throw new TokenRefused('a logout token has no nonce');
+    const sid = typeof payload.sid === 'string' && payload.sid ? payload.sid : undefined;
+    const sub = typeof payload.sub === 'string' && payload.sub ? payload.sub : undefined;
+    if (!sid && !sub) throw new TokenRefused('no sid or sub');
+    if (typeof payload.jti !== 'string' || !payload.jti) throw new TokenRefused('no jti');
+    return { jti: payload.jti, ...(sid ? { sid } : {}), ...(sub ? { sub } : {}) };
+  };
+
+  return { discover, token, revoke, verifyIdToken, verifyLogoutToken };
 };
 
 export type Oidc = ReturnType<typeof createOidc>;

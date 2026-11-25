@@ -72,6 +72,17 @@ describe('booting the API', () => {
     expect(bootProblems(dev)).toEqual([]);
   });
 
+  it('starts without EMPLOYEE_CLIENT_IDS when the portal, workspace and console sign in through the platform login', () => {
+    const untrusted = { ...real, EMPLOYEE_CLIENT_IDS: undefined };
+    expect(
+      bootProblems({
+        ...untrusted,
+        PLATFORM_LOGIN_CLIENT_ID: 'genki-platform-login',
+        PLATFORM_APP_ORIGINS: 'portal=https://portal.example.no',
+      }),
+    ).toEqual([]);
+  });
+
   it('refuses to start with a malformed PLATFORM_TENANT, also in dev mode', () => {
     expect(bootProblems({ ...real, PLATFORM_TENANT: '12345' })).toEqual([
       expect.stringContaining('PLATFORM_TENANT'),

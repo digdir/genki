@@ -26,6 +26,7 @@ import {
   admitMaskinportenClients,
   maskinportenClientsModule,
 } from './maskinporten-clients.js';
+import { actAsPlatformApp } from './bff/acting.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { InMemoryTenantApiKeys, portalAdminHandlers } from './routes/portal-routes.js';
 import { digdir, files, principals as testPrincipals, testService } from './testkit.js';
@@ -1046,6 +1047,22 @@ describe('lockdown', () => {
       title: 'Denne assistenten er bare åpen for ansatte i Digdir i testmiljøet',
     });
     expect(await json(throughPortal)).toMatchObject({
+      type: entraNotTrustedType,
+      title: expect.stringContaining('Entra ID-innloggingen din'),
+    });
+  });
+
+  it('gives an Entra login refused in a portal, workspace or console session the platform words', async () => {
+    const { app } = await boot(true);
+    const token = new UnsecuredJWT({
+      acr: 'entraid',
+      sub: 'outsider',
+      client_id: 'genki-platform-login',
+    }).encode();
+    const res = await actAsPlatformApp('workspace', () =>
+      app.request(`/v1/models`, { headers: { authorization: `Bearer ${token}` } }),
+    );
+    expect(await json(res)).toMatchObject({
       type: entraNotTrustedType,
       title: expect.stringContaining('Entra ID-innloggingen din'),
     });

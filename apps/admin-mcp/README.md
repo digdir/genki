@@ -49,11 +49,11 @@ No login is needed against a local API in development mode. The server logs in t
 claude mcp add genki-admin -s local \
   -e GENKI_API_BASE=https://api.genki-test.digdir.cloud \
   -e GENKI_TENANT=<organisation number> \
-  -e ADMIN_MCP_CLIENT_ID=<the console's client id, CONSOLE_CLIENT_ID in the test environment> \
+  -e ADMIN_MCP_CLIENT_ID=<the former console client's id, listed in OPERATOR_CLIENT_IDS in the test environment> \
   -- <path to genki>/node_modules/.bin/tsx --conditions=source <path to genki>/apps/admin-mcp/src/main.ts
 ```
 
-The first tool call opens the browser for an Ansattporten login (authorization code flow with PKCE, callback on `http://localhost:5173/callback`). It uses the console's Ansattporten client, which has that callback registered for local development and is trusted in genki-test (`OPERATOR_CLIENT_IDS`), so a trusted Entra login works as it does in the console. No new registration is needed. When the token is about to expire the server refreshes it; if that fails, it opens the browser again. Restarting the agent means logging in again.
+The first tool call opens the browser for an Ansattporten login (authorization code flow with PKCE, callback on `http://localhost:5173/callback`). It uses the console's former Ansattporten client, a public client with that callback registered, which genki-test keeps in `OPERATOR_CLIENT_IDS` for this server after the console moved to the platform login (ADR 0061), so a trusted Entra login works as it does in the console. A TestID login through that client is refused unless it is in `EMPLOYEE_CLIENT_IDS`, which infra no longer sets. Keep the client and that entry while the server is in use. When the token is about to expire the server refreshes it; if that fails, it opens the browser again. Restarting the agent means logging in again.
 
 If you run the portal's dev server on port 5173, stop it while you log in, or set `ADMIN_MCP_REDIRECT_URI` to another callback registered for the client.
 

@@ -248,6 +248,7 @@ export const createApiClient = ({
       headers: {
         ...(init.headers as Record<string, string> | undefined),
         'genki-surface': 'portal',
+        'genai-csrf': '1',
       },
     });
   const language = (): Record<string, string> => (locale ? { 'accept-language': locale() } : {});

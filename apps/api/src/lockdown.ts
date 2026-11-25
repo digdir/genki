@@ -21,6 +21,7 @@ import {
   selfAuthenticatedWrites,
   writeMethods,
 } from './change-reason.js';
+import { platformAppActing } from './bff/acting.js';
 import { t } from './i18n/index.js';
 
 export const lockedEnvironmentType = 'urn:genai:problem:locked-environment';
@@ -223,7 +224,8 @@ export const refuseUntrustedEntra =
     if (claims?.acr !== 'entraid') return next();
     if ((await refusedCode(c.req.raw)) !== 'entra_not_trusted') return next();
     const client = clientOf(claims);
-    const forService = client !== undefined && !platformClients.has(client);
+    const forService =
+      client !== undefined && !platformClients.has(client) && platformAppActing() === undefined;
     return c.json(
       {
         type: entraNotTrustedType,

@@ -9,13 +9,14 @@ import {
 } from '@genai/identity';
 import { openingOf, type HostingRules } from '../hosts.js';
 import { t, translatorFor } from '../i18n/index.js';
-import { actFor } from './acting.js';
+import { actAsPlatformApp, actFor, type PlatformApp } from './acting.js';
 import {
   codeChallenge,
   createOidc,
   randomValue,
   TokenRefused,
   type ClientCredentials,
+  type LogoutClaims,
   type Oidc,
 } from './oidc.js';
 import {
@@ -37,6 +38,8 @@ export const handoffCookie = '__Host-genki_handoff';
 const sessionMs = 8 * 3600_000;
 const loginMs = 10 * 60_000;
 const handoffMs = 60_000;
+const logoutTokenMs = 10 * 60_000;
+const logoutBodyLimit = 16_384;
 const refreshAheadMs = 60_000;
 const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
 const strippedHeaders = [
@@ -62,8 +65,12 @@ export interface BffDeps {
   hostActive: (hostname: string) => Promise<boolean>;
   issuer: string | undefined;
   altinnResource?: string | undefined;
-  /** genki's own Ansattporten client, which a hosted Client without `oidc` logs in through. */
+  /** genki's own Ansattporten client, which a hosted Client without `oidc` and the platform apps log in through. */
   platformLogin?: PlatformLogin | undefined;
+  /** The tenant a platform app's sessions and back-channel logouts are kept under. */
+  platformTenant?: string;
+  /** Whether the access token is a platform operator's, as the API sees it from the console. */
+  isOperator?: (accessToken: string) => Promise<boolean>;
   secrets: ClientSecrets;
   /** The organisations the API lets the access token act for; throws when it refuses the token. */
   organisations: (accessToken: string) => Promise<Organisation[]>;
@@ -77,15 +84,23 @@ export interface PlatformLogin {
   secret: string | undefined;
   /** The login host, `login.apps.<zone>`, with the client's one redirect URI. */
   hostname: string;
+  /** The login host's origin, `https://<hostname>` unless dev mode serves it elsewhere. */
+  origin?: string;
+  /** The portal, workspace and console, each on a hostname of its own. */
+  apps?: readonly { app: PlatformApp; hostname: string; origin: string }[];
   /** The resource the login asks for, the API's audience as the portal asks. */
   audience: string;
 }
 
 interface Host {
   hostname: string;
+  origin: string;
   tenant: string;
-  client: ClientDefinition;
+  /** The Client's registration id, or `platform-app:<app>` for a platform app. */
+  clientId: string;
+  client?: ClientDefinition;
   platform: boolean;
+  app?: PlatformApp;
 }
 
 interface Login {
@@ -115,6 +130,22 @@ interface Handoff {
 }
 
 const handoffHash = (code: string) => sessionIdHash(`handoff:${code}`);
+
+const logoutJtiHash = (jti: string) => sessionIdHash(`logout-jti:${jti}`);
+
+/** Keys that find a person's sessions from a back-channel logout: by the issuer's session id and by subject. */
+export const logoutKeysOf = (
+  issuer: string,
+  clientId: string,
+  claims: { sid?: unknown; sub?: unknown },
+) => ({
+  ...(typeof claims.sid === 'string' && claims.sid
+    ? { sid: sessionIdHash(`sid\u0000${issuer}\u0000${clientId}\u0000${claims.sid}`) }
+    : {}),
+  ...(typeof claims.sub === 'string' && claims.sub
+    ? { sub: sessionIdHash(`sub\u0000${issuer}\u0000${clientId}\u0000${claims.sub}`) }
+    : {}),
+});
 
 const bindingOf = (bind: string) => createHash('sha256').update(bind).digest('base64url');
 
@@ -254,8 +285,23 @@ export const createBff = (deps: BffDeps) => {
   const log = deps.log ?? (() => undefined);
 
   const platformLogin = deps.platformLogin;
+  const platformTenant = deps.platformTenant ?? '';
+  const appOf = (hostname: string) =>
+    platformLogin?.secret !== undefined && platformTenant
+      ? platformLogin.apps?.find((a) => a.hostname === hostname)
+      : undefined;
 
   const hostOf = async (hostname: string): Promise<Host | undefined> => {
+    const app = appOf(hostname);
+    if (app)
+      return {
+        hostname,
+        origin: app.origin,
+        tenant: platformTenant,
+        clientId: `platform-app:${app.app}`,
+        platform: true,
+        app: app.app,
+      };
     const opening = await openingOf(deps.rules, hostname);
     if (!opening || opening.redirectTo) return undefined;
     const { tenant } = opening;
@@ -271,14 +317,31 @@ export const createBff = (deps: BffDeps) => {
         (c.definition.spec.oidc !== undefined ||
           (platformLogin !== undefined && usesPlatformLogin(c.definition))),
     )?.definition;
-    return client && { hostname, tenant, client, platform: usesPlatformLogin(client) };
+    return (
+      client && {
+        hostname,
+        origin: `https://${hostname}`,
+        tenant,
+        clientId: client.metadata.id,
+        client,
+        platform: usesPlatformLogin(client),
+      }
+    );
   };
 
-  const origin = (host: Host) => `https://${host.hostname}`;
+  const origin = (host: Host) => host.origin;
   const redirectUri = (host: Host) => `${origin(host)}/auth/callback`;
-  const loginOrigin = () => `https://${platformLogin?.hostname ?? ''}`;
+  const loginOrigin = () => platformLogin?.origin ?? `https://${platformLogin?.hostname ?? ''}`;
   const platformRedirectUri = () => `${loginOrigin()}/auth/callback`;
-  const actingFor = (host: Host) => ({ tenant: host.tenant, client: host.client.metadata.id });
+  const active = async (host: Host) =>
+    host.app !== undefined || (await deps.hostActive(host.hostname));
+  /** Runs an API call as the session's hosted Client or platform app, inside this process only. */
+  const within = <T>(host: Host, work: () => T): T =>
+    host.app
+      ? actAsPlatformApp(host.app, work)
+      : host.platform
+        ? actFor({ tenant: host.tenant, client: host.clientId }, work)
+        : work();
 
   /** genki's own secret goes only to an endpoint on the issuer's origin. */
   const platformCredentials = (endpoint: string): ClientCredentials | undefined => {
@@ -295,7 +358,7 @@ export const createBff = (deps: BffDeps) => {
   /** The client's secret, only for an endpoint whose origin the tenant secret is bound to. */
   const credentialsFor = async (host: Host, endpoint: string) => {
     if (host.platform) return platformCredentials(endpoint);
-    const oidc = host.client.spec.oidc;
+    const oidc = host.client?.spec.oidc;
     if (!oidc?.secret) return undefined;
     const hosts = await deps.secrets.hosts(host.tenant, oidc.secret);
     if (!hosts?.includes(new URL(endpoint).origin)) {
@@ -313,7 +376,7 @@ export const createBff = (deps: BffDeps) => {
     deps.issuer !== undefined &&
     (host.platform
       ? platformLogin?.secret !== undefined
-      : host.client.spec.oidc?.secret !== undefined &&
+      : host.client?.spec.oidc?.secret !== undefined &&
         host.client.spec.oidc.redirectUris.includes(redirectUri(host)));
 
   const sessionOf = async (request: Request, host: Host) => {
@@ -324,7 +387,7 @@ export const createBff = (deps: BffDeps) => {
     if (
       !row ||
       row.hostname !== host.hostname ||
-      row.client !== host.client.metadata.id ||
+      row.client !== host.clientId ||
       row.expiresAt <= now()
     )
       return { idHash, row: undefined, payload: undefined };
@@ -411,11 +474,11 @@ export const createBff = (deps: BffDeps) => {
   };
 
   const login = async (request: Request, host: Host) => {
-    if (!deps.issuer || !(await deps.hostActive(host.hostname))) return notFound();
+    if (!deps.issuer || !(await active(host))) return notFound();
     if (!ready(host)) return problem(404, 'bff-not-configured', t('problems.bffNotConfigured'));
     if (host.platform) return handoffLogin(request, host);
-    const oidcSettings = host.client.spec.oidc;
-    if (!oidcSettings) return notFound();
+    const oidcSettings = host.client?.spec.oidc;
+    if (!host.client || !oidcSettings) return notFound();
     const pending: Login = {
       state: randomValue(),
       nonce: randomValue(),
@@ -468,9 +531,12 @@ export const createBff = (deps: BffDeps) => {
           hostname: host.hostname,
           claims: Object.keys(claims).sort(),
         });
-      const organisations = host.platform
-        ? await actFor(actingFor(host), () => deps.organisations(tokens.accessToken))
-        : await deps.organisations(tokens.accessToken);
+      const organisations = await within(host, () => deps.organisations(tokens.accessToken));
+      const operator =
+        host.app === 'console'
+          ? await within(host, () => deps.isOperator?.(tokens.accessToken) ?? false)
+          : undefined;
+      const keys = logoutKeysOf(deps.issuer ?? '', credentials.clientId, claims);
       return {
         accessToken: tokens.accessToken,
         accessExpiresAt: tokens.accessExpiresAt,
@@ -481,6 +547,8 @@ export const createBff = (deps: BffDeps) => {
         ...(organisations.length === 1 && organisations[0]
           ? { organisation: organisations[0].orgNumber }
           : {}),
+        ...(operator === undefined ? {} : { operator }),
+        logoutKeys: Object.values(keys),
       };
     } catch (error) {
       log('bff login failed', {
@@ -497,13 +565,14 @@ export const createBff = (deps: BffDeps) => {
     const id = newSessionId();
     await deps.sessions.create(host.tenant, sessionIdHash(id), {
       hostname: host.hostname,
-      client: host.client.metadata.id,
+      client: host.clientId,
       expiresAt: now() + sessionMs,
       payload: JSON.stringify(payload),
+      logoutKeys: payload.logoutKeys ?? [],
     });
     log('bff signed in', {
       hostname: host.hostname,
-      client: host.client.metadata.id,
+      client: host.clientId,
       platformLogin: host.platform,
     });
     return cookie(sessionCookie, id, sessionMs / 1000);
@@ -559,7 +628,7 @@ export const createBff = (deps: BffDeps) => {
     const hostname = (asked ?? '').toLowerCase();
     if (!isHostname(hostname) || hostname === platformLogin?.hostname) return undefined;
     const host = await hostOf(hostname);
-    if (!host?.platform || !(await deps.hostActive(host.hostname))) return undefined;
+    if (!host?.platform || !(await active(host))) return undefined;
     return host;
   };
 
@@ -638,13 +707,18 @@ export const createBff = (deps: BffDeps) => {
       pending.nonce,
     );
     if (!session) return refused('login', host);
+    if (host.app === 'console' && session.operator !== true) {
+      log('bff platform login refused', { reason: 'not-operator', hostname: host.hostname });
+      return redirect(`${origin(host)}/?signin=not-operator`, [clear]);
+    }
     const handoff = randomValue();
     const row: Handoff = { handoff: { binding: pending.binding, session } };
     await deps.sessions.create(host.tenant, handoffHash(handoff), {
       hostname: host.hostname,
-      client: host.client.metadata.id,
+      client: host.clientId,
       expiresAt: now() + handoffMs,
       payload: JSON.stringify(row),
+      ...(session.logoutKeys ? { logoutKeys: session.logoutKeys } : {}),
     });
     const target = new URL(`${origin(host)}/auth/handoff`);
     target.searchParams.set('code', handoff);
@@ -653,8 +727,7 @@ export const createBff = (deps: BffDeps) => {
 
   /** On the service's hostname: swaps a one-time code for the session cookie, in the browser that asked. */
   const handoff = async (request: Request, host: Host) => {
-    if (!host.platform || !ready(host) || !(await deps.hostActive(host.hostname)))
-      return notFound();
+    if (!host.platform || !ready(host) || !(await active(host))) return notFound();
     const clear = clearedCookie(handoffCookie);
     const refused = (reason: string) => {
       log('bff handoff refused', { hostname: host.hostname, reason });
@@ -678,7 +751,7 @@ export const createBff = (deps: BffDeps) => {
     })();
     if (
       row.hostname !== host.hostname ||
-      row.client !== host.client.metadata.id ||
+      row.client !== host.clientId ||
       row.expiresAt <= now() ||
       !stored ||
       typeof stored.binding !== 'string' ||
@@ -706,10 +779,11 @@ export const createBff = (deps: BffDeps) => {
     organisation: payload.organisation ?? null,
     organisations: payload.organisations,
     expiresAt: new Date(row.expiresAt).toISOString(),
+    ...(payload.operator === undefined ? {} : { operator: payload.operator }),
   });
 
   const me = async (request: Request, host: Host) => {
-    if (!(await deps.hostActive(host.hostname))) return notFound();
+    if (!(await active(host))) return notFound();
     if (!ready(host))
       return host.platform
         ? problem(404, 'bff-not-configured', t('problems.bffNotConfigured'))
@@ -779,7 +853,7 @@ export const createBff = (deps: BffDeps) => {
         end.searchParams.set('client_id', platformLogin?.clientId ?? '');
       } else {
         end.searchParams.set('post_logout_redirect_uri', `${origin(host)}/`);
-        end.searchParams.set('client_id', host.client.spec.oidc?.clientId ?? '');
+        end.searchParams.set('client_id', host.client?.spec.oidc?.clientId ?? '');
       }
       return redirect(end.toString(), cleared);
     } catch {
@@ -787,7 +861,59 @@ export const createBff = (deps: BffDeps) => {
     }
   };
 
+  /** On the login host: Ansattporten's back-channel logout ends every session of that login. */
+  const backchannelLogout = async (request: Request) => {
+    const refused = (reason: string) => {
+      log('bff back-channel logout refused', { reason });
+      return new Response(JSON.stringify({ error: 'invalid_request' }), {
+        status: 400,
+        headers: { 'content-type': 'application/json', ...noStore },
+      });
+    };
+    if (!platformLogin || !deps.issuer || !platformTenant) return notFound();
+    if (
+      !/^application\/x-www-form-urlencoded\s*(;|$)/i.test(
+        request.headers.get('content-type') ?? '',
+      )
+    )
+      return refused('content-type');
+    const body = await request.text();
+    if (body.length > logoutBodyLimit) return refused('size');
+    const token = new URLSearchParams(body).get('logout_token');
+    if (!token) return refused('token');
+    let claims: LogoutClaims;
+    try {
+      claims = await oidc.verifyLogoutToken(
+        await oidc.discover(deps.issuer),
+        token,
+        platformLogin.clientId,
+      );
+    } catch (error) {
+      if (!(error instanceof TokenRefused)) throw error;
+      return refused(error.message);
+    }
+    const jti = logoutJtiHash(claims.jti);
+    const fresh = await deps.sessions.claim(platformTenant, jti, {
+      hostname: platformLogin.hostname,
+      client: 'back-channel-logout',
+      expiresAt: now() + logoutTokenMs,
+      payload: '{}',
+    });
+    if (!fresh) return refused('replayed');
+    const keys = logoutKeysOf(deps.issuer, platformLogin.clientId, claims);
+    const ended = await deps.sessions
+      .endByLogoutKeys(keys.sid ? [keys.sid] : keys.sub ? [keys.sub] : [])
+      .catch(async (error: unknown) => {
+        await deps.sessions.delete(platformTenant, jti);
+        throw error;
+      });
+    log('bff back-channel logout', { ended, by: keys.sid ? 'sid' : 'sub' });
+    return new Response(null, { status: 200, headers: noStore });
+  };
+
   const loginHostAuth = (request: Request, path: string) => {
+    if (path === '/bff/auth/backchannel-logout' && request.method === 'POST')
+      return backchannelLogout(request);
     if (request.method !== 'GET') return notFound();
     if (path === '/bff/auth/login') return platformStart(request);
     if (path === '/bff/auth/callback') return platformCallback(request);
@@ -821,6 +947,9 @@ export const createBff = (deps: BffDeps) => {
     const headers = new Headers(request.headers);
     for (const name of strippedHeaders) headers.delete(name);
     let clear = cookieOf(request, sessionCookie) !== undefined;
+    let swapped = false;
+    const own = request.headers.get('authorization');
+    if (host?.app && !clear && own) headers.set('authorization', own);
     const found = host && (await sessionOf(request, host));
     if (host && found?.row && found.payload) {
       if (csrfRefused(request, host))
@@ -836,20 +965,19 @@ export const createBff = (deps: BffDeps) => {
           'set-cookie': clearedCookie(sessionCookie),
         });
       headers.set('authorization', `Bearer ${payload.accessToken}`);
-      if (payload.organisation) headers.set('genai-acting-for', payload.organisation);
+      if (payload.organisation && !host.app) headers.set('genai-acting-for', payload.organisation);
       clear = false;
+      swapped = true;
     }
     const hasBody = !safeMethods.has(request.method);
-    const swapped = new Request(request.url, {
+    const outgoing = new Request(request.url, {
       method: request.method,
       headers,
       ...(hasBody ? { body: request.body, duplex: 'half' } : {}),
       signal: request.signal,
     } as RequestInit);
     const response =
-      host?.platform && !clear
-        ? await actFor(actingFor(host), () => next(swapped))
-        : await next(swapped);
+      host && swapped ? await within(host, () => next(outgoing)) : await next(outgoing);
     return clear ? withSetCookie(response, clearedCookie(sessionCookie)) : response;
   };
 
@@ -863,7 +991,7 @@ export const createBff = (deps: BffDeps) => {
     if (!deps.proxyKey || !sameSecret(key, deps.proxyKey))
       return problem(403, 'proxy-refused', t('problems.bffProxyRefused'));
     const hostname = (request.headers.get('x-forwarded-host') ?? '').trim().toLowerCase();
-    if (!isHostname(hostname)) return notFound();
+    if (!isHostname(hostname) && hostname !== platformLogin?.hostname) return notFound();
     const onLoginHost = platformLogin !== undefined && hostname === platformLogin.hostname;
     const host = onLoginHost ? undefined : await hostOf(hostname);
     const path = new URL(request.url).pathname;
