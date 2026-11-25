@@ -337,6 +337,9 @@ const withRiskStamp = (definition: Record<string, unknown>, stamp: object) => {
 
 const archivedSections: ServiceSection[] = ['overview', 'quality', 'versions', 'log'];
 
+// The new services someone has tried to publish in this page session; the Builder is drawn anew on the publish page.
+const publishTriedFor = new Set<string>();
+
 export const Builder = ({
   api,
   tenant,
@@ -405,6 +408,12 @@ export const Builder = ({
   const [service, setService] = useState(init.definition);
   const [variantPicks, setVariantPicks] = useState<Record<string, VariantChoice>>({});
   const [frontends, setFrontends] = useState<string[]>();
+  // A new service's form lists what an area lacks only once the person has tried to publish (#995).
+  const [publishTried, setTried] = useState(() => publishTriedFor.has(id));
+  const setPublishTried = (tried: true) => {
+    publishTriedFor.add(id);
+    setTried(tried);
+  };
   const serviceRef = useRef(service);
   serviceRef.current = service;
   const [files, setFiles] = useState(init.files ?? {});
@@ -1608,7 +1617,7 @@ export const Builder = ({
               ? 'optional'
               : 'done',
         summary: areaSummary[area],
-        problems: areaProblems.get(area) ?? [],
+        problems: fresh && !publishTried ? [] : (areaProblems.get(area) ?? []),
         fromAssistant: Object.keys(fromAi).some((key) => areaOfSection[key] === area),
       },
     ]),
@@ -1727,6 +1736,9 @@ export const Builder = ({
   }, [draftBar, publishPage]);
   const firstPublishPage =
     !draftBar && !showsInUse && canPublish && section === 'setup' && detail === 'publish';
+  useEffect(() => {
+    if (publishPage || firstPublishPage) setPublishTried(true);
+  }, [publishPage, firstPublishPage]);
   useEffect(() => {
     if (draftBar) return;
     if (!firstPublishPage) {
@@ -2585,12 +2597,22 @@ export const Builder = ({
                   variant="primary"
                   data-size="sm"
                   aria-disabled={!canSend || missingCount > 0 || undefined}
-                  onClick={() => canSend && missingCount === 0 && go('setup', '/publish')}
+                  onClick={() => {
+                    setPublishTried(true);
+                    if (canSend && missingCount === 0) go('setup', '/publish');
+                  }}
                 >
                   {t('edition.publish')}
                 </Button>
               ) : (
-                <Button variant="primary" data-size="sm" onClick={() => go('setup', '/publish')}>
+                <Button
+                  variant="primary"
+                  data-size="sm"
+                  onClick={() => {
+                    setPublishTried(true);
+                    go('setup', '/publish');
+                  }}
+                >
                   {t('edition.publish')}
                 </Button>
               )}

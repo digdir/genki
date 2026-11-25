@@ -72,13 +72,23 @@ const wishField = () =>
   }) as HTMLTextAreaElement;
 
 describe('Oppsett of a new service', () => {
-  it('marks an area missing from the draft checks before the service is ever published', async () => {
-    await openNew([{ path: 'spec.purpose', message: 'Formålet må fylles ut.' }]);
+  it('lists what an area lacks only after the person presses Publiser', async () => {
+    const calls = await openNew([{ path: 'spec.purpose', message: 'Formålet må fylles ut.' }]);
 
     const purpose = area('Formål og målgruppe');
-    expect(await within(purpose).findByText('Formålet må fylles ut.')).toBeTruthy();
+    await waitFor(() => expect(calls.some((c) => draftChecks.test(c.url))).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(within(purpose).queryByText('Formålet må fylles ut.')).toBeNull();
+    expect(within(purpose).queryByText('Dette mangler før publisering')).toBeNull();
+
+    const setupHref = window.location.hash;
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
+    await waitFor(() => expect(window.location.hash).toMatch(/\/publish$/));
+    go(setupHref);
+    const back = await screen.findByRole('region', { name: 'Formål og målgruppe' });
+    expect(await within(back).findByText('Formålet må fylles ut.')).toBeTruthy();
     expect(
-      within(purpose).getByRole('heading', { name: 'Dette mangler før publisering' }),
+      within(back).getByRole('heading', { name: 'Dette mangler før publisering' }),
     ).toBeTruthy();
     expect(within(area('Kunnskap')).queryByText('Dette mangler før publisering')).toBeNull();
   });
