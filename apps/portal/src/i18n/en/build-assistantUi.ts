@@ -23,7 +23,7 @@ export const assistantUi = {
     sideIntro:
       'Ask about changes to the setup. What I suggest goes into the test edition, not to the users.',
     chatWelcome:
-      'Let me help you fill in the form on the right, and we will make the service together. Write freely, or use the questions in the form.',
+      'If you like, I can help you fill in the form on the right. Use the suggestion buttons, or ask if you wonder about anything.',
     sidePlaceholder: 'Ask about something …',
     composerLabel: 'Write to the assistant',
     send: 'Send',

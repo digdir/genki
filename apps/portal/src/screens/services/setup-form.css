@@ -68,6 +68,17 @@
   color: var(--ds-color-neutral-text-subtle);
 }
 
+/* Before the first message the heading and the line under it are one group in the middle of the
+   room above the field. */
+.setup-form-chat .assistant[data-empty] .assistant-head {
+  margin-block-start: auto;
+}
+
+.setup-form-chat .assistant[data-empty] .assistant-log {
+  flex: 0 0 auto;
+  margin-block-end: auto;
+}
+
 .setup-form-chat .assistant-compose {
   border: 0;
   padding: 0;

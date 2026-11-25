@@ -149,7 +149,12 @@ export const AssistantPanel = ({
   };
 
   return (
-    <aside aria-label={t('assistant.title')} className="assistant">
+    <aside
+      aria-label={t('assistant.title')}
+      className="assistant"
+      // Before the first message the heading and what the assistant is for stand together in the middle.
+      data-empty={(chat && messages.length === 0 && !pending) || undefined}
+    >
       <div className="assistant-head">
         <h2 className="assistant-title">{t('assistant.title')}</h2>
         {side ? null : <span className="meta">{t('assistant.tagline')}</span>}

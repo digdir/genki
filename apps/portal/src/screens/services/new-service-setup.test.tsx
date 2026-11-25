@@ -78,12 +78,18 @@ describe('Oppsett of a new service', () => {
     const side = screen.getByRole('region', { name: 'Byggeassistent og prøving' });
     expect(
       within(side).getByText(
-        'La meg hjelpe deg med å fylle ut skjemaet til høyre, så lager vi tjenesten sammen. Skriv fritt, eller bruk spørsmålene i skjemaet.',
+        'Hvis du vil kan jeg hjelpe med å fylle ut skjemaet til høyre. Bruk forslagsknappene eller spør hvis du lurer på noe.',
       ),
     ).toBeTruthy();
     expect(
       within(side).getByRole('textbox', { name: 'Skriv til assistenten' }).getAttribute('rows'),
     ).toBe('3');
+    // The heading and the line stand together in the middle until the first message.
+    expect(
+      within(side)
+        .getByRole('complementary', { name: 'Byggeassistent' })
+        .hasAttribute('data-empty'),
+    ).toBe(true);
   });
 
   it('lists what an area lacks only after the person presses Publiser', async () => {
