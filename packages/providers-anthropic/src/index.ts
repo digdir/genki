@@ -86,21 +86,25 @@ const withCacheMark = (message: MessageParam): MessageParam => {
   } as MessageParam;
 };
 
+// Only the platform's own notes may open or close the tag, so it is escaped in every other text.
+const notePattern = /<(?=\/?platform_instruction)/gi;
+const escapeNoteTag = (text: string) => text.replace(notePattern, '&lt;');
+
 const platformInstruction = (text: string) =>
-  `<platform_instruction>\n${text}\n</platform_instruction>`;
+  `<platform_instruction>\n${escapeNoteTag(text)}\n</platform_instruction>`;
 
 const toAnthropic = (messages: ChatMessage[]) => {
-  // Only the system messages before the conversation make the system prompt, so it stays the
-  // same from turn to turn and the cache keeps it. A later one goes where it stands, in the user
-  // turn after the tool results, tagged so the model tells the platform's words from the user's.
+  // Only leading system messages make the system prompt; a later one is a tagged note in place.
   const leading = messages.findIndex((m) => m.role !== 'system');
   const head = leading < 0 ? messages : messages.slice(0, leading);
   const system = head.flatMap((m) => (m.role === 'system' ? [m.content] : [])).join('\n\n');
   const out: MessageParam[] = [];
+  const notes = new WeakSet<ContentBlockParam>();
   for (const m of messages.slice(head.length)) {
     if (m.role === 'system') {
       const last = out.at(-1);
       const note = { type: 'text' as const, text: platformInstruction(m.content) };
+      notes.add(note);
       if (last?.role === 'user')
         last.content = [
           ...(typeof last.content === 'string'
@@ -111,21 +115,27 @@ const toAnthropic = (messages: ChatMessage[]) => {
       else out.push({ role: 'user', content: [note] });
       continue;
     }
-    if (m.role === 'assistant') out.push({ role: 'assistant', content: assistantContent(m) });
-    else if (m.role !== 'tool') out.push({ role: 'user', content: m.content });
+    if (m.role === 'assistant') {
+      // The API refuses empty content on any message but a last assistant one.
+      const content = assistantContent(m);
+      if (content.length) out.push({ role: 'assistant', content });
+    } else if (m.role !== 'tool') out.push({ role: 'user', content: escapeNoteTag(m.content) });
     else {
       const result: ToolResultBlockParam = {
         type: 'tool_result',
         tool_use_id: m.toolCallId,
-        content: m.content,
+        content: escapeNoteTag(m.content),
       };
       const last = out.at(-1);
-      const mergeable =
-        last?.role === 'user' &&
-        Array.isArray(last.content) &&
-        last.content.every((b) => b.type === 'tool_result');
-      if (mergeable) (last.content as ContentBlockParam[]).push(result);
-      else out.push({ role: 'user', content: [result] });
+      const turn =
+        last?.role === 'user' && Array.isArray(last.content)
+          ? (last.content as ContentBlockParam[])
+          : undefined;
+      // A turn's tool results go ahead of any note given while they came in.
+      if (turn?.every((b) => b.type === 'tool_result' || notes.has(b))) {
+        const at = turn.findIndex((b) => b.type !== 'tool_result');
+        turn.splice(at < 0 ? turn.length : at, 0, result);
+      } else out.push({ role: 'user', content: [result] });
     }
   }
   return { system, messages: out };
@@ -148,8 +158,7 @@ const params = (
   return {
     model: model.deployment,
     max_tokens: request.maxTokens ?? model.options.defaultMaxTokens,
-    // Tools, system prompt and the conversation so far are marked as the cached prefix, so the
-    // next turn reads them from the cache instead of sending them again as new input.
+    // Tools, system prompt and the conversation so far are the cached prefix the next turn reads.
     messages: last ? [...messages.slice(0, -1), withCacheMark(last)] : messages,
     ...(system
       ? { system: [{ type: 'text' as const, text: system, cache_control: cacheMark }] }
