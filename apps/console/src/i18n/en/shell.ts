@@ -20,6 +20,7 @@ export const shell = {
   pageQualityMatrix: 'Quality across services',
   pagePolicies: 'Quality requirements and guardrails',
   pagePlatformSecrets: 'Platform secrets',
+  pageFlags: 'Feature flags',
   pageTracing: 'Tracing and evaluation',
   pageOperations: 'Operations',
   pageDiagnostics: 'Diagnostics',

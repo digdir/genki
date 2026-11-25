@@ -7,6 +7,7 @@ export type ReasonFreeWrite = 'run' | 'check' | 'personal' | 'feedback' | 'appli
 
 export const reasonFreeWrites: Record<string, ReasonFreeWrite> = {
   'PUT /tenants/:tenant/me/preferences': 'personal',
+  'PUT /tenants/:tenant/me/flags/:key': 'personal',
   'POST /api/conversations': 'personal',
   'PUT /api/conversations/:id': 'personal',
   'DELETE /api/conversations/:id': 'personal',

@@ -1,5 +1,6 @@
 import type {
   EnvironmentTier,
+  Flags,
   LiveDescriptorRegistry,
   OperationGovernanceStore,
   OperationTry,
@@ -55,6 +56,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   plugins: PluginSchemas;
   settings: SettingsRegistry;
   configEntries: ConfigEntryStore;
+  flags: Flags;
   models: ModelRouter;
   knowledge: KnowledgeRouter;
   writers: IndexWriterRouter;

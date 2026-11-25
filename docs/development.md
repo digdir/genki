@@ -220,6 +220,38 @@ The Client may instead name its own Ansattporten client in `oidc`, which then lo
 
 **Layout check.** With the portal on mock data (`VITE_API=mock npm run dev -w apps/portal`), `node scripts/layout-check.ts --url http://localhost:5173` signs in, follows every link it finds and reports each screen that scrolls sideways at 390, 768, 990 and 1280 px, in light and dark, with the elements that cause it, in `layout-check/report.json` and screenshots. `--dialogs` also opens the dialogs and side panels on each screen and reports one that scrolls as a whole instead of its list; `--only services,log` limits the screens. It needs a Chromium for `playwright-core`, or Chrome installed.
 
+## How to add a feature flag
+
+A bigger feature ships turned off and is switched on per organisation or person without a deploy ([ADR 0071](adr/0071-feature-flags.md)).
+
+1. **Declare it** in `packages/contracts/src/flags.ts`. Every flag is off by default. `selfService: true` lets people try it under Profil, Nye funksjoner, and tenant admins switch it for their organisation; leave it `false` for a switch only operators may turn.
+
+   ```ts
+   myFeature: {
+     description: 'One line on what the flag hides',
+     owner: 'the lab',
+     removeBy: '2027-03-31',
+     selfService: true,
+   },
+   ```
+
+   A self-service flag also needs a name and a line in the portal's `profile` texts and in `flagTexts` in `apps/portal/src/screens/NewFeatures.tsx`; the types say so if you forget.
+
+2. **Guard the route.** It answers `404`, like an unknown route, while the flag is off for the caller:
+
+   ```ts
+   app.get('/tenants/:tenant/my-feature', requireFlag(mounted, 'myFeature'), handler);
+   if (await mounted.flags.on({ principal, tenant }, 'myFeature')) { ... }
+   ```
+
+3. **Hide the screen** with `useFlag('myFeature')` from `apps/portal/src/flags.tsx` (or `apps/console/src/flags.tsx`). It is off while the flags load.
+
+4. **Test with it on.** `<FlagsOn flags={['myFeature']}>` around a component, or `renderAt('#/path', withFlags({ tenant: { myFeature: true } }))` for the whole portal. Test the off case too: the route answers `404`, the screen is gone.
+
+5. **Switch it on.** Locally: `GENAI_FLAGS=myFeature` in `.env.local` (dev mode only; the API refuses to start with it otherwise). In an environment: the console's Funksjonsbrytere page, for an organisation or one person, with a reason; or, for a self-service flag, the person or tenant admin in the portal. Every change is in the audit log.
+
+6. **Remove it** once it is on for everyone, before `removeBy`: delete the entry, the `requireFlag` and `useFlag` calls and its texts. Stored choices for a removed key are ignored. CI warns on every pull request once a flag passes `removeBy`, and the weekly Flag expiry workflow fails until it is removed or its date moved; the rule itself is tested with fixed dates in `packages/contracts/src/flags.test.ts`, which also fails when a registered flag is used nowhere.
+
 ## Repository layout
 
 | Area              | Packages                                                                                                                                                                                                                                                                                        |

@@ -14,6 +14,7 @@ import { Onboarding } from './screens/Onboarding';
 import { Operations } from './screens/Operations';
 import { PlatformDefaults } from './screens/PlatformDefaults';
 import { PlatformSecrets } from './screens/PlatformSecrets';
+import { FlagsProvider } from './flags';
 import { Policies } from './screens/Policies';
 import { pendingCount, Queue } from './screens/Queue';
 import { Quality } from './screens/Quality';
@@ -45,6 +46,7 @@ const QualityMatrix = lazy(() =>
   import('./screens/QualityMatrix').then((m) => ({ default: m.QualityMatrix })),
 );
 const Demos = lazy(() => import('./screens/Demos').then((m) => ({ default: m.Demos })));
+const Flags = lazy(() => import('./screens/Flags').then((m) => ({ default: m.Flags })));
 import type { OperatorSession } from './types';
 
 const inputStore = (): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> => {
@@ -280,6 +282,11 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     '/onboarding': () => <Onboarding api={api} live={live} />,
     '/models': () => <Models api={api} params={params} />,
     '/platform-secrets': () => <PlatformSecrets api={api} />,
+    '/flags': () => (
+      <Suspense fallback={null}>
+        <Flags api={api} />
+      </Suspense>
+    ),
     '/model-operations': () => <Forward to="/models" params={apisTab} />,
     '/catalog': () => <Catalog api={api} tab={params.get('tab') ?? undefined} />,
     '/policies': () => <Policies api={api} tab={params.get('tab') ?? undefined} />,
@@ -325,22 +332,24 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
   const render = Object.hasOwn(screens, current) ? screens[current] : undefined;
   return (
     <SupportProvider api={api}>
-      <Shell
-        session={session}
-        path={current}
-        badges={queued === undefined ? badges : { ...badges, queue: queued }}
-        onLogout={logout}
-        health={api.health}
-        readOnlyInLockdown={api.readOnlyInLockdown}
-      >
-        {render ? (
-          render()
-        ) : (
-          <EmptyState title={page ? t(page.label) : t('shell.notFound')}>
-            <Paragraph>{t('shell.notFoundHelp')}</Paragraph>
-          </EmptyState>
-        )}
-      </Shell>
+      <FlagsProvider load={api.myFlags}>
+        <Shell
+          session={session}
+          path={current}
+          badges={queued === undefined ? badges : { ...badges, queue: queued }}
+          onLogout={logout}
+          health={api.health}
+          readOnlyInLockdown={api.readOnlyInLockdown}
+        >
+          {render ? (
+            render()
+          ) : (
+            <EmptyState title={page ? t(page.label) : t('shell.notFound')}>
+              <Paragraph>{t('shell.notFoundHelp')}</Paragraph>
+            </EmptyState>
+          )}
+        </Shell>
+      </FlagsProvider>
     </SupportProvider>
   );
 };

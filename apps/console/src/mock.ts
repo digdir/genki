@@ -21,6 +21,7 @@ import {
 import { fixtureSchemaFetch } from '@genai/schema-forms/fixtures';
 import { exampleDescriptors, operationsMock } from './screens/models/operations-mock';
 import type { demosMock } from './screens/demos/mock';
+import { flagsMock } from './screens/flags/mock';
 import { queueMock } from './screens/queue/mock';
 import { searchEnginesMock } from './screens/search-engines/mock';
 import { translator } from './i18n';
@@ -332,6 +333,7 @@ export const mockFetch = (
   audit: AuditEntry[] = exampleOperatorAudit,
 ): typeof fetch => {
   const sessions = new Map<string, SupportSession>();
+  const flagRoutes = flagsMock(json);
   let shared = structuredClone(exampleShared);
   let queue = structuredClone(exampleLabelQueue);
   const sinkLabels = structuredClone(exampleSinkLabels);
@@ -922,6 +924,8 @@ export const mockFetch = (
       const s = sessions.get(headers.get('support-session') ?? '');
       return s && s.tenant === tenant ? s : undefined;
     };
+    const flagged = flagRoutes(path, method, reason, body);
+    if (flagged) return flagged;
 
     if (path === '/operator/onboarding/requests' && method === 'GET') {
       const queued =

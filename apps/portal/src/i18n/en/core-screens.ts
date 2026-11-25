@@ -315,6 +315,8 @@ export const changes = {
   skillTestcaseDelete: 'deleted a test case from the work instruction',
   incidentResolve: 'resolved the incident',
   incidentSave: 'wrote an incident',
+  flagPerson: 'switched a new feature on or off for one person',
+  flagTenant: 'switched a new feature on or off for the whole organisation',
   quotaDecide: 'decided a quota request from',
   quotaRequest: 'asked for a larger quota',
   supportEnd: 'ended support access',

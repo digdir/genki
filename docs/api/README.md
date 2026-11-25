@@ -80,6 +80,10 @@ To announce one, add a line to a new dated entry below that names the operation 
 - `GET /v1/hosts/{hostname}` answers only `{ hostname, redirectTo }` for a hostname claimed as a redirect (ADR 0062), so every other field of the answer is no longer always present. The host sends the browser to the same path on `redirectTo`. A hostname an `active` claim holds is answered like one in `GENAI_HOSTED_HOSTNAMES`.
 - New: `GET` and `POST /tenants/{tenant}/clients/{client}/hostnames`, `DELETE /tenants/{tenant}/clients/{client}/hostnames/{hostname}`, `GET /tenants/{tenant}/services/{service}/hostnames` and `POST /tenants/{tenant}/services/{service}/address`, and the binder's `GET /internal/hostnames/work` and `POST /internal/hostnames/{id}/result` (see [frontend.md](frontend.md#addresses-for-a-hosted-service)).
 
+### 2026-11-25: feature flags
+
+- New routes for feature flags ([ADR 0071](../adr/0071-feature-flags.md)): `GET /me/flags`, `GET /tenants/{tenant}/me/flags`, `PUT /tenants/{tenant}/me/flags/{key}`, `PUT /tenants/{tenant}/flags/{key}`, `GET /operator/flags` and `PUT /operator/flags/{key}` (see [access.md](access.md#feature-flags)). Nothing existing changes.
+
 ### 2026-11-25: a source names its document type
 
 - A source on `/v1/chat/completions` (and on a stored conversation's messages) adds `document_type`, such as «Årsrapport», when the document's `document_type` field names one. Kudos documents get it from the type Kudos gives, at ingest and through the `kudos-document-types` fill (`POST /operator/datasets/{dataset}/fields`). A step flow's answer sources (`documentType`) and `sources` on `/api/tools/call/{tool}` add it too. The field is optional, so the shape is otherwise unchanged. Messages stored before this have none.

@@ -1,6 +1,8 @@
 import {
   databaseRequirement,
   employeeClientIds,
+  flagEnvProblems,
+  flagEnvRequirement,
   lockdownEntraProblems,
   platformTenantProblems,
   traceContentRequirement,
@@ -25,6 +27,7 @@ export const bootProblems = (env: Env): string[] => [
   ...platformTenantProblems(env),
   ...lockdownEntraProblems(env),
   ...operatorSubjectProblems(env),
+  ...flagEnvProblems(env),
   ...unmetOutsideDevMode(env, [
     {
       met: hasIdentityProvider(env),
@@ -43,6 +46,7 @@ export const bootProblems = (env: Env): string[] => [
         'set ALTINN_PDP_URL and its Altinn PDP settings; the mock Altinn rights run only with GENAI_DEV_MODE=true',
     },
     traceContentRequirement(env),
+    flagEnvRequirement(env),
     {
       met: env.GENAI_MOCK_RIGHTS !== 'true',
       problem: 'GENAI_MOCK_RIGHTS=true runs only with GENAI_DEV_MODE=true; remove it',

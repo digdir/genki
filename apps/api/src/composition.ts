@@ -15,7 +15,9 @@ import {
   tracingEgress,
   identityOf,
   type ConnectionFacts,
+  createFlags,
 } from '@genai/composition';
+import type { FlagKey } from '@genai/contracts/flags';
 import { inputFieldsSchema, type PriceSpec, type Principal, type Usage } from '@genai/contracts';
 import { createA2aApp } from '@genai/adapter-a2a';
 import { createMcpApp } from '@genai/adapter-mcp';
@@ -316,6 +318,7 @@ import { projectsModule } from './project-routes.js';
 import { resultReviewsModule } from './result-reviews.js';
 import { tenantRunCancelModule } from './tenant-run-cancel.js';
 import { userPreferencesModule } from './user-preferences.js';
+import { featureFlagsModule } from './feature-flags.js';
 import { projectTasks } from './project-usage.js';
 import { governanceModule } from './governance.js';
 import { serviceTemplateModule } from './service-template.js';
@@ -450,6 +453,7 @@ export const platformModules: PlatformModuleFactory[] = [
   quotaRequestsModule,
   platformStatusModule,
   userPreferencesModule,
+  featureFlagsModule,
   onboardingModule,
   maskinportenClientsModule,
   triggersModule,
@@ -541,6 +545,7 @@ export interface PlatformInput {
   modelDiscovery?: ModelDiscoverySettings;
   providerObjects?: ProviderObjectStore;
   onWarning?: (message: string) => void;
+  envFlags?: readonly FlagKey[];
   observe?: (log: EventLog) => EventLog;
   blobStore?: BlobStore;
   mediaOutput?: MediaOutputConfig;
@@ -2291,6 +2296,7 @@ export const createPlatform = async (input: PlatformInput) => {
     plugins,
     settings,
     configEntries: configurables.store,
+    flags: createFlags({ store: configurables.store, envOn: input.envFlags ?? [] }),
     models,
     knowledge,
     writers,
