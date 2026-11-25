@@ -1,7 +1,7 @@
-import { ArrowUpIcon, CodeIcon, PaperplaneIcon, SparklesIcon } from '@navikt/aksel-icons';
+import { ArrowUpIcon, PaperplaneIcon, SparklesIcon } from '@navikt/aksel-icons';
 import { Button, Chip, Field, Label, Paragraph, Tag, Textarea } from '@digdir/designsystemet-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import type { AssistantProposal, AssistantTurn, ProposalDecision } from '../../api/assistant';
+import type { AssistantProposal, ProposalDecision } from '../../api/assistant';
 import { Icon } from '../../components/Icon';
 import { useT } from '../../i18n';
 import type { ChangeCard, ChatMessage } from '../../data/services';
@@ -13,7 +13,6 @@ import {
   Questions,
   RejectedCard,
 } from './assistant/cards';
-import { MessageApiCall, type MessageCall } from './assistant/MessageApiCall';
 import {
   isAlternative,
   proposalKey,
@@ -50,31 +49,6 @@ interface Props {
   chat?: boolean;
 }
 
-const exampleResponse = (message: ChatMessage, cardFor: Props['cardFor']): AssistantTurn => ({
-  turnId: 'trn_eksempel',
-  status: 'completed',
-  message: message.text,
-  proposals: (message.cards ?? []).flatMap((id) => {
-    const card = cardFor(id);
-    return card
-      ? [
-          {
-            id,
-            level: 1 as const,
-            kind: 'change' as const,
-            title: card.title,
-            detail: card.detail,
-            section: card.section,
-            validation: { ok: true },
-            requiresApproval: false,
-            appliedToDraft: false as const,
-          },
-        ]
-      : [];
-  }),
-  usage: { tokens: 2140, budgetLeftToday: 118400, dailyBudget: 200000 },
-});
-
 export const AssistantPanel = ({
   messages,
   cardFor,
@@ -100,7 +74,6 @@ export const AssistantPanel = ({
   const t = useT();
   const side = sideProp || chat;
   const log = useRef<HTMLDivElement>(null);
-  const [call, setCall] = useState<MessageCall | null>(null);
   const [policyDone, setPolicyDone] = useState<Record<string, boolean>>({});
   const { availability, entries, streaming } = assistant;
   const pending = assistant.pending || typing;
@@ -112,11 +85,6 @@ export const AssistantPanel = ({
     event.preventDefault();
     onSend(composer);
   };
-  const previousUser = (index: number) =>
-    messages
-      .slice(0, index)
-      .reverse()
-      .find((m) => m.role === 'user')?.text ?? '';
 
   const proposalCard = (entry: TurnEntry, p: AssistantProposal) => {
     const key = proposalKey(entry.id, p.id);
@@ -222,7 +190,6 @@ export const AssistantPanel = ({
         {messages.map((m, i) => {
           const user = m.role === 'user';
           const entry = m.turn ? entries[m.turn] : undefined;
-          const showCall = !user && !entry?.streaming;
           return (
             <div key={i} className={user ? 'msg msg-user' : 'msg msg-assistant'}>
               <span className={side ? 'visually-hidden' : 'msg-who'}>
@@ -288,28 +255,6 @@ export const AssistantPanel = ({
                     </Button>
                   ))}
                 </div>
-              ) : null}
-              {showCall ? (
-                <Button
-                  variant="tertiary"
-                  data-size="sm"
-                  className="ax-call"
-                  onClick={() =>
-                    setCall({
-                      path: assistant.turnPath,
-                      request: entry
-                        ? entry.request
-                        : {
-                            message: previousUser(i) || t('assistant.previousMessage'),
-                            intent: 'chat',
-                          },
-                      response: entry?.turn ?? exampleResponse(m, cardFor),
-                    })
-                  }
-                >
-                  <Icon icon={CodeIcon} size={16} />
-                  {t('assistant.showApiCall')}
-                </Button>
               ) : null}
             </div>
           );
@@ -391,7 +336,6 @@ export const AssistantPanel = ({
           )}
         </form>
       </div>
-      {call ? <MessageApiCall call={call} onClose={() => setCall(null)} /> : null}
     </aside>
   );
 };

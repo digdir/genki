@@ -296,38 +296,3 @@
   font-size: 16px;
   font-weight: 600;
 }
-
-.ax-code {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--ds-color-neutral-border-default);
-  border-radius: var(--ds-border-radius-lg);
-  overflow: hidden;
-}
-
-.ax-code-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: var(--ds-color-neutral-surface-tinted);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.ax-code pre {
-  margin: 0;
-  padding: 12px;
-  overflow: auto;
-  font-size: 13px;
-  line-height: 1.6;
-  white-space: pre;
-  background: var(--ds-color-neutral-background-tinted);
-  position: relative;
-}
-
-.ax-call {
-  align-self: flex-start;
-  margin-left: -8px;
-}

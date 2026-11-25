@@ -621,22 +621,11 @@ describe('builder assistant', () => {
     expect(within(panel).queryByText(/Modellen/)).toBeNull();
   });
 
-  it('shows the API call for an assistant message with proposals', async () => {
+  it('shows no API call under the assistant’s messages, which is noise for most people', async () => {
     const panel = await open('#/services/soknadsuttrekk/setup?assistent=api-kall');
     await within(panel).findByText('La til sjekk av status i Enhetsregisteret', {}, slow);
     await settled(panel);
-    const calls = within(panel).getAllByRole('button', { name: 'Vis API-kall' });
-    fireEvent.click(calls[calls.length - 1] as HTMLElement);
-    const dialog = screen.getByRole('dialog', {
-      name: /\/tenants\/999888777\/services\/soknadsuttrekk\/assistant\/turns/,
-    });
-    expect(dialog.getAttribute('style')).toContain('520px');
-    const response = within(dialog).getByLabelText('Svar');
-    expect(response.textContent).toContain('"proposals"');
-    expect(response.textContent).toContain('"appliedToDraft": false');
-    expect(within(dialog).getByLabelText('Forespørsel (curl)').textContent).toContain(
-      '"stream": true',
-    );
+    expect(within(panel).queryByRole('button', { name: 'Vis API-kall' })).toBeNull();
   });
 
   it('the Test tab is the shared playground panel with the draft', async () => {

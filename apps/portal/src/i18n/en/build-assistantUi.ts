@@ -20,8 +20,6 @@ export const assistantUi = {
     undoLabel: 'Undo: {title}',
     redoLabel: 'Redo: {title}',
     actionDone: '{label} (done)',
-    showApiCall: 'Show API call',
-    previousMessage: 'Previous message',
     sideIntro:
       'Ask about changes to the setup. What I suggest goes into the test edition, not to the users.',
     chatWelcome:
@@ -165,14 +163,6 @@ export const assistantUi = {
     testsTally: '{sent} sent to the test set · {rejected} rejected',
     improveMessage: 'Improve the instructions',
     suggestMessage: 'Suggest test cases',
-    apiEyebrow: 'API call for this message to the assistant',
-    apiIntro:
-      'The assistant uses the same API you can call from code. The response contains proposals, not changes. A proposal is used only when someone approves it.',
-    apiRequest: 'Request (curl)',
-    apiResponse: 'Response',
-    apiCopy: 'Copy {label}',
-    apiDraftPlaceholder: '<the draft as it is now>',
-    apiReference: 'See the API reference',
   },
   serviceList: {
     title: 'Services',
