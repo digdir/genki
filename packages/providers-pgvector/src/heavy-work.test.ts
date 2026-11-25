@@ -11,6 +11,8 @@ import {
   generationChunks,
   generationLockSpace,
   generationsToFreeze,
+  heavyApplication,
+  lockHolder,
   migrateKnowledgeServer,
   openKnowledgePools,
   partitionOf,
@@ -297,6 +299,213 @@ describe('builds the worker watches', () => {
     await expect(building).rejects.toThrow(/canceling statement/);
     session.release(true);
   }, 60_000);
+});
+
+describe("a run's closing VACUUM (#983)", () => {
+  const vecFile = async (generation: string) =>
+    (
+      await admin.query<{ file: string }>(
+        `select relfilenode::text as file from pg_class where relname = $1`,
+        [`${partitionOf('kn_chunks', generation)}_vec`],
+      )
+    ).rows[0]?.file;
+  /** Waits until `pg_stat_user_tables` counts a statistic: a backend reports its writes when idle. */
+  const counted = async (
+    generation: string,
+    column: 'n_tup_ins' | 'n_ins_since_vacuum',
+    n: number,
+  ) => {
+    for (let i = 0; i < 150; i += 1) {
+      const { rows } = await admin.query<{ n: string }>(
+        `select ${column}::text as n from pg_stat_user_tables where relname = $1`,
+        [partitionOf('kn_chunks', generation)],
+      );
+      if (Number(rows[0]?.n) >= n) return;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error(`${column} never reached ${n}`);
+  };
+  /** Writes on pools of their own, closed after, so their backends report the writes at exit. */
+  const writing = async (run: (pool: pg.Pool) => Promise<void>) => {
+    const own = openKnowledgePools(
+      {
+        host: container.getHost(),
+        port: container.getPort(),
+        database: container.getDatabase(),
+        user: 'knowledge_worker',
+        password: 'login-pw',
+      },
+      'worker',
+    );
+    try {
+      await run(own.pools.owner as pg.Pool);
+    } finally {
+      await own.close();
+    }
+  };
+  /** A generation of `docs` documents, vacuumed once, then `rewritten` of them written again by a run. */
+  const afterRun = async (docs: number, rewritten: number) => {
+    const generation = `g-heavy-${++generations}`;
+    const d = dataset(`digdir/heavy-${generations}`);
+    await writing(async (pool) => {
+      await prepareGeneration(pool, d, generation);
+      const writer = knowledgeWriterOf(pool, async () => undefined, new AbortController().signal);
+      for (let i = 0; i < docs; i += 1) await writer.store(d, generation, doc(`doc-${i}`, i));
+      await attachGeneration(pool, d, generation);
+    });
+    await counted(generation, 'n_tup_ins', docs * 3);
+    await vacuumGeneration(owner, generation, { throttled: false });
+    await writing(async (pool) => {
+      const writer = knowledgeWriterOf(pool, async () => undefined, new AbortController().signal);
+      for (let i = 0; i < rewritten; i += 1)
+        await writer.store(d, generation, doc(`doc-${i}`, i + 100));
+    });
+    await counted(generation, 'n_ins_since_vacuum', rewritten * 3);
+    return generation;
+  };
+
+  it("analyzes the generation's partitions before its closing VACUUM, even while a writer holds its lock", async () => {
+    const { generation } = await loaded(2);
+    const writerSession = await (worker.pools.writer as pg.Pool).connect();
+    await writerSession.query('begin');
+    await writerSession.query(`select pg_try_advisory_xact_lock_shared($1::int, hashtext($2))`, [
+      generationLockSpace,
+      generation,
+    ]);
+    try {
+      await expect(
+        vacuumGeneration(owner, generation, {
+          analyze: true,
+          throttled: false,
+          lockTimeoutMs: 300,
+        }),
+      ).rejects.toMatchObject({ code: '55P03' });
+      expect((await lastVacuum(generation))?.last_analyze).not.toBeNull();
+      expect((await lastVacuum(generation))?.last_vacuum).toBeNull();
+    } finally {
+      await writerSession.query('commit');
+      writerSession.release();
+    }
+  });
+
+  it('rebuilds the HNSW index before the VACUUM when the chunks written pass a fifth of the live ones', async () => {
+    const generation = await afterRun(10, 8);
+    const before = await vecFile(generation);
+    const result = await vacuumGeneration(owner, generation, {
+      analyze: true,
+      throttled: false,
+      rebuildAbove: 0.2,
+    });
+    expect(result).toMatchObject({ rebuilt: true, written: 24, live: 30 });
+    expect(await vecFile(generation)).not.toBe(before);
+    expect((await lastVacuum(generation))?.last_vacuum).not.toBeNull();
+  });
+
+  it('keeps the plain VACUUM when the chunks written stay under a fifth of the live ones', async () => {
+    const generation = await afterRun(10, 1);
+    const before = await vecFile(generation);
+    const result = await vacuumGeneration(owner, generation, {
+      analyze: true,
+      throttled: false,
+      rebuildAbove: 0.2,
+    });
+    expect(result).toMatchObject({ rebuilt: false, written: 3, live: 30 });
+    expect(await vecFile(generation)).toBe(before);
+    expect((await lastVacuum(generation))?.last_vacuum).not.toBeNull();
+  });
+
+  it("holds the generation's lock through the rebuild so no write runs beside it", async () => {
+    const generation = await afterRun(10, 8);
+    const watched = recording(owner);
+    await vacuumGeneration(watched.pool, generation, {
+      analyze: true,
+      throttled: false,
+      rebuildAbove: 0.2,
+    });
+    const at = (pattern: RegExp) => watched.statements.findIndex((s) => pattern.test(s));
+    const lock = at(/pg_advisory_lock\(/);
+    const rebuild = at(/reindex index concurrently/);
+    const vacuum = at(/^vacuum /);
+    expect(lock).toBeGreaterThan(at(/^analyze /));
+    expect(rebuild).toBeGreaterThan(lock);
+    expect(vacuum).toBeGreaterThan(rebuild);
+    // The lock is a session lock, released only when the session closes after the VACUUM.
+    expect(at(/pg_advisory_unlock/)).toBe(-1);
+  });
+});
+
+describe('a VACUUM that outlives its worker (issue 948)', () => {
+  it("takes over a VACUUM whose worker's connection is gone instead of failing on the lock", async () => {
+    const { generation } = await loaded(2);
+    const chunks = partitionOf('kn_chunks', generation);
+    // Another session keeps the partition, so the first VACUUM holds the generation's lock and waits.
+    const keeper = await admin.connect();
+    await keeper.query('begin');
+    await keeper.query(`lock table ${chunks} in share update exclusive mode`);
+    // The first try, whose client goes away the way a stopped worker's does.
+    let lost: pg.PoolClient | undefined;
+    const losing = Object.create(owner) as pg.Pool;
+    losing.connect = (async () => {
+      lost = await owner.connect();
+      return lost;
+    }) as typeof owner.connect;
+    let first: number | undefined;
+    const firstTry = vacuumGeneration(losing, generation, {
+      throttled: false,
+      onBackend: (pid) => {
+        first = pid;
+      },
+    });
+    firstTry.catch(() => undefined);
+    const held = async () =>
+      (await lockHolder(owner, generation))?.pid === first && first !== undefined;
+    for (let i = 0; i < 50 && !(await held()); i += 1)
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(await lockHolder(owner, generation)).toMatchObject({
+      pid: first,
+      application: heavyApplication,
+    });
+    (
+      lost as unknown as { connection: { stream: { destroy(): void } } }
+    ).connection.stream.destroy();
+    // The database goes on with the first try's VACUUM, and its lock.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect((await lockHolder(owner, generation))?.pid).toBe(first);
+    const tookOver: number[] = [];
+    const retry = vacuumGeneration(owner, generation, {
+      throttled: false,
+      lockTimeoutMs: 5_000,
+      onTakeover: (pid) => tookOver.push(pid),
+    });
+    for (let i = 0; i < 50 && (await lockHolder(owner, generation))?.pid === first; i += 1)
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    await keeper.query('commit');
+    keeper.release();
+    await retry;
+    expect(tookOver).toEqual([first]);
+    expect((await lastVacuum(generation))?.last_vacuum).not.toBeNull();
+  }, 60_000);
+
+  it("names the session that holds a generation's lock, and nothing when it is free", async () => {
+    const { generation } = await loaded(1);
+    expect(await lockHolder(owner, generation)).toBeUndefined();
+    const session = await owner.connect();
+    await session.query(`select set_config('application_name', $1, false)`, [heavyApplication]);
+    await session.query(`select pg_advisory_lock($1::int, hashtext($2))`, [
+      generationLockSpace,
+      generation,
+    ]);
+    try {
+      const { rows } = await session.query<{ pid: number }>(`select pg_backend_pid() as pid`);
+      expect(await lockHolder(owner, generation)).toMatchObject({
+        pid: rows[0]?.pid,
+        application: heavyApplication,
+        since: expect.stringMatching(/^\d{4}-\d\d-\d\dT/),
+      });
+    } finally {
+      session.release(true);
+    }
+  });
 });
 
 describe('REINDEX', () => {

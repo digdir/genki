@@ -12,11 +12,16 @@ import {
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  buildProgressMs,
   buildWork,
+  cancelHeavyWork,
   checkWork,
   finishRun,
+  givingWay,
+  heavyRunning,
   heavyWindow,
   recallMargin,
+  rebuildDeadShare,
   recallQueries,
   runVacuum,
   type HeavyDeps,
@@ -389,6 +394,198 @@ describe("a run's end", () => {
     });
     const t = deps({ server: server({ vacuum: vi.fn(async () => Promise.reject(busy)) }) });
     expect(await finishRun(t.deps, async () => undefined)(run)).toBe(false);
+  });
+});
+
+describe("a run's closing VACUUM keeps search fast (#983)", () => {
+  const closing = (at = day, overrides: Partial<HeavyDeps> = {}) => {
+    const reports: { id: string; counts: Record<string, number> }[] = [];
+    const t = deps(
+      {
+        window: () => 'always',
+        vcores: 4,
+        report: async (id, counts) => {
+          reports.push({ id, counts });
+        },
+        ...overrides,
+      },
+      at,
+    );
+    return { ...t, reports };
+  };
+  const vacuumJob = job(knowledgeBuildQueue, {
+    tenant: '991825827',
+    generation: 'g-docs-1',
+    kind: 'vacuum',
+    run: 'run-1',
+  });
+
+  it("analyzes the generation's partitions before its closing VACUUM", async () => {
+    const t = closing();
+    await buildWork(t.deps).handler(vacuumJob);
+    expect(t.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ analyze: true }),
+    );
+  });
+
+  it('asks for a rebuild of the HNSW index when the chunks written pass a fifth of the live ones', async () => {
+    const t = closing();
+    await buildWork(t.deps).handler(vacuumJob);
+    expect(rebuildDeadShare).toBe(0.2);
+    expect(t.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ rebuildAbove: 0.2 }),
+    );
+  });
+
+  it('throttles a VACUUM when the night window is always', async () => {
+    const t = closing(night);
+    await buildWork(t.deps).handler(vacuumJob);
+    expect(t.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ throttled: true }),
+    );
+    const small = closing(night);
+    await runVacuum(small.deps, { id: 'run-1', dataset: dataset.id }, 'g-docs-1');
+    expect(small.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ throttled: true }),
+    );
+    const window = closing(night, { window: () => '01:00-06:00' });
+    await buildWork(window.deps).handler(vacuumJob);
+    expect(window.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ throttled: false }),
+    );
+  });
+
+  it('rebuilds with half the vCores outside a real night window', async () => {
+    const t = closing();
+    await buildWork(t.deps).handler(vacuumJob);
+    expect(t.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ maintenanceWorkers: 2 }),
+    );
+    const window = closing(night, { window: () => '01:00-06:00' });
+    await buildWork(window.deps).handler(vacuumJob);
+    expect(window.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ maintenanceWorkers: 3 }),
+    );
+  });
+
+  it("logs a build job's start, then its phase and blocks every 10 minutes", async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    try {
+      let finish: () => void = () => undefined;
+      const log = vi.fn();
+      const slow = server({
+        vacuum: vi.fn(
+          (_g: string, options: { onBackend?: (pid: number) => void }) =>
+            new Promise<void>((resolve) => {
+              options.onBackend?.(4242);
+              finish = resolve;
+            }),
+        ),
+        progress: vi.fn(async () => ({ phase: 'vacuuming indexes', blocks: '120/900' })),
+      });
+      const t = closing(day, { server: slow, log });
+      const running = buildWork(t.deps).handler(vacuumJob);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(log).toHaveBeenCalledWith(
+        'knowledge build started',
+        expect.objectContaining({ generation: 'g-docs-1', kind: 'vacuum', run: 'run-1' }),
+      );
+      await vi.advanceTimersByTimeAsync(buildProgressMs - 1_000);
+      expect(log).not.toHaveBeenCalledWith('knowledge build progress', expect.anything());
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(log).toHaveBeenCalledWith(
+        'knowledge build progress',
+        expect.objectContaining({
+          generation: 'g-docs-1',
+          progress: { phase: 'vacuuming indexes', blocks: '120/900' },
+        }),
+      );
+      finish();
+      await running;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("records the closing VACUUM's duration in the run's report", async () => {
+    let at = day.getTime();
+    const t = closing(day, {
+      now: () => new Date(at),
+      server: server({
+        vacuum: vi.fn(async () => {
+          at += 90_000;
+          return { rebuilt: true, written: 900, live: 100 };
+        }),
+      }),
+    });
+    await buildWork(t.deps).handler(vacuumJob);
+    expect(t.reports).toEqual([{ id: 'run-1', counts: { vacuumMs: 90_000, vacuumRebuilt: 1 } }]);
+  });
+});
+
+describe('a VACUUM that outlives its worker (issue 948)', () => {
+  it('cancels its heavy backends when the worker stops, and sends the job again without spending its retry', async () => {
+    let fail: (error: Error) => void = () => undefined;
+    const slow = server({
+      vacuum: vi.fn(
+        (_g: string, options: { onBackend?: (pid: number) => void }) =>
+          new Promise<void>((_resolve, reject) => {
+            options.onBackend?.(4242);
+            fail = reject;
+          }),
+      ),
+      cancel: vi.fn(async () => fail(new Error('canceling statement due to user request'))),
+    });
+    const t = deps({ server: slow, running: heavyRunning() }, night);
+    const data = {
+      tenant: '991825827',
+      generation: 'g-docs-1',
+      kind: 'vacuum',
+      run: 'run-1',
+    } as const;
+    const running = buildWork(t.deps).handler(job(knowledgeBuildQueue, data));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await cancelHeavyWork(t.deps);
+    await running;
+    expect(slow.cancel).toHaveBeenCalledWith(4242);
+    expect(t.deps.running?.backends.size).toBe(0);
+    expect(t.sent).toEqual([{ queue: 'knowledge.build', data, startAfter: night }]);
+    expect(slow.prewarm).not.toHaveBeenCalled();
+  });
+
+  it("logs which backend holds a busy generation's lock, at most once a minute", async () => {
+    let at = day.getTime();
+    const log = vi.fn();
+    const holder = {
+      pid: 341548,
+      application: 'genki-heavy',
+      since: '2026-11-22T14:50:00Z',
+      progress: { phase: 'vacuuming indexes', blocks: '10/40' },
+    };
+    const t = deps({
+      log,
+      now: () => new Date(at),
+      server: server({ lockHolder: vi.fn(async () => holder) }),
+    });
+    const busy = givingWay(t.deps);
+    await busy('g-docs-1');
+    at += 30_000;
+    await busy('g-docs-1');
+    expect(log.mock.calls.filter(([event]) => event === 'knowledge writers giving way')).toEqual([
+      ['knowledge writers giving way', { generation: 'g-docs-1', holder }],
+    ]);
+    at += 31_000;
+    await busy('g-docs-1');
+    expect(
+      log.mock.calls.filter(([event]) => event === 'knowledge writers giving way'),
+    ).toHaveLength(2);
   });
 });
 

@@ -134,7 +134,16 @@ import {
   startHealthServer,
   watchKnowledgeBinding,
 } from './knowledge-binding.js';
-import { buildWork, checkWork, finishRun, heavyWindow, type HeavyDeps } from './heavy-work.js';
+import {
+  buildWork,
+  cancelHeavyWork,
+  checkWork,
+  finishRun,
+  givingWay,
+  heavyRunning,
+  heavyWindow,
+  type HeavyDeps,
+} from './heavy-work.js';
 import { dropWork } from './knowledge-drop.js';
 import { fieldsWork } from './knowledge-fields.js';
 import {
@@ -408,8 +417,14 @@ const heavyDeps: HeavyDeps | undefined = knowledgeServer?.pools.owner
       },
       ...(knowledgeVcores === undefined ? {} : { vcores: knowledgeVcores }),
       log,
+      // A closing VACUUM's duration goes in its run's report (#983).
+      report: (id, counts, mode) =>
+        knowledgeRunRecords?.report(id, counts, mode) ?? Promise.resolve(),
+      running: heavyRunning(),
     }
   : undefined;
+// Writers that give way log who holds the generation's lock, once a minute at most (issue 948).
+const givingWayLog = heavyDeps ? givingWay(heavyDeps) : undefined;
 // Runs of datasets on the knowledge database, as jobs (ADR 0042): text layer only until #141.
 const knowledgeRunRecords = db
   ? new PostgresJobRunRecords(
@@ -451,7 +466,10 @@ const knowledgeHandlers =
           onUnreadablePage: (page) => log('a PDF page could not be read', { ...page }),
         }),
         ...(nativeOutputs ? { nativeOutputs } : {}),
-        heavy: heavySettings,
+        heavy: {
+          ...heavySettings,
+          ...(givingWayLog ? { givingWay: givingWayLog } : {}),
+        },
         runs: knowledgeRunRecords,
         pipeline: async (run) =>
           (
@@ -1140,6 +1158,8 @@ const stop = () => {
   following.stop();
   worker.stop();
   void (async () => {
+    // First, so no VACUUM goes on in the database without a worker, holding its lock (issue 948).
+    if (heavyDeps) await cancelHeavyWork(heavyDeps);
     await jobs.stop();
     await nightWindow?.stop();
     await workerJobs?.knowledge?.stop();
