@@ -82,6 +82,7 @@ resource hostFence 'Microsoft.Authorization/policyAssignments@2024-04-01' = {
       proxyKeyUrl: { value: '${hostVault.properties.vaultUri}secrets/genai-proxy-key' }
       apiUpstream: { value: filter(hostEnv, e => e.name == 'API_UPSTREAM')[0].value }
       issuer: { value: filter(hostEnv, e => e.name == 'ANSATTPORTEN_ISSUER')[0].value }
+      redirects: { value: join(map(filter(hostEnv, e => e.name == 'GENAI_REDIRECT_HOSTS'), e => e.value), ',') }
     }
   }
 }

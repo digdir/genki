@@ -48,7 +48,7 @@ ContainerAppConsoleLogs
 | order by TimeGenerated desc
 ```
 
-**API down.** Check whether the API answers at all: `curl -i https://api.genki-test.digdir.cloud/health`. Then look at the revision and its replicas (`az containerapp revision list -n genai-test-api -g <resource group> -o table`) and at `ContainerAppSystemLogs` for `ProbeFailed`, `ContainerTerminated` or a failed revision. A `refusing to start` line in the console log names the missing setting. If the last deploy broke it, run the `rollback` workflow (`gh workflow run rollback.yml`), which moves users back to the previous API revision; for the worker or the web apps, run the deploy workflow on the previous good commit ([Deploys users do not notice](../infra/README.md#deploys-users-do-not-notice)). A failing certificate check means the managed certificate on the custom domain did not renew.
+**API down.** Check whether the API answers at all: `curl -i https://api.genki.digdir.cloud/health`. Then look at the revision and its replicas (`az containerapp revision list -n genai-test-api -g <resource group> -o table`) and at `ContainerAppSystemLogs` for `ProbeFailed`, `ContainerTerminated` or a failed revision. A `refusing to start` line in the console log names the missing setting. If the last deploy broke it, run the `rollback` workflow (`gh workflow run rollback.yml`), which moves users back to the previous API revision; for the worker or the web apps, run the deploy workflow on the previous good commit ([Deploys users do not notice](../infra/README.md#deploys-users-do-not-notice)). A failing certificate check means the managed certificate on the custom domain did not renew.
 
 **Docling out of memory.** A Docling replica takes one conversion at a time and restarts itself when it is idle with more than half its memory (`genki_busy.py`, infra/README.md, "Docling server"), so a kill means one file took more than the replica has, or the restart did not happen (a `memory unreadable` line means the replica cannot read its memory, so it never restarts). The worker logs one `docling task` line for each task when it ends, with the file's `sha256`, `pages`, the `replica` that took it, `queuedMs`, `convertingMs` and `result` (`lost` for a killed one); Docling logs `task accepted`, `task ended`, `busy` and `restarting`, each with its replica and the tasks it holds (`running`, `queued`). The tasks each replica held, and the files the worker lost:
 
@@ -158,7 +158,7 @@ If the shell cannot write to `/proc/1/fd/1`, lower the rule's threshold instead,
 
 `api-errors`: there is no safe way to make the API answer 5xx on purpose. In the portal, open the rule `genai-test-api-errors`, set its threshold to 0, take `and failed >= 10` out of its query and save. Make at least 100 requests (`for i in $(seq 110); do curl -s -o /dev/null https://api.genki-test.digdir.cloud/health; done`) and wait for the alert. Then set the threshold back to 5 and put the condition back, or run the infra workflow.
 
-`api-down`: in the portal, open Application Insights `genai-test-insights` → Availability → `genai-test-api-health` → Edit, and change the URL to `https://api.genki-test.digdir.cloud/health-drill`, which answers 404. The alert fires after the next test run, within about 10 minutes. Then change the URL back, or run the infra workflow.
+`api-down`: in the portal, open Application Insights `genai-test-insights` → Availability → `genai-test-api-health` → Edit, and change the URL to `https://api.genki.digdir.cloud/health-drill`, which answers 404. The alert fires after the next test run, within about 10 minutes. Then change the URL back, or run the infra workflow.
 
 `api-latency`: set the rule's threshold to 0 in the portal, make 100 requests as for `api-errors` in each of two half hours, wait for the alert and set it back to 5.
 
@@ -242,10 +242,10 @@ Once, in this order, after the deploy that turns on `hostnameBinderEnabled`. Tes
 
    ```sh
    az deployment sub create -l westeurope -n genki-hostname-binder-access -f infra/hostname-binder-access.bicep \
-     -p environmentName=test resourceGroupName=rg-genki-test-weu dnsZoneName=genki-test.digdir.cloud
+     -p environmentName=test resourceGroupName=rg-genki-test-weu dnsZoneName=genki.digdir.cloud
    ```
 
-   It reads the host app's `API_UPSTREAM` and `ANSATTPORTEN_ISSUER`. Before a deploy that changes either, apply it with `policyEffect=Audit`, deploy, then apply it again without, or the policy refuses that deploy.
+   It reads the host app's `API_UPSTREAM`, `ANSATTPORTEN_ISSUER` and `GENAI_REDIRECT_HOSTS`. Before a deploy that changes any of them, apply it with `policyEffect=Audit`, deploy, then apply it again without, or the policy refuses that deploy.
 
 2. **An app registration for the API** (an Entra admin), no secret, no redirect URI: `az ad app create --display-name genki-test-api --query appId -o tsv`, then `az ad app update --id <appId> --identifier-uris api://<appId>` and `az ad sp create --id <appId>` (without the service principal, the binder's token request fails with AADSTS500011). Once the API serves `/internal/hostnames/*`, set the GitHub variable `HOSTNAME_BINDER_AUDIENCE` in the `test` environment to `api://<appId>` and run **deploy**: the job is deployed only with an audience, and until the API has the routes every run would fail.
 3. **The old records in genki's zone.** The `apps.` zone takes over `kunnskap.apps`, `login.apps` and their `asuid` records; the copies in `genki-test.digdir.cloud` stay until removed: `az network dns record-set cname delete -g rg-genki-test-weu -z genki-test.digdir.cloud -n kunnskap.apps --yes`, and the same for `login.apps` and the `txt` sets `asuid.kunnskap.apps` and `asuid.login.apps`. Check first that `dig +short kunnskap.apps.genki-test.digdir.cloud CNAME` answers from the new zone (`dig NS apps.genki-test.digdir.cloud`).

@@ -14,6 +14,9 @@ param bffProxyKey bool = false
 @description('{ hostname, tenant, stage, apex? } from main.bicep\'s hostedHostnames.')
 param hostedHostnames array = []
 
+@description('`old=new` pairs, comma-separated: the host answers 301 from each old name to the new one.')
+param redirectHosts string = ''
+
 @description('Custom domains already on the host app, which the template keeps unless it binds the name itself: the hostname binder\'s.')
 param keptDomains array = []
 
@@ -100,7 +103,8 @@ resource host 'Microsoft.App/containerApps@2025-02-02-preview' = {
               { name: 'API_UPSTREAM', value: apiUpstream }
               { name: 'ANSATTPORTEN_ISSUER', value: ansattportenIssuer }
             ],
-            bffProxyKey ? [{ name: 'GENAI_PROXY_KEY', secretRef: 'genai-proxy-key' }] : []
+            bffProxyKey ? [{ name: 'GENAI_PROXY_KEY', secretRef: 'genai-proxy-key' }] : [],
+            empty(redirectHosts) ? [] : [{ name: 'GENAI_REDIRECT_HOSTS', value: redirectHosts }]
           )
           probes: [
             { type: 'Liveness', httpGet: { path: '/healthz', port: 8080 }, periodSeconds: 30 }

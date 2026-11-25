@@ -401,7 +401,7 @@ Definitions live in the database once published. The files in `apps/api/config/l
 
 ### Deployment
 
-The test environment in Azure (`genki-test.digdir.cloud`) is deployed from `main` by running the `deploy` workflow by hand (`gh workflow run deploy.yml`), using [`infra/`](infra/README.md). Production is not set up yet.
+The test environment in Azure (`genki.digdir.cloud`, formerly `genki-test.digdir.cloud`) is deployed from `main` by running the `deploy` workflow by hand (`gh workflow run deploy.yml`), using [`infra/`](infra/README.md). Production is not set up yet.
 
 ### Troubleshooting
 

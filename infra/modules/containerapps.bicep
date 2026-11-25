@@ -59,6 +59,9 @@ param hostnames object
 @allowed(['none', 'hostnames', 'certificates'])
 param customDomainsStage string
 
+@description('The name each app had before hostnames, by app: bound with its certificate at any stage. Once the new name has its own, the web apps answer 301 from the old one.')
+param previousHostnames object = {}
+
 @description('Managed certificates that already exist in the environment, by app. Bound as they are instead of created.')
 param existingCertificates object = {}
 param minReplicas int
@@ -139,17 +142,48 @@ resource certificates 'Microsoft.App/managedEnvironments/managedCertificates@202
   }
 }]
 
-var customDomains = toObject(appNames, app => app, app => empty(hostnames[app]) || customDomainsStage == 'none'
-  ? []
-  : [
-      {
-        name: hostnames[app]
-        bindingType: customDomainsStage == 'certificates' ? 'SniEnabled' : 'Disabled'
-        certificateId: customDomainsStage == 'certificates'
-          ? resourceId('Microsoft.App/managedEnvironments/managedCertificates', environment.name, certificateNames[app])
-          : null
-      }
-    ])
+var withPrevious = filter(appNames, app => !empty(previousHostnames[?app] ?? ''))
+
+resource previousCertificates 'Microsoft.App/managedEnvironments/managedCertificates@2025-02-02-preview' = [for app in withPrevious: {
+  parent: environment
+  name: replace(previousHostnames[app], '.', '-')
+  location: location
+  tags: tags
+  properties: {
+    subjectName: previousHostnames[app]
+    domainControlValidation: 'CNAME'
+  }
+}]
+
+var customDomains = toObject(appNames, app => app, app => concat(
+  empty(hostnames[app]) || customDomainsStage == 'none'
+    ? []
+    : [
+        {
+          name: hostnames[app]
+          bindingType: customDomainsStage == 'certificates' ? 'SniEnabled' : 'Disabled'
+          certificateId: customDomainsStage == 'certificates'
+            ? resourceId('Microsoft.App/managedEnvironments/managedCertificates', environment.name, certificateNames[app])
+            : null
+        }
+      ],
+  empty(previousHostnames[?app] ?? '')
+    ? []
+    : [
+        {
+          name: previousHostnames[app]
+          bindingType: 'SniEnabled'
+          certificateId: resourceId('Microsoft.App/managedEnvironments/managedCertificates', environment.name, replace(previousHostnames[app], '.', '-'))
+        }
+      ]
+))
+
+var liveHostnames = toObject(appNames, app => app, app => !empty(previousHostnames[?app] ?? '') && customDomainsStage != 'certificates'
+  ? previousHostnames[app]
+  : hostnames[app])
+var redirects = toObject(appNames, app => app, app => !empty(previousHostnames[?app] ?? '') && customDomainsStage == 'certificates'
+  ? '${previousHostnames[app]}=${hostnames[app]}'
+  : '')
 
 var secretEnv = [for secret in keyVaultSecretNames: {
   name: toUpper(replace(replace(secret, '-', '_'), '.', '_'))
@@ -245,7 +279,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
   name: '${name}-api'
   location: location
   tags: tags
-  dependsOn: [certificates]
+  dependsOn: [certificates, previousCertificates]
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: union({ '${identityId}': {} }, knowledgeIdentity.api)
@@ -587,8 +621,8 @@ resource restoreCheckJob 'Microsoft.App/jobs@2025-02-02-preview' = if (backupOn)
   }
 }
 
-var apiPublicUrl = empty(hostnames.api) ? 'https://${api.properties.configuration.ingress.fqdn}' : 'https://${hostnames.api}'
-var portalUrl = empty(hostnames.portal) ? '' : 'https://${hostnames.portal}'
+var apiPublicUrl = empty(liveHostnames.api) ? 'https://${api.properties.configuration.ingress.fqdn}' : 'https://${liveHostnames.api}'
+var portalUrl = empty(liveHostnames.portal) ? '' : 'https://${liveHostnames.portal}'
 
 var webProxyKeySecret = platformAppsBff ? proxyKeySecret : []
 var webProxyKeyEnv = platformAppsBff ? proxyKeyEnv : []
@@ -616,7 +650,7 @@ resource web 'Microsoft.App/containerApps@2025-02-02-preview' = [for item in web
   name: '${name}-${item.app}'
   location: location
   tags: tags
-  dependsOn: [certificates]
+  dependsOn: [certificates, previousCertificates]
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: { '${identityId}': {} }
@@ -651,6 +685,7 @@ resource web 'Microsoft.App/containerApps@2025-02-02-preview' = [for item in web
                   { name: 'PUBLIC_API_BASE', value: apiPublicUrl }
                   { name: 'API_AUDIENCE', value: webSettings.apiAudience }
                   { name: 'ALTINN_RESOURCE', value: webSettings.altinnResource }
+                  { name: 'GENAI_REDIRECT_HOSTS', value: redirects[item.app] }
                 ],
                 map(items(item.env), pair => { name: pair.key, value: string(pair.value) })
               ),

@@ -7,7 +7,7 @@ case "${APP:-}" in
 esac
 case "${API_UPSTREAM:-}" in
   http://* | https://*) ;;
-  *) echo "Set API_UPSTREAM to the API address, for example https://api.genki-test.digdir.cloud" >&2; exit 1 ;;
+  *) echo "Set API_UPSTREAM to the API address, for example https://api.genki.digdir.cloud" >&2; exit 1 ;;
 esac
 
 escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
@@ -47,6 +47,21 @@ case "$api_host" in
   *:*) api_server=$api_host ;;
   *) api_server="$api_host:$([ "$api_scheme" = https ] && echo 443 || echo 80)" ;;
 esac
+
+: >/tmp/genki/redirects.conf
+set -f
+for pair in $(printf '%s' "${GENAI_REDIRECT_HOSTS:-}" | tr ',' ' '); do
+  case "$pair" in
+    *=*=* | =* | *= | *[!a-z0-9.=-]*) ;;
+    *=*)
+      printf '%s %s;\n' "${pair%%=*}" "${pair#*=}" >>/tmp/genki/redirects.conf
+      continue
+      ;;
+  esac
+  echo "GENAI_REDIRECT_HOSTS must be old=new pairs of lowercase hostnames, comma-separated" >&2
+  exit 1
+done
+set +f
 
 sed -e "s#__CONNECT_SRC__#$connect#g" -e "s#__FRAME_SRC__#$frame#g" /etc/nginx/genki-headers.conf >/tmp/genki/headers.conf
 sed -e 's#X-Frame-Options "DENY"#X-Frame-Options "SAMEORIGIN"#' -e "s#frame-ancestors 'none'#frame-ancestors 'self'#" \

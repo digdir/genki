@@ -34,7 +34,7 @@ const boot = async () => {
   const sourceCalls: { method: string; path: string }[] = [];
   const fetch = (async (url: string, init?: RequestInit) => {
     const { host, pathname, search } = new URL(url);
-    if (host === 'api.genki-test.digdir.cloud') {
+    if (host === 'api.genki.digdir.cloud') {
       sourceCalls.push({ method: init?.method ?? 'GET', path: pathname });
       return source.app.request(`${pathname}${search}`, init);
     }

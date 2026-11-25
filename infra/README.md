@@ -228,6 +228,7 @@ Plain settings come from the GitHub environment's variables (Settings → Enviro
 | `LANGFUSE_BASE_URL`, `LANGFUSE_INSTANCE_RECEIVES_CONTENT`                  | Digdir's Langfuse, offered in the portal's Langfuse connection form; `true` once it may receive text (ADR 0011). Unset: the form asks only for an agency's own Langfuse. Test sets the URL in `test.bicepparam`, and the content flag is `true` there unless the variable is set                                                                                                                                       |
 | `TRACES_ENDPOINT`, `TRACES_RESIDENCY`                                      | Test only. Where genki sends its own traces (`https://<host>/api/public/otel`) and where that store is (`norway`, `eu` or `global`). Needs the two Langfuse keys in Key Vault                                                                                                                                                                                                                                          |
 | `CUSTOM_DOMAINS_STAGE`                                                     | `none`, `hostnames` or `certificates`; see Host names below                                                                                                                                                                                                                                                                                                                                                            |
+| `HOSTNAMES_STAGE`                                                          | Test only. `none`, `hostnames` or `certificates` for every name under `genki.digdir.cloud`; unset or empty means `none`. See [Moving to a new zone](#moving-to-a-new-zone)                                                                                                                                                                                                                                             |
 | `KNOWLEDGE_SERVER_STAGE`                                                   | `none`, `server` or `apps`; unset or empty means `none`. On the test environment, or a repository variable when environment settings are out of reach. See [Knowledge server](#knowledge-server)                                                                                                                                                                                                                       |
 | `LOCKDOWN_ENTRA_GROUPS`                                                    | Test only. Entra group object ids, comma separated, whose members get the whole platform in lockdown                                                                                                                                                                                                                                                                                                                   |
 | `LOCKDOWN_USER_GROUPS`                                                     | Test only. Entra group object ids, comma separated, whose members get every right in `PLATFORM_TENANT` in lockdown, as `LOCKDOWN_ENTRA_GROUPS` does, but never the operator role. Same client and email checks; `LOCKDOWN_ENTRA_GROUPS` wins for a login in both                                                                                                                                                       |
@@ -287,20 +288,20 @@ Development mode is off: the image sets `NODE_ENV=production`, and the API refus
 
 ## Host names and DNS
 
-| Host name                           | Container app          |
-| ----------------------------------- | ---------------------- |
-| `api.genki-test.digdir.cloud`       | `genai-test-api`       |
-| `portal.genki-test.digdir.cloud`    | `genai-test-portal`    |
-| `workspace.genki-test.digdir.cloud` | `genai-test-workspace` |
-| `console.genki-test.digdir.cloud`   | `genai-test-console`   |
-| `assistant.genki-test.digdir.cloud` | `genai-test-assistant` |
+| Host name                      | Container app          |
+| ------------------------------ | ---------------------- |
+| `api.genki.digdir.cloud`       | `genai-test-api`       |
+| `portal.genki.digdir.cloud`    | `genai-test-portal`    |
+| `workspace.genki.digdir.cloud` | `genai-test-workspace` |
+| `console.genki.digdir.cloud`   | `genai-test-console`   |
+| `assistant.genki.digdir.cloud` | `genai-test-assistant` |
 
-`genki-test.digdir.cloud` is delegated to an Azure DNS zone the team controls. The template creates the zone (`createDnsZone`) with, per host name:
+The one environment, genai-test-*, moved from `genki-test.digdir.cloud` to `genki.digdir.cloud` in November 2026; the old names still answer (see [Moving to a new zone](#moving-to-a-new-zone)). `genki.digdir.cloud` is delegated to an Azure DNS zone the team controls. The template creates the zone (`createDnsZone`) with, per host name:
 
 - `CNAME <name>` → the container app's generated host name (output `appUrls`)
 - `TXT asuid.<name>` → the environment's verification id (output `customDomainVerificationId`)
 
-The owner of `digdir.cloud` delegates the zone once: an `NS` record for `genki-test` in `digdir.cloud` with the four name servers from the output `dnsNameServers`.
+The owner of `digdir.cloud` delegates the zone once: an `NS` record for `genki` in `digdir.cloud` with the four name servers from the output `dnsNameServers`.
 
 Custom domains are added in three runs, because Azure only issues a managed certificate for a host name already on the app:
 
@@ -313,6 +314,19 @@ Certificates created outside the template, for example in the Azure portal, go i
 Without the DNS zone, create the same CNAME and TXT records wherever `genki-test.digdir.cloud` is hosted.
 
 `assistant.genki-test.digdir.cloud` is the assistant host's (ADR 0061), bound only while `assistantHostEnabled` is on. Its app runs in its own environment, `<name>-hosted-env`, so its `TXT asuid.assistant` record carries that environment's verification id (output `assistantHost.verificationId`), and its managed certificate is created in that environment. Its stage is `assistantHostnameStage`, the same stages as `CUSTOM_DOMAINS_STAGE` and the same value unless set, bound on the host alongside the hosted hostnames below; a new host starts it at `none`, since Azure binds a name only once its DNS points at the host. The template sets `GENAI_ASSISTANT_HOSTNAME` on the API to it and opens it to `PLATFORM_TENANT` in `GENAI_HOSTED_HOSTNAMES`; it is not an entry in `hostedHostnames`.
+
+### Moving to a new zone
+
+`previousDnsZoneName` names the zone the names were under before `dnsZoneName`; test has `genki-test.digdir.cloud`. From it the template derives each old name by swapping the zone: the five above, `<subdomain>.apps.` of every `hostedHostnames` entry with a subdomain, and `login.apps.`. Then:
+
+- Each old name stays bound with the managed certificate it has (`<name with dashes>`), at every stage, so it answers as before while the new names move through `none`, `hostnames` and `certificates` on `HOSTNAMES_STAGE`.
+- Until a new name has its certificate, the API signs in on the old names: `PLATFORM_LOGIN_HOSTNAME`, `PLATFORM_APP_ORIGINS`, `GENAI_ASSISTANT_HOSTNAME` and the apps' `PUBLIC_API_BASE` follow the stage. At `certificates` they switch to the new names.
+- At `certificates`, the old portal, workspace and console names, and the old assistant, `kunnskap.apps` and `login.apps` names on the host, answer `301` to the new name with path and query (`GENAI_REDIRECT_HOSTS` in nginx), before any login, so a session only ever starts on a new name. `/healthz` is never redirected. Everyone logs in once more, since the `__Host-` cookies belong to the old names.
+- The API answers on both names and never redirects, for Kunnskapsassistenten's backend and scripts that call `api.genki-test.digdir.cloud`.
+- The old hosted names stay in `GENAI_HOSTED_HOSTNAMES` and in the binder's reserved names; `GENAI_DNS_ZONE` and the binder's zone become `apps.genki.digdir.cloud`. The template no longer writes records in the old zones, and leaves the ones there.
+- The host app's `GENAI_REDIRECT_HOSTS` is pinned by the host fence, so apply `infra/hostname-binder-access.bicep` with `policyEffect=Audit` before the deploy that changes it, and without afterwards ([runbook](../docs/runbook.md#hostname-binder)). Applied with the new zone, the fences cover `apps.genki.digdir.cloud` only, so delete the binder's role assignment on `apps.genki-test.digdir.cloud` at the same time.
+
+Afterwards, once Kunnskapsassistenten and the scripts call the new API name: empty `previousDnsZoneName`, deploy, then delete the zones `genki-test.digdir.cloud` and `apps.genki-test.digdir.cloud` and the old managed certificates.
 
 ### Hosted hostnames
 

@@ -736,9 +736,9 @@ const libraryFromEnv = (env: NodeJS.ProcessEnv) =>
     : undefined;
 
 export const appBases = (env: NodeJS.ProcessEnv) => ({
-  portal: env.DEMO_PORTAL_URL || 'https://portal.genki-test.digdir.cloud',
-  console: env.DEMO_CONSOLE_URL || 'https://console.genki-test.digdir.cloud',
-  workspace: env.DEMO_WORKSPACE_URL || 'https://workspace.genki-test.digdir.cloud',
+  portal: env.DEMO_PORTAL_URL || 'https://portal.genki.digdir.cloud',
+  console: env.DEMO_CONSOLE_URL || 'https://console.genki.digdir.cloud',
+  workspace: env.DEMO_WORKSPACE_URL || 'https://workspace.genki.digdir.cloud',
 });
 
 export interface StoredRecording {

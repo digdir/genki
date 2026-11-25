@@ -115,10 +115,11 @@ describe.skipIf(!hasAz && !process.env.CI)('the assistant host in the template',
       "[concat(variables('hostedNames'), variables('assistantNames'))]",
     );
     expect(module('assistant-host').properties.parameters?.hostedHostnames).toEqual({
-      value: "[concat(variables('servedNames'), variables('loginNames'))]",
+      value:
+        "[concat(variables('servedNames'), variables('loginNames'), variables('previousHosted'))]",
     });
     expect(read('infra/env/test.bicepparam')).toMatch(
-      /assistant: 'assistant\.genki-test\.digdir\.cloud'/,
+      /assistant: 'assistant\.genki\.digdir\.cloud'/,
     );
   });
 
@@ -130,9 +131,9 @@ describe.skipIf(!hasAz && !process.env.CI)('the assistant host in the template',
   it('opens the assistant hostname on the API only while the host runs, and verifies it against the host’s own environment', () => {
     const api = JSON.stringify(module('containerapps').properties.parameters);
     expect(api).toContain(
-      `"GENAI_ASSISTANT_HOSTNAME":"[if(parameters('assistantHostEnabled'), coalesce(tryGet(parameters('hostnames'), 'assistant'), ''), '')]"`,
+      `"GENAI_ASSISTANT_HOSTNAME":"[if(parameters('assistantHostEnabled'), coalesce(tryGet(variables('liveHostnames'), 'assistant'), ''), '')]"`,
     );
-    expect(api).toContain("map(variables('servedNames')");
+    expect(api).toContain("map(variables('allServedNames')");
     const dns = JSON.stringify(module('dns').properties.parameters);
     expect(dns).toMatch(/'assistant-host'\), '[\d-]+'\)\.outputs\.verificationId\.value/);
   });
