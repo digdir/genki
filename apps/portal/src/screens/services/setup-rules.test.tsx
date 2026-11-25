@@ -320,7 +320,8 @@ describe('Formål og målgruppe', () => {
       files: { 'prompts/rapport.nb.md': 'Svar kort og med kilder.' },
     });
     await waitFor(() => expect(instructions().value).toBe('Svar kort og med kilder.'));
-    expect(screen.getByText('24 tegn')).toBeTruthy();
+    // No count of characters: the instructions have no limit to keep to.
+    expect(screen.queryByText(/^\d+ tegn$/)).toBeNull();
 
     fireEvent.change(instructions(), { target: { value: 'Svar alltid kort.' } });
     await waitFor(

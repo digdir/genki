@@ -45,8 +45,8 @@ describe('the layout rules', () => {
   it('keeps the zone order fixed whatever order the blocks are turned on in', () => {
     const one = on(empty, 'settings', 'threads', 'projects');
     const two = on(empty, 'projects', 'settings', 'threads');
-    expect(blocksIn(one.layout, 'primary')).toEqual(['projects', 'threads', 'settings']);
-    expect(blocksIn(two.layout, 'primary')).toEqual(['projects', 'threads', 'settings']);
+    expect(blocksIn(one.layout, 'primary')).toEqual(['threads', 'settings', 'projects']);
+    expect(blocksIn(two.layout, 'primary')).toEqual(['threads', 'settings', 'projects']);
   });
 
   it('puts a Filter in the primary panel under Threads and above Settings', () => {
@@ -111,7 +111,8 @@ describe('the layout rules', () => {
   });
 
   it('lists every block that may stand in a zone, in the zone order', () => {
-    expect(blocksAllowedIn('primary')).toEqual(['projects', 'threads', 'filter', 'settings']);
+    // Prosjekter last, under Innstillinger, while it is «kommer».
+    expect(blocksAllowedIn('primary')).toEqual(['threads', 'filter', 'settings', 'projects']);
     expect(blocksAllowedIn('main')).toEqual(['approach', 'filter', 'chat', 'document-view']);
     expect(blocksAllowedIn('secondary')).toEqual([
       'approach',

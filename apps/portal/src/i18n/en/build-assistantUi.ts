@@ -20,12 +20,10 @@ export const assistantUi = {
     undoLabel: 'Undo: {title}',
     redoLabel: 'Redo: {title}',
     actionDone: '{label} (done)',
-    showApiCall: 'Show API call',
-    previousMessage: 'Previous message',
     sideIntro:
       'Ask about changes to the setup. What I suggest goes into the test edition, not to the users.',
     chatWelcome:
-      'Let me help you fill in the form on the right, and we will make the service together. Write freely, or use the questions in the form.',
+      'If you like, I can help you fill in the form on the right. Use the suggestion buttons, or ask if you wonder about anything.',
     sidePlaceholder: 'Ask about something …',
     composerLabel: 'Write to the assistant',
     send: 'Send',
@@ -165,14 +163,6 @@ export const assistantUi = {
     testsTally: '{sent} sent to the test set · {rejected} rejected',
     improveMessage: 'Improve the instructions',
     suggestMessage: 'Suggest test cases',
-    apiEyebrow: 'API call for this message to the assistant',
-    apiIntro:
-      'The assistant uses the same API you can call from code. The response contains proposals, not changes. A proposal is used only when someone approves it.',
-    apiRequest: 'Request (curl)',
-    apiResponse: 'Response',
-    apiCopy: 'Copy {label}',
-    apiDraftPlaceholder: '<the draft as it is now>',
-    apiReference: 'See the API reference',
   },
   serviceList: {
     title: 'Services',

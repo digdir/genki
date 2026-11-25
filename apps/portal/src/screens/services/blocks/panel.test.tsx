@@ -74,6 +74,9 @@ describe('the building blocks per panel', () => {
       expect(switchIn(group, name).checked).toBe(false);
     }
     expect(switchIn('Venstre', 'Tidligere samtaler').disabled).toBe(false);
+    // Last in Venstre, under Innstillinger, while it is coming.
+    const left = within(screen.getByRole('group', { name: 'Venstre' })).getAllByRole('switch');
+    expect(left.at(-1)).toBe(switchIn('Venstre', /^Prosjekter\s*Kommer$/));
   });
 
   it('keeps a chosen block the draft cannot back as chosen, says why it waits, and does not draw it', () => {

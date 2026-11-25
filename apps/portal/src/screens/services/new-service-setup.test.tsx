@@ -78,12 +78,20 @@ describe('Oppsett of a new service', () => {
     const side = screen.getByRole('region', { name: 'Byggeassistent og prøving' });
     expect(
       within(side).getByText(
-        'La meg hjelpe deg med å fylle ut skjemaet til høyre, så lager vi tjenesten sammen. Skriv fritt, eller bruk spørsmålene i skjemaet.',
+        'Hvis du vil kan jeg hjelpe med å fylle ut skjemaet til høyre. Bruk forslagsknappene eller spør hvis du lurer på noe.',
       ),
     ).toBeTruthy();
     expect(
       within(side).getByRole('textbox', { name: 'Skriv til assistenten' }).getAttribute('rows'),
     ).toBe('3');
+    // The heading and the line stand together in the middle until the first message.
+    const panel = within(side).getByRole('complementary', { name: 'Byggeassistent' });
+    expect(panel.hasAttribute('data-empty')).toBe(true);
+    fireEvent.change(within(panel).getByLabelText('Skriv til assistenten'), {
+      target: { value: 'Hva kan du hjelpe med?' },
+    });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(panel.hasAttribute('data-empty')).toBe(false));
   });
 
   it('lists what an area lacks only after the person presses Publiser', async () => {
@@ -107,32 +115,26 @@ describe('Oppsett of a new service', () => {
     expect(within(area('Kunnskap')).queryByText('Dette mangler før publisering')).toBeNull();
   });
 
-  it('shows web pages and own documents under Kunnskap as coming, and never puts them in the draft', async () => {
+  it('shows web pages and own documents under Kunnskap as coming and turned off, and says nothing about saving them', async () => {
     const calls = await openNew();
     const sources = area('Kunnskap');
 
     const pages = within(sources).getByRole('group', { name: 'Nettsider' });
     expect(within(pages).getByText('Kommer')).toBeTruthy();
-    addPage('https://www.nav.no/arbeid');
+    expect((webField() as HTMLInputElement).disabled).toBe(true);
     expect(
-      within(screen.getByRole('list', { name: 'Valgte nettsider' })).getByRole('button', {
-        name: 'Fjern nettsiden https://www.nav.no/arbeid',
-      }),
-    ).toBeTruthy();
+      within(pages)
+        .getByRole('button', { name: 'Legg til nettside' })
+        .getAttribute('aria-disabled'),
+    ).toBe('true');
 
     const documents = within(sources).getByRole('group', { name: 'Egne dokumenter' });
     expect(within(documents).getByText('Kommer')).toBeTruthy();
-    expect(within(documents).getByText('Velg filer')).toBeTruthy();
     expect(within(documents).getByText('Slipp filer her')).toBeTruthy();
-    fireEvent.change(within(documents).getByLabelText('Egne dokumenter'), {
-      target: { files: [new File(['rutine'], 'permisjonsrutine.pdf')] },
-    });
-    expect(
-      within(screen.getByRole('list', { name: 'Valgte dokumenter' })).getByRole('button', {
-        name: 'Fjern dokumentet permisjonsrutine.pdf',
-      }),
-    ).toBeTruthy();
-    expect(within(sources).getByText(/^Lagres ikke i utkastet ennå/)).toBeTruthy();
+    expect((within(documents).getByLabelText('Egne dokumenter') as HTMLInputElement).disabled).toBe(
+      true,
+    );
+    expect(within(sources).queryByText(/^Lagres ikke i utkastet ennå/)).toBeNull();
 
     const datasets = within(sources).getByRole('combobox', { name: 'Dokumentsamlinger' });
     fireEvent.focus(datasets);
@@ -143,13 +145,11 @@ describe('Oppsett of a new service', () => {
       await within(sources).findByRole('option', { name: 'Kudos-rapporter', hidden: true }),
     );
     await waitFor(() => expect(draftBodies(calls).at(-1)).toContain('digdir/kudos'));
-    expect(draftBodies(calls).join()).not.toMatch(/nav\.no|permisjonsrutine/);
   });
 
-  it('keeps the web pages, documents and wished result when the person leaves Oppsett and comes back', async () => {
+  it('keeps the wished result when the person leaves Oppsett and comes back', async () => {
     await openNew();
     const setupHref = window.location.hash;
-    addPage('https://lovdata.no/lov/2005-06-17-62');
     fireEvent.change(wishField(), { target: { value: 'Et kort svar med henvisning til loven' } });
 
     go(setupHref.replace(/\/setup$/, '/interface'));
@@ -157,11 +157,6 @@ describe('Oppsett of a new service', () => {
     go(setupHref);
     await screen.findByRole('heading', { level: 2, name: 'Grunnleggende' });
 
-    expect(
-      within(area('Kunnskap')).getByRole('button', {
-        name: 'Fjern nettsiden https://lovdata.no/lov/2005-06-17-62',
-      }),
-    ).toBeTruthy();
     expect(wishField().value).toBe('Et kort svar med henvisning til loven');
   });
 
@@ -238,18 +233,6 @@ describe('Oppsett of a new service', () => {
     go(setupHref);
     await screen.findByRole('heading', { level: 2, name: 'Grunnleggende' });
 
-    expect(screen.queryByRole('list', { name: 'Valgte nettsider' })).toBeNull();
-  });
-
-  it('refuses a web page that is not an https address and says what to write', async () => {
-    await openNew();
-    const web = webField();
-
-    for (const value of ['nav.no', 'http://www.nav.no', 'javascript:alert(1)']) {
-      addPage(value);
-      expect(screen.getByText(/^Skriv en nettadresse som begynner med https:\/\//)).toBeTruthy();
-      expect(web.getAttribute('aria-invalid')).toBe('true');
-    }
     expect(screen.queryByRole('list', { name: 'Valgte nettsider' })).toBeNull();
   });
 });

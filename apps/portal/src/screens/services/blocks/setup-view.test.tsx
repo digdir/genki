@@ -37,10 +37,16 @@ const remove = (name: string) =>
     fireEvent.click(button);
   });
 
-const switchIn = (group: string, name: string) =>
-  within(screen.getByRole('group', { name: group })).getByRole('switch', {
+/** A block's switch under «Designelementer», which the tab opens to after «Maler». */
+const switchIn = (group: string, name: string) => {
+  const blocks = screen.queryByRole('radio', {
+    name: 'Designelementer',
+  }) as HTMLInputElement | null;
+  if (blocks && !blocks.checked) fireEvent.click(blocks);
+  return within(screen.getByRole('group', { name: group })).getByRole('switch', {
     name,
   }) as HTMLInputElement;
+};
 
 /** Fremgangsmåte in the content and the right panel, in Oppsett. */
 const inTwoPanels = () => {

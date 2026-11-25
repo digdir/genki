@@ -68,6 +68,16 @@
   color: var(--ds-color-neutral-text-subtle);
 }
 
+/* Before the first message the heading and its line stand together in the middle. */
+.setup-form-chat .assistant[data-empty] .assistant-head {
+  margin-block-start: auto;
+}
+
+.setup-form-chat .assistant[data-empty] .assistant-log {
+  flex: 0 0 auto;
+  margin-block-end: auto;
+}
+
 .setup-form-chat .assistant-compose {
   border: 0;
   padding: 0;
@@ -141,14 +151,6 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-}
-
-.own-documents-drop {
-  background: var(--ds-color-accent-surface-tinted);
-}
-
-.own-documents-drop:hover {
-  background: var(--ds-color-accent-surface-hover);
 }
 
 /* On a narrow page the chat goes under the form, at its own height. */

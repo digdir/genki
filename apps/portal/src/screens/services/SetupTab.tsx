@@ -1276,7 +1276,6 @@ export const SetupTab = ({
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
               />
-              <span className="meta">{t('setup.characters', { count: instructions.length })}</span>
             </>
           )}
         </Field>,
@@ -2076,7 +2075,6 @@ export const SetupTab = ({
               onChange={(e) => setInstructions(e.target.value)}
             />
             <div className="area-instr-foot">
-              <span className="meta">{t('setup.characters', { count: instructions.length })}</span>
               {ask ? (
                 <div className="area-instr-improve">
                   <AskChip

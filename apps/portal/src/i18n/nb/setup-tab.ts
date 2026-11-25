@@ -177,7 +177,6 @@ export const setup = defineNamespace({
   instructionsLabel: 'Instruksjoner til tjenesten',
   instructionsHelp:
     'Skriv som til en ny kollega: hva jobben er, tone og språk, hva den skal gjøre når den er usikker, og hva den aldri skal gjøre.',
-  characters: { one: '{count} tegn', other: '{count} tegn' },
   examples: 'Eksempler på godt resultat',
   exampleIn: 'Inn:',
   exampleOut: 'Ut:',

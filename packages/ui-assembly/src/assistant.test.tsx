@@ -1091,6 +1091,17 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
       />,
     );
 
+  it('pins «Innstillinger» at the panel’s foot under the threads, however few they are', async () => {
+    history.replaceState(null, '', '/?model=ka__default');
+    drawWithPaths();
+    const settings = await screen.findByRole('link', { name: 'Innstillinger' });
+    // A pinned foot stands in the panel's box, outside the content that scrolls.
+    expect(settings.closest('.uib-shell-foot')?.parentElement?.classList).toContain(
+      'uib-shell-box',
+    );
+    history.replaceState(null, '', '/');
+  });
+
   it('gives «Innstillinger» its own path with `paths`, and a thread the home path with only `?t=`', async () => {
     history.replaceState(null, '', '/?model=ka__default');
     drawWithPaths();

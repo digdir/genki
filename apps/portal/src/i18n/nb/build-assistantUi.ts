@@ -19,12 +19,10 @@ export const assistantUi = {
     undoLabel: 'Angre: {title}',
     redoLabel: 'Gjør om: {title}',
     actionDone: '{label} (gjort)',
-    showApiCall: 'Vis API-kall',
-    previousMessage: 'Forrige melding',
     sideIntro:
       'Spør om endringer i oppsettet. Det jeg foreslår havner i testutgaven, ikke hos brukerne.',
     chatWelcome:
-      'La meg hjelpe deg med å fylle ut skjemaet til høyre, så lager vi tjenesten sammen. Skriv fritt, eller bruk spørsmålene i skjemaet.',
+      'Hvis du vil kan jeg hjelpe med å fylle ut skjemaet til høyre. Bruk forslagsknappene eller spør hvis du lurer på noe.',
     sidePlaceholder: 'Spør om noe …',
     composerLabel: 'Skriv til assistenten',
     send: 'Send',
@@ -163,14 +161,6 @@ export const assistantUi = {
     testsTally: '{sent} sendt til testsettet · {rejected} avvist',
     improveMessage: 'Forbedre instruksjonene',
     suggestMessage: 'Foreslå testtilfeller',
-    apiEyebrow: 'API-kall for denne meldingen til assistenten',
-    apiIntro:
-      'Assistenten bruker det samme API-et som du kan kalle fra kode. Svaret inneholder forslag, ikke endringer. Et forslag blir brukt først når noen godkjenner det.',
-    apiRequest: 'Forespørsel (curl)',
-    apiResponse: 'Svar',
-    apiCopy: 'Kopier {label}',
-    apiDraftPlaceholder: '<utkastet slik det er nå>',
-    apiReference: 'Se API-referansen',
   }),
   serviceList: defineNamespace({
     title: 'Tjenester',

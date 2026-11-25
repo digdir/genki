@@ -453,7 +453,6 @@ export const useAssistant = ({ api, tenant, service, definition, onMessage, onAp
     suggestTests,
     decideTest,
     seed,
-    turnPath: api.assistant.turnPath(tenant, service),
   };
 };
 
