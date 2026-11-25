@@ -1196,3 +1196,28 @@ export interface ServiceAnswer {
   text: string;
   sources: AnswerSource[];
 }
+
+export interface OperatorFlag {
+  key: string;
+  description: string;
+  owner: string;
+  removeBy: string;
+  selfService: boolean;
+  rows: {
+    tenant: string;
+    tenantName?: string;
+    person?: { issuer: string; subject: string };
+    personName?: string;
+    on: boolean;
+    by: string;
+    byName?: string;
+    at: string;
+    reason: string;
+  }[];
+}
+
+export interface FlagChange {
+  tenant: string;
+  person?: { issuer: string; subject: string };
+  on: boolean | null;
+}

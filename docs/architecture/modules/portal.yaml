@@ -91,4 +91,11 @@ edges:
     witness:
       file: apps/portal/src/screens/about/PublicSite.tsx
       imports: '@genai/docs-site'
+  - to: kernel
+    label: Feature flag keys and states from the flag registry
+    kind: call
+    target: call
+    witness:
+      file: apps/portal/src/flags.tsx
+      imports: '@genai/contracts'
 keywords: portal agency tenant builder publish api keys datasets

@@ -14,6 +14,7 @@ import { hooksApi } from './api/hooks';
 import { tracingApi } from './api/tracing';
 import { triggersApi } from './api/triggers';
 import { preferencesApi } from './api/preferences';
+import { flagsApi } from './api/flags';
 import { onboardingApi } from './api/onboarding';
 import { ApiError } from './api/error';
 import { playgroundApi, type PlaygroundInputField } from './api/playground';
@@ -202,6 +203,7 @@ const featureClients = (ctx: ApiContext) => ({
   tracing: tracingApi(ctx),
   triggers: triggersApi(ctx),
   preferences: preferencesApi(ctx),
+  flags: flagsApi(ctx),
   recipes: recipesApi(ctx),
   platformStatus: platformStatusApi(ctx),
   quotaRequests: quotaRequestsApi(ctx),

@@ -28,6 +28,7 @@ import {
 } from 'react';
 import type { ApiClient } from './api';
 import { Icon, type IconComponent } from './components/Icon';
+import { FlagsProvider } from './flags';
 import { formatOrgNumber, hasOwnName, organisationName, profileFor } from './data/organisations';
 import { restoringScroll, useEscape, useNarrow } from './hooks';
 import { translator, useT, type PlainKey, type T } from './i18n';
@@ -654,7 +655,9 @@ export const Shell = ({
               <UserNameContext.Provider value={session.name}>
                 <RightsContext.Provider value={rights}>
                   <RightLabelsContext.Provider value={labels}>
-                    {children}
+                    <FlagsProvider api={api} tenant={organisation.orgNumber}>
+                      {children}
+                    </FlagsProvider>
                   </RightLabelsContext.Provider>
                 </RightsContext.Provider>
               </UserNameContext.Provider>

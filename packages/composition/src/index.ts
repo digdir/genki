@@ -18,6 +18,7 @@ export * from './settings-runtime.js';
 export * from './skills.js';
 export * from './tenant-secrets.js';
 export * from './user-preferences.js';
+export * from './flags.js';
 export * from './webhook-signature.js';
 export * from './block-settings.js';
 export * from './schema-labels.js';

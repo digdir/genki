@@ -69,6 +69,8 @@ const throughAdminTasks = [
   'POST /operator/datasets/:id/engine-switches/:sid/retry',
   'POST /operator/datasets/:id/engine-switches/:sid/rollback',
   'POST /operator/incidents',
+  'PUT /operator/flags/:key',
+  'PUT /tenants/:tenant/flags/:key',
   'POST /operator/incidents/:id/resolve',
   'POST /operator/model-endpoints',
   'POST /operator/onboarding/requests/:id/decision',

@@ -50,4 +50,11 @@ edges:
     witness:
       file: apps/console/src/screens/Schemas.tsx
       imports: '@genai/schema-forms'
+  - to: kernel
+    label: Feature flag keys and states from the flag registry
+    kind: call
+    target: call
+    witness:
+      file: apps/console/src/flags.tsx
+      imports: '@genai/contracts'
 keywords: console operator digdir entra models tenants operations

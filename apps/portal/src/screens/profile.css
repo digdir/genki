@@ -58,3 +58,14 @@
   font-weight: 400;
   color: var(--ds-color-neutral-text-default);
 }
+
+.new-features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.new-feature {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+}

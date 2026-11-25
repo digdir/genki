@@ -1,3 +1,4 @@
+import type { FlagState } from '@genai/contracts/flags';
 import { translator, type Locale, type T } from './i18n';
 import { definitionKindSegments } from './definition-kinds';
 import { tenantLabel } from './tenant-names';
@@ -63,6 +64,8 @@ import type {
   KnowledgeEndpointItem,
   KnowledgeEngine,
   StoredSecret,
+  FlagChange,
+  OperatorFlag,
   PlatformSecret,
   AccessRequest,
   AnswerSource,
@@ -1059,6 +1062,15 @@ export const createApiClient = ({
     setModelPrice: (id: string, price: ModelPrice, reason: string) =>
       call<unknown>('PUT', `/operator/models/${id}/price`, {
         body: price,
+        headers: { 'change-reason': reason },
+      }),
+    flags: async (signal?: AbortSignal) =>
+      (await call<{ data: OperatorFlag[] }>('GET', '/operator/flags', { signal })).data,
+    myFlags: async (signal?: AbortSignal) =>
+      (await call<{ data: FlagState[] }>('GET', '/me/flags', { signal })).data,
+    setFlag: (key: string, change: FlagChange, reason: string) =>
+      call<FlagState>('PUT', `/operator/flags/${encodeURIComponent(key)}`, {
+        body: change,
         headers: { 'change-reason': reason },
       }),
     platformSecrets: async (signal?: AbortSignal) =>

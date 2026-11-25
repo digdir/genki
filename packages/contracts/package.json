@@ -29,6 +29,11 @@
       "source": "./src/block-fixtures.ts",
       "types": "./dist/block-fixtures.d.ts",
       "default": "./dist/block-fixtures.js"
+    },
+    "./flags": {
+      "source": "./src/flags.ts",
+      "types": "./dist/flags.d.ts",
+      "default": "./dist/flags.js"
     }
   },
   "scripts": {

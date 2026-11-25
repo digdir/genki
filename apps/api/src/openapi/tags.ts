@@ -42,7 +42,7 @@ const rules: [RegExp, ApiTag][] = [
   [/^\/(health|up|openapi\.json|reference)(\/|$)|^\/schemas(\/|$)/, 'Platform'],
   [/^\/(v1|api|a2a)(\/|$)/, 'Frontend'],
   [/^\/(operator|support-sessions|recorder)(\/|$)/, 'Operations'],
-  [/^\/mock\/|^\/onboarding\/|^\/me$/, 'Access and extensions'],
+  [/^\/mock\/|^\/onboarding\/|^\/me(\/flags)?$/, 'Access and extensions'],
   [/^\/(eval-tasks|eval-runs|testcase-candidates|tasks)\//, 'Work and quality'],
   [/^\/models$/, 'Datasets and knowledge'],
   [/^\/tenants\/\{tenant\}\/services\/\{service\}\/api-keys$/, 'Access and extensions'],
@@ -52,7 +52,7 @@ const rules: [RegExp, ApiTag][] = [
   ],
   [/^\/tenants\/\{tenant\}\/(datasets|knowledge|catalog)(\/|$)/, 'Datasets and knowledge'],
   [
-    /^\/tenants\/\{tenant\}\/(access|api-keys|api-key-policies|clients|maskinporten-clients|me|integrations|tool-connections|secrets|connectors|private-networks|building-blocks|plugins|hooks|tracing)(\/|$)/,
+    /^\/tenants\/\{tenant\}\/(access|api-keys|api-key-policies|clients|maskinporten-clients|me|flags|integrations|tool-connections|secrets|connectors|private-networks|building-blocks|plugins|hooks|tracing)(\/|$)/,
     'Access and extensions',
   ],
   [

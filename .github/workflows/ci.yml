@@ -46,6 +46,8 @@ jobs:
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npm ci --no-audit --no-fund
       - run: npm run format:check
+      - run: npm run flags:expired
+        continue-on-error: true
       - if: needs.scope.outputs.static == 'true'
         run: npm run lint
       - if: needs.scope.outputs.static == 'true'

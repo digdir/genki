@@ -297,6 +297,8 @@ export const changes = defineNamespace({
   skillTestcaseDelete: 'slettet et testtilfelle fra arbeidsinstruksen',
   incidentResolve: 'løste hendelsen',
   incidentSave: 'skrev en hendelse',
+  flagPerson: 'slo en ny funksjon på eller av for én person',
+  flagTenant: 'slo en ny funksjon på eller av for hele virksomheten',
   quotaDecide: 'avgjorde en forespørsel om kvote fra',
   quotaRequest: 'ba om større kvote',
   supportEnd: 'avsluttet støttetilgangen',
