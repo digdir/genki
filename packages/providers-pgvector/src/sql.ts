@@ -8,8 +8,8 @@ export interface Profile {
 export const bestChunk = (query: string, from: string, dataset: string, generation: string) => {
   const ofDocument = `c.dataset = ${dataset} and c.generation = ${generation} and c.doc_id = ${from}.doc`;
   return `select b.id from (select coalesce(
-     (select c.id from kn_chunks c where k.q is not null and ${ofDocument} and c.tsv @@ k.q
-       order by ts_rank_cd(c.tsv, k.q) desc, c.position limit 1),
+     (select c.id from (select c.id, c.tsv, c.position from kn_chunks c where k.q is not null and ${ofDocument} offset 0) c
+       where c.tsv @@ k.q order by ts_rank_cd(c.tsv, k.q) desc, c.position limit 1),
      (select c.id from kn_chunks c where ${ofDocument} order by c.position limit 1)) as id
    from (select replace(plainto_tsquery('simple', nullif(string_agg(w, ' '), ''))::text, ' & ', ' | ')::tsquery as q
      from unnest(tsvector_to_array(to_tsvector('simple', nullif(querytree(${query}), 'T')))) w

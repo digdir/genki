@@ -747,6 +747,140 @@ describe('retrieval pipeline', () => {
     expect(result.trace.expansion.autoFilterError).toBe('facets down');
     expect(result.chunks.map((c) => c.id)).toEqual(['c4']);
   });
+  describe('a timed-out metadata leg', () => {
+    const timeout = 'reading digdir/kudos was stopped by its statement timeout';
+    const question = 'Hvor mange årsverk og stillinger hadde Digdir i 2022?';
+    const searched = (k: ReturnType<typeof knowledgeStub>) =>
+      k.batches.map((b) => b.map((r) => `${r.profile}:${r.query}`));
+
+    it('tries a timed-out metadata leg once more with only the detected organisation and year, and merges its hits', async () => {
+      const k = knowledgeStub(
+        (r) => (r.profile === 'metadata' && r.query === 'Digdir 2022' ? ['c1'] : []),
+        { fail: (r) => (r.profile === 'metadata' && r.query === question ? timeout : undefined) },
+      );
+
+      const result = await retrieve({
+        knowledge: k.port,
+        queries: [question],
+        facetCache: new FacetCache(),
+      });
+
+      expect(searched(k)).toEqual([
+        [`phrase:${question}`, `metadata:${question}`, `content:${question}`],
+        ['metadata:Digdir 2022'],
+      ]);
+      expect(result.trace.expansion.hitsPerStrategy).toMatchObject({ metadata: 1 });
+      expect(result.chunks.map((c) => c.id)).toContain('c1');
+      expect(
+        result.trace.expansion.warnings.filter((w) => w.startsWith('metadata search:')),
+      ).toEqual([]);
+    });
+
+    it('does not retry a timed-out metadata leg when no organisation or year was detected', async () => {
+      const k = knowledgeStub(() => [], {
+        fail: (r) => (r.profile === 'metadata' ? timeout : undefined),
+      });
+
+      const result = await retrieve({
+        knowledge: k.port,
+        queries: ['andel digitale konsultasjoner hos fastlegen'],
+        facetCache: new FacetCache(),
+      });
+
+      expect(k.batches).toHaveLength(1);
+      expect(result.trace.expansion.warnings).toContain(`metadata search: ${timeout}`);
+    });
+
+    it('tries a timed-out metadata leg only once', async () => {
+      const k = knowledgeStub(() => ['c4'], {
+        fail: (r) => (r.profile === 'metadata' ? timeout : undefined),
+      });
+
+      const result = await retrieve({
+        knowledge: k.port,
+        queries: [question],
+        facetCache: new FacetCache(),
+      });
+
+      expect(searched(k)).toEqual([
+        [`phrase:${question}`, `metadata:${question}`, `content:${question}`],
+        ['metadata:Digdir 2022'],
+      ]);
+      expect(result.trace.expansion.warnings).toContain(`metadata search: ${timeout}`);
+    });
+
+    it('retries each timed-out metadata leg with the organisation and year of its own query', async () => {
+      const k = knowledgeStub(() => [], {
+        fail: (r) => (r.profile === 'metadata' ? timeout : undefined),
+      });
+
+      await retrieve({
+        knowledge: k.port,
+        queries: ['Digdir årsverk og stillinger 2022', 'Digdir lønn og stillinger 2023'],
+        facetCache: new FacetCache(),
+      });
+
+      expect(searched(k)[1]).toEqual(['metadata:Digdir 2022', 'metadata:Digdir 2023']);
+    });
+
+    it('sends one retry for timed-out metadata legs that name the same organisation and year', async () => {
+      const k = knowledgeStub(
+        (r) => (r.profile === 'metadata' && r.query === 'Digdir 2022' ? ['c1'] : []),
+        {
+          fail: (r) =>
+            r.profile === 'metadata' && r.query !== 'Digdir 2022' ? timeout : undefined,
+        },
+      );
+
+      const result = await retrieve({
+        knowledge: k.port,
+        queries: ['Digdir årsverk og stillinger 2022', 'Digdir lønn og stillinger 2022'],
+        facetCache: new FacetCache(),
+      });
+
+      expect(searched(k)[1]).toEqual(['metadata:Digdir 2022']);
+      expect(
+        result.trace.expansion.warnings.filter((w) => w.startsWith('metadata search:')),
+      ).toEqual([]);
+    });
+
+    it('keeps the other legs and the first warning when the metadata retry throws', async () => {
+      const k = knowledgeStub(() => ['c4'], {
+        fail: (r) => (r.profile === 'metadata' ? timeout : undefined),
+      });
+      const searchMany = k.port.searchMany.bind(k.port);
+      vi.spyOn(k.port, 'searchMany').mockImplementation(async (requests) =>
+        requests.every((r) => r.query === 'Digdir 2022')
+          ? Promise.reject(new KnowledgeError('timeout', timeout))
+          : searchMany(requests),
+      );
+
+      const result = await retrieve({
+        knowledge: k.port,
+        queries: [question],
+        facetCache: new FacetCache(),
+      });
+
+      expect(result.chunks.map((c) => c.id)).toEqual(['c4']);
+      expect(result.trace.expansion.warnings).toContain(`metadata search: ${timeout}`);
+    });
+
+    it('does not retry a content leg that timed out', async () => {
+      const k = knowledgeStub(() => ['c4'], {
+        fail: (r) => (r.profile === 'content' ? timeout : undefined),
+      });
+
+      const result = await retrieve({
+        knowledge: k.port,
+        queries: [question],
+        facetCache: new FacetCache(),
+      });
+
+      expect(k.batches).toHaveLength(1);
+      expect(result.trace.expansion.warnings).toContain(`content search: ${timeout}`);
+    });
+  });
+
   describe('engine capabilities', () => {
     const allCapabilities = [...knowledgeCapabilities];
     const numericQueries = ['Hvor mange årsverk hadde Digdir i 2022?', 'årsverk Digdir'];
