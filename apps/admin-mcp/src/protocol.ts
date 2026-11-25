@@ -16,6 +16,7 @@ export const serverInstructions = [
   'Publish with publish_definition only when the person has asked for that change, and give a reason that says what changed and why.',
   'Never change a service other services, frontends or API keys depend on; get_service shows who calls it. Copy it to a new id instead.',
   'run_playground calls a model and costs money; say so before running many.',
+  'Work on design elements (kind: Block) with list_blocks, get_block, validate_block, preview_block and import_design while Utforming is on for the person; save_block saves an edition for this organisation only, and a person puts it in a testutgave or shares it with everyone in Utforming.',
 ].join(' ');
 
 const annotations: Record<ToolKind, ToolAnnotations> = {

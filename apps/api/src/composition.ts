@@ -252,6 +252,7 @@ import { codeBlockProblems } from './block-bundles.js';
 import { blockFrameUrl } from './block-origin.js';
 import { blockCatalogueModule } from './block-catalogue.js';
 import { blockReviewsModule, createBlockReviewsModule } from './block-reviews.js';
+import { blockImportModule } from './block-import-routes.js';
 import { serviceSchemaOf } from './service-schema.js';
 import { problem } from './http.js';
 
@@ -427,6 +428,7 @@ export const platformModules: PlatformModuleFactory[] = [
   blockUsageModule,
   blockReviewsModule,
   blockCatalogueModule,
+  blockImportModule,
   skillsModule,
   playgroundModule,
   engineSwitchesModule,

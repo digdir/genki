@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="nb">
+  <head>
+    <meta charset="utf-8" />
+    <title>Kildekort</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter" />
+    <style>
+      .card {
+        border: 1px solid #d0d5dd;
+        color: #1e2b3c;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="ds-card">
+      <h2>Kilder til svaret</h2>
+      <p>Svaret bygger på disse dokumentene.</p>
+      <ul>
+        <li data-genki-each="sources">
+          <span data-genki-bind="sources.title"></span>, {{ sources.publisher }}
+        </li>
+      </ul>
+      <table>
+        <tr>
+          <th>Tjeneste</th>
+          <td>{{ service.name }}</td>
+        </tr>
+        <tr>
+          <th>Status</th>
+          <td>Oppdatert</td>
+        </tr>
+      </table>
+      <details>
+        <summary>Om kildene</summary>
+        <p>Kildene er hentet fra <a href="https://www.digdir.no">Digdir</a>.</p>
+      </details>
+      <a href="https://www.digdir.no/om-oss">Les mer om Digdir</a>
+      <a href="javascript:alert(1)">Ikke trykk</a>
+      <hr />
+      <div class="ds-alert" data-color="warning">Sjekk alltid kildene.</div>
+      <button data-genki-event="ask" onclick="track()">Hva betyr dette?</button>
+      <button>Lagre</button>
+    </section>
+  </body>
+</html>

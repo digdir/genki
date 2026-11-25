@@ -1,12 +1,13 @@
 # genki-admin MCP server
 
-`genki-admin` is a local MCP server that lets a coding agent (Claude Code, Codex, Cursor, VS Code Copilot and others) work on genki services through the public API, as the person who logged in. The agent can list and read services, describe strategies and models, validate a definition and see what it changes, try an unsaved definition in the playground next to the published one, publish a new version with a change reason, and read runs and their timelines. It runs on your machine over stdio, calls the same API routes as the portal and nothing else, and is not part of any image or deploy. See [ADR 0046](../../docs/adr/0046-admin-mcp-for-coding-agents.md) for the decision.
+`genki-admin` is a local MCP server that lets a coding agent (Claude Code, Codex, Cursor, VS Code Copilot and others) work on genki services through the public API, as the person who logged in. The agent can list and read services, describe strategies and models, validate a definition and see what it changes, try an unsaved definition in the playground next to the published one, publish a new version with a change reason, read runs and their timelines, and, while Utforming (the `blockStudio` flag) is on for the person, make design elements: list, read, validate and preview them, turn a design's HTML into one, and save an edition for the organisation. It runs on your machine over stdio, calls the same API routes as the portal and nothing else, and is not part of any image or deploy. See [ADR 0046](../../docs/adr/0046-admin-mcp-for-coding-agents.md) for the decision.
 
 What it will never do:
 
 - read or write secrets, API keys or API clients, and it neither accepts nor creates an API key;
 - grant or change rights, register tools, or call operator routes;
-- set or confirm a risk class. That is done by a person in the portal.
+- set or confirm a risk class. That is done by a person in the portal;
+- share a design element with everyone, put one in a service's testutgave, or publish a service from the design element tools. A person does that in Utforming, and the service reaches users only when it is published.
 
 ## Security
 
@@ -15,9 +16,10 @@ What it will never do:
 - **It acts as you.** Every call carries your own login, so the API applies your rights, the lockdown rules (ADR 0033) and the quality gates. Every publish is in the version history under your name.
 - **Prompt injection.** Service definitions, prompt files, answers, sources and run input are written by other people. Tools wrap that text, and the API's error messages, in `<untrusted-data-…>` tags with a random suffix and tell the agent it is data, never instructions. Results come as text only, so nothing from genki reaches the agent outside the tags. The server's instructions to the agent say the same. Your coding agent still asks you before each tool call: read what it is about to publish.
 - **One organisation.** The server is pinned to `GENKI_TENANT`. A definition whose `metadata.tenant` is another organisation is refused before it reaches the API.
-- **Read-only mode.** `GENKI_READ_ONLY=true` removes `publish_definition`. `GENKI_PLAYGROUND=false` removes the tools that cost money, `run_playground` and `evaluate_change`. Set both to allow reading only.
+- **Read-only mode.** `GENKI_READ_ONLY=true` removes `publish_definition` and `save_block`. `GENKI_PLAYGROUND=false` removes the tools that cost money, `run_playground` and `evaluate_change`. Set both to allow reading only.
 - **Playground budget.** `run_playground` and `evaluate_change` call models and cost money. The server stops starting runs once the session has spent `GENKI_PLAYGROUND_BUDGET_NOK` (5 kr by default). The check happens before each run, so the last run can go slightly over. An evaluation is charged when it is read to the end, and no new one starts before that. A run whose cost you may not see counts as using up the budget.
-- **Local files.** `documentPath` reads only files under the folder the server was started in, never a hidden file or folder (such as `.env` or `.aws`), and never through a link that leads outside.
+- **Local files.** `documentPath` and `htmlPath` read only files under the folder the server was started in, never a hidden file or folder (such as `.env` or `.aws`), and never through a link that leads outside or a hard link; a file that changes while it is read is refused. `htmlPath` takes only `.html` files of at most 512 KiB.
+- **Design elements.** The design element tools answer only while the `blockStudio` flag is on for the person in this organisation, read from `GET /tenants/{tenant}/me/flags` before each call, and otherwise call nothing else. They take `kind: Block` only, for this organisation only, and refuse both before sending anything else to the API. `publish_definition` refuses a `kind: Block` and points to `save_block`. `save_block` saves an edition shared with the organisation: it refuses `sharing: everyone` and built-in design elements, and a new edition changes no service, since a service pins the edition it uses. `import_design` sends the HTML text to genki, which fetches nothing the design points to and saves nothing; a design that needs code is refused with the reason. Design text, design element texts and the import report are wrapped as untrusted data.
 - **Tokens.** The API, the portal and the login issuer must use https, except on this machine (`localhost`, `127.0.0.1`, `::1`). The access token stays in the server's memory, is never written to disk, and is gone when the server stops.
 - **Where data goes.** Whatever a tool returns, including definitions, prompt files, answers and run timelines, ends up in the agent's transcript and is sent to the agent's model provider. Do not use it on services whose content may not leave Digdir that way.
 
@@ -39,7 +41,7 @@ No login is needed against a local API in development mode. The server logs in t
    claude mcp add genki-admin -s local -e GENKI_TENANT=991825827 -e GENKI_DEV_LOGIN=true -- <path to genki>/node_modules/.bin/tsx --conditions=source <path to genki>/apps/admin-mcp/src/main.ts
    ```
 
-3. Start Claude Code in the genki repository, so the `genki-admin` skill in `.claude/skills` loads too. Run `/mcp` to check that `genki-admin` is connected with 12 tools.
+3. Start Claude Code in the genki repository, so the `genki-admin` skill in `.claude/skills` loads too. Run `/mcp` to check that `genki-admin` is connected with 19 tools.
 
 ## Against genki-test
 
@@ -111,7 +113,7 @@ For other clients, or if a format has changed, see the client's documentation. T
 | `GENKI_ALTINN_RESOURCE`       | `urn:altinn:resource:digdir-genai-platform-test` | The Altinn resource in the login's `authorization_details`                                     |
 | `ADMIN_MCP_REDIRECT_URI`      | `http://localhost:5173/callback`                 | The login callback; must be registered for the client, http on this machine                    |
 | `GENKI_DEV_LOGIN`             | `false`                                          | `true` uses the API's mock dev login. Local API only                                           |
-| `GENKI_READ_ONLY`             | `false`                                          | `true` removes `publish_definition`                                                            |
+| `GENKI_READ_ONLY`             | `false`                                          | `true` removes `publish_definition` and `save_block`                                           |
 | `GENKI_PLAYGROUND`            | `true`                                           | `false` removes `run_playground` and `evaluate_change`                                         |
 | `GENKI_PLAYGROUND_BUDGET_NOK` | `5`                                              | Most the session may spend in the playground, in kroner                                        |
 | `GENKI_PORTAL_URL`            | derived                                          | Portal for links. Derived from an `api.` host (`api.x` gives `portal.x`); none for a local API |
@@ -120,21 +122,27 @@ Flags are on only for the exact value `true`.
 
 ## Tools
 
-| Tool                   | What it does                                                                                                                               | Kind        |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------- |
-| `list_services`        | The organisation's services with id, name, latest version, status and variants                                                             | Reads       |
-| `get_service`          | A definition as YAML (latest or a given `version`), its prompt files, version history and who called it in the last 50 runs                | Reads       |
-| `new_service_template` | A minimal valid definition for a new service, with the platform's defaults                                                                 | Reads       |
-| `describe_strategy`    | Without `id`, the strategies; with `id`, the config keys (also what a variant may override), the starting config and built-in instructions | Reads       |
-| `list_models`          | The models the organisation can choose, whether it may use them, where data is processed and the price per 1,000 tokens                    | Reads       |
-| `search_dataset`       | Searches a dataset as a service run does, with filters, and shows the raw hits; no chat model call                                         | Reads       |
-| `validate_definition`  | Checks a definition without saving it and lists the fields that differ from the published version                                          | Reads       |
-| `publish_definition`   | Validates, then publishes the next version to the testutgave with a `reason` of at least 10 characters                                     | Writes      |
-| `run_playground`       | Runs a published version or an unsaved `yaml`, optionally next to a second setup in `compareWith`, and returns answer, sources, cost, time | Costs money |
-| `list_runs`            | Recent service runs or playground runs (`origin`), filtered by `service` or `status`                                                       | Reads       |
-| `get_run`              | One run with its timeline, compact by default; `full: true` gives the steps as JSON; read steps name the chunks they read                  | Reads       |
-| `explain_run`          | A diagnosis of a run: where it failed, a search that found nothing or sources never read, warnings, and where the time went                | Reads       |
-| `evaluate_change`      | Runs a test set on an unsaved `yaml` and on the published version, and says which cases it fixed or broke and whether that is chance       | Costs money |
+| Tool                   | What it does                                                                                                                                 | Kind        |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `list_services`        | The organisation's services with id, name, latest version, status and variants                                                               | Reads       |
+| `get_service`          | A definition as YAML (latest or a given `version`), its prompt files, version history and who called it in the last 50 runs                  | Reads       |
+| `new_service_template` | A minimal valid definition for a new service, with the platform's defaults                                                                   | Reads       |
+| `describe_strategy`    | Without `id`, the strategies; with `id`, the config keys (also what a variant may override), the starting config and built-in instructions   | Reads       |
+| `list_models`          | The models the organisation can choose, whether it may use them, where data is processed and the price per 1,000 tokens                      | Reads       |
+| `search_dataset`       | Searches a dataset as a service run does, with filters, and shows the raw hits; no chat model call                                           | Reads       |
+| `validate_definition`  | Checks a definition without saving it and lists the fields that differ from the published version                                            | Reads       |
+| `publish_definition`   | Validates, then publishes the next version to the testutgave with a `reason` of at least 10 characters                                       | Writes      |
+| `run_playground`       | Runs a published version or an unsaved `yaml`, optionally next to a second setup in `compareWith`, and returns answer, sources, cost, time   | Costs money |
+| `list_runs`            | Recent service runs or playground runs (`origin`), filtered by `service` or `status`                                                         | Reads       |
+| `get_run`              | One run with its timeline, compact by default; `full: true` gives the steps as JSON; read steps name the chunks they read                    | Reads       |
+| `explain_run`          | A diagnosis of a run: where it failed, a search that found nothing or sources never read, warnings, and where the time went                  | Reads       |
+| `evaluate_change`      | Runs a test set on an unsaved `yaml` and on the published version, and says which cases it fixed or broke and whether that is chance         | Costs money |
+| `list_blocks`          | The design elements the organisation may use: its own, genki's and those shared with everyone, by `origin`                                   | Reads       |
+| `get_block`            | One design element as YAML (newest or a given `version`), its editions and the organisation's services that pin it                           | Reads       |
+| `validate_block`       | Checks a design element without saving it                                                                                                    | Reads       |
+| `preview_block`        | Checks an unsaved design element and outlines what a host would draw with genki's made-up data, per state                                    | Reads       |
+| `save_block`           | Validates, then saves the next edition, shared with the organisation only, with a `reason` of at least 10 characters                         | Writes      |
+| `import_design`        | Turns a design's HTML (`html` or `htmlPath`) into a proposed design element without code; a design that needs code is refused; saves nothing | Reads       |
 
 Details worth knowing:
 
@@ -172,6 +180,16 @@ Details worth knowing:
 2. `list_models` and `describe_strategy` to choose a model and a strategy.
 3. Change `metadata.id`, `metadata.name` and `spec.purpose`, then validate, try and publish as above. A new service with `riskClass: minimal` can be published from the agent.
 
+### Make a design element
+
+The design element tools need Utforming switched on for the person (Nye funksjoner in the portal).
+
+1. `list_blocks` to see what the organisation can already use. Prefer genki's own design elements, then one without code.
+2. Write the Block YAML, or `import_design` with a design's HTML to get a proposal. The report says what was converted, dropped or left as text.
+3. `validate_block` and `preview_block` until it is valid and the outline shows what you meant.
+4. `save_block` with a `reason`, when the person asks. It saves an edition for the organisation only.
+5. Tell the person to put it in a service's testutgave in Utforming and publish the service. Sharing with everyone is also theirs to do there.
+
 ### Risk classes
 
 `publish_definition` changes only the testutgave (`test`): users keep the version «I bruk» until a person publishes it from the portal, and the answer says both versions. It refuses a service whose `prod` follows every publish, since there users would get the change at once; a person adds a test edition in the portal first. A new service's first version is the exception, as nobody uses it yet.
@@ -199,7 +217,7 @@ Claude Code loads it when it runs in the genki repository and the task is to cha
 | `dev login answered 404`                              | The local API does not run in development mode with the mock login                                                                                                        |
 | `GENKI_TENANT must be an organisation number`         | Use the 9-digit organisation number                                                                                                                                       |
 
-The server writes its own messages, such as `ready: 12 tools` and the login URL, to stderr. Most clients show them in their MCP logs.
+The server writes its own messages, such as `ready: 19 tools` and the login URL, to stderr. Most clients show them in their MCP logs.
 
 ## Development
 
@@ -209,7 +227,7 @@ Tests need Node 24 or newer. From the genki repository root:
 npx vitest run apps/admin-mcp
 ```
 
-`contract.test.ts` boots the API in memory and runs every tool against it, so a change to an API route that breaks a tool fails here. `protocol.test.ts` covers the JSON-RPC handling and `login.test.ts` the browser login against a fake provider.
+`contract.test.ts` boots the API in memory and runs every tool against it, so a change to an API route that breaks a tool fails here. `block-tools.test.ts` does the same for the design element tools, `protocol.test.ts` covers the JSON-RPC handling and `login.test.ts` the browser login against a fake provider.
 
 To smoke test over stdio, send JSON-RPC lines and read the answers:
 
