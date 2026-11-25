@@ -190,8 +190,13 @@ export const demoSignIn = (apps: DemoApps, now: number) => {
   ]);
 };
 
-export const apiKeyScript = (key: string, apps: DemoApps) =>
-  `(()=>{const key=${scriptLiteral(key)};const origins=${scriptLiteral(appOriginsOf(apps).map(([o]) => o))};const send=window.fetch.bind(window);window.fetch=(input,init)=>{const url=new URL(input instanceof Request?input.url:String(input),location.href);if(!origins.includes(url.origin)||!url.pathname.startsWith('/api/'))return send(input,init);const headers=new Headers(input instanceof Request?input.headers:undefined);new Headers(init&&init.headers).forEach((v,k)=>headers.set(k,v));headers.set('authorization','Bearer '+key);return send(input,{...init,headers});};})();`;
+const headerToken = /^[A-Za-z0-9._~+/=-]{1,512}$/;
+
+export const apiKeyScript = (key: string, apps: DemoApps) => {
+  if (!headerToken.test(key))
+    throw new Error('DEMO_API_KEY must be a bearer token of letters, digits and ._~+/=-');
+  return `(()=>{const key=${scriptLiteral(key)};const origins=${scriptLiteral(appOriginsOf(apps).map(([o]) => o))};const send=window.fetch.bind(window);window.fetch=(input,init)=>{const url=new URL(input instanceof Request?input.url:String(input),location.href);if(!origins.includes(url.origin)||!url.pathname.startsWith('/api/'))return send(input,init);const headers=new Headers(input instanceof Request?input.headers:undefined);new Headers(init&&init.headers).forEach((v,k)=>headers.set(k,v));headers.set('authorization','Bearer '+key);return send(input,{...init,headers});};})();`;
+};
 
 export const browserLaunch = (
   session: string,
@@ -200,10 +205,11 @@ export const browserLaunch = (
   signIn?: { key: string; apps: DemoApps },
 ) => {
   const init = [join(dir, 'language.js')];
-  writeFileSync(init[0] as string, languageScript(language), { mode: 0o600 });
+  writeFileSync(init[0] as string, languageScript(language), { flag: 'wx', mode: 0o600 });
   if (signIn) {
+    const script = apiKeyScript(signIn.key, signIn.apps);
     init.push(join(dir, 'api-key.js'));
-    writeFileSync(init[1] as string, apiKeyScript(signIn.key, signIn.apps), { mode: 0o600 });
+    writeFileSync(init[1] as string, script, { flag: 'wx', mode: 0o600 });
   }
   return ['--session', session, ...init.flatMap((f) => ['--init-script', f]), 'open'];
 };
