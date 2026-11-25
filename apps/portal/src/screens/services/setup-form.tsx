@@ -53,10 +53,7 @@ const clamp = (n: number) => Math.min(chatWidth.max, Math.max(chatWidth.min, Mat
 /** Where the chat sticks: under the tab row, as `top` in setup-form.css. */
 export const chatStickyTop = 64;
 
-/**
- * Keeps the chat's field on screen: the chat is as tall as the room from where it stands to the
- * bottom of the window, lower on the page before it is scrolled, under the tab row after.
- */
+/** Sizes the chat to the room below where it stands, so its field stays on screen. */
 const useChatTop = (on: boolean) => {
   const chat = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {

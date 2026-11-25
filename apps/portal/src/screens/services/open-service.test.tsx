@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { App } from '../../App';
 import { mockAnsattporten } from '../../auth';
@@ -29,16 +29,20 @@ const client = (id: string, spec: Partial<ClientSpec>): ClientView => ({
   deliveries: [],
 });
 
-const withClients = (clients: ClientView[]): typeof globalThis.fetch => {
+const withClients = (clients: ClientView[]) => {
   const base = mockFetch();
-  return async (input, init) => {
+  const answered = { clients: false };
+  const fetch: typeof globalThis.fetch = async (input, init) => {
     const url = String(input);
-    if ((init?.method ?? 'GET') === 'GET' && /\/clients\?service=/.test(url))
+    if ((init?.method ?? 'GET') === 'GET' && /\/clients\?service=/.test(url)) {
+      answered.clients = true;
       return new Response(JSON.stringify({ clients, endpoints: {}, oidc: {} }), {
         headers: { 'content-type': 'application/json' },
       });
+    }
     return base(input, init);
   };
+  return { fetch, answered };
 };
 
 const header = () =>
@@ -80,7 +84,7 @@ describe('Åpne tjenesten in the service header', () => {
     const auth = mockAnsattporten(kari);
     await auth.login();
     window.location.hash = '#/services/rapportassistenten';
-    const fetch = withClients([
+    const { fetch } = withClients([
       client('web', {
         hosted: true,
         hostnames: [{ hostname: 'rapport.apps.genki-test.digdir.cloud' }],
@@ -102,8 +106,11 @@ describe('Åpne tjenesten in the service header', () => {
     const auth = mockAnsattporten(kari);
     await auth.login();
     window.location.hash = '#/services/rapportassistenten';
-    render(<App auth={auth} fetch={withClients([client('api', { kind: 'server' })])} live />);
+    const { fetch, answered } = withClients([client('api', { kind: 'server' })]);
+    render(<App auth={auth} fetch={fetch} live />);
     await waitFor(() => expect(header()?.textContent).toMatch(/Publiser/), { timeout: 8000 });
+    await waitFor(() => expect(answered.clients).toBe(true), { timeout: 8000 });
+    await act(() => new Promise((r) => setTimeout(r, 50)));
     expect(screen.queryByRole('link', { name: /Åpne tjenesten/ })).toBeNull();
   }, 20000);
 
@@ -111,7 +118,7 @@ describe('Åpne tjenesten in the service header', () => {
     const auth = mockAnsattporten(kari);
     await auth.login();
     window.location.hash = '#/services/new';
-    const fetch = withClients([
+    const { fetch } = withClients([
       client('web', {
         hosted: true,
         hostnames: [{ hostname: 'rapport.apps.genki-test.digdir.cloud' }],

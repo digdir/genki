@@ -14,9 +14,7 @@
   min-width: 0;
 }
 
-/* Below the tab row, which stays at the top of the page (49 px). As tall as the room from where it
-   stands to the bottom of the window, so its field is in sight before the page is scrolled too;
-   setup-form.tsx keeps --chat-top. */
+/* Sticks under the 49 px tab row; setup-form.tsx sets --chat-top so the field stays in sight. */
 .setup-form-chat {
   position: sticky;
   top: 64px;
