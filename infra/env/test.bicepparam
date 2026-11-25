@@ -122,6 +122,8 @@ param hostedHostnames = [
 // genki's platform login client for hosted Clients without oidc (infra/README.md, "Platform login").
 param platformLoginClientId = 'dde98722-c952-4172-a5d6-10bdf721680f'
 param platformLoginStage = 'certificates'
+param hostnameBinderEnabled = readEnvironmentVariable('HOSTNAME_BINDER_ENABLED', 'true') != 'false'
+param hostnameBinderAudience = readEnvironmentVariable('HOSTNAME_BINDER_AUDIENCE', '')
 
 param alertsEnabled = true
 param alertEmails = readEnvironmentVariable('ALERT_EMAILS', '')

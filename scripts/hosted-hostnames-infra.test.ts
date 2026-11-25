@@ -162,15 +162,21 @@ describe.skipIf(!hasAz && !process.env.CI)('hosted hostnames in the template', (
     expect(String(params.hostedTarget)).toContain("'assistant-host'");
     expect(String(params.hostedTarget)).toContain('.outputs.fqdn.value');
     expect(String(params.hostedVerificationId)).toContain('.outputs.verificationId.value');
-    const records = (dns.properties.template?.resources ?? []).filter((r) =>
-      r.name.includes("parameters('hostedLabels')"),
-    );
-    expect(records.map((r) => r.type)).toEqual([
-      'Microsoft.Network/dnsZones/CNAME',
-      'Microsoft.Network/dnsZones/TXT',
-    ]);
-    expect(records[1]?.name).toContain(
-      "format('asuid.{0}', parameters('hostedLabels')[copyIndex()])",
+    const records = (labels: string) =>
+      (dns.properties.template?.resources ?? []).filter((r) =>
+        r.name.includes(`variables('${labels}')`),
+      );
+    for (const labels of ['parentLabels', 'childLabels']) {
+      expect(records(labels).map((r) => r.type)).toEqual([
+        'Microsoft.Network/dnsZones/CNAME',
+        'Microsoft.Network/dnsZones/TXT',
+      ]);
+      expect(records(labels)[1]?.name).toContain(
+        `format('asuid.{0}', variables('${labels}')[copyIndex()])`,
+      );
+    }
+    expect(dns.properties.template?.variables?.parentLabels).toBe(
+      "[if(parameters('appsZone'), createArray(), parameters('hostedLabels'))]",
     );
   });
 
@@ -204,8 +210,23 @@ describe.skipIf(!hasAz && !process.env.CI)('hosted hostnames in the template', (
     expect(apps.hostnames?.value).toBe("[parameters('hostnames')]");
     expect(apps.customDomainsStage?.value).toBe("[parameters('customDomainsStage')]");
     const app = host().find((r) => r.type === 'Microsoft.App/containerApps');
-    expect(JSON.stringify(app?.properties)).toContain('"customDomains":"[map(variables(\'bound\')');
+    expect(JSON.stringify(app?.properties)).toContain(
+      '"customDomains":"[concat(map(variables(\'bound\')',
+    );
     expect(app?.dependsOn).toEqual(['certificates']);
+  });
+
+  it('keeps the binder’s domains with their binding unless the template binds the name, at any stage', () => {
+    const app = host().find((r) => r.type === 'Microsoft.App/containerApps');
+    const domains = JSON.stringify(app?.properties);
+    expect(domains).toContain(
+      "filter(parameters('keptDomains'), lambda('d', not(contains(variables('templateNames'), toLower(lambdaVariables('d').name)))))",
+    );
+    expect(domains).toContain("coalesce(tryGet(lambdaVariables('d'), 'bindingType'), 'Disabled')");
+    expect(domains).toContain("tryGet(lambdaVariables('d'), 'certificateId')");
+    expect(module('assistant-host').properties.template?.variables?.templateNames).toBe(
+      "[map(parameters('hostedHostnames'), lambda('h', toLower(lambdaVariables('h').hostname)))]",
+    );
   });
 
   it('serves the platform login host on the assistant host at its own stage, and opens it to no tenant', () => {

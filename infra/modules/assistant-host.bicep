@@ -14,6 +14,9 @@ param bffProxyKey bool = false
 @description('{ hostname, tenant, stage, apex? } from main.bicep\'s hostedHostnames.')
 param hostedHostnames array = []
 
+@description('Custom domains already on the host app, which the template keeps unless it binds the name itself: the hostname binder\'s.')
+param keptDomains array = []
+
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
   name: '${name}-assistant-id'
 }
@@ -32,6 +35,7 @@ resource environment 'Microsoft.App/managedEnvironments@2025-02-02-preview' exis
 
 var bound = filter(hostedHostnames, h => h.stage != 'none')
 var certified = filter(bound, h => h.stage == 'certificates')
+var templateNames = map(hostedHostnames, h => toLower(h.hostname))
 var certificateName = toObject(hostedHostnames, h => toLower(h.hostname), h => replace(toLower(h.hostname), '.', '-'))
 
 resource certificates 'Microsoft.App/managedEnvironments/managedCertificates@2025-02-02-preview' = [for h in certified: {
@@ -64,13 +68,20 @@ resource host 'Microsoft.App/containerApps@2025-02-02-preview' = {
         targetPort: 8080
         transport: 'auto'
         allowInsecure: false
-        customDomains: map(bound, h => {
-          name: toLower(h.hostname)
-          bindingType: h.stage == 'certificates' ? 'SniEnabled' : 'Disabled'
-          certificateId: h.stage == 'certificates'
-            ? resourceId('Microsoft.App/managedEnvironments/managedCertificates', environment.name, certificateName[toLower(h.hostname)])
-            : null
-        })
+        customDomains: concat(
+          map(bound, h => {
+            name: toLower(h.hostname)
+            bindingType: h.stage == 'certificates' ? 'SniEnabled' : 'Disabled'
+            certificateId: h.stage == 'certificates'
+              ? resourceId('Microsoft.App/managedEnvironments/managedCertificates', environment.name, certificateName[toLower(h.hostname)])
+              : null
+          }),
+          map(filter(keptDomains, d => !contains(templateNames, toLower(d.name))), d => {
+            name: toLower(d.name)
+            bindingType: d.?bindingType ?? 'Disabled'
+            certificateId: d.?certificateId
+          })
+        )
       }
       registries: [{ server: registry.properties.loginServer, identity: identity.id }]
       secrets: bffProxyKey
