@@ -72,9 +72,36 @@ describe('the service address', () => {
     ).toBe('https://rapport.apps.genki-test.digdir.cloud/');
   });
 
-  it('is missing when the service has no hosted client', () => {
+  it('counts a hostname without an environment as production', () => {
     expect(
-      serviceAddress([client('api', { kind: 'server' }), client('web', {})], 'rapportassistenten'),
+      serviceAddress(
+        [
+          client('web', {
+            hosted: true,
+            hostnames: [
+              { hostname: 'test.rapport.apps.genki-test.digdir.cloud', environment: 'test' },
+              { hostname: 'rapport.apps.genki-test.digdir.cloud' },
+            ],
+          }),
+        ],
+        'rapportassistenten',
+      ),
+    ).toBe('https://rapport.apps.genki-test.digdir.cloud/');
+  });
+
+  it('is missing when the service has no hosted browser client', () => {
+    expect(
+      serviceAddress(
+        [
+          client('api', {
+            kind: 'server',
+            hosted: true,
+            hostnames: [{ hostname: 'api.rapport.apps.genki-test.digdir.cloud' }],
+          }),
+          client('web', {}),
+        ],
+        'rapportassistenten',
+      ),
     ).toBeUndefined();
   });
 });
@@ -102,6 +129,29 @@ describe('Åpne tjenesten in the service header', () => {
     expect(link.getAttribute('rel')).toContain('noopener');
   }, 30000);
 
+  it('is also shown on the I bruk edition of a published service', async () => {
+    const auth = mockAnsattporten(kari);
+    await auth.login();
+    window.location.hash = '#/services/rapportassistenten?edition=in-use';
+    const { fetch } = withClients([
+      client('web', {
+        hosted: true,
+        hostnames: [{ hostname: 'rapport.apps.genki-test.digdir.cloud' }],
+      }),
+    ]);
+    render(<App auth={auth} fetch={fetch} live />);
+    await waitFor(
+      () => expect(header()?.querySelector('[aria-current="page"]')?.textContent).toBe('I bruk'),
+      { timeout: 15000 },
+    );
+    const link = await screen.findByRole(
+      'link',
+      { name: /^Åpne tjenesten ?\(åpnes i ny fane\)$/ },
+      { timeout: 5000 },
+    );
+    expect(link.getAttribute('href')).toBe('https://rapport.apps.genki-test.digdir.cloud/');
+  }, 30000);
+
   it('is not shown for a published service without a hosted address', async () => {
     const auth = mockAnsattporten(kari);
     await auth.login();
@@ -114,11 +164,32 @@ describe('Åpne tjenesten in the service header', () => {
     expect(screen.queryByRole('link', { name: /Åpne tjenesten/ })).toBeNull();
   }, 20000);
 
+  it('is not shown for an archived service', async () => {
+    const auth = mockAnsattporten(kari);
+    await auth.login();
+    window.location.hash = '#/services/rapportassistenten';
+    const { fetch: clientsFetch, answered } = withClients([
+      client('web', {
+        hosted: true,
+        hostnames: [{ hostname: 'rapport.apps.genki-test.digdir.cloud' }],
+      }),
+    ]);
+    const fetch: typeof globalThis.fetch = async (input, init) =>
+      /\/services\/rapportassistenten\/lifecycle$/.test(String(input))
+        ? Response.json({ state: 'archived', reason: 'Erstattet', at: '2026-11-20T10:00:00Z' })
+        : clientsFetch(input, init);
+    render(<App auth={auth} fetch={fetch} live />);
+    await waitFor(() => expect(header()?.textContent).toMatch(/Arkivert/), { timeout: 15000 });
+    await waitFor(() => expect(answered.clients).toBe(true), { timeout: 8000 });
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.queryByRole('link', { name: /Åpne tjenesten/ })).toBeNull();
+  }, 30000);
+
   it('is not shown for a new service that has never been published', async () => {
     const auth = mockAnsattporten(kari);
     await auth.login();
     window.location.hash = '#/services/new';
-    const { fetch } = withClients([
+    const { fetch, answered } = withClients([
       client('web', {
         hosted: true,
         hostnames: [{ hostname: 'rapport.apps.genki-test.digdir.cloud' }],
@@ -126,6 +197,8 @@ describe('Åpne tjenesten in the service header', () => {
     ]);
     render(<App auth={auth} fetch={fetch} live />);
     await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' }, { timeout: 8000 });
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(answered.clients).toBe(false);
     expect(screen.queryByRole('link', { name: /Åpne tjenesten/ })).toBeNull();
   }, 20000);
 });

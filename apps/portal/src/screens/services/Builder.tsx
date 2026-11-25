@@ -337,7 +337,7 @@ const withRiskStamp = (definition: Record<string, unknown>, stamp: object) => {
 
 const archivedSections: ServiceSection[] = ['overview', 'quality', 'versions', 'log'];
 
-// The new services someone has tried to publish in this page session; the Builder is drawn anew on the publish page.
+// New services whose Publiser was pressed this page session; the publish page remounts the Builder.
 const publishTriedFor = new Set<string>();
 
 export const Builder = ({
@@ -971,10 +971,10 @@ export const Builder = ({
   );
   const [hostedClients] = useAsync(
     async (signal) =>
-      draftBar && liveVersion
+      (draftBar && liveVersion) || (live && !isNew && showsInUse)
         ? api.listClients(tenant, id, signal).catch(() => undefined)
         : undefined,
-    [api, tenant, id, draftBar, Boolean(liveVersion)],
+    [api, tenant, id, draftBar, Boolean(liveVersion), live, isNew, showsInUse],
     { keepPreviousFor: id },
   );
   const address =
