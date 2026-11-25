@@ -19,7 +19,7 @@ import {
   websiteSkipReasonFor,
 } from './documents.js';
 import { episerverPages, episerverSource, filterEpiserverPages } from './episerver.js';
-import { findFolderFiles, type FolderEntry } from './folder.js';
+import { findFolderFiles, type FolderEntry, type FolderScope } from './folder.js';
 import {
   displayNames,
   fetchKudosFile,
@@ -464,7 +464,17 @@ export const chunkingOf = (spec: PipelineSpec['chunking']): ChunkDocumentConfig 
   metadataStyle: metadataStyles[spec.metadataStyle],
 });
 
+const patterns = new Map<string, RegExp>();
+
 const globPattern = (glob: string) => {
+  const known = patterns.get(glob);
+  if (known) return known;
+  const made = compiledGlob(glob);
+  patterns.set(glob, made);
+  return made;
+};
+
+const compiledGlob = (glob: string) => {
   let out = '';
   for (let i = 0; i < glob.length; i++) {
     const c = glob[i] as string;
@@ -485,6 +495,22 @@ const matches = (globs: string[], value: string) => globs.some((g) => globPatter
 
 const selected = (value: string, include: string[], exclude: string[] = []) =>
   (include.length === 0 || matches(include, value)) && !matches(exclude, value);
+
+const reaches = (glob: string[], directory: string[]) => {
+  for (const [i, part] of directory.entries()) {
+    const wanted = glob[i];
+    if (wanted === undefined) return false;
+    if (wanted === '**') return true;
+    if (!globPattern(wanted).test(part)) return false;
+  }
+  return true;
+};
+
+const folderScope = (include: string[], exclude: string[] | undefined): FolderScope => ({
+  enter: (directory) =>
+    include.length === 0 || include.some((g) => reaches(g.split('/'), directory.split('/'))),
+  take: (file) => selected(file, include, exclude),
+});
 
 const inside = (root: string, path: string) => {
   const base = resolve(root);
@@ -736,10 +762,7 @@ export const sourceOf = async (
   if (source.kind === 'folder') {
     const root = inside(options.folderRoot ?? '', source.path);
     if (!options.folderRoot || !root) throw new Error('the folder is not allowed');
-    const name = (path: string) => relative(root, path).split(sep).join('/');
-    const listed = (await findFolderFiles(root, 'all')).filter((e) =>
-      selected(name(e.path), source.include, source.exclude),
-    );
+    const listed = await findFolderFiles(root, 'all', folderScope(source.include, source.exclude));
     return folderSource({
       entries: listed,
       basePath: `${root}${sep}`,
@@ -973,9 +996,7 @@ export const knowledgeListingOf = async (
     const idOf = (path: string) =>
       folderDocumentId(scope.owner, relative(fromRoot, path).split(sep).join('/'));
     const list = async () =>
-      (await findFolderFiles(root, 'all')).filter((e) =>
-        selected(name(e.path), source.include, source.exclude),
-      );
+      findFolderFiles(root, 'all', folderScope(source.include, source.exclude));
     const folder = (entry: FolderEntry) =>
       folderSource({
         entries: [entry],
