@@ -1174,6 +1174,32 @@ describe('text search on the knowledge server', () => {
       }
     });
 
+    it("a metadata search finds each document's best chunk among that document's chunks, never through the chunks' word index", async () => {
+      // In test the planner ANDed each document's 64 chunks with 479,201 word-index entries, for 50 documents: 5.5 s (issue 982).
+      const chunks = partitionOf('kn_chunks', bulkGeneration);
+      const sql = await statementFor('docs', 'text', 'budsjett havneavgift kystverket');
+      const client = await owner.connect();
+      try {
+        await client.query('begin');
+        // With the document index gone, the word index is the cheapest way to a chunk the query could take.
+        await client.query('drop index kn_chunks_doc');
+        await client.query('set local enable_seqscan = off');
+        const { rows } = await client.query<{ 'QUERY PLAN': [{ Plan: PlanNode }] }>(
+          `explain (format json) ${sql}`,
+        );
+        const indexes = new Set<string>();
+        const walk = (node: PlanNode & { 'Index Name'?: string }) => {
+          if (node['Index Name']) indexes.add(node['Index Name']);
+          node.Plans?.forEach(walk);
+        };
+        walk(rows[0]?.['QUERY PLAN'][0].Plan as PlanNode);
+        expect(indexes).not.toContain(`${chunks}_tsv`);
+      } finally {
+        await client.query('rollback');
+        client.release();
+      }
+    });
+
     it('a hybrid search whose text half runs past its limit returns the vector hits with a warning', async () => {
       const slow = pgvectorEngine({
         knowledge: api.pools,
