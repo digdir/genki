@@ -178,8 +178,19 @@ describe('anthropic-messages adapter', () => {
     expect(seen[0]?.body).toEqual({
       model: 'claude-opus-dep',
       max_tokens: 8192,
-      system: 'Du er hjelpsom.\n\nSvar kort.',
-      messages: [{ role: 'user', content: 'hei' }],
+      system: [
+        {
+          type: 'text',
+          text: 'Du er hjelpsom.\n\nSvar kort.',
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      messages: [
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'hei', cache_control: { type: 'ephemeral' } }],
+        },
+      ],
       stream: false,
     });
     expect(seen[0]?.headers['anthropic-version']).toBeDefined();
@@ -259,7 +270,12 @@ describe('anthropic-messages adapter', () => {
         role: 'user',
         content: [
           { type: 'tool_result', tool_use_id: 'toolu_0', content: 'treff a' },
-          { type: 'tool_result', tool_use_id: 'toolu_1', content: 'treff b' },
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_1',
+            content: 'treff b',
+            cache_control: { type: 'ephemeral' },
+          },
         ],
       },
     ]);
@@ -268,8 +284,185 @@ describe('anthropic-messages adapter', () => {
         name: 'search',
         description: 'Søk',
         input_schema: { type: 'object', properties: { q: { type: 'string' } } },
+        cache_control: { type: 'ephemeral' },
       },
     ]);
+  });
+
+  it('marks the tools, the system prompt and the last message for caching, and nothing else', async () => {
+    const { url, seen } = await fake(() => ({
+      status: 200,
+      json: message([{ type: 'text', text: 'Svar.' }]),
+    }));
+
+    await open(router(url)).chat({
+      messages: [
+        { role: 'system', content: 'Du er hjelpsom.' },
+        { role: 'user', content: 'finn noe' },
+        {
+          role: 'assistant',
+          content: '',
+          toolCalls: [{ id: 'toolu_0', name: 'search', arguments: '{"q":"a"}' }],
+        },
+        { role: 'tool', toolCallId: 'toolu_0', content: 'treff a' },
+      ],
+      tools: [
+        { name: 'search', description: 'Søk', parameters: {} },
+        { name: 'read', description: 'Les', parameters: {} },
+      ],
+    });
+
+    const body = seen[0]?.body as Record<string, unknown>;
+    const mark = { type: 'ephemeral' };
+    expect(body.system).toEqual([{ type: 'text', text: 'Du er hjelpsom.', cache_control: mark }]);
+    expect(body.tools).toEqual([
+      { name: 'search', description: 'Søk', input_schema: { type: 'object' } },
+      { name: 'read', description: 'Les', input_schema: { type: 'object' }, cache_control: mark },
+    ]);
+    expect((body.messages as unknown[]).at(-1)).toEqual({
+      role: 'user',
+      content: [
+        { type: 'tool_result', tool_use_id: 'toolu_0', content: 'treff a', cache_control: mark },
+      ],
+    });
+    expect(JSON.stringify(body).split('"cache_control"')).toHaveLength(4);
+  });
+
+  it('marks a last message of plain text for caching as a text block', async () => {
+    const { url, seen } = await fake(() => ({
+      status: 200,
+      json: message([{ type: 'text', text: 'Hei' }]),
+    }));
+
+    await open(router(url)).chat({ messages: [{ role: 'user', content: 'hei' }] });
+
+    expect(seen[0]?.body.messages).toEqual([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'hei', cache_control: { type: 'ephemeral' } }],
+      },
+    ]);
+    expect(seen[0]?.body).not.toHaveProperty('system');
+  });
+
+  it('keeps the system prompt the same from turn to turn when a system message comes later in the conversation', async () => {
+    const { url, seen } = await fake(() => ({
+      status: 200,
+      json: message([{ type: 'text', text: 'Svar.' }]),
+    }));
+    const port = open(router(url));
+    const start = [
+      { role: 'system' as const, content: 'Du er hjelpsom.' },
+      { role: 'user' as const, content: 'finn noe' },
+    ];
+
+    await port.chat({ messages: start });
+    await port.chat({
+      messages: [
+        ...start,
+        { role: 'assistant', content: 'Fra utdraget.' },
+        { role: 'system', content: 'Les dokumentet før du svarer.' },
+      ],
+    });
+
+    expect(seen[1]?.body.system).toEqual(seen[0]?.body.system);
+    expect(seen[1]?.body.messages).toEqual([
+      { role: 'user', content: 'finn noe' },
+      { role: 'assistant', content: [{ type: 'text', text: 'Fra utdraget.' }] },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: '<platform_instruction>\nLes dokumentet før du svarer.\n</platform_instruction>',
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('puts a system message that follows tool results in the same user turn, after the results', async () => {
+    const { url, seen } = await fake(() => ({
+      status: 200,
+      json: message([{ type: 'text', text: 'Svar.' }]),
+    }));
+
+    await open(router(url)).chat({
+      messages: [
+        { role: 'system', content: 'Du er hjelpsom.' },
+        { role: 'user', content: 'finn noe' },
+        {
+          role: 'assistant',
+          content: '',
+          toolCalls: [{ id: 'toolu_0', name: 'search', arguments: '{"q":"a"}' }],
+        },
+        { role: 'tool', toolCallId: 'toolu_0', content: 'treff a' },
+        { role: 'system', content: 'Svar nå.' },
+      ],
+    });
+
+    expect(seen[0]?.body.system).toEqual([
+      { type: 'text', text: 'Du er hjelpsom.', cache_control: { type: 'ephemeral' } },
+    ]);
+    expect((seen[0]?.body.messages as unknown[]).slice(2)).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'tool_result', tool_use_id: 'toolu_0', content: 'treff a' },
+          {
+            type: 'text',
+            text: '<platform_instruction>\nSvar nå.\n</platform_instruction>',
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('reports cache reads and cache writes in usage, in chat and in chatStream', async () => {
+    const usage = {
+      input_tokens: 40,
+      output_tokens: 3,
+      cache_read_input_tokens: 8000,
+      cache_creation_input_tokens: 1200,
+    };
+    const frame = (data: Record<string, unknown>) => ({ event: data.type as string, data });
+    const { url } = await fake((body) =>
+      body.stream
+        ? {
+            status: 200,
+            sse: [
+              frame({
+                type: 'message_start',
+                message: { ...message([], null as unknown as string), usage },
+              }),
+              frame({
+                type: 'message_delta',
+                delta: { stop_reason: 'end_turn', stop_sequence: null },
+                usage: { output_tokens: 3 },
+              }),
+              frame({ type: 'message_stop' }),
+            ],
+          }
+        : { status: 200, json: { ...message([{ type: 'text', text: 'ok' }]), usage } },
+    );
+    const port = open(router(url));
+    const expected = {
+      inputTokens: 9240,
+      outputTokens: 3,
+      cachedInputTokens: 8000,
+      cacheWriteTokens: 1200,
+      requests: 1,
+    };
+
+    const chatted = await port.chat({ messages: [{ role: 'user', content: 'x' }] });
+    const chunks: ChatChunk[] = [];
+    for await (const c of port.chatStream({ messages: [{ role: 'user', content: 'x' }] }))
+      chunks.push(c);
+
+    expect(chatted.usage).toEqual(expected);
+    expect(chunks.at(-1)).toMatchObject({ kind: 'done', result: { usage: expected } });
   });
 
   it('turns on adaptive thinking for reasoning and hands back the signed thinking verbatim', async () => {

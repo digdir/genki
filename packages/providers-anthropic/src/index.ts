@@ -65,11 +65,52 @@ const assistantContent = (m: Extract<ChatMessage, { role: 'assistant' }>): Conte
   ];
 };
 
+/** Ends a cache prefix: the provider caches everything up to and including the marked block. */
+const cacheMark = { type: 'ephemeral' } as const;
+
+const withCacheMark = (message: MessageParam): MessageParam => {
+  const { content } = message;
+  if (typeof content === 'string')
+    return content
+      ? { ...message, content: [{ type: 'text', text: content, cache_control: cacheMark }] }
+      : message;
+  // Thinking blocks and empty text cannot carry a cache mark.
+  const at = content.findLastIndex(
+    (b) =>
+      b.type !== 'thinking' && b.type !== 'redacted_thinking' && !(b.type === 'text' && !b.text),
+  );
+  if (at < 0) return message;
+  return {
+    ...message,
+    content: content.map((b, i) => (i === at ? { ...b, cache_control: cacheMark } : b)),
+  } as MessageParam;
+};
+
+const platformInstruction = (text: string) =>
+  `<platform_instruction>\n${text}\n</platform_instruction>`;
+
 const toAnthropic = (messages: ChatMessage[]) => {
-  const system = messages.flatMap((m) => (m.role === 'system' ? [m.content] : [])).join('\n\n');
+  // Only the system messages before the conversation make the system prompt, so it stays the
+  // same from turn to turn and the cache keeps it. A later one goes where it stands, in the user
+  // turn after the tool results, tagged so the model tells the platform's words from the user's.
+  const leading = messages.findIndex((m) => m.role !== 'system');
+  const head = leading < 0 ? messages : messages.slice(0, leading);
+  const system = head.flatMap((m) => (m.role === 'system' ? [m.content] : [])).join('\n\n');
   const out: MessageParam[] = [];
-  for (const m of messages) {
-    if (m.role === 'system') continue;
+  for (const m of messages.slice(head.length)) {
+    if (m.role === 'system') {
+      const last = out.at(-1);
+      const note = { type: 'text' as const, text: platformInstruction(m.content) };
+      if (last?.role === 'user')
+        last.content = [
+          ...(typeof last.content === 'string'
+            ? [{ type: 'text' as const, text: last.content }]
+            : last.content),
+          note,
+        ];
+      else out.push({ role: 'user', content: [note] });
+      continue;
+    }
     if (m.role === 'assistant') out.push({ role: 'assistant', content: assistantContent(m) });
     else if (m.role !== 'tool') out.push({ role: 'user', content: m.content });
     else {
@@ -102,22 +143,29 @@ const params = (
       ? { format: { type: 'json_schema' as const, schema: request.jsonSchema.schema } }
       : {}),
   };
+  const last = messages.at(-1);
+  const tools = request.tools ?? [];
   return {
     model: model.deployment,
     max_tokens: request.maxTokens ?? model.options.defaultMaxTokens,
-    messages,
-    ...(system ? { system } : {}),
+    // Tools, system prompt and the conversation so far are marked as the cached prefix, so the
+    // next turn reads them from the cache instead of sending them again as new input.
+    messages: last ? [...messages.slice(0, -1), withCacheMark(last)] : messages,
+    ...(system
+      ? { system: [{ type: 'text' as const, text: system, cache_control: cacheMark }] }
+      : {}),
     ...(request.temperature === undefined || omitTemperature
       ? {}
       : { temperature: request.temperature }),
     ...(request.reasoning ? { thinking: { type: 'adaptive' as const } } : {}),
     ...(Object.keys(outputConfig).length > 0 ? { output_config: outputConfig } : {}),
-    ...(request.tools?.length
+    ...(tools.length
       ? {
-          tools: request.tools.map((t) => ({
+          tools: tools.map((t, i) => ({
             name: t.name,
             description: t.description,
             input_schema: { type: 'object' as const, ...t.parameters },
+            ...(i === tools.length - 1 ? { cache_control: cacheMark } : {}),
           })),
         }
       : {}),
@@ -130,8 +178,13 @@ const inputTokens = (u: {
   cache_read_input_tokens?: number | null;
 }) => u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
 
-const cached = (u: { cache_read_input_tokens?: number | null }) =>
-  u.cache_read_input_tokens ? { cachedInputTokens: u.cache_read_input_tokens } : {};
+const cached = (u: {
+  cache_read_input_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+}) => ({
+  ...(u.cache_read_input_tokens ? { cachedInputTokens: u.cache_read_input_tokens } : {}),
+  ...(u.cache_creation_input_tokens ? { cacheWriteTokens: u.cache_creation_input_tokens } : {}),
+});
 
 const hasThinking = (blocks: { type: string }[]) =>
   blocks.some((b) => b.type === 'thinking' || b.type === 'redacted_thinking');

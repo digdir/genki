@@ -1659,6 +1659,30 @@ describe('prices per kind and unit (ADR 0048)', () => {
     });
   });
 
+  it('a chat call keeps its cache writes and cache reads in usage through the gate', async () => {
+    const usage = {
+      inputTokens: 9240,
+      outputTokens: 3,
+      cachedInputTokens: 8000,
+      cacheWriteTokens: 1200,
+      requests: 1,
+    };
+    const a = recording('proto-a', async () => ({ ...answer('ok'), usage }));
+    const router = new ModelRouter({
+      catalog,
+      adapters: [a.adapter, recording('proto-b').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+      gate: createGate({ tier: 'test' }),
+    });
+    const { ctx, metered } = testContext();
+
+    const result = await open(router, 'a/small', ctx).chat({ messages: [] });
+
+    expect(result.usage).toMatchObject(usage);
+    expect(metered.map((m) => m.usage)).toMatchObject([usage]);
+  });
+
   it('a model that names no price for a kind leaves its calls of that kind unpriced', async () => {
     const router = new ModelRouter({
       catalog,
