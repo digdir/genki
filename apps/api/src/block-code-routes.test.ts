@@ -318,6 +318,7 @@ describe('code blocks through the definition API', () => {
       });
       expect(response.status).toBe(413);
       expect(await response.json()).toMatchObject({
+        type: 'urn:genai:problem:definition-too-large',
         status: 413,
         detail: 'Forespørselen er større enn 4 MiB',
       });

@@ -29,10 +29,12 @@ export const codeBlockProblems = (
 
 export const maxDefinitionBodyBytes = 4 * 1024 * 1024;
 
+export const definitionTooLargeType = 'urn:genai:problem:definition-too-large';
+
 const tooLarge = (c: Context) =>
   c.json(
     {
-      type: 'about:blank',
+      type: definitionTooLargeType,
       title: t('problems.status413'),
       status: 413,
       detail: t('problems.requestTooLarge', { limit: '4 MiB' }),

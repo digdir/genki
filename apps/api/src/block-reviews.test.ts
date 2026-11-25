@@ -1,5 +1,5 @@
 import type { Principal } from '@genai/contracts';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { bundleText, codeBlock } from './block-code.test-utils.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { bootPlatform, digdir, other } from './testkit.js';
@@ -160,8 +160,13 @@ describe('review before a code block is shared with everyone', () => {
     await ask(1);
     const [request] = await pending();
 
-    for (const who of ['kari', 'ola', 'erik'])
-      expect((await decide(request?.id ?? '', 'approve', who)).status).toBe(403);
+    for (const who of ['kari', 'ola', 'erik']) {
+      const refused = await decide(request?.id ?? '', 'approve', who);
+      expect(refused.status).toBe(403);
+      expect(await refused.json()).toMatchObject({
+        type: 'urn:genai:problem:block-share-operator-only',
+      });
+    }
     expect((await decide(request?.id ?? '', 'decline', 'kari')).status).toBe(403);
     expect((await pending()).length).toBe(1);
     expect(await versionsOf()).toBe(1);
@@ -189,7 +194,11 @@ describe('review before a code block is shared with everyone', () => {
       status: 'declined',
       reason: 'henter data den ikke trenger',
     });
-    expect((await decide(request?.id ?? '', 'approve')).status).toBe(409);
+    const again = await decide(request?.id ?? '', 'approve');
+    expect(again.status).toBe(409);
+    expect(await again.json()).toMatchObject({
+      type: 'urn:genai:problem:block-share-not-pending',
+    });
   });
 
   it('needs a new review for every edition shared with everyone', async () => {
@@ -215,7 +224,9 @@ describe('review before a code block is shared with everyone', () => {
     await save();
     await ask(1);
 
-    expect((await ask(1)).status).toBe(409);
+    const second = await ask(1);
+    expect(second.status).toBe(409);
+    expect(await second.json()).toMatchObject({ type: 'urn:genai:problem:block-share-pending' });
   });
 
   it('keeps one review at a time when two requests arrive together', async () => {
@@ -251,7 +262,32 @@ describe('review before a code block is shared with everyone', () => {
     const approved = await decide((await pending())[0]?.id ?? '', 'approve');
 
     expect(approved.status).toBe(409);
+    expect(await approved.json()).toMatchObject({ type: 'urn:genai:problem:block-share-stale' });
     expect(await versionsOf()).toBe(2);
+  });
+
+  it('refuses an approval when a newer edition is published between the check and the publish', async () => {
+    const { save, ask, pending, decide, versionsOf, sharingOf, platform } = await boot();
+    await save();
+    await ask(1);
+    const read = platform.definitions.get.bind(platform.definitions);
+    let raced = false;
+    vi.spyOn(platform.definitions, 'get').mockImplementation(async (kind, tenant, id, version) => {
+      const found = await read(kind, tenant, id, version);
+      if (!raced && kind === 'Block' && version === undefined) {
+        raced = true;
+        await save();
+      }
+      return found;
+    });
+
+    const approved = await decide((await pending())[0]?.id ?? '', 'approve');
+
+    expect(raced).toBe(true);
+    expect(approved.status).toBe(409);
+    expect(await approved.json()).toMatchObject({ type: 'urn:genai:problem:block-share-stale' });
+    expect(await versionsOf()).toBe(2);
+    expect(await sharingOf(2)).toBe('organisation');
   });
 
   it('publishes one shared edition when one request is approved twice at once', async () => {
@@ -463,6 +499,10 @@ describe('share requests behind the blockStudio flag', () => {
     const refused = await decide(rid, 'approve', 'vakt');
 
     expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({
+      type: 'urn:genai:problem:block-share-studio-off',
+      title: 'Ny utforming er ikke slått på for hele virksomheten som eier designelementet',
+    });
     expect(await versionsOf()).toBe(1);
   });
 });

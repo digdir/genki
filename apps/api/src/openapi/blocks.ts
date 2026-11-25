@@ -195,7 +195,7 @@ export const blockRoutes: RouteConfig[] = [
       403: problem(
         "Missing manage-services, or the block's metadata.tenant is another organisation",
       ),
-      413: problem('The body is over 4 MiB'),
+      413: problem('urn:genai:problem:definition-too-large: the body is over 4 MiB'),
       422: problem('The definition is not a Block'),
     },
   }),

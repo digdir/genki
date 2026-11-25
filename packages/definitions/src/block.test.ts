@@ -190,4 +190,33 @@ describe('a Block definition', () => {
     expect(await store.list('991825827')).toEqual([{ kind: 'Block', id: 'chat' }]);
     expect(await store.capabilities()).toEqual([]);
   });
+
+  it('refuses a publish when a newer edition is published between the check and the publish', async () => {
+    const store = new InMemoryDefinitionStore(plugins);
+    await store.publish(chatBlock(), 'employee:test:kari', 'første utgave');
+    await store.publish(chatBlock(), 'employee:test:kari', 'andre utgave');
+
+    const stale = await store.publish(
+      chatBlock(),
+      'operator:test:drift',
+      'delt med alle',
+      {},
+      {
+        expectedLatest: 1,
+      },
+    );
+    const current = await store.publish(
+      chatBlock(),
+      'operator:test:drift',
+      'delt med alle',
+      {},
+      {
+        expectedLatest: 2,
+      },
+    );
+
+    expect(stale).toMatchObject({ ok: false, stale: true });
+    expect(current.ok).toBe(true);
+    expect((await store.versions('Block', '991825827', 'chat')).length).toBe(3);
+  });
 });

@@ -242,10 +242,10 @@ export const hidingInternalServices = (
     },
     remove: (tenant, definitions) => store.remove(tenant, definitions),
     ...(store.listAcross ? { listAcross: store.listAcross.bind(store) } : {}),
-    publish: async (input, actor, reason, files) => {
+    publish: async (input, actor, reason, files, options) => {
       const refused = await publishRefusals(view, input);
       if (refused.length > 0) return { ok: false, errors: refused };
-      const result = await store.publish(input, actor, reason, files);
+      const result = await store.publish(input, actor, reason, files, options);
       return result.ok || !hidesInternalServices()
         ? result
         : { ok: false, errors: await neutralNames(result.errors) };

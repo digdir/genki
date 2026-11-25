@@ -45,7 +45,9 @@ const ReviewRow = ShareRequest.extend({
 }).openapi('BlockShareReview');
 
 const rid = pathParam('rid', '6f1c2b0e-8c1a-4a55-9d0c-2f7d3c1e9a10');
-const operatorErrors = { 403: problem('Not an operator') };
+const operatorErrors = {
+  403: problem('urn:genai:problem:block-share-operator-only: not an operator'),
+};
 
 export const blockReviewRoutes: RouteConfig[] = [
   createRoute({
@@ -73,7 +75,9 @@ export const blockReviewRoutes: RouteConfig[] = [
       404: problem(
         'The tenant is not reachable for the caller, no such edition, or the caller is not signed in or has blockStudio off',
       ),
-      409: problem('Another edition of the block is already in review'),
+      409: problem(
+        'urn:genai:problem:block-share-pending: another request on the block is pending',
+      ),
       422: problem(
         'The edition is not the newest, has no code, or is already shared with everyone',
       ),
@@ -143,8 +147,8 @@ export const blockReviewRoutes: RouteConfig[] = [
         404: problem('No such request, or the caller is not signed in or has blockStudio off'),
         409: problem(
           decision === 'approve'
-            ? "The request is already decided, a newer edition has been saved since, or blockStudio is not on for the block's whole organisation"
-            : 'The request is already decided',
+            ? "urn:genai:problem:block-share-not-pending: the request is already decided. urn:genai:problem:block-share-stale: a newer edition has been saved since the request, also while it is being approved. urn:genai:problem:block-share-studio-off: blockStudio is not on for the block's whole organisation"
+            : 'urn:genai:problem:block-share-not-pending: the request is already decided',
         ),
         ...(decision === 'approve'
           ? { 422: problem('The copy could not be published, for example with code blocks off') }

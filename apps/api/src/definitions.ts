@@ -156,7 +156,10 @@ const kindParam = z
   .openapi({ param: { name: 'kind', in: 'path' } });
 const idParam = z.string().openapi({ param: { name: 'id', in: 'path' } });
 
-const tooLarge = { content: problemContent, description: 'The body is over 4 MiB' };
+const tooLarge = {
+  content: problemContent,
+  description: 'urn:genai:problem:definition-too-large: the body is over 4 MiB',
+};
 
 const routes = {
   validate: createRoute({

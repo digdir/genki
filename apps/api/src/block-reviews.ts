@@ -23,6 +23,14 @@ export const blockShareActions = {
   decline: 'platform.block-share.decline',
 } as const;
 
+export const blockShareProblems = {
+  operatorOnly: 'urn:genai:problem:block-share-operator-only',
+  pending: 'urn:genai:problem:block-share-pending',
+  notPending: 'urn:genai:problem:block-share-not-pending',
+  stale: 'urn:genai:problem:block-share-stale',
+  studioOff: 'urn:genai:problem:block-share-studio-off',
+} as const;
+
 export type ShareRequestStatus = 'pending' | 'approved' | 'declined';
 
 export interface ShareRequest {
@@ -44,6 +52,7 @@ class ApprovalFailed extends Error {
   constructor(
     readonly errors: ValidationError[],
     readonly status: 409 | 422 = 422,
+    readonly type?: string,
   ) {
     super(errors[0]?.message ?? 'not approved');
   }
@@ -126,6 +135,7 @@ export const createBlockReviewsModule =
           if (principal.kind !== 'operator')
             return {
               response: problem(c, 403, t('problems.blockShareOperatorOnly'), {
+                type: blockShareProblems.operatorOnly,
                 errors: [{ path: 'principal', message: t('problems.blockShareOperatorOnly') }],
               }),
             };
@@ -180,7 +190,11 @@ export const createBlockReviewsModule =
                 }),
               };
             if ((await requestsOf(store, tenant, block)).some((r) => r.status === 'pending'))
-              return { response: problem(c, 409, t('problems.blockSharePending')) };
+              return {
+                response: problem(c, 409, t('problems.blockSharePending'), {
+                  type: blockShareProblems.pending,
+                }),
+              };
             const reason = reasonOf(c);
             const request: ShareRequest = {
               id: crypto.randomUUID(),
@@ -284,7 +298,9 @@ export const createBlockReviewsModule =
           const request = await findRequest(c.req.param('rid') ?? '');
           if (!request) return problem(c, 404, t('problems.blockShareNotFound'));
           if (request.status !== 'pending')
-            return problem(c, 409, t('problems.blockShareNotPending'));
+            return problem(c, 409, t('problems.blockShareNotPending'), {
+              type: blockShareProblems.notPending,
+            });
           const reason = reasonOf(c);
           const acting: Principal = { ...principal, tenant: request.tenant };
           const by = actorOf(principal);
@@ -312,6 +328,7 @@ export const createBlockReviewsModule =
                   throw new ApprovalFailed(
                     [{ path: 'tenant', message: t('problems.blockStudioOffForTenant') }],
                     409,
+                    blockShareProblems.studioOff,
                   );
                 const edition = await editionOf(request);
                 if (!edition)
@@ -323,6 +340,7 @@ export const createBlockReviewsModule =
                   throw new ApprovalFailed(
                     [{ path: 'version', message: t('problems.blockShareStale') }],
                     409,
+                    blockShareProblems.stale,
                   );
                 const shared = sharedCopy(edition);
                 const published = await definitions.publish(
@@ -330,7 +348,14 @@ export const createBlockReviewsModule =
                   by,
                   t('problems.blockShareApproved', { reason }),
                   edition.files,
+                  { expectedLatest: request.version },
                 );
+                if (!published.ok && published.stale)
+                  throw new ApprovalFailed(
+                    [{ path: 'version', message: t('problems.blockShareStale') }],
+                    409,
+                    blockShareProblems.stale,
+                  );
                 if (!published.ok) throw new ApprovalFailed(published.errors);
                 const approved = { ...decided, sharedVersion: published.version.version };
                 await save(approved, by, reason);
@@ -349,7 +374,10 @@ export const createBlockReviewsModule =
           } catch (error) {
             if (error instanceof ApprovalFailed)
               return error.status === 409
-                ? problem(c, 409, t('problems.blockShareStale'), { errors: error.errors })
+                ? problem(c, 409, error.message, {
+                    errors: error.errors,
+                    ...(error.type ? { type: error.type } : {}),
+                  })
                 : problem(c, 422, t('problems.invalidDefinition'), { errors: error.errors });
             return refused(c, error);
           }
