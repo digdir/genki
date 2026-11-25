@@ -14,14 +14,16 @@
   min-width: 0;
 }
 
-/* Below the tab row, which stays at the top of the page (49 px). */
+/* Below the tab row, which stays at the top of the page (49 px). As tall as the room from where it
+   stands to the bottom of the window, so its field is in sight before the page is scrolled too;
+   setup-form.tsx keeps --chat-top. */
 .setup-form-chat {
   position: sticky;
   top: 64px;
   display: flex;
   min-width: 0;
-  min-height: 640px;
-  height: calc(100dvh - 80px);
+  min-height: 320px;
+  height: calc(100dvh - var(--chat-top, 64px) - 16px);
   border-radius: var(--ds-border-radius-lg);
   background: var(--ds-color-neutral-background-tinted);
 }

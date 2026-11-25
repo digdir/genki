@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { setupAreas, type SetupArea } from './setup-diff';
 import { SetupForm } from './setup-form';
@@ -50,6 +50,27 @@ describe('the new Oppsett as one form', () => {
     cleanup();
     form();
     expect(screen.getByRole('separator').getAttribute('aria-valuenow')).toBe('416');
+  });
+
+  it('makes the chat as tall as the room under where it stands, so its field is in sight before scrolling', async () => {
+    let top = 240;
+    const real = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      return this.classList.contains('setup-form-layout')
+        ? ({ top } as DOMRect)
+        : real.call(this);
+    };
+    try {
+      form();
+      const chat = screen.getByRole('region', { name: 'Byggeassistent og prøving' });
+      expect(chat.style.getPropertyValue('--chat-top')).toBe('240px');
+
+      top = -500;
+      fireEvent.scroll(window);
+      await waitFor(() => expect(chat.style.getPropertyValue('--chat-top')).toBe('64px'));
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = real;
+    }
   });
 
   it('has no line to drag when there is no assistant, as for someone who can only read', () => {
