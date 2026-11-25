@@ -3,6 +3,7 @@ import { defineNamespace } from '@genai/i18n';
 export const shell = defineNamespace({
   navOverview: 'Oversikt',
   navServices: 'Tjenester',
+  navDesign: 'Utforming',
   navSharedServices: 'Delte tjenester',
   navDatasets: 'Dokumentsamlinger',
   navBuildingBlocks: 'Katalog',

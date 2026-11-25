@@ -20,7 +20,11 @@ import {
   keptStart,
   storedLayout,
   type BlocksStart,
+  type PinnedRef,
 } from './layoutStore';
+import type { PinnedDraft } from '../../../api/design';
+import { FromLibrary, usePinnedBlocks, type PinActions } from './FromDesign';
+import { useFlag, useFlags } from '../../../flags';
 import { collectionsOf, type Collection } from './profileEdit';
 import type { TryRun } from './TryView';
 
@@ -44,6 +48,7 @@ export const InterfaceTab = ({
   onFullscreen,
   onExitFullscreen,
   simple = false,
+  pins,
 }: {
   api: ApiClient;
   tenant: string;
@@ -66,7 +71,10 @@ export const InterfaceTab = ({
   onAdded?: () => void;
   onFullscreen: () => void;
   onExitFullscreen: () => void;
+  pins?: PinActions | undefined;
 }) => {
+  const studio = useFlag('blockStudio');
+  const flagsReady = useFlags().ready;
   const datasets = useMemo(() => datasetsOfDefinition(definition), [definition]);
   const datasetFilters = useDatasetFilters(api, datasets);
   const collections = useMemo(
@@ -81,15 +89,21 @@ export const InterfaceTab = ({
       }),
     [definition, datasetFilters],
   );
+  const stored = draftLayoutOf(definition);
+  const storedJson = JSON.stringify(stored ?? null);
+  const start = draftStart(stored, studio);
+  const pinned = useMemo<readonly PinnedRef[]>(() => {
+    const found = draftStart(JSON.parse(storedJson) ?? undefined, studio);
+    return found && found !== 'foreign' ? (found.pinned ?? []) : [];
+  }, [storedJson, studio]);
+  const refBlocks = usePinnedBlocks(api, tenant, pinned);
   const run = useMemo(
-    () => ({ api, tenant, source: { definition, files } }),
-    [api, tenant, definition, files],
+    () => ({ api, tenant, source: { definition, files }, pinned, refBlocks }),
+    [api, tenant, definition, files, pinned, refBlocks],
   );
   const id = (definition.metadata as { id?: unknown } | undefined)?.id;
   const address = `${typeof id === 'string' && id ? id : service}.genki.no`;
 
-  const stored = draftLayoutOf(definition);
-  const storedJson = JSON.stringify(stored ?? null);
   const written = useRef(storedJson);
   const [generation, setGeneration] = useState(0);
   // A layout changed elsewhere, by another tab, person or the YAML, starts the builder again.
@@ -113,8 +127,23 @@ export const InterfaceTab = ({
     },
     [onLayout, offer, tenant, service],
   );
-  const start = draftStart(stored);
-  if (start === 'foreign') return <ForeignLayout />;
+  const shown = useRef<AssistantLayout | undefined>(undefined);
+  if (start === 'foreign') return flagsReady ? <ForeignLayout /> : null;
+  const actions =
+    studio && pins
+      ? {
+          ...pins,
+          beforePin: () => {
+            const first = stored === undefined ? shown.current : undefined;
+            if (first) written.current = JSON.stringify(first);
+            return pins.beforePin(first);
+          },
+          onPinned: (draft: PinnedDraft, isPinned: boolean) => {
+            written.current = JSON.stringify(draftLayoutOf(draft.definition) ?? null);
+            pins.onPinned(draft, isPinned);
+          },
+        }
+      : undefined;
   const builder = (
     <InterfaceBuilder
       key={generation}
@@ -133,6 +162,19 @@ export const InterfaceTab = ({
       backHref={backHref}
       onFullscreen={onFullscreen}
       onExitFullscreen={onExitFullscreen}
+      shown={shown}
+      pinned={pinned}
+      refs={
+        actions ? (
+          <FromLibrary
+            api={api}
+            tenant={tenant}
+            service={service}
+            pinned={pinned}
+            actions={actions}
+          />
+        ) : undefined
+      }
     />
   );
   return (
@@ -200,6 +242,9 @@ const InterfaceBuilder = ({
   backHref,
   onFullscreen,
   onExitFullscreen,
+  shown,
+  pinned,
+  refs,
 }: {
   start: BlocksStart | undefined;
   facts: ServiceFacts | undefined;
@@ -216,21 +261,27 @@ const InterfaceBuilder = ({
   backHref: string;
   onFullscreen: () => void;
   onExitFullscreen: () => void;
+  shown: { current: AssistantLayout | undefined };
+  pinned: readonly PinnedRef[];
+  refs?: ReactNode;
 }) => {
   const [first] = useState(start);
+  const pins = useRef(pinned);
+  pins.current = pinned;
   const begin = useCallback(() => first, [first]);
   const kept = useRef<string | undefined>(undefined);
   // The layout the builder opened with is not a change; only what the person does is written.
   const keep = useCallback(
     (next: BlocksStart) => {
-      const layout = storedLayout(next);
+      const layout = storedLayout({ ...next, pinned: pins.current });
+      shown.current = layout;
       const json = JSON.stringify(layout);
       const opened = kept.current === undefined;
       if (json === kept.current) return;
       kept.current = json;
       if (!opened) write(layout);
     },
-    [write],
+    [write, shown],
   );
   const blocks = useBlocksState(begin, facts, keep);
   const added = useRef<string | undefined>(undefined);
@@ -259,6 +310,7 @@ const InterfaceBuilder = ({
       run={run}
       address={address}
       onFullscreen={onFullscreen}
+      refs={refs}
     />
   );
 };

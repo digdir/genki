@@ -24,6 +24,7 @@ import { exampleAudit, platformStatusMock } from './mock/platform-status';
 import { devtoolsMock } from './mock/devtools';
 import { settingsMock } from './mock/settings';
 import { blocksMock } from './mock/blocks';
+import { designMock } from './mock/design';
 import { serviceTabsMock } from './mock/service-tabs';
 import { exampleSecretNames } from './data/building-blocks';
 import { inputFieldsOf } from './data/playground';
@@ -567,6 +568,7 @@ const featureMocks = {
   devtools: devtoolsMock,
   settings: settingsMock,
   blocks: blocksMock,
+  design: designMock,
   serviceTabs: serviceTabsMock,
 };
 
@@ -908,7 +910,9 @@ export const mockFetch = (
   let access = structuredClone(extras.access ?? exampleAccess);
   const clientRoutes = clientMock();
   const batchRuns = featureMocks.batchRuns(extras.features?.batchRuns);
+  let self: typeof fetch = () => Promise.resolve(notFound());
   const features: MockHandler[] = [
+    featureMocks.design({ fetch: (input, init) => self(input, init), ...extras.features?.design }),
     featureMocks.blocks(extras.features?.blocks),
     featureMocks.buildingBlocks(extras.features?.buildingBlocks),
     featureMocks.skills(extras.features?.skills),
@@ -988,7 +992,7 @@ export const mockFetch = (
       traces: { enabled: true, content: false },
     },
   );
-  return async (input, init) => {
+  self = async (input, init) => {
     const url = new URL(
       typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
       'http://mock',
@@ -1545,4 +1549,5 @@ export const mockFetch = (
     }
     return notFound();
   };
+  return self;
 };

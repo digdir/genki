@@ -1,6 +1,12 @@
-import { Assistant, profileOf, type AssistantApi, type AssistantProfile } from '@genai/ui-assembly';
+import {
+  Assistant,
+  profileOf,
+  type AssistantApi,
+  type AssistantProfile,
+  type RefBlocks,
+} from '@genai/ui-assembly';
 import '@genai/ui-assembly/styles.css';
-import { profileIn, type AssistantLayout } from '@genai/ui-blocks/builder';
+import { profileIn, zones, type AssistantLayout } from '@genai/ui-blocks/builder';
 import '@genai/ui-blocks/styles.css';
 import { useEffect, useMemo, useState } from 'react';
 import type { ApiClient } from '../../../api';
@@ -9,6 +15,7 @@ import { draftChannels } from './channels';
 import { createDraftApi } from './draftApi';
 import { draftServiceOf, type DraftSource, type RunProblem } from './draftService';
 import { previewWidth } from './preview-size';
+import type { PinnedRef } from './layoutStore';
 import { drawnProfile } from './profileEdit';
 
 /** What the try view needs to run the assistant: the person's own login, and the draft. */
@@ -16,6 +23,8 @@ export interface TryRun {
   api: ApiClient;
   tenant: string;
   source?: DraftSource | undefined;
+  pinned?: readonly PinnedRef[] | undefined;
+  refBlocks?: RefBlocks | undefined;
 }
 
 /** Why the thread's answer failed, or without a thread why the draft was refused; or nothing. */
@@ -73,14 +82,23 @@ export const TryView = ({
   const service = draftServiceOf(run.source);
   const entry = draftApiFor(run, service, t('playground.pageTitle'));
   entry.source = run.source;
+  const pinned = run.pinned;
   // What the person typed, drawn: an empty text draws nothing.
-  const drawn = useMemo(
-    () =>
-      layout.profile
-        ? { ...layout, profile: drawnProfile(profileIn(layout.profile, language)) }
-        : layout,
-    [layout, language],
-  );
+  const drawn = useMemo(() => {
+    const worded = layout.profile
+      ? { ...layout, profile: drawnProfile(profileIn(layout.profile, language)) }
+      : layout;
+    if (!pinned?.length) return worded;
+    return {
+      ...worded,
+      zones: Object.fromEntries(
+        zones.map((zone) => [
+          zone,
+          [...worded.zones[zone], ...pinned.filter((p) => p.zone === zone).map((p) => p.placed)],
+        ]),
+      ) as unknown as AssistantLayout['zones'],
+    };
+  }, [layout, language, pinned]);
   // The portal has no profile of its own for a draft: the layout's is the one it is drawn with.
   entry.profile = profileOf(drawn, undefined, language);
   // The assistant reads a collection's fields and names once per api: a change of them is read
@@ -108,6 +126,7 @@ export const TryView = ({
       tenant={run.tenant}
       channels={draftChannels}
       frameWidth={previewWidth}
+      refBlocks={run.refBlocks}
       onThreadChange={onThreadChange}
     />
   );

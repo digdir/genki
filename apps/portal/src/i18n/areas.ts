@@ -54,6 +54,11 @@ export const parts = {
     () => import('./nb/build-blocksUi'),
     () => import('./en/build-blocksUi'),
   ),
+  designUi: lane(
+    'designUi',
+    () => import('./nb/build-designUi'),
+    () => import('./en/build-designUi'),
+  ),
   blocksLane: lane(
     'blocksLane',
     () => import('./nb/data-blocks'),
@@ -143,6 +148,7 @@ export const areas = {
   ],
   contact: [],
   dataHandling: [],
+  design: ['designUi'],
   datasets: ['serviceUi', 'playgroundUi', 'configLane'],
   developerTools: [
     'serviceUi',
@@ -164,6 +170,7 @@ export const areas = {
     'batchUi',
     'playgroundUi',
     'blocksUi',
+    'designUi',
     'blocksLane',
     'skillsLane',
     'modelsLane',

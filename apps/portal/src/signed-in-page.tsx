@@ -6,6 +6,7 @@ import './i18n/page-texts';
 import type { ScreenProps } from './screen';
 import { priceSegment } from './screens/about/public-pages';
 import { apiReferenceHashFor, developerHashFor } from './screens/developer-routes';
+import { useFlag, useFlags } from './flags';
 import { Overview } from './screens/Overview';
 import { navigation } from './Shell';
 import { Loading, PageLoading } from './states';
@@ -52,6 +53,9 @@ const BuildingBlocks = lazy(
   withTexts('buildingBlocks', () =>
     import('./screens/BuildingBlocks').then((m) => ({ default: m.BuildingBlocks })),
   ),
+);
+const Design = lazy(
+  withTexts('design', () => import('./screens/design/Design').then((m) => ({ default: m.Design }))),
 );
 const DataHandling = lazy(
   withTexts('dataHandling', () =>
@@ -163,6 +167,7 @@ const Screen = (props: ScreenProps) => {
     return (
       <MovedTo hash={window.location.hash.replace(/^#\/step-flows/, '#/developer/step-flows')} />
     );
+  if (area === 'design') return <DesignArea {...props} />;
   if (area === 'shared-services') return <SharedServices {...props} />;
   if (area === 'datasets' && id && id !== 'new' && sub === 'settings')
     return <Settings {...props} context={{ kind: 'dataset', id }} />;
@@ -199,7 +204,6 @@ const Screen = (props: ScreenProps) => {
   if (area === 'settings') return <Settings {...props} context={{ kind: 'tenant' }} />;
   if (area === 'data-handling') return <DataHandling api={props.api} />;
   if (area === 'about' && id === priceSegment) return <PricePage />;
-  const item = guessArea(area);
   if (Object.hasOwn(footerPages, area))
     return (
       <>
@@ -209,6 +213,19 @@ const Screen = (props: ScreenProps) => {
         <Contact />
       </>
     );
+  return <NotFound area={area} />;
+};
+
+const DesignArea = (props: ScreenProps) => {
+  const { ready } = useFlags();
+  const on = useFlag('blockStudio');
+  if (!ready) return <ScreenLoading route={props.route} />;
+  return on ? <Design {...props} /> : <NotFound area="design" />;
+};
+
+const NotFound = ({ area }: { area: string }) => {
+  const t = useT();
+  const item = guessArea(area);
   return (
     <>
       <Heading level={1} data-size="lg">

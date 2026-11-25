@@ -4,6 +4,7 @@ import type { StepOperation } from './data/step-operations';
 import type { StrategyEntry } from './data/strategies';
 import { buildingBlocksApi } from './api/building-blocks';
 import { blocksApi } from './api/blocks';
+import { designApi } from './api/design';
 import { datasetsApi } from './api/datasets';
 import { environmentsApi } from './api/environments';
 import { keyPoliciesApi } from './api/key-policies';
@@ -212,6 +213,7 @@ const featureClients = (ctx: ApiContext) => ({
   quotaRequests: quotaRequestsApi(ctx),
   accessPeople: accessApi(ctx),
   blocks: blocksApi(ctx),
+  design: designApi(ctx),
   models: modelsApi(ctx),
   serviceTabs: serviceTabsApi(ctx),
 });

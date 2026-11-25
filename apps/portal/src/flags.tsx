@@ -12,10 +12,11 @@ import type { ApiClient } from './api';
 
 interface Flags {
   states: readonly FlagState[];
+  ready: boolean;
   reload: () => void;
 }
 
-const FlagsContext = createContext<Flags>({ states: [], reload: () => undefined });
+const FlagsContext = createContext<Flags>({ states: [], ready: true, reload: () => undefined });
 
 export const FlagsProvider = ({
   api,
@@ -31,7 +32,7 @@ export const FlagsProvider = ({
   useEffect(() => {
     const controller = new AbortController();
     api.flags.mine(tenant, controller.signal).then(
-      (found) => !controller.signal.aborted && setLoaded({ tenant, states: found }),
+      (found) => !controller.signal.aborted && setLoaded({ tenant, states: found ?? [] }),
       () =>
         !controller.signal.aborted &&
         setLoaded((before) => (before?.tenant === tenant ? before : { tenant, states: [] })),
@@ -40,7 +41,11 @@ export const FlagsProvider = ({
   }, [api, tenant, attempt]);
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
   const value = useMemo(
-    () => ({ states: loaded?.tenant === tenant ? loaded.states : [], reload }),
+    () => ({
+      states: loaded?.tenant === tenant ? loaded.states : [],
+      ready: loaded?.tenant === tenant,
+      reload,
+    }),
     [loaded, tenant, reload],
   );
   return <FlagsContext.Provider value={value}>{children}</FlagsContext.Provider>;
@@ -63,6 +68,7 @@ export const FlagsOn = ({
         person: true,
         tenant: null,
       })),
+      ready: true,
       reload: () => undefined,
     }}
   >

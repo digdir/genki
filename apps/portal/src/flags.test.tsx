@@ -5,7 +5,7 @@ import { App } from './App';
 import { mockAnsattporten } from './auth';
 import type { FlagState } from '@genai/contracts/flags';
 import type { ApiClient } from './api';
-import { FlagsOn, FlagsProvider, useFlag } from './flags';
+import { FlagsOn, FlagsProvider, useFlag, useFlags } from './flags';
 import { renderAt, withFlags } from './test-utils';
 
 const Studio = () => (useFlag('blockStudio') ? <h2>Block Studio</h2> : null);
@@ -64,6 +64,21 @@ describe('feature flags in the portal', () => {
       </FlagsProvider>,
     );
 
+    expect(screen.queryByRole('heading', { name: 'Block Studio' })).toBeNull();
+  });
+
+  it('treats an answer without flags as every flag off, and is ready', async () => {
+    const api = {
+      flags: { mine: () => Promise.resolve(undefined) },
+    } as unknown as Pick<ApiClient, 'flags'>;
+    const Ready = () => (useFlags().ready ? <p>Klar</p> : null);
+    render(
+      <FlagsProvider api={api} tenant="999888777">
+        <Ready />
+        <Studio />
+      </FlagsProvider>,
+    );
+    expect(await screen.findByText('Klar')).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Block Studio' })).toBeNull();
   });
 

@@ -1,0 +1,242 @@
+.design-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-6);
+  max-width: 1184px;
+}
+
+.design-page h1,
+.design-page h2 {
+  margin: 0;
+}
+
+.design-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-size-3) var(--ds-size-6);
+}
+
+.design-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-size-3);
+}
+
+.design-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-size-3) var(--ds-size-5);
+}
+
+.design-filters > :last-child {
+  position: relative;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.design-search {
+  flex: 1 1 280px;
+}
+
+.design-table,
+.design-texts {
+  position: relative;
+  overflow-x: auto;
+}
+
+.design-texts {
+  max-width: 720px;
+}
+
+.design-name {
+  font-weight: 500;
+}
+
+.design-publisher {
+  display: block;
+  font-size: var(--ds-body-sm-font-size);
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.design-page .nowrap {
+  white-space: nowrap;
+}
+
+.design-action {
+  text-align: end;
+}
+
+.design-kinds {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: var(--ds-size-3);
+}
+
+.design-kinds > .design-kind {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: var(--ds-size-4);
+  border: 1px solid var(--ds-color-neutral-border-default);
+  border-radius: var(--ds-border-radius-md);
+  align-content: start;
+}
+
+.design-kinds > .design-kind:has(input:checked) {
+  border: 2px solid var(--ds-color-accent-border-strong);
+  padding: calc(var(--ds-size-4) - 1px);
+  background: var(--ds-color-accent-surface-tinted);
+}
+
+.design-kind .ds-label {
+  font-weight: var(--ds-font-weight-semibold, 600);
+}
+
+.design-why {
+  max-width: 480px;
+}
+
+.design-name-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-1);
+  max-width: 480px;
+}
+
+.design-section {
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
+  padding-top: var(--ds-size-6);
+}
+
+.design-code textarea,
+textarea.design-code {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: var(--ds-body-sm-font-size);
+}
+
+.design-key {
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+.design-self-start {
+  align-self: flex-start;
+}
+
+.design-notes,
+.design-errors,
+.design-settings {
+  margin: 0;
+  padding-inline-start: var(--ds-size-5);
+}
+
+.design-missing {
+  color: var(--ds-color-danger-text-default);
+}
+
+.design-done {
+  color: var(--ds-color-success-text-default);
+}
+
+.design-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-5);
+}
+
+.design-preview-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-3) var(--ds-size-5);
+}
+
+.design-stage {
+  display: flex;
+  justify-content: center;
+  padding: var(--ds-size-8);
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-lg);
+  background: var(--ds-color-neutral-background-tinted);
+  color: var(--ds-color-neutral-text-default);
+}
+
+.design-frame {
+  width: 100%;
+  max-width: 640px;
+}
+
+.design-frame[data-width='narrow'] {
+  max-width: 360px;
+}
+
+.design-names {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: var(--ds-size-4);
+  max-width: 720px;
+}
+
+.design-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-2) var(--ds-size-6);
+}
+
+.design-savebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ds-size-3);
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
+  padding-top: var(--ds-size-5);
+}
+
+.design-reason {
+  flex: 1 1 320px;
+}
+
+.design-plain {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.design-choose,
+.design-share-actions,
+.design-review {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ds-size-3) var(--ds-size-5);
+}
+
+.design-review {
+  align-items: center;
+  gap: var(--ds-size-2);
+}
+
+.design-content,
+.design-sharing {
+  padding-top: var(--ds-size-5);
+}
+
+.design-page .stack-xs,
+.design-page .stack-lg {
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-1);
+}
+
+.design-page .stack-lg {
+  gap: var(--ds-size-8);
+}
+
+.design-new {
+  max-width: 904px;
+}
