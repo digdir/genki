@@ -21,6 +21,18 @@ interface Workflow {
   jobs: Record<string, { uses?: string; outputs?: Record<string, string>; steps?: Step[] }>;
 }
 const workflow = (name: string) => parse(read(`.github/workflows/${name}`)) as Workflow;
+const pinsOf = (path: string): string[] => {
+  const entries = read(path)
+    .split('\n')
+    .filter((l) => l && !l.startsWith('#'))
+    .join('\n')
+    .split(/(?<!\\)\n/);
+  const malformed = entries.filter(
+    (e) => !/^[\w.-]+==[\w.+-]+(?: \\\n {4}--hash=sha256:[0-9a-f]{64})+$/.test(e),
+  );
+  if (malformed.length > 0) throw new Error(`${path}: not pinned with hashes: ${malformed[0]}`);
+  return entries.map((e) => e.split(' ')[0] ?? '');
+};
 
 describe('the Docling server image', () => {
   it("runs the Docling, Tesseract, Python and torch versions of the parser benchmark's winner", () => {
@@ -37,32 +49,42 @@ describe('the Docling server image', () => {
       torch: string;
       machine: { python: string };
     };
-    expect(dockerfile).toMatch(/^FROM python:[\d.]+-slim-trixie@sha256:[0-9a-f]{64}$/m);
+    expect(dockerfile).toMatch(
+      /^FROM --platform=linux\/amd64 python:[\d.]+-slim-trixie@sha256:[0-9a-f]{64}$/m,
+    );
     const python = winner.machine.python.split('.').slice(0, 2).join('.');
-    expect(dockerfile).toContain(`FROM python:${python}-slim-trixie@`);
+    expect(dockerfile).toContain(`python:${python}-slim-trixie@`);
     expect(dockerfile).toContain(`grep -qx '${winner.tesseract}'`);
-    expect(dockerfile).toContain(`torch==${winner.torch.split('+')[0]}+cpu `);
-    const locked = read('docker/docling/requirements.txt');
+    expect(pinsOf('docker/docling/requirements-torch.txt')).toContain(
+      `torch==${winner.torch.split('+')[0]}+cpu`,
+    );
+    const locked = pinsOf('docker/docling/requirements.txt');
     for (const pin of [
       `docling==${winner.version}`,
       `docling-slim==${winner.version}`,
       `docling-core==${winner.docling_core}`,
       `docling-ibm-models==${winner.docling_ibm_models}`,
     ])
-      expect(locked.split('\n'), pin).toContain(pin);
+      expect(locked, pin).toContain(pin);
   });
 
-  it('installs every Python package at the version in its lock file', () => {
+  it('installs every Python package at the version and hash in its lock files', () => {
     const dockerfile = read('docker/docling/Dockerfile');
     expect(dockerfile).toMatch(
-      /^RUN pip install --no-deps -r \/tmp\/requirements\.txt && pip check/m,
+      /^RUN pip install --require-hashes --no-deps --index-url https:\/\/download\.pytorch\.org\/whl\/cpu -r \/tmp\/requirements-torch\.txt$/m,
     );
-    expect(read('docker/docling/requirements.txt')).toMatch(/^setuptools==[\d.]+$/m);
-    const lines = read('docker/docling/requirements.txt')
-      .split('\n')
-      .filter((l) => l && !l.startsWith('#'));
-    expect(lines.length).toBeGreaterThan(100);
-    expect(lines.filter((l) => !/^[\w.-]+==[\w.+-]+$/.test(l))).toEqual([]);
+    expect(dockerfile).toMatch(
+      /^RUN pip install --require-hashes --no-deps -r \/tmp\/requirements\.txt && pip check/m,
+    );
+    expect(dockerfile.match(/pip install/g)).toHaveLength(2);
+    expect(pinsOf('docker/docling/requirements.txt').length).toBeGreaterThan(100);
+    expect(pinsOf('docker/docling/requirements.txt').some((p) => /^setuptools==/.test(p))).toBe(
+      true,
+    );
+    expect(pinsOf('docker/docling/requirements-torch.txt')).toEqual([
+      'torch==2.15.0+cpu',
+      'torchvision==0.29.2+cpu',
+    ]);
   });
 
   it('lets requests use only Tesseract, with Norwegian when they name no OCR', () => {
