@@ -58,4 +58,10 @@ describe.skipIf(process.platform === 'win32')('the app headers', () => {
     expect(/script-src ([^;]*);/.exec(headers)?.[1]).toBe("'self'");
     expect(/connect-src ([^;]*);/.exec(headers)?.[1]).toBe("'self'");
   });
+
+  it('lets the apps play videos from blob URLs', () => {
+    const headers = headersFor({});
+
+    expect(/media-src ([^;]*);/.exec(headers)?.[1]).toBe("'self' blob:");
+  });
 });
