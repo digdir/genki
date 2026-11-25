@@ -443,11 +443,7 @@ const TopServices = ({
   );
 };
 
-export const Overview = ({
-  api,
-  tenant,
-  tenantName,
-}: ScreenProps) => {
+export const Overview = ({ api, tenant, tenantName }: ScreenProps) => {
   const t = useT();
   const f = useFormat();
   const rights = useRights();
