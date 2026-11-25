@@ -101,7 +101,9 @@ const failed = (target: string, path: string, message: string): AdminOutcome => 
 });
 
 const tenantOnly = (principal: Principal, tenant: string) =>
-  principal.kind !== 'operator' && !principal.actor && principal.tenant === tenant;
+  principal.kind !== 'operator' &&
+  principal.tenant === tenant &&
+  (!principal.actor || Boolean(principal.authorizedFor?.some((a) => a.org === tenant)));
 
 const impliedRights = (scopes: readonly string[]): readonly Right[] => [
   ...new Set(

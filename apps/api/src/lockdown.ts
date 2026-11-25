@@ -2,8 +2,8 @@ import {
   configuredCredentialScope,
   employeeClientIds,
   isLockdown,
-  lockdownServiceScope,
-  lockdownUserScope,
+  serviceEntraScope,
+  memberEntraScope,
   mayInvokeServices,
   mayUseModels,
   operatorClientIds,
@@ -32,8 +32,8 @@ export {
   configuredCredentialScope,
   employeeClientIds,
   isLockdown,
-  lockdownServiceScope,
-  lockdownUserScope,
+  serviceEntraScope,
+  memberEntraScope,
   mayInvokeServices,
   mayUseModels,
   operatorClientIds,
@@ -221,7 +221,7 @@ export const refuseUntrustedEntra =
   ): MiddlewareHandler =>
   async (c, next) => {
     const claims = bearerClaims(c.req.raw);
-    if (claims?.acr !== 'entraid') return next();
+    if (typeof claims?.acr !== 'string') return next();
     if ((await refusedCode(c.req.raw)) !== 'entra_not_trusted') return next();
     const client = clientOf(claims);
     const forService =

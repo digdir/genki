@@ -9,7 +9,7 @@ import {
   createAuthenticator,
   createSigningKey,
   createTokenVerifier,
-  lockdownUserScope,
+  memberEntraScope,
   trustedEntraScope,
   type IdentityTestDataInput,
   type SigningKey,
@@ -276,7 +276,7 @@ describe('operator mapping', () => {
 
     expect(await principalOf(await login([userGroup], 'user'))).toMatchObject({
       kind: 'employee',
-      scopes: [lockdownUserScope],
+      scopes: [memberEntraScope],
     });
     expect(await principalOf(await login([userGroup, trustedGroup], 'both'))).toMatchObject({
       kind: 'operator',

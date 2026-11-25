@@ -1,21 +1,13 @@
 import type { Principal, PrincipalKind } from '@genai/contracts';
-import {
-  lockdownServiceScope,
-  lockdownUserScope,
-  trustedEntraScope,
-  type TrustedEntra,
-} from '@genai/identity';
+import { memberEntraScope, serviceEntraScope, trustedEntraScope } from '@genai/identity';
 
 export const configuredCredentialScope = 'grant:configured-credential';
 
-export { lockdownServiceScope, lockdownUserScope, trustedEntraScope };
+export { memberEntraScope, serviceEntraScope, trustedEntraScope };
 
 type Env = Record<string, string | undefined>;
 
 const people = new Set<PrincipalKind>(['employee', 'operator', 'citizen']);
-
-const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const domain = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
 
 export const isLockdown = (env: Env) => env.GENAI_LOCKDOWN === 'true';
 
@@ -24,12 +16,12 @@ export const isTrustedEntraLogin = (principal: Principal) =>
 
 export const isAdmittedEntraLogin = (principal: Principal) =>
   isTrustedEntraLogin(principal) ||
-  (people.has(principal.kind) && (principal.scopes?.includes(lockdownUserScope) ?? false));
+  (people.has(principal.kind) && (principal.scopes?.includes(memberEntraScope) ?? false));
 
 export const isServiceLogin = (principal: Principal) =>
   people.has(principal.kind) &&
   principal.confinedTo?.service !== undefined &&
-  (principal.scopes?.includes(lockdownServiceScope) ?? false);
+  (principal.scopes?.includes(serviceEntraScope) ?? false);
 
 export const mayUseModels = (principal: Principal | undefined) =>
   principal !== undefined &&
@@ -47,92 +39,3 @@ export const withModelAdmission = (system: Principal): Principal => ({
 
 export const readOnlyInLockdown = (principal: Principal) =>
   people.has(principal.kind) && !isAdmittedEntraLogin(principal);
-
-const groupList = (value: string | undefined) =>
-  (value ?? '')
-    .split(',')
-    .map((g) => g.trim())
-    .filter(Boolean);
-
-const entraGroups = (env: Env) => groupList(env.LOCKDOWN_ENTRA_GROUPS);
-
-const userGroups = (env: Env) => groupList(env.LOCKDOWN_USER_GROUPS);
-
-const serviceGroups = (env: Env) => groupList(env.LOCKDOWN_SERVICE_GROUPS);
-
-const serviceClientIds = (env: Env) => groupList(env.LOCKDOWN_SERVICE_CLIENT_IDS);
-
-export const operatorClientIds = (env: Env) => groupList(env.OPERATOR_CLIENT_IDS);
-
-export const employeeClientIds = (env: Env) => groupList(env.EMPLOYEE_CLIENT_IDS);
-
-/** The portal, workspace and console sign in through the platform login client (ADR 0061). */
-export const platformAppsSignIn = (env: Env) =>
-  Boolean(env.PLATFORM_LOGIN_CLIENT_ID?.trim() && env.PLATFORM_APP_ORIGINS?.trim());
-
-const entraDomain = (env: Env) => env.LOCKDOWN_ENTRA_EMAIL_DOMAIN?.trim().replace(/^@/, '') ?? '';
-
-export const lockdownEntraProblems = (env: Env): string[] => {
-  const notGuids = entraGroups(env).filter((g) => !guid.test(g));
-  const notUserGuids = userGroups(env).filter((g) => !guid.test(g));
-  const notServiceGuids = serviceGroups(env).filter((g) => !guid.test(g));
-  const platformClients = new Set([...operatorClientIds(env), ...employeeClientIds(env)]);
-  const platformClientsAsService = serviceClientIds(env).filter((id) => platformClients.has(id));
-  const emailDomain = entraDomain(env);
-  return [
-    ...(notGuids.length > 0
-      ? [`LOCKDOWN_ENTRA_GROUPS must list Entra group object ids, got "${notGuids.join(', ')}"`]
-      : []),
-    ...(notUserGuids.length > 0
-      ? [`LOCKDOWN_USER_GROUPS must list Entra group object ids, got "${notUserGuids.join(', ')}"`]
-      : []),
-    ...(notServiceGuids.length > 0
-      ? [
-          `LOCKDOWN_SERVICE_GROUPS must list Entra group object ids, got "${notServiceGuids.join(', ')}"`,
-        ]
-      : []),
-    ...(emailDomain && !domain.test(emailDomain)
-      ? [`LOCKDOWN_ENTRA_EMAIL_DOMAIN must be a domain such as digdir.no, got "${emailDomain}"`]
-      : []),
-    ...(isLockdown(env) &&
-    entraGroups(env).length > 0 &&
-    operatorClientIds(env).length === 0 &&
-    !platformAppsSignIn(env)
-      ? ['LOCKDOWN_ENTRA_GROUPS needs OPERATOR_CLIENT_IDS, the client ids whose Entra logins count']
-      : []),
-    ...(isLockdown(env) &&
-    userGroups(env).length > 0 &&
-    operatorClientIds(env).length === 0 &&
-    !platformAppsSignIn(env)
-      ? ['LOCKDOWN_USER_GROUPS needs OPERATOR_CLIENT_IDS, the client ids whose Entra logins count']
-      : []),
-    ...(platformClientsAsService.length > 0
-      ? [
-          `LOCKDOWN_SERVICE_CLIENT_IDS must name registered service clients, not platform clients, got "${platformClientsAsService.join(', ')}"`,
-        ]
-      : []),
-  ];
-};
-
-export const trustedEntraFrom = (
-  env: Env,
-  tenant: string,
-  resource: string,
-): TrustedEntra | undefined => {
-  const groups = entraGroups(env);
-  const users = userGroups(env);
-  const services = serviceGroups(env);
-  if (!isLockdown(env) || groups.length + users.length + services.length === 0) return undefined;
-  const emailDomain = entraDomain(env);
-  return {
-    groups,
-    ...(users.length > 0 ? { userGroups: users } : {}),
-    ...(services.length > 0
-      ? { serviceGroups: services, serviceClientIds: serviceClientIds(env) }
-      : {}),
-    clientIds: operatorClientIds(env),
-    tenant,
-    resource,
-    ...(emailDomain ? { emailDomain } : {}),
-  };
-};

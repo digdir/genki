@@ -4,8 +4,8 @@ import {
   altinnPolicy,
   createSigningKey,
   createTokenVerifier,
-  lockdownServiceScope,
-  lockdownUserScope,
+  serviceEntraScope,
+  memberEntraScope,
   PLATFORM_RIGHTS,
   platformRightsOf,
   trustedEntraScope,
@@ -79,8 +79,8 @@ const verifier = (
     ],
   });
 
-describe('Entra logins through Ansattporten in lockdown', () => {
-  it('gives a trusted Entra login every platform right in the platform organisation in lockdown', async () => {
+describe('Entra logins through Ansattporten', () => {
+  it('gives a trusted Entra login every platform right in the platform organisation', async () => {
     const { principal, personId } = await verifier().verify(await sign(entraClaims()));
 
     expect(principal).toMatchObject({
@@ -134,7 +134,7 @@ describe('Entra logins through Ansattporten in lockdown', () => {
     await expect(verifier().verify(token)).resolves.toBeDefined();
   });
 
-  it('an Entra login from a client not in the allowlist gets no operator mark and no lockdown access', async () => {
+  it('an Entra login from a client not in the allowlist gets no operator mark and no access', async () => {
     const cases = [
       entraClaims({ client_id: 'some-other-ansattporten-client' }),
       entraClaims({ client_id: undefined }),
@@ -199,7 +199,7 @@ describe('Entra logins through Ansattporten in lockdown', () => {
     expect((await verifier(groupsOnly).verify(token)).principal.tenant).toBe(PLATFORM);
   });
 
-  it('refuses Entra logins when lockdown is off', async () => {
+  it('refuses Entra logins when no group is set', async () => {
     await expect(verifier(null).verify(await sign(entraClaims()))).rejects.toMatchObject({
       code: 'insufficient_assurance',
     });
@@ -254,12 +254,12 @@ describe('Entra logins through Ansattporten in lockdown', () => {
   });
 });
 
-describe('user groups in lockdown', () => {
+describe('member groups', () => {
   const withUsers: TrustedEntra = { ...trusted, userGroups: [USER_GROUP] };
   const userClaims = (overrides: Record<string, unknown> = {}) =>
     entraClaims({ groups: [OTHER_GROUP, USER_GROUP], ...overrides });
 
-  it('gives a user-group login every platform right in the platform organisation, with the lockdown-user scope and not the trusted one', async () => {
+  it('gives a member-group login every platform right in the platform organisation, with the member scope and not the trusted one', async () => {
     const { principal } = await verifier(withUsers).verify(await sign(userClaims()));
 
     expect(principal).toMatchObject({
@@ -267,7 +267,7 @@ describe('user groups in lockdown', () => {
       assurance: 'entraid',
       tenant: PLATFORM,
       authorizedFor: [{ org: PLATFORM, resource: RESOURCE, actions: [...PLATFORM_RIGHTS] }],
-      scopes: [lockdownUserScope],
+      scopes: [memberEntraScope],
     });
     expect(platformRightsOf(principal, PLATFORM, RESOURCE)).toEqual([...PLATFORM_RIGHTS]);
   });
@@ -286,10 +286,10 @@ describe('user groups in lockdown', () => {
 
     const { principal } = await verifier(usersOnly).verify(await sign(userClaims()));
 
-    expect(principal.scopes).toEqual([lockdownUserScope]);
+    expect(principal.scopes).toEqual([memberEntraScope]);
   });
 
-  it('refuses a user-group login from a client outside the allowlist, with the wrong email or through a registered tenant client', async () => {
+  it('refuses a member-group login from a client outside the allowlist, with the wrong email or through a registered tenant client', async () => {
     const registered: ClientRegistry = {
       byClientId: async (clientId) =>
         clientId === 'genki-test-portal'
@@ -322,12 +322,12 @@ describe('user groups in lockdown', () => {
     });
   });
 
-  it('ignores a lockdown-user scope the caller supplies', async () => {
-    const scope = `openid profile ${lockdownUserScope}`;
+  it('ignores a member scope the caller supplies', async () => {
+    const scope = `openid profile ${memberEntraScope}`;
     const testId = await sign({ acr: 'idporten-loa-substantial', pid: '01017012345', scope });
     const outside = await sign(entraClaims({ groups: [OTHER_GROUP], scope }));
     const machine = await new SignJWT({
-      scope: `legacy:query ${lockdownUserScope}`,
+      scope: `legacy:query ${memberEntraScope}`,
       client_id: 'mp-client',
       consumer: { authority: 'iso6523-actorid-upis', ID: `0192:${PLATFORM}` },
     })
@@ -355,7 +355,7 @@ describe('user groups in lockdown', () => {
     expect((await maskinporten.verify(machine)).principal.scopes).toEqual(['legacy:query']);
   });
 
-  it('lets a user-group login invoke services in the platform organisation without a pid', async () => {
+  it('lets a member-group login invoke services in the platform organisation without a pid', async () => {
     const policy = altinnPolicy({
       altinn: { decide: async () => 'Deny' },
       identities: { personId: async () => undefined },
@@ -371,7 +371,7 @@ describe('user groups in lockdown', () => {
   });
 });
 
-describe('service groups in lockdown', () => {
+describe('service groups', () => {
   const withServices: TrustedEntra = {
     ...trusted,
     userGroups: [USER_GROUP],
@@ -398,7 +398,7 @@ describe('service groups in lockdown', () => {
       assurance: 'entraid',
       tenant: PLATFORM,
       authorizedFor: [{ org: PLATFORM, resource: RESOURCE, actions: ['use-services'] }],
-      scopes: [lockdownServiceScope],
+      scopes: [serviceEntraScope],
       confinedTo: { tenant: PLATFORM, service: 'kunnskapsassistent', client: 'ka-web' },
     });
     expect(platformRightsOf(principal, PLATFORM, RESOURCE)).toEqual(['use-services']);
@@ -436,7 +436,7 @@ describe('service groups in lockdown', () => {
         : undefined,
   });
 
-  it('in lockdown a hosted client passes without being listed', async () => {
+  it('a hosted client admits a service-group member without being listed', async () => {
     const { principal } = await verify(
       serviceClaims({ client_id: 'hosted-web' }),
       hostedAt(PLATFORM),
@@ -444,7 +444,7 @@ describe('service groups in lockdown', () => {
 
     expect(principal).toMatchObject({
       authorizedFor: [{ org: PLATFORM, resource: RESOURCE, actions: ['use-services'] }],
-      scopes: [lockdownServiceScope],
+      scopes: [serviceEntraScope],
       confinedTo: { tenant: PLATFORM, service: 'kunnskapsassistent', client: 'hosted-web' },
     });
   });
@@ -486,7 +486,7 @@ describe('service groups in lockdown', () => {
     ).rejects.toMatchObject({ code: 'entra_not_trusted' });
   });
 
-  it('a hosted client outside the platform tenant does not pass lockdown', async () => {
+  it('a hosted client outside the platform tenant admits no service-group member', async () => {
     await expect(
       verify(serviceClaims({ client_id: 'hosted-web' }), hostedAt('999999999')),
     ).rejects.toMatchObject({ code: 'entra_not_trusted' });
@@ -505,7 +505,7 @@ describe('service groups in lockdown', () => {
     });
   });
 
-  it('the operator and user groups win where they apply, and a user-group member on a service client is a service user', async () => {
+  it('the operator and member groups win where they apply, and a member-group member on a service client is a service user', async () => {
     const operator = await verify(serviceClaims({ groups: [SERVICE_GROUP, TRUSTED_GROUP] }));
     const userOnPortal = await verify(
       serviceClaims({ client_id: 'genki-test-portal', groups: [SERVICE_GROUP, USER_GROUP] }),
@@ -513,15 +513,15 @@ describe('service groups in lockdown', () => {
     const userOnService = await verify(serviceClaims({ groups: [SERVICE_GROUP, USER_GROUP] }));
 
     expect(operator.principal.scopes).toEqual([trustedEntraScope]);
-    expect(userOnPortal.principal.scopes).toEqual([lockdownUserScope]);
+    expect(userOnPortal.principal.scopes).toEqual([memberEntraScope]);
     expect(userOnService.principal).toMatchObject({
-      scopes: [lockdownServiceScope],
+      scopes: [serviceEntraScope],
       authorizedFor: [{ actions: ['use-services'] }],
     });
   });
 
   it('ignores a service scope the caller supplies', async () => {
-    const scope = `openid profile ${lockdownServiceScope}`;
+    const scope = `openid profile ${serviceEntraScope}`;
     const testId = await sign({ acr: 'idporten-loa-substantial', pid: '01017012345', scope });
 
     expect((await verifier(withServices).verify(testId)).principal.scopes).toBeUndefined();

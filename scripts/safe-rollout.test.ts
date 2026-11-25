@@ -127,7 +127,7 @@ describe('a deploy to genki-test', () => {
       steps,
     } = stepNamed('candidate', 'stop every API revision but the live one');
     expect(at).toBeLessThan(steps.findIndex((s) => s.id === 'deploy'));
-    expect(stop.if).toBe("env.ALTINN_PDP_URL != '' && steps.plan.outputs.live != ''");
+    expect(stop.if).toBe("env.ANSATTPORTEN_ISSUER != '' && steps.plan.outputs.live != ''");
     expect(stop.run).toBe('scripts/stop-unused-revisions.sh "$RG" "$APP" "$LIVE" all-but-live');
     expect(stop.env?.LIVE).toBe('${{ steps.plan.outputs.live }}');
     expect(step(job('candidate'), 'deploy').run).toContain(

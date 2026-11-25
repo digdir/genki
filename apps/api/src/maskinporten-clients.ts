@@ -118,7 +118,10 @@ export const maskinportenClientsModule: PlatformModuleFactory = (deps) => {
         const { tenant, reason } = input;
         const clientId = String(input.clientId ?? '');
         const target = `maskinporten-client:${tenant}/${clientId}`;
-        if (principal.kind === 'operator' || principal.actor)
+        if (
+          principal.kind === 'operator' ||
+          (principal.actor && !principal.authorizedFor?.some((a) => a.org === tenant))
+        )
           return failed(
             target,
             'principal',

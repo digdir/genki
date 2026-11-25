@@ -4,7 +4,8 @@ import {
   platformAppsSignIn,
   flagEnvProblems,
   flagEnvRequirement,
-  lockdownEntraProblems,
+  entraGroupProblems,
+  rightsFromEntraGroups,
   platformTenantProblems,
   traceContentRequirement,
   unmetOutsideDevMode,
@@ -26,7 +27,7 @@ export const hasIdentityProvider = (env: Env) =>
 
 export const bootProblems = (env: Env): string[] => [
   ...platformTenantProblems(env),
-  ...lockdownEntraProblems(env),
+  ...entraGroupProblems(env),
   ...operatorSubjectProblems(env),
   ...flagEnvProblems(env),
   ...unmetOutsideDevMode(env, [
@@ -42,9 +43,9 @@ export const bootProblems = (env: Env): string[] => [
     },
     databaseRequirement(env),
     {
-      met: Boolean(env.ALTINN_PDP_URL),
+      met: Boolean(env.ALTINN_PDP_URL) || rightsFromEntraGroups(env),
       problem:
-        'set ALTINN_PDP_URL and its Altinn PDP settings; the mock Altinn rights run only with GENAI_DEV_MODE=true',
+        'set MEMBER_ENTRA_GROUPS or OPERATOR_ENTRA_GROUPS, or ALTINN_PDP_URL and its Altinn PDP settings; the mock Altinn rights run only with GENAI_DEV_MODE=true',
     },
     traceContentRequirement(env),
     flagEnvRequirement(env),

@@ -52,10 +52,10 @@ export const problems = defineNamespace({
     'Miljøet er låst: tester som bruker lagrede hemmeligheter, krever innlogging med Entra ID',
   secretChecksLockedDetail:
     'I dette testmiljøet kan bare Digdir-ansatte som logger inn med Entra ID, kjøre tester som sender en lagret hemmelighet til en adresse.',
-  entraNotTrusted: 'Entra ID-innloggingen din gir ikke tilgang til dette miljøet',
+  entraNotTrusted: 'Innloggingen din gir ikke tilgang til genki',
   entraNotTrustedDetail:
-    'Bare medlemmer av de oppsatte Entra-gruppene i Digdir kan logge inn med Entra ID her. Logg inn med TestID for å lese, eller be om tilgang.',
-  serviceLocked: 'Denne assistenten er bare åpen for ansatte i Digdir i testmiljøet',
+    'genki slipper bare inn Digdir-kontoer (Entra ID) i gruppene som er gitt tilgang. Be dem som forvalter genki om tilgang.',
+  serviceLocked: 'Denne assistenten er bare åpen for ansatte i Digdir',
   serviceLockedDetail:
     'Logg inn med Digdir-kontoen din (Entra ID). Har du gjort det og kommer likevel ikke inn, kan du be teamet bak tjenesten om tilgang.',
   unreadableDefinition: 'Definisjonen kan ikke leses',

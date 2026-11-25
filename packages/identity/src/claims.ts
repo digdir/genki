@@ -6,9 +6,9 @@ export const trustedEntraScope = `${INTERNAL_GRANT_PREFIX}trusted-entra-login`;
 
 export const admittedCredentialScope = `${INTERNAL_GRANT_PREFIX}admitted-credential`;
 
-export const lockdownUserScope = `${INTERNAL_GRANT_PREFIX}lockdown-user`;
+export const memberEntraScope = `${INTERNAL_GRANT_PREFIX}entra-member`;
 
-export const lockdownServiceScope = `${INTERNAL_GRANT_PREFIX}lockdown-service-user`;
+export const serviceEntraScope = `${INTERNAL_GRANT_PREFIX}entra-service-user`;
 
 export const testRunnerScope = `${INTERNAL_GRANT_PREFIX}test-runner`;
 

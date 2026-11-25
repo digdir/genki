@@ -299,7 +299,7 @@ A service owner's address is a claim (ADR 0062). Read it with `GET /tenants/{ten
 - **Stuck in `removing`:** the name stays held until the unbind succeeds, however long that takes; the `message` column holds the status and code of the last failure.
 - **`failed` with `not_verified`:** another claim holds the name. An operator finds the holder in the `hostname_claims` table.
 - **`lapsed`:** the owner's records have been gone 7 days in a row, so the name is no longer served. Putting the records back does not reopen it; the owner claims it again, with new records. 30 days after it lapsed it is unbound.
-- **No address at first publish:** `GENAI_DNS_ZONE` is unset, the production version has no `interface.layout`, the service had an assigned name before, a hosted Client of the service has a hostname from the parameter file already, or, in lockdown, the publisher was not an operator (a platform operator counts in the platform's own organisation). `POST /tenants/{tenant}/services/{service}/address` gives one on request, under the same conditions except the first.
+- **No address at first publish:** `GENAI_DNS_ZONE` is unset, the production version has no `interface.layout`, the service had an assigned name before, a hosted Client of the service has a hostname from the parameter file already, or, in lockdown, the publisher was not an operator (a platform operator holding every right in the platform's own organisation counts). `POST /tenants/{tenant}/services/{service}/address` gives one on request, under the same conditions except the first.
 
 ## Moving a team's domain to genki
 

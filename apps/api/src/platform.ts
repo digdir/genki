@@ -408,7 +408,7 @@ const routes = {
           }),
           lockdownReadOnly: z.literal(true).optional().openapi({
             description:
-              'Present only in a locked environment when the login may only read: not a trusted Entra login and not in LOCKDOWN_USER_GROUPS',
+              'Present only in a locked environment when the login may only read: not a trusted Entra login and not in MEMBER_ENTRA_GROUPS',
           }),
         }),
         'Organisations',

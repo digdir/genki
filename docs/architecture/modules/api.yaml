@@ -11,7 +11,8 @@ summary: 'The one place that wires plugins together: routers, strategies, adapte
 description: apps/api reads platform wiring once at boot and fails fast (ADR 0005). It builds the
   kernel through the shared composition runtime, adds the eval and builder strategies and the admin
   modules, mounts the protocol adapters and the portal and console routes, and chooses Postgres and
-  the Altinn PDP or, only with GENAI_DEV_MODE=true, memory stores and the mock Altinn rights.
+  the Altinn PDP, no PDP when Entra groups give the rights, or, only with GENAI_DEV_MODE=true,
+  memory stores and the mock Altinn rights.
 responsibilities:
   - Compose ports, providers and strategies into a kernel
   - Mount MCP, /v1, REST, conversation, portal and console routes

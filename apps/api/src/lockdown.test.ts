@@ -13,8 +13,8 @@ import { InMemoryExecutionStore, InMemoryIngestionBackend, IngestionService } fr
 import {
   configuredCredentialScope,
   entraNotTrustedType,
-  lockdownServiceScope,
-  lockdownUserScope,
+  serviceEntraScope,
+  memberEntraScope,
   lockedEnvironmentType,
   mayUseModels,
   trustedEntraScope,
@@ -49,7 +49,7 @@ const principals: Record<string, Principal> = {
     assurance: 'entraid',
     tenant: digdir,
     authorizedFor: [{ org: digdir, actions: [...PLATFORM_RIGHTS] }],
-    scopes: [lockdownUserScope],
+    scopes: [memberEntraScope],
   },
   employee: {
     kind: 'employee',
@@ -59,7 +59,7 @@ const principals: Record<string, Principal> = {
     tenant: digdir,
     client: 'ka-web',
     authorizedFor: [{ org: digdir, actions: ['use-services'] }],
-    scopes: [lockdownServiceScope],
+    scopes: [serviceEntraScope],
     confinedTo: { tenant: digdir, service: 'klarsprak', client: 'ka-web' },
   },
   testIdThroughFrontend: {
@@ -78,7 +78,7 @@ const principals: Record<string, Principal> = {
     assurance: 'entraid',
     tenant: digdir,
     authorizedFor: [{ org: digdir, actions: ['use-services'] }],
-    scopes: [lockdownServiceScope],
+    scopes: [serviceEntraScope],
   },
 };
 const operators = operatorDirectory({});
@@ -856,7 +856,7 @@ describe('lockdown', () => {
     expect(res.status).toBe(403);
     expect(await json(res)).toMatchObject({
       type: entraNotTrustedType,
-      title: expect.stringContaining('Entra ID'),
+      title: 'Innloggingen din gir ikke tilgang til genki',
     });
   });
 
@@ -1019,11 +1019,11 @@ describe('lockdown', () => {
     expect(await json(refused)).toEqual({
       type: lockedEnvironmentType,
       status: 403,
-      title: 'Denne assistenten er bare åpen for ansatte i Digdir i testmiljøet',
+      title: 'Denne assistenten er bare åpen for ansatte i Digdir',
       detail: expect.stringContaining('Logg inn med Digdir-kontoen din (Entra ID)'),
     });
     expect(await json(inEnglish)).toMatchObject({
-      title: 'This assistant is only open to Digdir employees in the test environment',
+      title: 'This assistant is only open to Digdir employees',
       detail: expect.stringContaining('Log in with your Digdir account (Entra ID)'),
     });
     expect(model.seen.length).toBe(seen);
@@ -1044,12 +1044,24 @@ describe('lockdown', () => {
     expect(throughService.status).toBe(403);
     expect(await json(throughService)).toMatchObject({
       type: entraNotTrustedType,
-      title: 'Denne assistenten er bare åpen for ansatte i Digdir i testmiljøet',
+      title: 'Denne assistenten er bare åpen for ansatte i Digdir',
     });
     expect(await json(throughPortal)).toMatchObject({
       type: entraNotTrustedType,
-      title: expect.stringContaining('Entra ID-innloggingen din'),
+      title: 'Innloggingen din gir ikke tilgang til genki',
     });
+  });
+
+  it('gives a TestID login refused because only Entra groups give rights the same clear problem', async () => {
+    const { app } = await boot(true);
+    const token = new UnsecuredJWT({ acr: 'idporten-loa-substantial', sub: 'kari' }).encode();
+
+    const res = await app.request(`/tenants/${digdir}/definitions`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.status).toBe(403);
+    expect(await json(res)).toMatchObject({ type: entraNotTrustedType });
   });
 
   it('gives an Entra login refused in a portal, workspace or console session the platform words', async () => {
@@ -1064,7 +1076,7 @@ describe('lockdown', () => {
     );
     expect(await json(res)).toMatchObject({
       type: entraNotTrustedType,
-      title: expect.stringContaining('Entra ID-innloggingen din'),
+      title: 'Innloggingen din gir ikke tilgang til genki',
     });
   });
 

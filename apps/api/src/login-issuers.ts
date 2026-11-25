@@ -25,6 +25,7 @@ export interface LoginIssuerOptions {
   platformLoginKey?: Uint8Array;
   platformAppSession?: () => boolean;
   trustedEntra?: TrustedEntra;
+  entraOnly?: boolean;
   fetch?: typeof fetch;
   onKeysNotFetched?: (fields: {
     issuer: string;
@@ -61,6 +62,7 @@ export const loginIssuers = async ({
   platformLoginKey,
   platformAppSession,
   trustedEntra,
+  entraOnly = false,
   fetch: fetchFn = fetch,
   onKeysNotFetched,
 }: LoginIssuerOptions) => {
@@ -82,6 +84,7 @@ export const loginIssuers = async ({
       ...(platformLoginKey ? { platformLoginKey } : {}),
       ...(platformAppSession ? { platformAppSession } : {}),
       ...(trustedEntra ? { trustedEntra } : {}),
+      ...(entraOnly ? { entraOnly } : {}),
     });
   }
   if (env.MASKINPORTEN_ISSUER && env.MASKINPORTEN_JWKS_URI) {
@@ -109,6 +112,7 @@ export const loginIssuers = async ({
     ...(platformLoginKey ? { platformLoginKey } : {}),
     ...(platformAppSession ? { platformAppSession } : {}),
     ...(trustedEntra ? { trustedEntra } : {}),
+    ...(entraOnly ? { entraOnly } : {}),
   });
   return { trusted, mock, mockIssuer: issuer };
 };

@@ -85,6 +85,37 @@ persons:
     description: Ingen tilganger i Altinn
     parties: []
 
+  # Entra ID logins with the group claims production Ansattporten sends (ADR 0033). They count only when
+  # MEMBER_ENTRA_GROUPS and OPERATOR_ENTRA_GROUPS name these groups.
+  - pid: '06067012345'
+    name: Mona Medlem
+    userId: 20006
+    description: Entra ID, i genki-test-users
+    entra:
+      groups: ['789b5488-39ec-47b3-9217-840e5cd957fd', '30a76637-d1ff-4040-bc1f-fb9b8ccd749c']
+      email: mona.medlem@digdir.no
+
+  - pid: '07077012345'
+    name: Odd Operatør
+    userId: 20007
+    description: Entra ID, i genki-test-operators og genki-test-users
+    entra:
+      groups:
+        [
+          '76d10637-d517-413c-a10b-84675a3ed64b',
+          '789b5488-39ec-47b3-9217-840e5cd957fd',
+          '30a76637-d1ff-4040-bc1f-fb9b8ccd749c',
+        ]
+      email: odd.operator@digdir.no
+
+  - pid: '08087012345'
+    name: Una Utenfor
+    userId: 20008
+    description: Entra ID, bare i alle ansatte
+    entra:
+      groups: ['30a76637-d1ff-4040-bc1f-fb9b8ccd749c']
+      email: una.utenfor@digdir.no
+
 # Public SPA clients: PKCE S256, no client secret. They request the Altinn resource in authorization_details.
 clients:
   - clientId: local-portal

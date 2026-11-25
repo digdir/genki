@@ -5,7 +5,7 @@ import {
   apiKeyDigest,
   createAuthenticator,
   LEGACY_KEY_ISSUER,
-  lockdownUserScope,
+  memberEntraScope,
   testRunnerScope,
   trustedEntraScope,
 } from '@genai/identity';
@@ -70,7 +70,7 @@ const people: Record<string, Principal> = {
     issuer: 'test',
     subject: 'una',
     tenant: digdir,
-    scopes: [lockdownUserScope],
+    scopes: [memberEntraScope],
   },
   ola: {
     kind: 'operator',

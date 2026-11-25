@@ -12,8 +12,8 @@ import {
 import {
   fromOrgNo,
   INTERNAL_GRANT_PREFIX,
-  lockdownServiceScope,
-  lockdownUserScope,
+  serviceEntraScope,
+  memberEntraScope,
   trustedEntraScope,
   type AltinnResourceDetail,
   type OrgNo,
@@ -75,6 +75,8 @@ export type TrustedIssuer =
       minAssurance?: 'substantial' | 'high';
       acceptEntraId?: boolean;
       trustedEntra?: TrustedEntra;
+      /** Rights come only from `trustedEntra`: every other person login is refused. */
+      entraOnly?: boolean;
       trustedClients?: readonly string[];
       registeredClients?: ClientRegistry;
       platformLoginClients?: readonly string[];
@@ -169,8 +171,8 @@ const orgNamesOf = (parties: { org: string; name: string | undefined }[]) => {
 
 const scopeOf = {
   operator: trustedEntraScope,
-  user: lockdownUserScope,
-  service: lockdownServiceScope,
+  user: memberEntraScope,
+  service: serviceEntraScope,
 } as const;
 
 const trustedEntraLogin = (
@@ -251,6 +253,11 @@ const employee = (
     );
   if (assurance === 'entraid' && issuer.trustedEntra)
     return trustedEntraLogin(issuer.issuer, issuer.trustedEntra, payload, registered, appSession);
+  if (issuer.entraOnly)
+    throw new AuthenticationError(
+      'entra_not_trusted',
+      'only an Entra ID login in a trusted group is admitted',
+    );
   if (
     !registered &&
     !appSession &&

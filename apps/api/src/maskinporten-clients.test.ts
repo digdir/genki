@@ -35,6 +35,13 @@ const people: Record<string, Principal> = {
     authorizedFor: [{ org: other }],
   },
   drift: { kind: 'operator', issuer: 'test', subject: 'drift' },
+  driftsmedlem: {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'driftsmedlem',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir }],
+  },
 };
 
 const tokenFor = async (clientId: string, org = digdir) => {
@@ -275,5 +282,16 @@ describe('Maskinporten clients per tenant', () => {
     expect(reasoned.status).toBe(201);
     expect(created.status).toBe(403);
     expect(removed.status).toBe(204);
+  });
+
+  it('lets an operator who is a member of the organisation register a client there', async () => {
+    const { register } = await boot();
+
+    const created = await register(
+      { clientId: 'drift-2', name: 'Drift', services: ['veileder'] },
+      'driftsmedlem',
+    );
+
+    expect(created.status).toBe(201);
   });
 });

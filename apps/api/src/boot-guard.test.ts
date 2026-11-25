@@ -8,6 +8,10 @@ const real = {
   EMPLOYEE_CLIENT_IDS: 'genki-portal,genki-workspace,genki-console',
 };
 const dev = { GENAI_DEV_MODE: 'true' };
+const platformLogin = {
+  PLATFORM_LOGIN_CLIENT_ID: 'c0e4a5af-b2e1-4bba-9324-4caf55be8db5',
+  PLATFORM_APP_ORIGINS: 'https://portal.genki.digdir.cloud',
+};
 
 describe('booting the API', () => {
   it('refuses to start without an identity provider unless dev mode is on', () => {
@@ -93,72 +97,57 @@ describe('booting the API', () => {
     expect(bootProblems({ ...real, PLATFORM_TENANT: '213192752' })).toEqual([]);
   });
 
-  it('refuses to start when LOCKDOWN_ENTRA_GROUPS lists something that is not a group id', () => {
-    const groups = '0f0e0d0c-0b0a-4908-8706-050403020100, Digdir-ansatte';
+  it('starts without Altinn when member or operator groups give the rights', () => {
+    const withoutAltinn = { ...real, ...platformLogin, ALTINN_PDP_URL: '' };
 
-    expect(bootProblems({ ...real, LOCKDOWN_ENTRA_GROUPS: groups })).toEqual([
-      expect.stringContaining('Digdir-ansatte'),
-    ]);
     expect(
-      bootProblems({ ...real, LOCKDOWN_ENTRA_GROUPS: '0f0e0d0c-0b0a-4908-8706-050403020100' }),
+      bootProblems({
+        ...withoutAltinn,
+        MEMBER_ENTRA_GROUPS: '789b5488-39ec-47b3-9217-840e5cd957fd',
+      }),
     ).toEqual([]);
-    expect(bootProblems({ ...real, LOCKDOWN_ENTRA_EMAIL_DOMAIN: 'not a domain' })).toEqual([
-      expect.stringContaining('LOCKDOWN_ENTRA_EMAIL_DOMAIN'),
-    ]);
+    expect(
+      bootProblems({
+        ...withoutAltinn,
+        OPERATOR_ENTRA_GROUPS: '76d10637-d517-413c-a10b-84675a3ed64b',
+      }),
+    ).toEqual([]);
   });
 
-  it('startup refuses lockdown Entra groups without a client allowlist', () => {
-    const locked = {
-      ...real,
-      GENAI_LOCKDOWN: 'true',
-      LOCKDOWN_ENTRA_GROUPS: '0f0e0d0c-0b0a-4908-8706-050403020100',
-    };
-
-    expect(bootProblems(locked)).toEqual([expect.stringContaining('OPERATOR_CLIENT_IDS')]);
-    expect(bootProblems({ ...locked, GENAI_DEV_MODE: 'true' })).toEqual([
-      expect.stringContaining('OPERATOR_CLIENT_IDS'),
-    ]);
-    expect(bootProblems({ ...locked, OPERATOR_CLIENT_IDS: 'console,portal' })).toEqual([]);
-  });
-
-  it('refuses to start when LOCKDOWN_USER_GROUPS lists something that is not a group id', () => {
-    const userGroup = '789b5488-39ec-47b3-9217-840e5cd957fd';
+  it('refuses to start without Altinn when only the service group is set', () => {
+    const withoutAltinn = { ...real, ALTINN_PDP_URL: '' };
 
     expect(
-      bootProblems({ ...real, LOCKDOWN_USER_GROUPS: `${userGroup}, genki-test-users` }),
+      bootProblems({
+        ...withoutAltinn,
+        SERVICE_ENTRA_GROUPS: '30a76637-d1ff-4040-bc1f-fb9b8ccd749c',
+      }),
+    ).toEqual([expect.stringContaining('MEMBER_ENTRA_GROUPS')]);
+  });
+
+  it('refuses to start with a LOCKDOWN_ group setting, naming the setting it became', () => {
+    expect(
+      bootProblems({ ...real, LOCKDOWN_ENTRA_GROUPS: '76d10637-d517-413c-a10b-84675a3ed64b' }),
+    ).toEqual(['LOCKDOWN_ENTRA_GROUPS is now OPERATOR_ENTRA_GROUPS; rename it']);
+  });
+
+  it('refuses to start when a group setting lists something that is not a group id', () => {
+    expect(
+      bootProblems({
+        ...real,
+        ...platformLogin,
+        MEMBER_ENTRA_GROUPS: '789b5488-39ec-47b3-9217-840e5cd957fd, genki-test-users',
+      }),
     ).toEqual([expect.stringContaining('genki-test-users')]);
-    expect(bootProblems({ ...real, LOCKDOWN_USER_GROUPS: userGroup })).toEqual([]);
+    expect(bootProblems({ ...real, ENTRA_EMAIL_DOMAIN: 'not a domain' })).toEqual([
+      expect.stringContaining('ENTRA_EMAIL_DOMAIN'),
+    ]);
   });
 
-  it('startup refuses lockdown user groups without a client allowlist', () => {
-    const locked = {
-      ...real,
-      GENAI_LOCKDOWN: 'true',
-      LOCKDOWN_USER_GROUPS: '789b5488-39ec-47b3-9217-840e5cd957fd',
-    };
-
-    expect(bootProblems(locked)).toEqual([expect.stringContaining('OPERATOR_CLIENT_IDS')]);
-    expect(bootProblems({ ...locked, OPERATOR_CLIENT_IDS: 'console,portal' })).toEqual([]);
-  });
-
-  it('refuses to start when LOCKDOWN_SERVICE_GROUPS lists something that is not a group id', () => {
-    const serviceGroup = '2a2b2c2d-3e3f-4a4b-8c8d-9e9f0a0b0c0d';
-
+  it('starts with the service group and no service client list, since hosted clients admit them', () => {
     expect(
-      bootProblems({ ...real, LOCKDOWN_SERVICE_GROUPS: `${serviceGroup}, alle-ansatte` }),
-    ).toEqual([expect.stringContaining('alle-ansatte')]);
-    expect(bootProblems({ ...real, LOCKDOWN_SERVICE_GROUPS: serviceGroup })).toEqual([]);
-  });
-
-  it('starts with lockdown service groups and no service client list, since hosted clients admit them', () => {
-    const locked = {
-      ...real,
-      GENAI_LOCKDOWN: 'true',
-      LOCKDOWN_SERVICE_GROUPS: '2a2b2c2d-3e3f-4a4b-8c8d-9e9f0a0b0c0d',
-    };
-
-    expect(bootProblems(locked)).toEqual([]);
-    expect(bootProblems({ ...locked, LOCKDOWN_SERVICE_CLIENT_IDS: 'ka-web' })).toEqual([]);
+      bootProblems({ ...real, SERVICE_ENTRA_GROUPS: '2a2b2c2d-3e3f-4a4b-8c8d-9e9f0a0b0c0d' }),
+    ).toEqual([]);
   });
 
   it('startup refuses a platform client in the service client list', () => {
@@ -166,7 +155,7 @@ describe('booting the API', () => {
       bootProblems({
         ...real,
         OPERATOR_CLIENT_IDS: 'genki-console',
-        LOCKDOWN_SERVICE_CLIENT_IDS: 'ka-web,genki-portal,genki-console',
+        SERVICE_ENTRA_CLIENT_IDS: 'ka-web,genki-portal,genki-console',
       }),
     ).toEqual([expect.stringContaining('genki-portal, genki-console')]);
   });

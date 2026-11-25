@@ -2,7 +2,8 @@ import { platformSettings } from '@genai/definitions';
 import type { Principal } from '@genai/contracts';
 import { describe, expect, it } from 'vitest';
 import { tenantAccess } from './access.js';
-import { contentReasonRequiredType } from './content-reason.js';
+import { actsAsOperator, contentReasonRequiredType } from './content-reason.js';
+import { isOperator } from './rights.js';
 import { bootPlatform, digdir, other, principals, setup } from './testkit.js';
 
 type Entry = { action: string; actor: string; onBehalfOf?: string; reason: string };
@@ -229,5 +230,52 @@ describe('the daily content reason', () => {
     const { send } = setup();
 
     expect((await send(timeline, 'ola')).status).not.toBe(403);
+  });
+});
+
+describe('an operator in their own organisation', () => {
+  const builtInBlock = {
+    apiVersion: 'genai/v1',
+    kind: 'Block',
+    metadata: { tenant: digdir, id: 'chat', name: 'Chat' },
+    spec: {
+      tier: 'built-in',
+      builtIn: 'chat',
+      title: { nb: 'Chat', en: 'Chat' },
+      zones: ['main'],
+      sharing: 'everyone',
+    },
+  };
+  const publishBlock = (send: ReturnType<typeof setup>['send'], who: string) =>
+    send('/definitions', who, { body: { definition: builtInBlock }, reason: 'genkis chat' });
+
+  it('an operator who is a member of the platform organisation publishes a built-in block from the portal', async () => {
+    const { send } = setup();
+
+    expect((await publishBlock(send, 'group-operator')).status).toBe(201);
+  });
+
+  it('a plain member of the platform organisation cannot publish a built-in block', async () => {
+    const { send } = setup();
+
+    expect((await publishBlock(send, 'group-member')).status).toBe(403);
+  });
+
+  it('an operator in their own organisation is not asked for a content reason', async () => {
+    const { send } = setup();
+
+    const read = await send(`/tenants/${digdir}/tasks/no-such-task/timeline`, 'group-operator');
+
+    expect(read.status).not.toBe(403);
+  });
+
+  it('an operator in their own organisation counts as an operator and keeps its rights there', () => {
+    const operator = principals['group-operator'] as Principal;
+
+    const acting = tenantAccess(operator, digdir, new Request('http://localhost/'));
+
+    expect(isOperator(acting as Principal)).toBe(true);
+    expect(actsAsOperator(acting as Principal, digdir)).toBe(false);
+    expect(acting?.authorizedFor).toEqual(operator.authorizedFor);
   });
 });

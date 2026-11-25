@@ -249,9 +249,14 @@ export const createMockAnsattporten = (options: MockAnsattportenOptions) => {
     const details = ansattportenClaims(data, person, login.details, session.orgs);
     const common = {
       sub: subjectFor(person.pid, login.client.clientId),
-      pid: person.pid,
-      acr: login.acr,
-      amr: ['TestID'],
+      ...(person.entra
+        ? {
+            acr: 'entraid',
+            amr: ['entraid', 'entraid-mfa'],
+            groups: person.entra.groups,
+            email: person.entra.email,
+          }
+        : { pid: person.pid, acr: login.acr, amr: ['TestID'] }),
       auth_time: session.authTime,
       ...(details.length ? { authorization_details: details } : {}),
     };

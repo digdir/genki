@@ -52,6 +52,18 @@ describe('Altinn PDP by configuration', () => {
     expect(await choice.authorization.decide(request)).toBe('Permit');
   });
 
+  it('asks no Altinn when Entra groups give the rights and ALTINN_PDP_URL is empty, and permits nothing through it', async () => {
+    const groups = { MEMBER_ENTRA_GROUPS: '789b5488-39ec-47b3-9217-840e5cd957fd' };
+
+    const production = altinnPdpFrom(groups, testData);
+    const local = altinnPdpFrom({ ...groups, GENAI_DEV_MODE: 'true' }, testData);
+
+    expect(production.kind).toBe('none');
+    expect(local.kind).toBe('none');
+    expect(await production.authorization.decide(request)).toBe('NotApplicable');
+    expect(altinnPdpFrom({ ...(await realEnv()), ...groups }, testData).kind).toBe('altinn');
+  });
+
   it('GENAI_MOCK_RIGHTS gives the mock persons their mock rights in dev mode even with ALTINN_PDP_URL set', async () => {
     const noNetwork = async () => {
       throw new Error('no network in tests');

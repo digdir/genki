@@ -22,6 +22,9 @@ import {
   createMockAltinnPdp,
   InMemoryIdentities,
   LEGACY_KEY_ISSUER,
+  memberEntraScope,
+  PLATFORM_RIGHTS,
+  trustedEntraScope,
   type createTokenVerifier,
 } from '@genai/identity';
 import type { EnvironmentTier } from '@genai/composition';
@@ -103,6 +106,22 @@ export const principals: Record<string, Principal> = {
     subject: 'key-1',
     tenant: other,
     scopes: ['legacy:admin'],
+  },
+  'group-operator': {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'gruppe-drift',
+    tenant: digdir,
+    scopes: [trustedEntraScope],
+    authorizedFor: [{ org: digdir, actions: [...PLATFORM_RIGHTS] }],
+  },
+  'group-member': {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'gruppe-medlem',
+    tenant: digdir,
+    scopes: [memberEntraScope],
+    authorizedFor: [{ org: digdir, actions: [...PLATFORM_RIGHTS] }],
   },
   'operator-employed-at-other': {
     kind: 'operator',

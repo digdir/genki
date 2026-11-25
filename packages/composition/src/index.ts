@@ -24,6 +24,7 @@ export * from './block-settings.js';
 export * from './schema-labels.js';
 export * from './boot-guard.js';
 export * from './platform-tenant.js';
+export * from './entra-groups.js';
 export * from './lockdown.js';
 export * from './trace-sinks.js';
 export * from './exchange-rates.js';
