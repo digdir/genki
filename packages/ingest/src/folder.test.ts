@@ -35,4 +35,23 @@ describe('folder paths', () => {
     expect(entry?.path.endsWith('/b/vei-til-maal.md')).toBe(true);
     expect(extractTitleFromPath(entry?.path ?? '')).toBe('Vei til maal');
   });
+
+  it('stay out of directories the scope does not enter, and list only the files it takes', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'folder-'));
+    dirs.push(root);
+    for (const dir of ['docs', 'node_modules/pkg'])
+      await mkdir(join(root, dir), { recursive: true });
+    for (const file of ['docs/a.md', 'docs/b.txt', 'node_modules/pkg/c.md', 'd.md'])
+      await writeFile(join(root, file), '# x');
+    const entered: string[] = [];
+    const found = await findFolderFiles(root, 'all', {
+      enter: (directory) => {
+        entered.push(directory);
+        return directory === 'docs';
+      },
+      take: (file) => file.endsWith('.md'),
+    });
+    expect(found.map((e) => e.path.slice(root.length))).toEqual(['/d.md', '/docs/a.md']);
+    expect(entered.sort()).toEqual(['docs', 'node_modules']);
+  });
 });

@@ -1,5 +1,5 @@
 import { readdir, stat } from 'node:fs/promises';
-import { extname, join, sep } from 'node:path';
+import { extname, join, relative, sep } from 'node:path';
 import type { Chunk } from './chunk-document.js';
 import { documentId } from './ids.js';
 import { capitalize, javaSplit } from './text.js';
@@ -18,21 +18,30 @@ export const folderExtensions = ['.md', '.txt', '.html', '.htm'];
 export const toPosix = (path: string, separator = sep) =>
   separator === '/' ? path : path.split(separator).join('/');
 
+export interface FolderScope {
+  enter(directory: string): boolean;
+  take(file: string): boolean;
+}
+
 export const findFolderFiles = async (
   root: string,
   extensions: readonly string[] | 'all' = folderExtensions,
+  scope?: FolderScope,
 ): Promise<FolderEntry[]> => {
   const out: FolderEntry[] = [];
+  const below = (path: string) => toPosix(relative(root, path));
   const walk = async (dir: string) => {
     const entries = (await readdir(dir, { withFileTypes: true })).sort((a, b) =>
       a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
     );
     for (const entry of entries) {
       const full = join(dir, entry.name);
-      if (entry.isDirectory()) await walk(full);
-      else if (
+      if (entry.isDirectory()) {
+        if (!scope || scope.enter(below(full))) await walk(full);
+      } else if (
         entry.isFile() &&
-        (extensions === 'all' || extensions.includes(extname(entry.name).toLowerCase()))
+        (extensions === 'all' || extensions.includes(extname(entry.name).toLowerCase())) &&
+        (!scope || scope.take(below(full)))
       )
         out.push({ path: toPosix(full), lastmod: String((await stat(full)).mtimeMs) });
     }
