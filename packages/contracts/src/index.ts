@@ -155,6 +155,8 @@ export interface Usage {
   inputTokens?: number;
   outputTokens?: number;
   cachedInputTokens?: number;
+  /** Input tokens written to the provider's prompt cache; part of `inputTokens`, like `cachedInputTokens`. */
+  cacheWriteTokens?: number;
   audioSeconds?: number;
   images?: number;
   videoSeconds?: number;

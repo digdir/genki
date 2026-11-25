@@ -10,6 +10,7 @@ export const usageKeys = [
 
 export const countedKeys = [
   ...usageKeys,
+  'cacheWriteTokens',
   'audioSeconds',
   'images',
   'videoSeconds',

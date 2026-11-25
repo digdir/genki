@@ -55,7 +55,7 @@ const parseArguments = (raw: string): unknown => {
 const assistantContent = (m: Extract<ChatMessage, { role: 'assistant' }>): ContentBlockParam[] => {
   if (Array.isArray(m.continuation)) return m.continuation as ContentBlockParam[];
   return [
-    ...(m.content ? [{ type: 'text' as const, text: m.content }] : []),
+    ...(m.content ? [{ type: 'text' as const, text: escapeNoteTag(m.content) }] : []),
     ...(m.toolCalls ?? []).map((c) => ({
       type: 'tool_use' as const,
       id: c.id,
@@ -65,26 +65,77 @@ const assistantContent = (m: Extract<ChatMessage, { role: 'assistant' }>): Conte
   ];
 };
 
+/** Ends a cache prefix: the provider caches everything up to and including the marked block. */
+const cacheMark = { type: 'ephemeral' } as const;
+
+const withCacheMark = (message: MessageParam): MessageParam => {
+  const { content } = message;
+  if (typeof content === 'string')
+    return content
+      ? { ...message, content: [{ type: 'text', text: content, cache_control: cacheMark }] }
+      : message;
+  // Thinking blocks and empty text cannot carry a cache mark.
+  const at = content.findLastIndex(
+    (b) =>
+      b.type !== 'thinking' && b.type !== 'redacted_thinking' && !(b.type === 'text' && !b.text),
+  );
+  if (at < 0) return message;
+  return {
+    ...message,
+    content: content.map((b, i) => (i === at ? { ...b, cache_control: cacheMark } : b)),
+  } as MessageParam;
+};
+
+// Only the platform's own notes may open or close the tag, so it is escaped in every other text.
+const notePattern = /<(?=\/?platform_instruction)/gi;
+const escapeNoteTag = (text: string) => text.replace(notePattern, '&lt;');
+
+const platformInstruction = (text: string) =>
+  `<platform_instruction>\n${escapeNoteTag(text)}\n</platform_instruction>`;
+
 const toAnthropic = (messages: ChatMessage[]) => {
-  const system = messages.flatMap((m) => (m.role === 'system' ? [m.content] : [])).join('\n\n');
+  // Only leading system messages make the system prompt; a later one is a tagged note in place.
+  const leading = messages.findIndex((m) => m.role !== 'system');
+  const head = leading < 0 ? messages : messages.slice(0, leading);
+  const system = head.flatMap((m) => (m.role === 'system' ? [m.content] : [])).join('\n\n');
   const out: MessageParam[] = [];
-  for (const m of messages) {
-    if (m.role === 'system') continue;
-    if (m.role === 'assistant') out.push({ role: 'assistant', content: assistantContent(m) });
-    else if (m.role !== 'tool') out.push({ role: 'user', content: m.content });
+  const notes = new WeakSet<ContentBlockParam>();
+  for (const m of messages.slice(head.length)) {
+    if (m.role === 'system') {
+      const last = out.at(-1);
+      const note = { type: 'text' as const, text: platformInstruction(m.content) };
+      notes.add(note);
+      if (last?.role === 'user')
+        last.content = [
+          ...(typeof last.content === 'string'
+            ? [{ type: 'text' as const, text: last.content }]
+            : last.content),
+          note,
+        ];
+      else out.push({ role: 'user', content: [note] });
+      continue;
+    }
+    if (m.role === 'assistant') {
+      // The API refuses empty content on any message but a last assistant one.
+      const content = assistantContent(m);
+      if (content.length) out.push({ role: 'assistant', content });
+    } else if (m.role !== 'tool') out.push({ role: 'user', content: escapeNoteTag(m.content) });
     else {
       const result: ToolResultBlockParam = {
         type: 'tool_result',
         tool_use_id: m.toolCallId,
-        content: m.content,
+        content: escapeNoteTag(m.content),
       };
       const last = out.at(-1);
-      const mergeable =
-        last?.role === 'user' &&
-        Array.isArray(last.content) &&
-        last.content.every((b) => b.type === 'tool_result');
-      if (mergeable) (last.content as ContentBlockParam[]).push(result);
-      else out.push({ role: 'user', content: [result] });
+      const turn =
+        last?.role === 'user' && Array.isArray(last.content)
+          ? (last.content as ContentBlockParam[])
+          : undefined;
+      // A turn's tool results go ahead of any note given while they came in.
+      if (turn?.every((b) => b.type === 'tool_result' || notes.has(b))) {
+        const at = turn.findIndex((b) => b.type !== 'tool_result');
+        turn.splice(at < 0 ? turn.length : at, 0, result);
+      } else out.push({ role: 'user', content: [result] });
     }
   }
   return { system, messages: out };
@@ -102,22 +153,28 @@ const params = (
       ? { format: { type: 'json_schema' as const, schema: request.jsonSchema.schema } }
       : {}),
   };
+  const last = messages.at(-1);
+  const tools = request.tools ?? [];
   return {
     model: model.deployment,
     max_tokens: request.maxTokens ?? model.options.defaultMaxTokens,
-    messages,
-    ...(system ? { system } : {}),
+    // Tools, system prompt and the conversation so far are the cached prefix the next turn reads.
+    messages: last ? [...messages.slice(0, -1), withCacheMark(last)] : messages,
+    ...(system
+      ? { system: [{ type: 'text' as const, text: system, cache_control: cacheMark }] }
+      : {}),
     ...(request.temperature === undefined || omitTemperature
       ? {}
       : { temperature: request.temperature }),
     ...(request.reasoning ? { thinking: { type: 'adaptive' as const } } : {}),
     ...(Object.keys(outputConfig).length > 0 ? { output_config: outputConfig } : {}),
-    ...(request.tools?.length
+    ...(tools.length
       ? {
-          tools: request.tools.map((t) => ({
+          tools: tools.map((t, i) => ({
             name: t.name,
             description: t.description,
             input_schema: { type: 'object' as const, ...t.parameters },
+            ...(i === tools.length - 1 ? { cache_control: cacheMark } : {}),
           })),
         }
       : {}),
@@ -130,8 +187,13 @@ const inputTokens = (u: {
   cache_read_input_tokens?: number | null;
 }) => u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
 
-const cached = (u: { cache_read_input_tokens?: number | null }) =>
-  u.cache_read_input_tokens ? { cachedInputTokens: u.cache_read_input_tokens } : {};
+const cached = (u: {
+  cache_read_input_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+}) => ({
+  ...(u.cache_read_input_tokens ? { cachedInputTokens: u.cache_read_input_tokens } : {}),
+  ...(u.cache_creation_input_tokens ? { cacheWriteTokens: u.cache_creation_input_tokens } : {}),
+});
 
 const hasThinking = (blocks: { type: string }[]) =>
   blocks.some((b) => b.type === 'thinking' || b.type === 'redacted_thinking');

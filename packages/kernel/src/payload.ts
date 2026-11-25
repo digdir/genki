@@ -326,6 +326,7 @@ const usage = object({
   inputTokens: optional(number({ min: 0 })),
   outputTokens: optional(number({ min: 0 })),
   cachedInputTokens: optional(number({ min: 0 })),
+  cacheWriteTokens: optional(number({ min: 0 })),
   requests: optional(number({ min: 0 })),
   costMicroNok: optional(number({ min: 0 })),
 });
