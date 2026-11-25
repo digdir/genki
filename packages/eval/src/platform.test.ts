@@ -196,7 +196,7 @@ describe('eval service', () => {
     await expect(service.listTestSets(ola, tenant)).rejects.toBeInstanceOf(EvalAccessError);
   });
 
-  it('lets an operator read tenant test sets only inside a support session', async () => {
+  it('lets an operator read tenant test sets only once it acts in that tenant', async () => {
     const { service } = await boot();
 
     await expect(service.listTestSets(operator, tenant)).rejects.toBeInstanceOf(EvalAccessError);

@@ -438,16 +438,8 @@ describe('definitions API', () => {
       : { ...definition, spec: { ...definition.spec, availableTo } };
   };
 
-  const supportSession = async (send: ReturnType<typeof setup>['send']) => {
-    const opened = await send('/support-sessions', 'operator', {
-      body: { tenant: digdir, reason: 'deling av tjenester', minutes: 30 },
-    });
-    return ((await opened.json()) as { id: string }).id;
-  };
-
   it('refuses a publish that changes availableTo unless an operator makes it', async () => {
     const { send, publish } = setup();
-    const session = await supportSession(send);
     const refusedShare = async (response: Response) => {
       expect(response.status).toBe(403);
       expect(await response.json()).toMatchObject({
@@ -458,17 +450,11 @@ describe('definitions API', () => {
 
     await refusedShare(await publish('kari', sharedWith('*')));
 
-    expect(
-      (await publish('operator', sharedWith([other]), 'deler med en etat', session)).status,
-    ).toBe(201);
+    expect((await publish('operator', sharedWith([other]), 'deler med en etat')).status).toBe(201);
     await refusedShare(await publish('kari', sharedWith([other, '974760673'])));
 
-    expect((await publish('operator', sharedWith('*'), 'deler med alle nå', session)).status).toBe(
-      201,
-    );
-    expect(
-      (await publish('operator', sharedWith(undefined), 'slutter å dele', session)).status,
-    ).toBe(201);
+    expect((await publish('operator', sharedWith('*'), 'deler med alle nå')).status).toBe(201);
+    expect((await publish('operator', sharedWith(undefined), 'slutter å dele')).status).toBe(201);
     const shared = (await (
       await send(`/tenants/${digdir}/definitions/services/klarsprak/versions/2`, 'kari')
     ).json()) as { definition: unknown };
@@ -482,10 +468,9 @@ describe('definitions API', () => {
   });
 
   it('keeps availableTo when a tenant republishes it unchanged', async () => {
-    const { send, publish } = setup();
-    const session = await supportSession(send);
+    const { publish } = setup();
     expect(
-      (await publish('operator', sharedWith([other, '974760673']), 'deler med to', session)).status,
+      (await publish('operator', sharedWith([other, '974760673']), 'deler med to')).status,
     ).toBe(201);
 
     const republished = await publish(
@@ -533,7 +518,6 @@ describe('definitions API', () => {
     const byOperator = await send(`/tenants/${digdir}/import`, 'operator', {
       body: bundle,
       reason: 'flytter tjenester',
-      session: await supportSession(send),
     });
 
     expect(dryRun.status).toBe(422);

@@ -1,22 +1,22 @@
 # 0035 Operator login
 
-Status: proposed, 2026-10-16 (partly built, 2026-11-03: `OPERATOR_SUBJECTS` holds `issuer|subject` pairs that count only for Ansattporten employees logging in through `OPERATOR_CLIENT_IDS`; operator pids in `identity.yaml` count only with the dev-mode mock login)
+Status: proposed, 2026-10-16 (partly built, 2026-11-03: `OPERATOR_SUBJECTS` holds `issuer|subject` pairs that count only for Ansattporten employees logging in through `OPERATOR_CLIENT_IDS`; operator pids in `identity.yaml` count only with the dev-mode mock login; support sessions superseded by ADR 0072, 2026-11-25)
 
 Not built yet: `OPERATOR_ENTRA_GROUPS`, `OPERATOR_EMAIL_DOMAIN`, `OPERATOR_BREAK_GLASS_UNTIL` and the break-glass audit, the two marks, logging the admitting group per login, and the `amr` check. Outside the mock login, startup ignores operator pids in `identity.yaml` with a log line instead of refusing them.
 
 ## Context
 
-Operators run the console: tenants, catalog, settings, support sessions and audit (ADR 0010). ADR 0008 says operators are Digdir staff with Entra ID, never a tenant principal. Today the API recognises an operator in three ways:
+Operators run the console: tenants, catalog, settings, organisations and audit (ADR 0010). ADR 0008 says operators are Digdir staff with Entra ID, never a tenant principal. Today the API recognises an operator in three ways:
 
 - by token subject, listed in `OPERATOR_SUBJECTS` as `issuer|subject` pairs, for Ansattporten employees who log in through one of `OPERATOR_CLIENT_IDS` (`apps/api/src/operators.ts`);
 - with the dev-mode mock login, by the `pid` claim, for persons marked `operator: true` in `apps/api/config/local/identity.yaml`;
-- in lockdown, by an Entra ID login through Ansattporten whose `groups` claim holds one of `LOCKDOWN_ENTRA_GROUPS` (ADR 0033). That rule also gives the person every right in `PLATFORM_TENANT`, so in genki-test an operator reaches the Digdir tenant's data without a support session.
+- in lockdown, by an Entra ID login through Ansattporten whose `groups` claim holds one of `LOCKDOWN_ENTRA_GROUPS` (ADR 0033). That rule also gives the person every right in `PLATFORM_TENANT`, so in genki-test an operator reaches the Digdir tenant's data as one of its people.
 
 ## Decision
 
 - **Operators log in with Entra ID through Ansattporten,** in every environment, and are recognised by membership of a Digdir Entra group, not by subject. The settings are `OPERATOR_ENTRA_GROUPS` (group object ids) and `OPERATOR_EMAIL_DOMAIN`, both required in production; the API refuses to start without them.
 - **Only the console's own client can make an operator.** The operator rule accepts only access tokens whose `client_id` is in `OPERATOR_CLIENT_IDS`. A token from any other client, registered tenant clients included, is never an operator.
-- **An operator is never a tenant principal.** Outside lockdown the rule gives the operator role and nothing else: no tenant, no `authorizedFor`. A tenant's content (conversations, documents, runs) is reached only through a support session with a reason and a time limit (ADR 0010). The lockdown grant of every right in `PLATFORM_TENANT` stays specific to genki-test.
+- **An operator is never a tenant principal.** Outside lockdown the rule gives the operator role and nothing else: no tenant, no `authorizedFor`. The operator acts in a tenant as an operator, never as one of its people, and reaches its content (conversations, documents, runs) only after giving the day's content reason ([ADR 0072](0072-operators-own-the-platform.md)). The lockdown grant of every right in `PLATFORM_TENANT` stays specific to genki-test.
 - **Two marks, not one.** The verifier sets the operator mark from `OPERATOR_ENTRA_GROUPS` and, in lockdown, the model-access mark from `LOCKDOWN_ENTRA_GROUPS`. genki-test may name the same group in both; the code never derives one from the other. Only the verifier sets either mark, never token scopes, key scopes or headers.
 - **Group membership decides, per token.** Adding or removing an operator happens in Entra and needs no deploy. Removal takes effect when a new access token is issued without the group: Ansattporten TEST issues 5-minute access tokens, and the console renews them by a `prompt=none` authorisation (or a refresh token, if one is issued). Whether a removal from the group then takes effect at the next renewal or only when the Ansattporten session ends depends on whether Ansattporten reads the groups again on a silent authorisation; that is not yet checked. The API logs which group admitted the operator.
 - **MFA is required, and enforced in Entra.** Ansattporten's Entra tokens carry no `amr` (checked 2026-10-16), so the API cannot see how the person authenticated. Digdir Conditional Access must require MFA for the Ansattporten app; if Ansattporten later adds `amr`, the API requires `mfa`.
@@ -35,5 +35,5 @@ Rejected: Altinn rights for operators (operators act across tenants, Altinn righ
 - Still to confirm with Digdir IT: that Conditional Access requires MFA for the Ansattporten app. If a tenant id claim becomes available, the API requires it to be Digdir's.
 - Production needs a Digdir Entra group for genki operators, owned by someone who reviews it regularly, and Entra logins enabled on the production console client.
 - The verifier's Entra branch, tied to lockdown today, is split into the two marks above; this is new code, not only configuration.
-- Today operators see tenant metadata across tenants without a support session (definitions, tasks, eval labels, audit, usage). Each of those routes is either documented as metadata or moved behind a support session.
+- Operators see tenant metadata across tenants directly (definitions, eval labels, audit, usage). ADR 0072 classifies every tenant route; the label queue hides judges' reasons without the day's content reason, and sink labels are metadata.
 - A user in so many groups that Entra leaves out the `groups` claim cannot log in as operator; the login fails closed.

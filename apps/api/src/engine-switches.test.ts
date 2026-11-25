@@ -769,7 +769,7 @@ describe('switching the search engine of a dataset', () => {
     const unused = { reload: async () => undefined, sync: async () => undefined };
     followChanges(feed, {
       settings: unused,
-      supportSessions: unused,
+      contentReasons: unused,
       catalog: b.platform.catalog,
       definitions: unused,
       models: { loadDiscovered: async () => undefined },

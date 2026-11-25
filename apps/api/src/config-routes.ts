@@ -716,7 +716,7 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
     if (principal.kind !== 'operator') return { response: problem(c, 403, 'Forbidden') };
     return { principal };
   };
-  const access = tenantAccess(deps.admin);
+  const access = tenantAccess;
   const member = async (c: Context, right?: Right) => {
     const principal = await who(c);
     if (!principal) return { response: problem(c, 401, 'Unauthorized') };

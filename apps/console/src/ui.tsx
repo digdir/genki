@@ -140,9 +140,6 @@ export const formatDay = (iso: string, f: Format) => {
   return Number.isNaN(d.getTime()) ? iso : dayFormat(f).format(d);
 };
 
-export const minutesLeft = (iso: string, now = Date.now()) =>
-  Math.max(1, Math.ceil((new Date(iso).getTime() - now) / 60000));
-
 export const NotDecided = () => {
   const t = useT();
   return (

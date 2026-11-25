@@ -7,10 +7,6 @@ export const config = {
   scopePlatform: 'The platform',
   scopeOneTenant: 'One organisation',
   tenant: 'Organisation',
-  supportNeededTitle: 'Organisation data needs support access',
-  supportNeededText:
-    'The entries of {name} are only shown during an active support session, which the organisation sees in its log.',
-  supportNeededAction: 'Start support access',
   chooseTenant: 'Choose organisation',
   editingFor:
     'You are changing entries for {name}. The change is logged with the organisation as a change by Digdir.',

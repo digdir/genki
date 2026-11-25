@@ -24,15 +24,6 @@ const bundleOf = (settings: { values?: Json; pins?: Record<string, number> }) =>
 
 const withPlatformSettings = () => setup({ settings: platformSettings });
 
-const openSession = async (send: ReturnType<typeof setup>['send'], who = 'operator') =>
-  (
-    await body<{ id: string }>(
-      await send('/support-sessions', who, {
-        body: { tenant: other, reason: 'ny avtale om forbruk', minutes: 30 },
-      }),
-    )
-  ).id;
-
 describe('limits Digdir sets for an organisation', () => {
   it('marks exactly the usage limits as set only by operators at the tenant layer', () => {
     expect(
@@ -47,12 +38,10 @@ describe('limits Digdir sets for an organisation', () => {
     'refuses a tenant manager who sets, previews, removes or pins %s',
     async (key) => {
       const { send, settings } = withPlatformSettings();
-      const session = await openSession(send);
       await send(`/tenants/${other}/settings/${key}`, 'operator', {
         method: 'PUT',
         body: { value: 1000 },
         reason: 'avtalt grense med Digdir',
-        session,
       });
 
       const set = await send(`/tenants/${other}/settings/${key}`, 'ola', {
@@ -113,12 +102,10 @@ describe('limits Digdir sets for an organisation', () => {
 
   it('lets a tenant import a bundle that keeps a limit at the value Digdir set', async () => {
     const { send } = withPlatformSettings();
-    const session = await openSession(send);
     await send(`/tenants/${other}/settings/usage.monthlyTokens`, 'operator', {
       method: 'PUT',
       body: { value: 1000 },
       reason: 'avtalt grense med Digdir',
-      session,
     });
     const bundle = await body(await send(`/tenants/${other}/export`, 'ola'));
 
@@ -130,15 +117,13 @@ describe('limits Digdir sets for an organisation', () => {
     expect(res.status).toBe(200);
   });
 
-  it("lets an operator in a support session set and remove a limit, recorded as Digdir's change", async () => {
+  it("lets an operator set and remove a limit directly, recorded as Digdir's change", async () => {
     const { send } = withPlatformSettings();
-    const session = await openSession(send);
 
     const set = await send(`/tenants/${other}/settings/usage.monthlyTokens`, 'operator', {
       method: 'PUT',
       body: { value: 120_000_000 },
       reason: 'avtalt grense med Digdir',
-      session,
     });
     const effective = await body<Record<string, Json>>(
       await send(`/tenants/${other}/settings/effective`, 'ola'),
@@ -146,7 +131,6 @@ describe('limits Digdir sets for an organisation', () => {
     const unset = await send(`/tenants/${other}/settings/usage.monthlyTokens`, 'operator', {
       method: 'DELETE',
       reason: 'avtalen er over',
-      session,
     });
 
     expect([set.status, unset.status]).toEqual([200, 200]);
@@ -160,7 +144,6 @@ describe('limits Digdir sets for an organisation', () => {
       )
     ).data;
     expect(audit.map((a) => [a.action, a.actor, a.onBehalfOf])).toEqual([
-      ['platform.support.open', 'operator:test:drift', other],
       ['platform.setting.set', 'operator:test:drift', other],
       ['platform.setting.set', 'operator:test:drift', other],
     ]);
@@ -184,7 +167,7 @@ describe('limits Digdir sets for an organisation', () => {
     expect(await typeOf(limit)).toBe(operatorOnly);
   });
 
-  it('treats an operator without a support session as an employee who cannot change a limit', async () => {
+  it('treats an operator employed at the organisation as an employee there who cannot change a limit', async () => {
     const { send } = withPlatformSettings();
 
     const limit = await send(
@@ -202,33 +185,12 @@ describe('limits Digdir sets for an organisation', () => {
     expect(await typeOf(limit)).toBe(operatorOnly);
   });
 
-  it('refuses a limit change once the support session has expired', async () => {
-    const { send, advance } = withPlatformSettings();
-    const session = await openSession(send, 'operator-employed-at-other');
-    const change = () =>
-      send(`/tenants/${other}/settings/usage.monthlyTokens`, 'operator-employed-at-other', {
-        method: 'PUT',
-        body: { value: 120_000_000 },
-        reason: 'avtalt grense med Digdir',
-        session,
-      });
-
-    expect((await change()).status).toBe(200);
-    advance(31);
-    const expired = await change();
-
-    expect(expired.status).toBe(403);
-    expect(await typeOf(expired)).toBe(operatorOnly);
-  });
-
-  it('lets an operator in a support session import a limit', async () => {
+  it('lets an operator import a limit', async () => {
     const { send, settings } = withPlatformSettings();
-    const session = await openSession(send);
 
     const res = await send(`/tenants/${other}/import`, 'operator', {
       body: bundleOf({ values: { 'usage.monthlyTokens': 120_000_000 } }),
       reason: 'flytter avtalt grense',
-      session,
     });
 
     expect(res.status).toBe(200);

@@ -658,3 +658,53 @@ describe('reading a run', () => {
     expect(parsed.omittedSteps).toBe(6);
   });
 });
+
+describe("an organisation's content", () => {
+  it("gives today's content reason for the server's organisation and says it is in the organisation's log", async () => {
+    const calls: { method: string; path: string; body: unknown }[] = [];
+    const client: GenkiClient = {
+      tenant,
+      request: async <T>(method: string, path: string, init?: { body?: unknown }) => {
+        calls.push({ method, path, body: init?.body });
+        return { day: '2026-11-25', expiresAt: '2026-11-25T23:00:00.000Z' } as T;
+      },
+    };
+
+    const given = await runTool(
+      adminTools,
+      'give_content_reason',
+      { reason: 'Kunden melder feil svar, sak DIG-4412' },
+      { client, spend: { budgetNok: 5, spentNok: 0 } },
+    );
+
+    expect(calls).toEqual([
+      {
+        method: 'POST',
+        path: `/operator/tenants/${tenant}/content-reason`,
+        body: { reason: 'Kunden melder feil svar, sak DIG-4412' },
+      },
+    ]);
+    expect(given.text).toContain("in the organisation's log");
+    expect(adminTools.find((t) => t.name === 'give_content_reason')?.description).toContain(
+      "logged in the organisation's own log",
+    );
+  });
+
+  it('refuses a content reason shorter than 10 characters without calling genki', async () => {
+    const client: GenkiClient = {
+      tenant,
+      request: async () => {
+        throw new Error('called');
+      },
+    };
+
+    const given = await runTool(
+      adminTools,
+      'give_content_reason',
+      { reason: 'fordi' },
+      { client, spend: { budgetNok: 5, spentNok: 0 } },
+    );
+
+    expect(given.isError).toBe(true);
+  });
+});

@@ -37,10 +37,10 @@ export const tenants = defineNamespace({
   nearQuota: 'Nær kvoten',
   servicesFor: 'Tjenester for {name}',
   diagnosticsFor: 'Diagnostikk for {name}',
-  supportFor: 'Støttetilgang til {name}',
+  supportFor: 'Åpne virksomheten {name}',
   actionServices: 'Tjenester',
   actionDiagnostics: 'Diagnostikk',
-  actionSupport: 'Støttetilgang',
+  actionSupport: 'Åpne virksomheten',
   nearQuotaFor: 'Nær kvoten: juster månedlig tokenkvote for {name}',
-  nearQuotaOnboarding: 'Kvoten kan justeres i støttetilgang når oppstarten er ferdig.',
+  nearQuotaOnboarding: 'Kvoten kan endres på virksomhetssiden når oppstarten er ferdig.',
 });

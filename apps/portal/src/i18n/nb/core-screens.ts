@@ -164,6 +164,8 @@ export const changes = defineNamespace({
   tenantImport: 'importerte',
   tenantCreate: 'registrerte virksomheten',
   supportOpen: 'åpnet støttetilgang',
+  contentRead: 'så innhold',
+  contentReason: 'oppga grunn for å se innhold',
   apikeyCreate: 'laget API-nøkkelen',
   apikeyRevoke: 'trakk tilbake API-nøkkelen',
   hookSave: 'lagret kjøringspunktet',

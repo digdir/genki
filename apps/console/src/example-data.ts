@@ -1081,7 +1081,7 @@ export const exampleOperatorAudit: AuditEntry[] = (
       'Jon Øien',
       'Digdir',
       'Eksempelhelseforetaket',
-      'Støttetilgang startet (30 min)',
+      'Så innhold',
       'Hele portalen',
       'Feil i datasett meldt av kunden, sak DIG-4409',
     ],

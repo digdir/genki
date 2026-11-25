@@ -60,7 +60,8 @@ import {
   type TenantSecrets,
 } from '@genai/providers-mcp-client';
 import type { Context, Env, Hono, Schema } from 'hono';
-import { enterTenant, refusedRight, supportSessionHeader, tenantAccess } from './access.js';
+import { enterTenant, refusedRight, tenantAccess } from './access.js';
+import { contentGate, contentGatedKernel } from './content-reason.js';
 import { adminKeysOnly } from './tenant-gate.js';
 import type { ActorNames } from './actor-names.js';
 import {
@@ -563,16 +564,7 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
   app.use('/testcase-candidates/*', adminKeys);
   app.use('/eval-runs/*', adminKeys);
   app.use('/eval-tasks/*', adminKeys);
-  const access = tenantAccess(deps.admin);
-  const sessionTenant = (c: Context) => {
-    const id = c.req.header(supportSessionHeader);
-    return id ? deps.admin.supportSessions().find((s) => s.id === id)?.tenant : undefined;
-  };
-  const actingFor = (c: Context, principal: Principal) => {
-    if (principal.kind !== 'operator') return principal;
-    const tenant = sessionTenant(c);
-    return tenant ? (access(principal, tenant, c.req.raw) ?? principal) : principal;
-  };
+  const access = tenantAccess;
   const reasonOf = (c: Context) => changeReasonOf(c)?.trim() ?? '';
   const evalService = createEvalService({
     kernel: deps.eval.kernel,
@@ -1031,7 +1023,7 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     const principal = await who(c);
     if (!principal) return problem(c, 401, 'Unauthorized');
     try {
-      return c.json(await evalService.status(actingFor(c, principal), param(c, 'task')));
+      return c.json(await evalService.status(principal, param(c, 'task')));
     } catch (error) {
       return evalProblem(c, error);
     }
@@ -1059,7 +1051,7 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     try {
       return c.json(
         await evalService.compare(
-          actingFor(c, principal),
+          principal,
           c.req.query('baseline') ?? '',
           c.req.query('candidate') ?? '',
           (c.req.query('metric') ?? '').split(','),
@@ -1075,7 +1067,7 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     if (!principal) return problem(c, 401, 'Unauthorized');
     if (await hiddenRun(param(c, 'id'))) return problem(c, 404, 'Not found');
     try {
-      const found = await evalService.getRun(actingFor(c, principal), param(c, 'id'));
+      const found = await evalService.getRun(principal, param(c, 'id'));
       const owner = found.run.testSet.tenant;
       return c.json({
         ...found,
@@ -1125,6 +1117,11 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     return c.json({ data: anonymousFeedback(kept) });
   });
 
+  const feedbackKernel = contentGatedKernel(deps.eval.kernel, deps.admin, {
+    kind: 'operator',
+    issuer: 'platform',
+    subject: 'feedback',
+  });
   const feedbackFrom = async (
     c: Context,
     principal: Principal,
@@ -1138,7 +1135,7 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
       ]);
     try {
       const record = await recordFeedback(
-        { kernel: deps.eval.kernel, store: deps.eval.feedback },
+        { kernel: feedbackKernel, store: deps.eval.feedback },
         principal,
         {
           task,
@@ -1253,6 +1250,14 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     if (!candidate) return problem(c, 404, 'Not found');
     const entered = enterTenant(c, access, principal, candidate.tenant, 'manage-services');
     if ('response' in entered) return entered.response;
+    const withoutReason = await contentGate(
+      c,
+      deps.admin,
+      principal,
+      candidate.tenant,
+      'POST /testcase-candidates/:id/review',
+    );
+    if (withoutReason) return withoutReason;
     const acting = entered.principal;
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     const proposedFor = (candidate as { targetTestSet?: unknown }).targetTestSet;

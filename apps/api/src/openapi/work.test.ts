@@ -197,7 +197,7 @@ describe('work, quality and operations API reference', () => {
       'post',
       '/tenants/{tenant}/tasks/{task}/export',
     );
-    await conforms(404, await send(`${t}/tasks`, 'drift'), 'get', '/tenants/{tenant}/tasks');
+    await conforms(403, await send(`${t}/tasks`, 'drift'), 'get', '/tenants/{tenant}/tasks');
 
     for (const path of [
       'tasks',
@@ -452,32 +452,27 @@ describe('work, quality and operations API reference', () => {
   });
 
   it('gives diagnostics and quality matrix responses that match their schemas', async () => {
-    const { send, admin } = await bootPlatform({ people, services: ['svar'] });
+    const { send } = await bootPlatform({ people, services: ['svar'] });
     const t = `/tenants/${digdir}`;
-    const opened = await admin.openSupportSession(
-      people.drift as Principal,
-      digdir,
-      'Feilsøker svar-tjenesten',
-      15,
-    );
-    const session = (opened as { value: { id: string } }).value.id;
-    const headers = { 'support-session': session };
+    await send(`/operator/tenants/${digdir}/content-reason`, 'drift', {
+      body: { reason: 'Feilsøker svar-tjenesten' },
+    });
 
     await conforms(
       200,
-      await send(`${t}/diagnostics/services/svar/resolution`, 'drift', { headers }),
+      await send(`${t}/diagnostics/services/svar/resolution`, 'drift'),
       'get',
       '/tenants/{tenant}/diagnostics/services/{service}/resolution',
     );
     await conforms(
       404,
-      await send(`${t}/diagnostics/tasks/ukjent/attribution`, 'drift', { headers }),
+      await send(`${t}/diagnostics/tasks/ukjent/attribution`, 'drift'),
       'get',
       '/tenants/{tenant}/diagnostics/tasks/{task}/attribution',
     );
     await conforms(
       400,
-      await send(`${t}/diagnostics/retrieve`, 'drift', { headers, body: { queries: [] } }),
+      await send(`${t}/diagnostics/retrieve`, 'drift', { body: { queries: [] } }),
       'post',
       '/tenants/{tenant}/diagnostics/retrieve',
     );

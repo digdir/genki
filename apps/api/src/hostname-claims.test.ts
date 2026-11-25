@@ -659,17 +659,9 @@ describe('a service owner claims a hostname', () => {
       },
     });
 
-    const opened = await t.admin.openSupportSession(
-      people.drift as Principal,
-      digdir,
-      'tar bort verten',
-      30,
-    );
-    const session = opened.ok ? (opened.value as { id: string }).id : '';
     const res = await t.call(`/tenants/${digdir}/clients/klarsprak-host/hosted`, {
       method: 'PUT',
       as: 'drift',
-      headers: { 'support-session': session },
       body: { hosted: false },
     });
 

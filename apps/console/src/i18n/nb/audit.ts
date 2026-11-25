@@ -9,9 +9,8 @@ export const audit = defineNamespace({
   actionDefaultSet: 'Endret plattformstandard',
   actionTenantImport: 'Importerte',
   actionTenantCreate: 'Registrerte virksomhet',
-  actionSupportOpen: 'Åpnet støttetilgang',
-  actionSupportEnd: 'Avsluttet støttetilgang',
-  actionSupportExtend: 'Forlenget støttetilgang',
+  actionContentRead: 'Digdir så innhold',
+  actionContentReason: 'Digdir oppga grunn for å se innhold',
   actionModelsRefresh: 'Hentet modeller på nytt',
   actionModelsClassify: 'Endret modell',
   actionApikeysCreate: 'Laget API-nøkkel',
@@ -136,7 +135,6 @@ export const audit = defineNamespace({
   intro: 'Alle handlinger i plattformen, også det operatører gjør i denne konsollen.',
   loading: 'Henter revisjonsloggen',
   unavailable:
-    'Revisjonsloggen på tvers av virksomheter er ikke tilgjengelig ennå. Start støttetilgang for å se loggen til én virksomhet.',
-  startSupport: 'Start støttetilgang',
-  scoped: 'Viser loggen til {tenant} gjennom støttetilgangen.',
+    'Revisjonsloggen på tvers av virksomheter er ikke tilgjengelig ennå. Åpne Virksomhet for å se loggen til én virksomhet.',
+  openOrganisation: 'Åpne Virksomhet',
 });

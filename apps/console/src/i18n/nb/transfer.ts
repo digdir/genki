@@ -18,10 +18,6 @@ export const transfer = defineNamespace({
   pickSomething: 'Velg minst én ting å ta med.',
   pickFile: 'Velg en eksportfil fra plattformen.',
   pickTwo: 'Velg to forskjellige virksomheter.',
-  exportReason: 'Eksport av innstillinger: {reason}',
-  cloneReadReason: 'Klon til {name}: {reason}',
-  cloneReason: 'Klon: {reason}',
-  importReason: 'Import: {reason}',
   readFailed: 'Kunne ikke lese konfigurasjonen. Sjekk at du har tilgang, og prøv igjen.',
   cloned: 'Konfigurasjonen er klonet til {name}',
   imported: 'Importen er ferdig',
@@ -47,8 +43,7 @@ export const transfer = defineNamespace({
   includeServices: 'Tjenester og stegflyter',
   includeServicesHelp:
     'Definisjonene med innstillingene som er satt på dem. Datasett og dokumenter følger ikke med.',
-  reasonHelp:
-    'Konfigurasjonen leses med støttetilgang. Virksomheten ser begrunnelsen i sin egen logg.',
+  reasonHelp: 'Begrunnelsen følger endringen og vises i virksomhetens logg.',
   summary: '{settings} innstillinger · {services} tjenester',
   fileContents: 'Innholdet i eksportfilen',
   dryRunTitle: 'Prøvekjøring: ingenting er endret ennå',

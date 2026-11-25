@@ -28,9 +28,9 @@ export const dataHandling = {
   stored3: 'The content is deleted when the content key is deleted.',
   access1: 'Administrators at the organisation see feedback in aggregate and without names.',
   access2:
-    'Operators at Digdir see content only through a support session. The support session is time-limited, has a reason and is shown in the organisation’s log.',
+    'Operators at Digdir see content only after giving a reason. The reason holds for the rest of the day, and every time they see content it is shown in the organisation’s log with the reason.',
   access3:
-    'In a support session Digdir can change the setup on behalf of the organisation. Each change is shown in the log as "Change from Digdir", with the name of the person who made it. Digdir never creates API keys for the organisation.',
+    'Digdir can change the setup and limits on behalf of the organisation. Each change is shown in the log as "Change from Digdir", with the name of the person who made it. Digdir never creates API keys for the organisation.',
   logged1: 'Every run is recorded in the organisation’s run log.',
   logged2: 'The platform’s operational logs do not contain questions or answers.',
   marking1: 'Answers from the platform are labelled "Answer made with AI" on screen.',

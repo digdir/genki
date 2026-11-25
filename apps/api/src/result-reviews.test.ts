@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import type { Principal, Task } from '@genai/contracts';
 import { tenantAccess } from './access.js';
-import type { Admin } from './admin.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import type { ModuleDeps, MountDeps } from './platform-modules.js';
 import { resultReviewsModule } from './result-reviews.js';
@@ -80,7 +79,7 @@ const boot = () => {
     admin,
     authenticate: async (request: Request) =>
       people[request.headers.get('authorization')?.replace(/^Bearer /, '') ?? ''],
-    access: tenantAccess({ supportSession: () => undefined } as unknown as Admin),
+    access: tenantAccess,
     task: async (id: string) => tasks.find((t) => t.id === id),
     events: async function* (id: string) {
       if (id !== 't1') return;

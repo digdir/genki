@@ -16,7 +16,7 @@ const replica = (feed: LocalChangeFeed) => {
   };
   followChanges(feed, {
     settings: idle,
-    supportSessions: idle,
+    contentReasons: idle,
     catalog: { refresh: async () => undefined },
     definitions: { sync: async () => undefined },
     models: discovery,

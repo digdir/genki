@@ -596,7 +596,6 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
         const tenant = c.req.param('tenant') ?? '';
         const entered = enterTenant(c, mountDeps.access, principal, tenant);
         if ('response' in entered) return { response: entered.response };
-        // The entered principal: an operator outside a support session has no more than members.
         return { principal: entered.principal, tenant };
       };
       const reasonOf = (c: Context) => (changeReasonOf(c) ?? '').trim();

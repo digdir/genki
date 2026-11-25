@@ -1,9 +1,7 @@
 import type { Principal } from '@genai/contracts';
 import type { Context } from 'hono';
-import type { Admin } from './admin.js';
+import { actsAsOperator } from './content-reason.js';
 import { requireRight, rightRefused, type Right } from './rights.js';
-
-export const supportSessionHeader = 'support-session';
 
 export type Access = (
   principal: Principal,
@@ -11,21 +9,15 @@ export type Access = (
   request: Request,
 ) => Principal | undefined;
 
-export const tenantAccess =
-  (admin: Pick<Admin, 'supportSession'>): Access =>
-  (principal, tenant, request) => {
-    if (principal.kind === 'operator') {
-      const id = request.headers.get(supportSessionHeader) ?? undefined;
-      if (admin.supportSession(id, principal, tenant))
-        return { ...principal, tenant, actor: principal };
-      return principal.authorizedFor?.some((a) => a.org === tenant)
-        ? { ...principal, kind: 'employee', tenant }
-        : undefined;
-    }
-    if (principal.tenant === tenant) return principal;
-    if (principal.authorizedFor?.some((a) => a.org === tenant)) return { ...principal, tenant };
-    return undefined;
-  };
+export const tenantAccess: Access = (principal, tenant) => {
+  if (principal.kind === 'operator')
+    return actsAsOperator(principal, tenant)
+      ? { ...principal, tenant, actor: principal }
+      : { ...principal, kind: 'employee', tenant };
+  if (principal.tenant === tenant) return principal;
+  if (principal.authorizedFor?.some((a) => a.org === tenant)) return { ...principal, tenant };
+  return undefined;
+};
 
 export const refusedRight = (c: Context, principal: Principal, tenant: string, right: Right) => {
   const check = requireRight(principal, tenant, right);

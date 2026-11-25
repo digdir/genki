@@ -29,7 +29,7 @@ export class LocalChangeFeed implements ChangeFeed {
 
 export interface ChangeFollowers {
   settings: { reload(): Promise<void> };
-  supportSessions: { reload(): Promise<void> };
+  contentReasons: { reload(): Promise<void> };
   catalog: { refresh(): Promise<void> };
   descriptors?: { refresh(): Promise<void> };
   definitions: { sync(): Promise<void> };
@@ -40,7 +40,7 @@ export interface ChangeFollowers {
 export const followChanges = (feed: ChangeFeed, followers: ChangeFollowers): (() => void) => {
   const actions: Record<ChangeTopic, () => Promise<void>> = {
     settings: () => followers.settings.reload(),
-    'support-sessions': () => followers.supportSessions.reload(),
+    'support-sessions': () => followers.contentReasons.reload(),
     'config-entries': async () => {
       await followers.descriptors?.refresh();
       await followers.catalog.refresh();

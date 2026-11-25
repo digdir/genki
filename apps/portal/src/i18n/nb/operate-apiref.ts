@@ -310,9 +310,9 @@ export const apirefArea = {
     'ti-access.summary': 'Hent tilgang og API-nøkler',
     'ti-access.desc':
       'Hvilke Altinn-ressurser tjenestene krever, og virksomhetens API-nøkler. Selve nøkkelen vises aldri.',
-    'ti-support.summary': 'Åpne en støtteøkt',
-    'ti-support.desc':
-      'Gir Digdir tidsbegrenset tilgang til virksomheten for å hjelpe. Økten står i virksomhetens endringslogg.',
+    'ti-content-reason.summary': 'Oppgi grunnen til å lese innhold',
+    'ti-content-reason.desc':
+      'Driftere hos Digdir jobber direkte i alle virksomheter. Før de leser innholdet, som oppgaver, dokumenter og testsett, oppgir de en grunn som gjelder ut dagen. Grunnen og hver lesing står i virksomhetens endringslogg.',
     'fo-get.summary': 'Hent forbruk',
     'fo-get.desc':
       'Tokens og kostnad per dag, tjeneste, modell og prosjekt. Prosjektene er en del av tallene per tjeneste.',

@@ -902,7 +902,7 @@ const following = followPublished({
 const stopFollowingChanges = db
   ? followChanges(db.changes, {
       settings,
-      supportSessions: { reload: async () => undefined },
+      contentReasons: { reload: async () => undefined },
       catalog: {
         refresh: async () => {
           await runtime.catalog.refresh();

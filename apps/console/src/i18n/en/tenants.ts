@@ -38,10 +38,10 @@ export const tenants = {
   nearQuota: 'Near the quota',
   servicesFor: 'Services for {name}',
   diagnosticsFor: 'Diagnostics for {name}',
-  supportFor: 'Support access to {name}',
+  supportFor: 'Open organisation {name}',
   actionServices: 'Services',
   actionDiagnostics: 'Diagnostics',
-  actionSupport: 'Support access',
+  actionSupport: 'Open organisation',
   nearQuotaFor: 'Near quota: adjust the monthly token quota for {name}',
-  nearQuotaOnboarding: 'The quota can be adjusted in support access once onboarding is done.',
+  nearQuotaOnboarding: 'The quota can be changed on the organisation page once onboarding is done.',
 } satisfies Translation<typeof source>;

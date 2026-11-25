@@ -216,33 +216,11 @@ describe('audit of administrative changes', () => {
   });
 });
 
-describe('support sessions', () => {
-  const open = (
-    send: ReturnType<typeof setup>['send'],
-    who: string,
-    tenant = other,
-    minutes = 30,
-  ) =>
-    send('/support-sessions', who, { body: { tenant, reason: 'feilsøking av sak 4711', minutes } });
-
-  it('keeps operators out of a tenant until they open a session, which the tenant sees in its own log', async () => {
+describe('operators acting in an organisation', () => {
+  it('lets an operator publish to an organisation directly, which the organisation sees in its own log', async () => {
     const { send, publish } = setup();
 
-    expect((await send(`/tenants/${other}/definitions`, 'operator')).status).toBe(404);
-    const opened = await open(send, 'operator');
-    expect(opened.status).toBe(201);
-    const session = await body<{ id: string; operator: string; expiresAt: string }>(opened);
-    expect(session).toMatchObject({
-      operator: 'operator:test:drift',
-      expiresAt: '2026-10-06T10:30:00.000Z',
-    });
-
-    const res = await publish(
-      'operator',
-      klarsprak({ tenant: other, id: 'annen' }),
-      'retter feil',
-      session.id,
-    );
+    const res = await publish('operator', klarsprak({ tenant: other, id: 'annen' }), 'retter feil');
     expect(res.status).toBe(201);
     expect(await body(res)).toMatchObject({ publishedBy: 'operator:test:drift' });
 
@@ -253,48 +231,27 @@ describe('support sessions', () => {
       tenant: string;
     }>(await send(`/tenants/${other}/audit`, 'ola'));
     expect(audit.map((a) => [a.action, a.actor, a.onBehalfOf, a.tenant])).toEqual([
-      ['platform.support.open', 'operator:test:drift', other, other],
       ['platform.service.publish', 'operator:test:drift', other, other],
     ]);
   });
 
-  it('refuses an expired session, a session for another tenant and a session opened by another operator', async () => {
-    const { send, advance } = setup();
-    const session = await body<{ id: string }>(await open(send, 'operator'));
-    const list = (who: string, tenant = other) =>
-      send(`/tenants/${tenant}/definitions`, who, { session: session.id });
-
-    expect((await list('operator')).status).toBe(200);
-    expect((await list('other-operator')).status).toBe(404);
-    expect((await list('operator', '889640782')).status).toBe(404);
-    advance(31);
-    expect((await list('operator')).status).toBe(404);
-  });
-
-  it('stores the name the operator signed in with alongside the session', async () => {
-    const { app } = setup();
-    const opened = await app.request('/support-sessions', {
+  it('stores the name the operator signed in with alongside the content reason', async () => {
+    const { app, admin } = setup();
+    const given = await app.request(`/operator/tenants/${other}/content-reason`, {
       method: 'POST',
       headers: {
         authorization: 'Bearer operator',
         'content-type': 'application/json',
         'actor-name': encodeURIComponent('Ola Drift'),
       },
-      body: JSON.stringify({ tenant: other, reason: 'feilsøking av sak 4711', minutes: 30 }),
+      body: JSON.stringify({ reason: 'feilsøking av sak 4711' }),
     });
 
-    expect(opened.status).toBe(201);
-    expect(await body(opened)).toMatchObject({
+    expect(given.status).toBe(201);
+    expect(admin.contentReason(principals.operator as Principal, other)).toMatchObject({
       operator: 'operator:test:drift',
       operatorName: 'Ola Drift',
     });
-  });
-
-  it('only lets operators open sessions, and caps their length', async () => {
-    const { send } = setup({ minutes: 60 });
-
-    expect((await open(send, 'kari')).status).toBe(403);
-    expect((await open(send, 'operator', other, 600)).status).toBe(422);
   });
 });
 
@@ -864,7 +821,7 @@ describe('task timeline and the operator tenant list', () => {
         '/tenants/{tenant}/pins/{key}',
         '/tenants/{tenant}/export',
         '/tenants/{tenant}/import',
-        '/support-sessions',
+        '/operator/tenants/{tenant}/content-reason',
         '/tenants/{tenant}/audit',
         '/tenants/{tenant}/audit/{task}',
         '/tenants/{tenant}/tasks/{task}/timeline',

@@ -150,7 +150,7 @@ const boot = async () => {
     definitions: { capabilities: async () => [compiled] },
     authenticate: async (request: Request) =>
       people[request.headers.get('authorization')?.replace(/^Bearer /, '') ?? ''],
-    access: tenantAccess(admin),
+    access: tenantAccess,
     task: async (id: string) => (id === task.id ? task : undefined),
     events: async function* () {
       yield* events;

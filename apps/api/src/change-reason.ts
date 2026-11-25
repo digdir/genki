@@ -56,7 +56,7 @@ export const reasonFreeWrites: Record<string, ReasonFreeWrite> = {
 };
 
 export const bodyReasonWrites = new Set([
-  'POST /support-sessions',
+  'POST /operator/tenants/:tenant/content-reason',
   'POST /tenants/:tenant/clients/:client/hostnames',
 ]);
 
@@ -65,7 +65,8 @@ export const writeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 export const selfAuthenticatedWrites = new Set(['POST /internal/hostnames/:id/result']);
 
 export const routeOf = (c: Context) => {
-  const route = matchedRoutes(c).find((r) => r.method === c.req.method);
+  const method = c.req.method === 'HEAD' ? 'GET' : c.req.method;
+  const route = matchedRoutes(c).find((r) => r.method === method);
   return route && `${route.method} ${route.path}`;
 };
 

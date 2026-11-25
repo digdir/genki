@@ -1,20 +1,19 @@
 # Operations
 
-Operator-only routes, used by the console: tenants and organisations, onboarding decisions, support sessions, platform datasets, pipelines and engine switches, knowledge endpoints, model endpoints, models and prices, the platform catalogue, shared services, platform gates, guardrail rules and hooks, plugins and building blocks, the quality matrix, usage across tenants, the whole audit log, operations health, tracing and running tasks.
+Operator-only routes, used by the console: tenants and organisations, onboarding decisions, content reasons, platform datasets, pipelines and engine switches, knowledge endpoints, model endpoints, models and prices, the platform catalogue, shared services, platform gates, guardrail rules and hooks, plugins and building blocks, the quality matrix, usage across tenants, the whole audit log, operations health, tracing and running tasks.
 
 ## Rights
 
 - Every route here needs an operator. Other callers get `403`.
-- Operators reach a tenant's own routes only inside a support session with a reason and a time limit. The session shows in the tenant's audit log. In lockdown an operator also has every right in the platform organisation without a session (ADR 0033).
+- Operators call a tenant's own routes directly, as operators, and every change is in that tenant's log. Its content (runs, documents, evaluations, people) needs a reason first: `POST /operator/tenants/{tenant}/content-reason` with `{ "reason" }`, which holds for you and that tenant until the Oslo day ends; every content read is logged with it ([ADR 0072](../adr/0072-operators-own-the-platform.md)). In lockdown an operator has every right in the platform organisation as one of its people (ADR 0033).
 - Changes need `change-reason` and are audited; the ones that touch a tenant are also in that tenant's log.
 
 ## Typical sequence: help a tenant
 
 1. `GET /operator/tenants`: find the tenant.
-2. `POST /support-sessions` with `{ "tenant", "reason", "minutes" }`: the response has the session `id`.
-3. Call the tenant's routes with `support-session: <id>`, for example `GET /tenants/{tenant}/definitions`.
-4. `POST /operator/support-sessions/{id}/extend` if you need more time, and `POST /operator/support-sessions/{id}/end` when done.
-5. `GET /operator/audit`: what was done, by whom, and why.
+2. Call the tenant's routes, for example `GET /tenants/{tenant}/definitions`, or `PUT /tenants/{tenant}/settings/usage.monthlyTokens` with `change-reason`.
+3. Before reading content, such as `GET /tenants/{tenant}/tasks/{task}/timeline`, `POST /operator/tenants/{tenant}/content-reason` with `{ "reason" }`. A content route answers `403` `urn:genai:problem:content-reason-required` until then.
+4. `GET /operator/audit`: what was done, by whom, and why.
 
 Prices name units per kind: the built-in units and any unit a descriptor names, such as `{ "ocr": { "page": 0.05 } }`; a unit name is lowercase letters, digits and hyphens.
 

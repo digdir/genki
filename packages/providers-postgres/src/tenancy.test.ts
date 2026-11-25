@@ -993,10 +993,10 @@ describe('admin stores under row-level security', () => {
     expect(await secrets.list(ORG_B)).toEqual(['annen']);
   });
 
-  it('loads support sessions at startup and reads audit for every tenant through definer functions', async () => {
+  it('loads content reasons at startup and reads audit for every tenant through definer functions', async () => {
     const records = await PostgresAdminRecords.open(runtime);
-    await records.saveSession({
-      id: 'rls-session',
+    await records.saveContentReason({
+      id: 'rls-reason',
       operator: 'operator:x',
       tenant: ORG_B,
       reason: 'feilsøking',
@@ -1006,17 +1006,17 @@ describe('admin stores under row-level security', () => {
     await records.appendAudit({
       task: 'rls-task',
       tenant: ORG_A,
-      action: 'platform.support.open',
+      action: 'platform.content.reason',
       actor: 'operator:x',
       at: '2026-10-07T08:00:00.000Z',
       outcome: 'applied',
-      target: 'support',
+      target: `content-reason:${ORG_A}`,
       reason: 'feilsøking',
     });
 
     const reopened = await PostgresAdminRecords.open(runtime);
 
-    expect(reopened.sessions().map((s) => s.id)).toContain('rls-session');
+    expect(reopened.contentReasons().map((r) => r.id)).toContain('rls-reason');
     expect((await reopened.audit(ORG_A)).map((a) => a.task)).toContain('rls-task');
     expect((await reopened.audit(ORG_B)).map((a) => a.task)).not.toContain('rls-task');
     expect((await reopened.audit()).map((a) => a.task)).toContain('rls-task');

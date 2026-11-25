@@ -33,6 +33,7 @@ import {
 } from '@genai/kernel';
 import { ModelError } from '@genai/port-model';
 import type { Context } from 'hono';
+import { osloDayEnd } from './content-reason.js';
 import { t } from './i18n/index.js';
 import { blockRefProblems } from './interface-catalogue.js';
 import { isOperator, refusedAction, type RightProblem } from './rights.js';
@@ -45,14 +46,14 @@ export const platformActions = [
   'platform.setting.pin',
   'platform.default.set',
   'platform.tenant.import',
-  'platform.support.open',
+  'platform.content.reason',
   'platform.models.refresh',
   'platform.models.classify',
 ] as const;
 
 export type PlatformAction = (typeof platformActions)[number];
 
-export interface SupportSession {
+export interface ContentReason {
   id: string;
   operator: string;
   operatorName?: string;
@@ -76,22 +77,22 @@ export interface AuditEntry {
 }
 
 export interface AdminRecordStore {
-  sessions(): SupportSession[];
-  saveSession(session: SupportSession): Promise<void>;
+  contentReasons(): ContentReason[];
+  saveContentReason(reason: ContentReason): Promise<void>;
   audit(tenant?: string): Promise<AuditEntry[]>;
   appendAudit(entry: AuditEntry): Promise<void>;
 }
 
 export class InMemoryAdminRecords implements AdminRecordStore {
-  readonly #sessions = new Map<string, SupportSession>();
+  readonly #reasons = new Map<string, ContentReason>();
   readonly #audit: AuditEntry[] = [];
 
-  sessions() {
-    return [...this.#sessions.values()].map((s) => structuredClone(s));
+  contentReasons() {
+    return [...this.#reasons.values()].map((s) => structuredClone(s));
   }
 
-  async saveSession(session: SupportSession) {
-    this.#sessions.set(session.id, structuredClone(session));
+  async saveContentReason(reason: ContentReason) {
+    this.#reasons.set(reason.id, structuredClone(reason));
   }
 
   async audit(tenant?: string) {
@@ -166,7 +167,6 @@ export interface AdminOptions {
   tasks?: TaskStore;
   now?: () => Date;
   newId?: () => string;
-  maxSupportMinutes?: number;
   models?: ModelAdmin;
   extensions?: Record<string, AdminHandler>;
   records?: AdminRecordStore;
@@ -341,7 +341,6 @@ export const createAdmin = (options: AdminOptions) => {
   const now = options.now ?? (() => new Date());
   const newId = options.newId ?? (() => crypto.randomUUID());
   const platformTenant = options.platformTenant ?? defaultPlatformTenant;
-  const maxSupportMinutes = options.maxSupportMinutes ?? 240;
   const records = options.records ?? new InMemoryAdminRecords();
   const pending = new Map<
     string,
@@ -430,7 +429,7 @@ export const createAdmin = (options: AdminOptions) => {
 
   const platformWide = {
     scope: 'platform',
-    supportSession: 'not required: models are platform-wide, not tenant data',
+    contentReason: 'not required: models are platform-wide, not tenant data',
   };
   const notOperator = (principal: Principal, target: string): Outcome | undefined =>
     principal.kind === 'operator'
@@ -566,16 +565,9 @@ export const createAdmin = (options: AdminOptions) => {
                   : {}),
           };
     },
-    'platform.support.open': async (input, principal) => {
-      const minutes = Number(input.minutes);
-      if (!Number.isInteger(minutes) || minutes < 1 || minutes > maxSupportMinutes)
-        return {
-          ok: false,
-          errors: [{ path: 'minutes', message: `1 to ${maxSupportMinutes} minutes` }],
-          target: 'support',
-        };
-      const opened = now();
-      const session: SupportSession = {
+    'platform.content.reason': async (input, principal) => {
+      const given = now();
+      const reason: ContentReason = {
         id: newId(),
         operator: actorOf(principal.actor ?? principal),
         ...(typeof input.operatorName === 'string' && input.operatorName
@@ -583,11 +575,11 @@ export const createAdmin = (options: AdminOptions) => {
           : {}),
         tenant: input.tenant,
         reason: input.reason,
-        openedAt: opened.toISOString(),
-        expiresAt: new Date(opened.getTime() + minutes * 60_000).toISOString(),
+        openedAt: given.toISOString(),
+        expiresAt: osloDayEnd(given).toISOString(),
       };
-      await records.saveSession(session);
-      return { ok: true, value: session, target: `support:${session.id}` };
+      await records.saveContentReason(reason);
+      return { ok: true, value: reason, target: `content-reason:${input.tenant}` };
     },
     'platform.models.refresh': async (_input, principal) => {
       const refused = notOperator(principal, 'models');
@@ -903,17 +895,19 @@ export const createAdmin = (options: AdminOptions) => {
     }
   };
 
-  const supportSession = (id: string | undefined, operator: Principal, tenant: string) => {
-    if (!id) return undefined;
-    const session = records.sessions().find((s) => s.id === id);
-    if (
-      !session ||
-      session.endedAt ||
-      session.tenant !== tenant ||
-      session.operator !== actorOf(operator)
-    )
-      return undefined;
-    return new Date(session.expiresAt).getTime() > now().getTime() ? session : undefined;
+  const contentReason = (operator: Principal, tenant: string) => {
+    const at = now().getTime();
+    return records
+      .contentReasons()
+      .filter(
+        (r) =>
+          r.tenant === tenant &&
+          r.operator === actorOf(operator) &&
+          !r.endedAt &&
+          new Date(r.openedAt).getTime() <= at &&
+          new Date(r.expiresAt).getTime() > at,
+      )
+      .sort((a, b) => b.openedAt.localeCompare(a.openedAt))[0];
   };
 
   const auditReader: Principal = { kind: 'operator', issuer: 'platform', subject: 'audit-reader' };
@@ -988,40 +982,32 @@ export const createAdmin = (options: AdminOptions) => {
         classification,
         reason,
       }),
-    openSupportSession: (
+    giveContentReason: (
       operator: Principal,
       tenant: string,
       reason: string,
-      minutes: number,
       operatorName?: string,
     ) =>
-      run<SupportSession>({ ...operator, tenant, actor: operator }, 'platform.support.open', {
+      run<ContentReason>({ ...operator, tenant, actor: operator }, 'platform.content.reason', {
         tenant,
         reason,
-        minutes,
         ...(operatorName ? { operatorName } : {}),
       }),
-    supportSession,
+    contentReason,
+    recordContentRead: (operator: Principal, tenant: string, reason: string, target: string) =>
+      records.appendAudit({
+        task: newId(),
+        tenant,
+        action: 'platform.content.read',
+        actor: actorOf(operator),
+        onBehalfOf: tenant,
+        at: now().toISOString(),
+        outcome: 'applied',
+        target: `content:${target}`,
+        reason,
+      }),
     tenantNames: async () =>
       new Map((await (options.tenants?.() ?? [])).map((t) => [t.orgNumber, t.name])),
-    supportSessions: () => records.sessions(),
-    endSupport: async (id: string, at: Date) => {
-      const session = records.sessions().find((s) => s.id === id);
-      if (!session) return undefined;
-      const ended = { ...session, endedAt: session.endedAt ?? at.toISOString() };
-      await records.saveSession(ended);
-      return ended;
-    },
-    extendSupport: async (id: string, minutes: number, at: Date) => {
-      const session = records.sessions().find((s) => s.id === id);
-      if (!session || session.endedAt || new Date(session.expiresAt) <= at) return undefined;
-      const extended = {
-        ...session,
-        expiresAt: new Date(new Date(session.expiresAt).getTime() + minutes * 60_000).toISOString(),
-      };
-      await records.saveSession(extended);
-      return extended;
-    },
     check,
     importCheck,
     audit: (tenant?: string) => records.audit(tenant),

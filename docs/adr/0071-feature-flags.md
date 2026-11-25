@@ -28,7 +28,7 @@ genki goes from a test platform to one environment that agencies depend on (issu
 - `GET /tenants/{tenant}/me/flags` returns every flag as it applies to the caller: `{ data: [{ key, on, source, selfService, person, tenant }] }`, `source` being `person`, `tenant`, `env` or `default`. `GET /me/flags` is the same for the caller's own organisation, or the platform tenant for an operator without one; the console reads it.
 - `PUT /tenants/{tenant}/me/flags/{key}` with `{ on: true | false | null }` changes the caller's own row only; the person is taken from the verified principal, never from the request. Any member may, the reason is optional and a default is stored.
 - `PUT /tenants/{tenant}/flags/{key}` changes the tenant's row, needs `manage-services` and a reason.
-- Both answer `403` `urn:genai:problem:flag-operator-only` for a flag that is not self-service, also to an operator in a support session, who uses the operator routes instead, and `404` for an unknown key.
+- Both answer `403` `urn:genai:problem:flag-operator-only` for a flag that is not self-service, also to an operator acting in the tenant, who uses the operator routes instead, and `404` for an unknown key.
 - `GET /operator/flags` lists every flag with its description, owner, `removeBy` and every row. `PUT /operator/flags/{key}` with `{ tenant, person?, on }` lets an operator switch any flag for any tenant or person. Both are operator only.
 - Every change runs as an admin task, `platform.flag.person` or `platform.flag.tenant`, so it is in the tenant's audit log, and in the portal's change log under settings, with the actor, the level, the target (`flag:<key>` or `flag:<key>:person:<issuer>:<subject>`) and the reason.
 

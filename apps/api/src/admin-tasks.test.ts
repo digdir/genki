@@ -108,11 +108,9 @@ const throughAdminTasks = [
   'POST /operator/skills/shares/:id/decision',
   'PUT /operator/recipes/shares/:flow',
   'DELETE /operator/recipes/shares/:flow',
-  'POST /operator/support-sessions/:id/end',
-  'POST /operator/support-sessions/:id/extend',
   'POST /operator/tasks/:task/cancel',
   'POST /operator/tenants',
-  'POST /support-sessions',
+  'POST /operator/tenants/:tenant/content-reason',
   'POST /tenants/:tenant/api-key-policies',
   'POST /tenants/:tenant/api-keys',
   'POST /tenants/:tenant/api-keys/:id/revoke',
@@ -425,8 +423,8 @@ describe('the change-reason header', () => {
 
   it('accepts the reason in the body only on the routes that document it', async () => {
     const { send } = await boot();
-    const res = await send('/support-sessions', 'kari', {
-      body: { tenant: digdir, reason: 'for kort', minutes: 5 },
+    const res = await send(`/operator/tenants/${digdir}/content-reason`, 'kari', {
+      body: { reason: 'for kort' },
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ errors: [{ path: 'change-reason' }] });

@@ -104,7 +104,7 @@ describe('discovered models in postgres', () => {
     await other.router.loadDiscovered();
     const stop = followChanges(db.changes, {
       settings: { reload: async () => undefined },
-      supportSessions: { reload: async () => undefined },
+      contentReasons: { reload: async () => undefined },
       catalog: { refresh: async () => undefined },
       definitions: { sync: async () => undefined },
       models: other.router,

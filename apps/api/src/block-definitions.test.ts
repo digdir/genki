@@ -18,33 +18,16 @@ const block = (spec: Record<string, unknown> = {}) => ({
 
 const publishing =
   (send: ReturnType<typeof setup>['send']) =>
-  (who: string, definition: unknown, reason = 'første versjon', session?: string) =>
-    send('/definitions', who, {
-      body: { definition },
-      reason,
-      ...(session ? { session } : {}),
-    });
-
-const supportSession = async (send: ReturnType<typeof setup>['send']) => {
-  const opened = await send('/support-sessions', 'operator', {
-    body: { tenant: digdir, reason: 'genkis egne blokker', minutes: 30 },
-  });
-  return ((await opened.json()) as { id: string }).id;
-};
+  (who: string, definition: unknown, reason = 'første versjon') =>
+    send('/definitions', who, { body: { definition }, reason });
 
 describe('Block definitions through the definition API', () => {
   it('lets an operator publish a built-in block with a reason, as versions with an audit entry', async () => {
     const { send, admin } = setup();
     const publish = publishing(send);
-    const session = await supportSession(send);
 
-    const first = await publish('operator', block(), 'genkis chat som blokk', session);
-    const second = await publish(
-      'operator',
-      block({ zones: ['main'] }),
-      'chat bare i midten',
-      session,
-    );
+    const first = await publish('operator', block(), 'genkis chat som blokk');
+    const second = await publish('operator', block({ zones: ['main'] }), 'chat bare i midten');
 
     expect(first.status).toBe(201);
     expect(second.status).toBe(201);
@@ -93,9 +76,8 @@ describe('Block definitions through the definition API', () => {
   it('refuses a block publish without a reason', async () => {
     const { send } = setup();
     const publish = publishing(send);
-    const session = await supportSession(send);
 
-    const refused = await publish('operator', block(), '', session);
+    const refused = await publish('operator', block(), '');
 
     expect(refused.status).toBe(400);
   });
@@ -103,7 +85,7 @@ describe('Block definitions through the definition API', () => {
   it("hides a tenant's blocks from another tenant", async () => {
     const { send } = setup();
     const publish = publishing(send);
-    await publish('operator', block(), 'genkis chat som blokk', await supportSession(send));
+    await publish('operator', block(), 'genkis chat som blokk');
 
     expect((await send(`/tenants/${digdir}/definitions/blocks/chat`, 'ola')).status).toBe(404);
     expect(
@@ -115,10 +97,9 @@ describe('Block definitions through the definition API', () => {
 
   it('refuses on validate, as on publish, a built-in block from anyone but an operator', async () => {
     const { send } = setup();
-    const session = await supportSession(send);
 
     const byMember = await send('/definitions/validate', 'kari', { body: block() });
-    const byOperator = await send('/definitions/validate', 'operator', { body: block(), session });
+    const byOperator = await send('/definitions/validate', 'operator', { body: block() });
 
     expect(byMember.status).toBe(403);
     expect(await byMember.json()).toMatchObject({
@@ -168,7 +149,6 @@ describe('Block definitions through the definition API', () => {
 
   it('exports blocks before services, so an import publishes a block before the service that uses it', async () => {
     const { send } = setup();
-    const session = await supportSession(send);
     expect(
       (
         await send('/definitions', 'kari', {
@@ -177,9 +157,7 @@ describe('Block definitions through the definition API', () => {
         })
       ).status,
     ).toBe(201);
-    expect(
-      (await publishing(send)('operator', block(), 'genkis chat som blokk', session)).status,
-    ).toBe(201);
+    expect((await publishing(send)('operator', block(), 'genkis chat som blokk')).status).toBe(201);
 
     const bundle = (await (await send(`/tenants/${digdir}/export`, 'kari')).json()) as {
       definitions: { definition: { kind: string } }[];

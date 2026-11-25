@@ -13,6 +13,7 @@ import {
 import { KernelError, type Kernel } from '@genai/kernel';
 import { InMemoryConnections } from '@genai/providers-mcp-client';
 import type { Admin } from './admin.js';
+import { contentReasonRequiredType } from './content-reason.js';
 import {
   adminExtensions,
   InMemoryTenantSecrets,
@@ -37,8 +38,6 @@ const people: Record<string, Principal> = {
   nokkel: { kind: 'agency-system', issuer: 'legacy-key', subject: 'key-1', tenant: digdir },
 };
 
-const session = { id: 'support-1', operator: 'operator:test:drift', tenant: digdir };
-
 const testSet = (id: string) =>
   parseTestSet({
     apiVersion: 'genai/v1',
@@ -58,7 +57,7 @@ const tracked = [
   { task: 'c', tenant: other, status: 'queued', at: '2026-10-12T11:00:00Z' },
 ];
 
-const boot = async (options: { quotaExhausted?: boolean } = {}) => {
+const boot = async (options: { quotaExhausted?: boolean; contentReason?: string } = {}) => {
   const testSets = new InMemoryTestSetStore();
   await testSets.put(testSet('svar-sporsmal'));
   await testSets.put(testSet('annet-sett'));
@@ -67,10 +66,17 @@ const boot = async (options: { quotaExhausted?: boolean } = {}) => {
   const app = new Hono();
   const vault = new TenantSecretVault();
   const adminTasks: { action: string; target: string; stored: number }[] = [];
+  const contentReads: { tenant: string; reason: string }[] = [];
   const kernel = {
     task: async (principal: Principal, id: string) => {
-      if (principal.subject !== 'kari') throw new KernelError('not_found', `task ${id} not found`);
-      return { id, tenant: digdir, service: { capability: { id: `${digdir}/svar/default` } } };
+      if (principal.subject !== 'kari' && principal.kind !== 'operator')
+        throw new KernelError('not_found', `task ${id} not found`);
+      return {
+        id,
+        tenant: digdir,
+        principal: { kind: 'employee', id: JSON.stringify(['test', 'kari']) },
+        service: { capability: { id: `${digdir}/svar/default` } },
+      };
     },
     annotate: async () => undefined,
     invoke: async () => {
@@ -81,11 +87,10 @@ const boot = async (options: { quotaExhausted?: boolean } = {}) => {
   } as unknown as Kernel;
   mountExtensions(app, {
     admin: {
-      supportSession: (id: string | undefined, operator: Principal, tenant: string) =>
-        id === session.id && tenant === session.tenant && operator.subject === 'drift'
-          ? session
-          : undefined,
-      supportSessions: () => [session],
+      contentReason: () => (options.contentReason ? { reason: options.contentReason } : undefined),
+      recordContentRead: async (_operator: Principal, tenant: string, reason: string) => {
+        contentReads.push({ tenant, reason });
+      },
       within: async (
         _principal: Principal,
         action: string,
@@ -99,6 +104,15 @@ const boot = async (options: { quotaExhausted?: boolean } = {}) => {
           stored: (await candidates.list(digdir)).length,
         });
         return { value: done.value, task: `oppgave-${adminTasks.length}` };
+      },
+      performThen: async (
+        _principal: Principal,
+        _action: string,
+        _data: unknown,
+        then: () => Promise<void>,
+      ) => {
+        await then();
+        return { ok: true, value: {}, task: 'oppgave-1' };
       },
       perform: async () => ({
         ok: false,
@@ -159,7 +173,18 @@ const boot = async (options: { quotaExhausted?: boolean } = {}) => {
       who,
       headers,
     );
-  return { app, vault, testSets, candidates, feedback, call, read, propose, adminTasks };
+  return {
+    app,
+    vault,
+    testSets,
+    candidates,
+    feedback,
+    call,
+    read,
+    propose,
+    adminTasks,
+    contentReads,
+  };
 };
 
 describe('the tenant directory', () => {
@@ -308,51 +333,56 @@ describe('tenant access', () => {
     });
   });
 
-  it('an operator reaches tenant eval data only through a support session', async () => {
-    const { propose, read, call } = await boot();
+  it("lets an operator read an agency's eval data and change it on the agency's behalf directly", async () => {
+    const { propose, read, call } = await boot({ contentReason: 'Saken om feil svar i KA-12' });
     const proposed = await propose({ testSet: 'svar-sporsmal' });
-    const inSession = { 'support-session': session.id };
 
-    expect((await propose({}, 'drift')).status).toBe(404);
-    expect((await read(`/tenants/${digdir}/test-sets`, 'drift')).status).toBe(404);
-    expect((await read(`/tenants/${digdir}/feedback`, 'drift')).status).toBe(404);
-    expect((await read(`/tenants/${digdir}/tool-connections`, 'drift')).status).toBe(404);
+    expect((await read(`/tenants/${digdir}/test-sets`, 'drift')).status).toBe(200);
+    expect((await read(`/tenants/${digdir}/feedback`, 'drift')).status).toBe(200);
+    expect((await read(`/tenants/${digdir}/tool-connections`, 'drift')).status).toBe(200);
+    expect((await propose({}, 'drift')).status).toBe(201);
     expect(
       (
         await call(
           `/testcase-candidates/${String(proposed.body.id)}/review`,
           { decision: 'reject' },
           'drift',
-        )
-      ).status,
-    ).toBe(404);
-    expect((await read(`/tenants/${digdir}/test-sets`, 'drift', inSession)).status).toBe(200);
-  });
-
-  it("an operator in a support session reads tenant data and may change it on the tenant's behalf", async () => {
-    const { propose, read, call } = await boot();
-    const proposed = await propose({ testSet: 'svar-sporsmal' });
-    const inSession = { 'support-session': session.id };
-
-    expect((await read(`/tenants/${digdir}/feedback`, 'drift', inSession)).status).toBe(200);
-    expect((await read(`/tenants/${digdir}/tool-connections`, 'drift', inSession)).status).toBe(
-      200,
-    );
-    expect((await propose({}, 'drift', inSession)).status).toBe(201);
-    expect(
-      (
-        await call(
-          `/testcase-candidates/${String(proposed.body.id)}/review`,
-          { decision: 'reject' },
-          'drift',
-          inSession,
         )
       ).status,
     ).toBe(200);
   });
 
-  it('an operator without a support session cannot reach tenant secrets and gets 404', async () => {
-    const { app } = await boot();
+  it("refuses an operator's review of a test-case candidate until a reason is given for that organisation today", async () => {
+    const { propose, call } = await boot();
+    const proposed = await propose({ testSet: 'svar-sporsmal' });
+
+    const refused = await call(
+      `/testcase-candidates/${String(proposed.body.id)}/review`,
+      { decision: 'reject' },
+      'drift',
+    );
+
+    expect(refused.status).toBe(403);
+    expect(refused.body).toMatchObject({ type: contentReasonRequiredType, tenant: digdir });
+  });
+
+  it("records the operator's reason as a content read once a test-case candidate is reviewed", async () => {
+    const { propose, call, contentReads } = await boot({
+      contentReason: 'Saken om feil svar i KA-12',
+    });
+    const proposed = await propose({ testSet: 'svar-sporsmal' });
+
+    await call(
+      `/testcase-candidates/${String(proposed.body.id)}/review`,
+      { decision: 'reject' },
+      'drift',
+    );
+
+    expect(contentReads).toEqual([{ tenant: digdir, reason: 'Saken om feil svar i KA-12' }]);
+  });
+
+  it("lets an operator set an agency's secret directly", async () => {
+    const { app, vault } = await boot();
 
     const res = await app.request(`/tenants/${digdir}/secrets/lovdata`, {
       method: 'PUT',
@@ -361,10 +391,11 @@ describe('tenant access', () => {
         'content-type': 'application/json',
         'change-reason': 'Ny nøkkel til Lovdata',
       },
-      body: JSON.stringify({ value: 'hemmelig' }),
+      body: JSON.stringify({ value: 'hemmelig', allowedHosts: ['api.lovdata.no'] }),
     });
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(200);
+    expect(await vault.names(digdir)).toEqual(['lovdata']);
   });
 });
 
@@ -410,6 +441,16 @@ describe('feedback privacy', () => {
     expect(listed.filter((f) => f.rating === 'up' && f.comment)).toHaveLength(5);
     expect(listed.find((f) => f.rating === 'down')).toEqual({ rating: 'down', at: '2026-10-07' });
     expect(listed.some((f) => 'by' in f)).toBe(false);
+  });
+
+  it("refuses an operator's feedback on an organisation's run until a reason is given for it today", async () => {
+    const refused = await (await boot()).call('/tasks/t1/feedback', { rating: 'up' }, 'drift');
+    const given = await (
+      await boot({ contentReason: 'Saken om feil svar i KA-12' })
+    ).call('/api/feedback', { task: 't1', rating: 'up' }, 'drift');
+
+    expect(refused.status).toBe(404);
+    expect(given.status).toBe(201);
   });
 
   it('tells an API key why it cannot give feedback on a run instead of answering not found', async () => {
@@ -514,25 +555,21 @@ describe('test-case candidates for review', () => {
     ).toBe(404);
   });
 
-  it('an operator in a support session can read and review candidates', async () => {
-    const { call, read } = await boot();
+  it('lets an operator with a content reason read and review candidates', async () => {
+    const { call, read } = await boot({ contentReason: 'Saken om feil svar i KA-12' });
     const saved = await call(`/tenants/${digdir}/testcase-candidates`, {
       service: 'svar',
       input: 'Hei',
       testSet: 'svar-sporsmal',
     });
-    const inSession = { 'support-session': session.id };
 
-    expect((await read(`/tenants/${digdir}/testcase-candidates`, 'drift', inSession)).status).toBe(
-      200,
-    );
+    expect((await read(`/tenants/${digdir}/testcase-candidates`, 'drift')).status).toBe(200);
     expect(
       (
         await call(
           `/tenants/${digdir}/testcase-candidates/${String(saved.body.id)}/review`,
           { decision: 'reject' },
           'drift',
-          inSession,
         )
       ).status,
     ).toBe(200);

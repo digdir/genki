@@ -1055,8 +1055,6 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
       const tenant = param(c, 'tenant');
       const acting = mountDeps.access(principal, tenant, c.req.raw);
       if (!acting) return { response: problem(c, 404, 'Not found') };
-      if (principal.kind === 'operator' && !['GET', 'HEAD'].includes(c.req.method))
-        return { response: problem(c, 403, 'Support sessions are read-only') };
       if (right) {
         const check = requireRight(acting, tenant, right);
         if (!check.ok) return { response: rightRefused(c, check.problem) };

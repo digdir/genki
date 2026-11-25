@@ -19,7 +19,7 @@ import type { Context, Env, Hono, Schema } from 'hono';
 import { z } from 'zod';
 import type { ActorNames } from '../actor-names.js';
 import { withFlagDetails } from '../flag-audit.js';
-import { actorOf, type Admin, type AdminHandler, type SupportSession } from '../admin.js';
+import { actorOf, type Admin, type AdminHandler } from '../admin.js';
 import { blockUsage } from '../block-usage.js';
 import { orgNumberValid } from '../extensions.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from '../http.js';
@@ -27,14 +27,13 @@ import type { OperationsOverview } from '../operations.js';
 import type { Organization } from '../organizations.js';
 import { SinkLabelsRefused, type SinkLabels } from '../sink-labels.js';
 import { isOperator } from '../rights.js';
+import { actsAsOperator } from '../content-reason.js';
 
 export const consoleActions = [
   'platform.service.share',
   'platform.judge.label',
   'platform.judge.label.accept',
   'platform.judge.label.reject',
-  'platform.support.end',
-  'platform.support.extend',
   'platform.task.cancel',
   'platform.audit.export',
 ] as const;
@@ -45,18 +44,6 @@ export interface TraceStatus {
   residency?: Residency;
   sampleRate?: number;
   stats?: { exported: number; dropped: number; failed: number; sampledOut: number };
-}
-
-export interface SupportDirectory {
-  list(): (SupportSession & { endedAt?: string })[];
-  end(
-    id: string,
-    at: Date,
-  ):
-    | Promise<(SupportSession & { endedAt?: string }) | undefined>
-    | (SupportSession & { endedAt?: string })
-    | undefined;
-  extend?(id: string, minutes: number, at: Date): Promise<SupportSession | undefined>;
 }
 
 export interface RunningTask {
@@ -83,7 +70,6 @@ export interface ConsoleDeps {
   /** Labels brought back from tenants' trace sinks, which an operator accepts or rejects. */
   sinkLabels?: SinkLabels;
   traces(): TraceStatus | undefined;
-  support: SupportDirectory;
   tasks(): RunningTask[] | Promise<RunningTask[]>;
   taskDetails(task: string): Promise<TaskDetails | undefined>;
   cancel(task: string): Promise<void>;
@@ -95,12 +81,11 @@ export interface ConsoleDeps {
 }
 
 export interface ConsoleRouteDeps extends ConsoleDeps {
-  admin: Pick<Admin, 'perform'> & Partial<Pick<Admin, 'audit' | 'events'>>;
+  admin: Pick<Admin, 'perform'> &
+    Partial<Pick<Admin, 'audit' | 'events' | 'contentReason' | 'recordContentRead'>>;
   authenticate(request: Request): Promise<Principal | undefined>;
   platformTenant?: string;
 }
-
-const maxExtensionMinutes = 60;
 
 const refused = (target: string, message: string) => ({
   ok: false as const,
@@ -136,7 +121,6 @@ const shownOf = (labels: unknown) =>
     : undefined;
 
 export const consoleAdminExtensions = (deps: ConsoleDeps): Record<string, AdminHandler> => {
-  const now = deps.now ?? (() => new Date());
   /** A batch of a sink's labels (one connection, one judge) accepted or rejected, with its reason. */
   const decided =
     (decision: 'accept' | 'reject'): AdminHandler =>
@@ -215,37 +199,6 @@ export const consoleAdminExtensions = (deps: ConsoleDeps): Record<string, AdminH
       await deps.labels.add([label]);
       return { ok: true, value: label, target, audit: { scope: 'platform' } };
     },
-    'platform.support.end': async (input, principal) => {
-      const target = `support:${String(input.session)}`;
-      if (!isOperator(principal)) return refused(target, 'only operators end support sessions');
-      const ended = await deps.support.end(String(input.session), now());
-      if (!ended)
-        return invalid(target, [{ path: 'session', message: 'no active session with that id' }]);
-      return { ok: true, value: ended, target, audit: { scope: 'platform', tenant: ended.tenant } };
-    },
-    'platform.support.extend': async (input, principal) => {
-      const target = `support:${String(input.session)}`;
-      if (!isOperator(principal)) return refused(target, 'only operators extend support sessions');
-      const own = deps.support
-        .list()
-        .find((s) => s.id === String(input.session) && s.operator === actorOf(principal));
-      const minutes = Number(input.minutes);
-      if (!Number.isInteger(minutes) || minutes < 1 || minutes > maxExtensionMinutes)
-        return invalid(target, [
-          { path: 'minutes', message: `must be 1 to ${maxExtensionMinutes} minutes` },
-        ]);
-      const extended = own ? await deps.support.extend?.(own.id, minutes, now()) : undefined;
-      if (!extended)
-        return invalid(target, [
-          { path: 'session', message: 'no active session of yours with that id' },
-        ]);
-      return {
-        ok: true,
-        value: extended,
-        target,
-        audit: { scope: 'platform', tenant: extended.tenant },
-      };
-    },
     'platform.task.cancel': async (input, principal) => {
       const target = `task:${String(input.task)}`;
       if (!isOperator(principal)) return refused(target, 'only operators cancel tasks');
@@ -287,9 +240,6 @@ const problem = (
     'content-type': 'application/problem+json',
   });
 
-const sessionStatus = (s: SupportSession & { endedAt?: string }, at: Date) =>
-  s.endedAt ? 'ended' : new Date(s.expiresAt).getTime() > at.getTime() ? 'active' : 'expired';
-
 const judgeVerdict = (value: number | null) =>
   value === null ? undefined : value >= 0.5 ? 'good' : 'bad';
 
@@ -297,7 +247,6 @@ export const registerConsoleRoutes = <E extends Env, S extends Schema, B extends
   app: Hono<E, S, B>,
   deps: ConsoleRouteDeps,
 ) => {
-  const now = deps.now ?? (() => new Date());
   const platformTenant = deps.platformTenant ?? defaultPlatformTenant;
 
   const operatorOf = async (c: Context) => {
@@ -462,6 +411,10 @@ export const registerConsoleRoutes = <E extends Env, S extends Schema, B extends
     const labelled = new Set((await deps.labels.list()).map((l) => `${l.judge}|${l.item}`));
     const items = [];
     for (const tenant of await deps.tenants()) {
+      const given = actsAsOperator(who.principal, tenant)
+        ? deps.admin.contentReason?.(who.principal, tenant)
+        : { reason: '' };
+      let shown = false;
       for (const stored of await deps.runs.list({ tenant })) {
         const judges = new Set(stored.run.provenance.judges.map(evaluatorOfJudge));
         for (const result of stored.run.results) {
@@ -477,11 +430,19 @@ export const registerConsoleRoutes = <E extends Env, S extends Schema, B extends
               tenant,
               service: stored.service ?? stored.run.capability,
               case: result.case,
-              reason: s.reason,
+              ...(given ? { reason: s.reason } : {}),
             });
+            shown ||= Boolean(given?.reason && s.reason);
           }
         }
       }
+      if (shown && given)
+        await deps.admin.recordContentRead?.(
+          who.principal,
+          tenant,
+          given.reason,
+          'GET /operator/quality/label-queue',
+        );
     }
     return c.json({ data: items.slice(0, 200), total: items.length });
   });
@@ -572,33 +533,6 @@ export const registerConsoleRoutes = <E extends Env, S extends Schema, B extends
       content: status.content,
       ...(status.sampleRate === undefined ? {} : { sampleRate: status.sampleRate }),
       ...(status.stats ? { stats: status.stats } : {}),
-    });
-  });
-
-  app.get('/operator/support-sessions', async (c) => {
-    const who = await operatorOf(c);
-    if (who.response) return who.response;
-    const at = now();
-    const data = deps.support
-      .list()
-      .map((s) => ({ ...s, status: sessionStatus(s, at) }))
-      .sort((a, b) => b.openedAt.localeCompare(a.openedAt));
-    return c.json({ data });
-  });
-
-  app.post('/operator/support-sessions/:id/end', async (c) => {
-    const who = await operatorOf(c);
-    if (who.response) return who.response;
-    return applied(c, who.principal, 'platform.support.end', { session: c.req.param('id') });
-  });
-
-  app.post('/operator/support-sessions/:id/extend', async (c) => {
-    const who = await operatorOf(c);
-    if (who.response) return who.response;
-    const body = (await c.req.json().catch(() => ({}))) as { minutes?: unknown };
-    return applied(c, who.principal, 'platform.support.extend', {
-      session: c.req.param('id'),
-      minutes: body.minutes ?? 15,
     });
   });
 

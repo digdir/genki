@@ -1772,12 +1772,12 @@
             summary:
               'The operator console for Digdir: tenants, shared services, models and platform health.',
             description:
-              'Operators sign in with Entra ID and work across tenants only through time-limited support sessions (ADR 0010). They classify discovered models by residency, manage shared services (fellestjenester) and follow operations.',
+              "Operators sign in with Entra ID and change any tenant's configuration directly, giving a reason once a day before they see its content (ADR 0072). They classify discovered models by residency, manage shared services (fellestjenester) and follow operations.",
             responsibilities: [
               'Tenant and shared-service administration',
               'Model classification by residency and capability',
               'New kinds of model API from descriptors (upload, try with made-up data, record fixtures from tries, approve or withdraw), kind maturity and processor records (ADR 0047)',
-              'Operations and support sessions',
+              'Operations and organisation settings',
               'Review code design elements before they are shared with everyone, approve or decline with a reason (ADR 0069)',
             ],
             files: [

@@ -27,7 +27,7 @@ export const apiTags = [
   {
     name: 'Operations',
     description:
-      'Operator-only routes for the console: tenants and organisations, support sessions, platform datasets, models and catalogue, shared services, quality matrix, plugins and building blocks, demos, usage, audit, tracing and running tasks, and the upload routes of the demo recorder.',
+      'Operator-only routes for the console: tenants and organisations, daily content reasons, platform datasets, models and catalogue, shared services, quality matrix, plugins and building blocks, demos, usage, audit, tracing and running tasks, and the upload routes of the demo recorder.',
   },
   {
     name: 'Platform',
@@ -41,7 +41,7 @@ export type ApiTag = (typeof apiTags)[number]['name'];
 const rules: [RegExp, ApiTag][] = [
   [/^\/(health|up|openapi\.json|reference)(\/|$)|^\/schemas(\/|$)/, 'Platform'],
   [/^\/(v1|api|a2a)(\/|$)/, 'Frontend'],
-  [/^\/(operator|support-sessions|recorder|internal)(\/|$)/, 'Operations'],
+  [/^\/(operator|recorder|internal)(\/|$)/, 'Operations'],
   [/^\/mock\/|^\/onboarding\/|^\/me(\/flags)?$/, 'Access and extensions'],
   [/^\/(eval-tasks|eval-runs|testcase-candidates|tasks)\//, 'Work and quality'],
   [/^\/models$/, 'Datasets and knowledge'],

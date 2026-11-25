@@ -65,6 +65,18 @@ describe('change texts', () => {
     );
   });
 
+  it("an operator's content read reads as Digdir seeing content, without the route it read", () => {
+    const read = {
+      ...row('platform.content.read', 'content:GET /tenants/991825827/tasks/t1/timeline'),
+      actor: 'operator:test:drift',
+    };
+
+    expect(`${actorOf(read, translator('nb'))} ${changeText(read, translator('nb'))}`).toBe(
+      'Digdir så innhold',
+    );
+    expect(changeText(read, translator('en'))).toBe('viewed content');
+  });
+
   it('an unknown action reads as a plain sentence, never as its code', () => {
     expect(changeText(row('platform.something.new'), translator('nb'))).toBe('gjorde en endring');
     expect(changeText(row('platform.something.new'), translator('en'))).toBe('made a change');

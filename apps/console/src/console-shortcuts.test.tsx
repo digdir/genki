@@ -92,13 +92,7 @@ const open = async (hash: string, fetch: typeof globalThis.fetch, live = false) 
   render(<App auth={auth} fetch={fetch} live={live} />);
 };
 
-const startSupport = async () => {
-  fireEvent.change(await screen.findByRole('textbox', { name: /Begrunnelse/ }), {
-    target: { value: 'Kunden er nær kvoten, sak DIG-4421' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: 'Start støttetilgang' }));
-  return screen.findByRole('region', { name: 'Innstillinger › Virksomhet' });
-};
+const settingsFrame = () => screen.findByRole('region', { name: 'Innstillinger › Virksomhet' });
 
 beforeEach(() => {
   window.location.hash = '';
@@ -109,7 +103,7 @@ afterEach(() => {
 });
 
 describe('near quota on the tenants screen', () => {
-  it('links the near quota tag to the monthly token setting in support access', async () => {
+  it('links the near quota tag to the monthly token setting on the organisation page', async () => {
     await open('#/tenants', mockFetch());
 
     const link = await screen.findByRole('link', {
@@ -130,17 +124,17 @@ describe('near quota on the tenants screen', () => {
       .parentElement as HTMLElement;
     expect(within(row).getByText('Nær kvoten')).toBeTruthy();
     expect(
-      within(row).getByText('Kvoten kan justeres i støttetilgang når oppstarten er ferdig.'),
+      within(row).getByText('Kvoten kan endres på virksomhetssiden når oppstarten er ferdig.'),
     ).toBeTruthy();
     expect(within(row).queryByRole('link', { name: /Nær kvoten/ })).toBeNull();
   });
 });
 
-describe('support access settings', () => {
+describe('organisation settings', () => {
   it('opens on the setting named in the query and focuses it', async () => {
     const { fetch } = recording(mockFetch(), true);
     await open('#/support-access?tenant=974222333&tab=settings&setting=usage.monthlyTokens', fetch);
-    await startSupport();
+    await settingsFrame();
 
     expect(screen.getByRole('tab', { name: 'Innstillinger' }).getAttribute('aria-selected')).toBe(
       'true',
@@ -152,7 +146,7 @@ describe('support access settings', () => {
   it('groups settings under their category and shows locked ones with the reason', async () => {
     const { fetch } = recording(mockFetch(), true);
     await open('#/support-access?tenant=974222333', fetch);
-    const frame = await startSupport();
+    const frame = await settingsFrame();
 
     const groups = within(frame)
       .getAllByRole('heading', { level: 3 })
@@ -170,7 +164,7 @@ describe('support access settings', () => {
   it('filters settings by key, label and description', async () => {
     const { fetch } = recording(mockFetch(), true);
     await open('#/support-access?tenant=974222333', fetch);
-    const frame = await startSupport();
+    const frame = await settingsFrame();
     const search = within(frame).getByRole('searchbox', { name: 'Søk i innstillinger' });
 
     fireEvent.change(search, { target: { value: 'answer.' } });
@@ -195,7 +189,7 @@ describe('support access settings', () => {
   it('keeps the search after saving a setting', async () => {
     const { fetch } = recording(mockFetch(), true);
     await open('#/support-access?tenant=974222333', fetch);
-    const frame = await startSupport();
+    const frame = await settingsFrame();
     const search = within(frame).getByRole('searchbox', { name: 'Søk i innstillinger' });
     fireEvent.change(search, { target: { value: 'answer' } });
 
@@ -204,6 +198,9 @@ describe('support access settings', () => {
     });
     fireEvent.click(within(frame).getByRole('button', { name: 'Lagre' }));
     const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Begrunnelse'), {
+      target: { value: 'Kunden er nær kvoten, sak DIG-4421' },
+    });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Lagre som endring fra Digdir' }));
     await screen.findByText(/Lagret som endring fra Digdir/);
 

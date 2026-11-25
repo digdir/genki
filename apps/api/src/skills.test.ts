@@ -272,11 +272,10 @@ const service = (skills: string[]) => ({
 });
 
 describe('skills', () => {
-  it('answers 404 for a tenant the caller cannot reach, also to an operator without a support session', async () => {
+  it('answers 404 for a tenant the caller cannot reach', async () => {
     const { send } = await boot();
 
     expect((await send('GET', `/tenants/974760673/skills`, 'kari')).status).toBe(404);
-    expect((await send('GET', base, 'operator')).status).toBe(404);
   });
 
   it('publish meets all four requirements after a passing run', async () => {
@@ -1141,30 +1140,13 @@ describe('skill test cases and fixes', () => {
     expect((await send('POST', `${base}/klarsprak/fix`, 'kari', {})).status).toBe(409);
   });
 
-  it('an operator in a support session reads a skill but cannot change it', async () => {
-    const { send, admin } = await boot();
+  it('lets an operator change a skill as the platform owner, with a change reason', async () => {
+    const { send } = await boot();
     await send('POST', base, 'kari', { id: 'klarsprak', definition: skill() });
-    const opened = await admin.openSupportSession(
-      people.operator as Principal,
-      tenant,
-      'feilsøking',
-      30,
-    );
-    const inSession = { 'support-session': opened.ok ? (opened.value as { id: string }).id : '' };
 
-    expect((await send('GET', `${base}/klarsprak`, 'operator', undefined, inSession)).status).toBe(
-      200,
-    );
+    expect((await send('GET', `${base}/klarsprak`, 'operator')).status).toBe(200);
     expect(
-      (
-        await send('DELETE', `${base}/klarsprak/testcases/0`, 'operator', undefined, {
-          ...inSession,
-          ...reason,
-        })
-      ).status,
-    ).toBe(403);
-    expect((await send('POST', `${base}/klarsprak/fix`, 'operator', {}, inSession)).status).toBe(
-      403,
-    );
+      (await send('DELETE', `${base}/klarsprak/testcases/0`, 'operator', undefined, reason)).status,
+    ).toBe(200);
   });
 });

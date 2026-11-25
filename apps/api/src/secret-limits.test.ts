@@ -120,14 +120,20 @@ describe('tenant secret limits', () => {
 
     const otherTenant = await put(other, 'egen', marker);
     const platformOwner = await put('platform', 'enhetsregisteret', marker);
-    const operatorAsTenant = await put(digdir, 'operator-nokkel', marker, 'drift');
 
     expect(otherTenant.status).toBe(404);
     expect(platformOwner.status).toBe(404);
-    expect(operatorAsTenant.status).toBe(404);
     expect(await platform.vault.names(other)).toEqual([]);
     expect(await platform.vault.names('platform')).toEqual([]);
-    expect(await platform.vault.names(digdir)).toEqual([]);
+  });
+
+  it("lets an operator write a tenant's secret directly", async () => {
+    const { put, platform } = await boot();
+
+    const written = await put(digdir, 'operator-nokkel', marker, 'drift');
+
+    expect(written.status).toBe(200);
+    expect(await platform.vault.names(digdir)).toContain('operator-nokkel');
   });
 
   it('the vault refuses a write that skips the route checks', async () => {

@@ -309,7 +309,7 @@ if (command === 'record' || command === 'compare') {
       fail('answers need PARITY_JUDGE_URL, PARITY_JUDGE_KEY and PARITY_JUDGE_MODEL');
     if (kinds.includes('answer') && !attribute)
       console.log(
-        'no PARITY_NEW_OPERATOR_TOKEN and PARITY_NEW_SUPPORT_SESSION: answers run without stage attribution',
+        'no PARITY_NEW_OPERATOR_TOKEN and PARITY_NEW_CONTENT_REASON: answers run without stage attribution',
       );
     await runQuality({
       cases,
@@ -421,7 +421,7 @@ if (command === 'record' || command === 'compare') {
     if (name === 'new') {
       const access =
         operatorAccessFromEnv(process.env) ??
-        fail('the new platform needs PARITY_NEW_OPERATOR_TOKEN and PARITY_NEW_SUPPORT_SESSION');
+        fail('the new platform needs PARITY_NEW_OPERATOR_TOKEN and PARITY_NEW_CONTENT_REASON');
       const service = testSet.profile.new.retrieveService ?? testSet.profile.new.service;
       return {
         name,

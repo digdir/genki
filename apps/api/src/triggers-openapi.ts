@@ -1,5 +1,6 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
 import { problemContent } from './http.js';
+import { withContentReasons } from './openapi/content-reason.js';
 
 const tenantParam = z
   .string()
@@ -50,7 +51,7 @@ const json = <T extends z.ZodType>(schema: T, description: string) => ({
 });
 const problem = (description: string) => ({ description, content: problemContent });
 
-export const triggerRoutes: RouteConfig[] = [
+export const triggerRoutes: RouteConfig[] = withContentReasons([
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/triggers',
@@ -94,7 +95,7 @@ export const triggerRoutes: RouteConfig[] = [
       404: problem('No such trigger'),
     },
   }),
-];
+]);
 
 type DocumentedApp = { openAPIRegistry?: { registerPath(route: RouteConfig): void } };
 

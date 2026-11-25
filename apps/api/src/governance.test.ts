@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import type { DefinitionStore, PublishedVersion } from '@genai/definitions';
 import { tenantAccess } from './access.js';
-import { AdminRefused, type Admin } from './admin.js';
+import { AdminRefused } from './admin.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { governanceModule } from './governance.js';
 import type { ModuleDeps, MountDeps } from './platform-modules.js';
@@ -45,7 +45,7 @@ const boot = (published?: Partial<PublishedVersion>, refuse = false) => {
   governance.mount(app, {
     authenticate: async (request: Request) =>
       people[request.headers.get('authorization')?.replace(/^Bearer /, '') ?? ''],
-    access: tenantAccess({ supportSession: () => undefined } as unknown as Admin),
+    access: tenantAccess,
     admin: {
       within: async (
         _principal: Principal,
@@ -136,10 +136,10 @@ describe('risk governance', () => {
     expect((await confirm('kari', 'minimal')).status).toBe(400);
   });
 
-  it('answers 404 to an operator without a support session, as for any unreachable tenant', async () => {
+  it('lets an operator confirm in a tenant directly', async () => {
     const { confirm } = boot();
 
-    expect((await confirm('drift')).status).toBe(404);
+    expect((await confirm('drift')).status).toBe(201);
   });
 
   it('answers a refused confirmation as a problem with its task, never a 500', async () => {

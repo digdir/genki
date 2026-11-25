@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { inEnglish } from '@genai/i18n/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
@@ -29,7 +29,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('support access and audit in English', () => {
+describe('organisation access and audit in English', () => {
   it('shows the audit log with English filters and action labels', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-07T12:00:00+02:00'));
@@ -40,16 +40,28 @@ describe('support access and audit in English', () => {
     expect(screen.getByRole('region', { name: 'Audit log' })).toBeTruthy();
   });
 
-  it('starts support access with English copy and a reason rule', async () => {
-    await open('#/support-access?tenant=999888777');
-    expect(await screen.findByRole('heading', { name: 'Start support access' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Start support access' }));
-    expect(await screen.findByText(/Write a reason of at least 10 characters/)).toBeTruthy();
-    fireEvent.change(screen.getByRole('textbox', { name: /Reason/ }), {
-      target: { value: 'The customer sees the quota wrongly, case DIG-4420' },
+  it('asks for a reason to see content with English copy and a reason rule', async () => {
+    await open('#/diagnostics?tenant=999888777');
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Run ID' }), {
+      target: { value: 'opg_7f2kq9d1' },
     });
-    fireEvent.click(screen.getByRole('radio', { name: '30 minutes' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Start support access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Reason to see content' });
+    expect(within(dialog).getByText(/content may contain personal data/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'See content' }));
+    expect(
+      await within(dialog).findByText(/Write a reason of at least 10 characters/),
+    ).toBeTruthy();
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /Reason/ }), {
+      target: { value: 'The customer reports a wrong answer, case DIG-4420' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'See content' }));
+    expect(await screen.findByRole('heading', { name: 'opg_7f2kq9d1' })).toBeTruthy();
+  });
+
+  it('opens the organisation screen in English without a session to start', async () => {
+    await open('#/support-access?tenant=999888777');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Organisation' })).toBeTruthy();
     expect(await screen.findByRole('tab', { name: 'Keys' })).toBeTruthy();
   });
 

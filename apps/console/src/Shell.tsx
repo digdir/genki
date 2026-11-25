@@ -5,9 +5,6 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { useT, type PlainKey, type T } from './i18n';
 import type { FlagKey } from '@genai/contracts/flags';
 import { WhenFlag } from './flags';
-import { useSupport } from './support';
-import { SupportDialog } from './support-dialog';
-import { minutesLeft } from './ui';
 import type { Health, OperatorSession } from './types';
 
 const configuredEnvironment: string | undefined = setting('ENVIRONMENT');
@@ -63,15 +60,13 @@ export const navigation: NavGroup[] = [
     items: [
       { path: '/operations', label: 'shell.pageOperations' },
       { path: '/diagnostics', label: 'shell.pageDiagnostics' },
-      { path: '/support-access', label: 'shell.pageSupportAccess' },
+      { path: '/support-access', label: 'shell.pageOrganisation' },
       { path: '/audit', label: 'shell.pageAudit' },
       { path: '/schemas', label: 'schemas.page' },
       { path: '/atlas', label: 'shell.pageAtlas', note: 'shell.atlasEnglishOnly' },
     ],
   },
 ];
-
-const extensionMinutes = 15;
 
 export const allPages = navigation.flatMap((g) => g.items);
 
@@ -152,9 +147,7 @@ export const Shell = ({
   children,
 }: ShellProps) => {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [extending, setExtending] = useState(false);
   const t = useT();
-  const support = useSupport();
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [path]);
@@ -173,7 +166,6 @@ export const Shell = ({
   }, []);
   const environmentLabel =
     configuredEnvironment ?? (import.meta.env.DEV ? t('shell.envLocal') : t('shell.envProduction'));
-  const active = support.session;
   return (
     <div className="shell" ref={shellRef}>
       <SkipLink href="#hovedinnhold">{t('shell.skipLink')}</SkipLink>
@@ -254,59 +246,6 @@ export const Shell = ({
             {t.rich('shell.stripRest', { link: (c) => <a href="#/audit">{c}</a> })}
           </span>
         </div>
-        {active ? (
-          <div className="support-strip" role="status">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              aria-hidden="true"
-            >
-              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z M12 9a3 3 0 1 1 0 6a3 3 0 0 1 0-6z" />
-            </svg>
-            <span className="support-text">
-              <strong>{t('shell.supportActive', { tenant: active.tenantName })}</strong>
-              {t('shell.supportActiveRest', { minutes: minutesLeft(active.expiresAt) })}
-            </span>
-            <span className="actions-row">
-              <Button variant="secondary" data-size="sm" onClick={() => setExtending(true)}>
-                {t('shell.extend')}
-              </Button>
-              {path === '/support-access' ? null : (
-                <Button
-                  variant="secondary"
-                  data-size="sm"
-                  onClick={() => {
-                    window.location.hash = '/support-access';
-                  }}
-                >
-                  {t('shell.showPortal')}
-                </Button>
-              )}
-              <Button data-size="sm" onClick={() => void support.end()}>
-                {t('shell.endSession')}
-              </Button>
-            </span>
-            <SupportDialog
-              open={extending}
-              title={t('shell.extendTitle')}
-              lead={t('shell.extendLead', { minutes: extensionMinutes })}
-              hint={t('shell.extendHint')}
-              sees={t('shell.extendSees', { tenant: active.tenantName })}
-              cta={t('shell.extendCta', { minutes: extensionMinutes })}
-              api={{
-                method: 'POST',
-                path: `/operator/support-sessions/${active.id}/extend`,
-                body: () => ({ minutes: extensionMinutes }),
-              }}
-              onClose={() => setExtending(false)}
-              onConfirm={(reason) => support.extend(extensionMinutes, reason)}
-            />
-          </div>
-        ) : null}
       </div>
       <div className="body">
         <nav

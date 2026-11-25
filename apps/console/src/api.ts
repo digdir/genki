@@ -11,7 +11,6 @@ import type {
   OperatorModel,
   Problem,
   RefreshResult,
-  SupportSession,
   Tenant,
   DefaultVersion,
   Health,
@@ -30,7 +29,6 @@ import type {
   MatrixRun,
   MatrixRunDetail,
   TracingStatus,
-  SupportSessionRow,
   RunningTask,
   EffectiveSettings,
   DescriptorDetail,
@@ -238,6 +236,24 @@ export const localizedEngine = (engine: KnowledgeEngine, t: T): KnowledgeEngine 
 };
 
 export const lockedEnvironmentType = 'urn:genai:problem:locked-environment';
+export const contentReasonRequiredType = 'urn:genai:problem:content-reason-required';
+
+export type ContentReasonHandler = (tenant: string) => Promise<void>;
+
+export interface GivenContentReason {
+  tenant: string;
+  reason: string;
+  day: string;
+  expiresAt: string;
+}
+
+const contentReasonTenant = (error: ApiError, path: string) => {
+  if (error.status !== 403 || error.problem?.type !== contentReasonRequiredType) return undefined;
+  const named = (error.problem as { tenant?: unknown }).tenant;
+  if (typeof named === 'string' && named) return named;
+  const fromPath = /^\/tenants\/([^/?]+)/.exec(path)?.[1];
+  return fromPath ? decodeURIComponent(fromPath) : undefined;
+};
 
 async function* sseData(body: ReadableStream<Uint8Array>) {
   const reader = body.getReader();
@@ -293,14 +309,9 @@ export const createApiClient = ({
   settingsGrid = true,
 }: ApiClientOptions) => {
   const say = () => translator(locale?.() ?? 'nb');
-  const held = new Map<string, string>();
-  const supportHeader = (path: string, headers: Record<string, string>) => {
-    if ('support-session' in headers) return headers;
-    const tenant = /^\/tenants\/([^/?]+)/.exec(path)?.[1];
-    const session = tenant ? held.get(decodeURIComponent(tenant)) : undefined;
-    return session ? { ...headers, 'support-session': session } : headers;
-  };
-  const call = async <T>(
+  let askContentReason: ContentReasonHandler | undefined;
+  const givingReason = new Map<string, Promise<void>>();
+  const request = async <T>(
     method: string,
     path: string,
     {
@@ -316,7 +327,7 @@ export const createApiClient = ({
       headers: {
         accept: 'application/json',
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-        ...encodeReason(supportHeader(path, headers)),
+        ...encodeReason(headers),
         ...(name ? { 'actor-name': encodeURIComponent(name) } : {}),
         ...(bearer ? { authorization: `Bearer ${bearer}` } : {}),
       },
@@ -329,6 +340,32 @@ export const createApiClient = ({
     }
     const text = await response.text();
     return (text ? JSON.parse(text) : undefined) as T;
+  };
+  const giveReasonFor = (tenant: string, refused: ApiError, ask: ContentReasonHandler) => {
+    const pending = givingReason.get(tenant);
+    if (pending) return pending;
+    const giving = ask(tenant)
+      .catch(() => {
+        throw refused;
+      })
+      .finally(() => givingReason.delete(tenant));
+    givingReason.set(tenant, giving);
+    return giving;
+  };
+  const call = async <T>(
+    method: string,
+    path: string,
+    options?: Parameters<typeof request>[2],
+  ): Promise<T> => {
+    try {
+      return await request<T>(method, path, options);
+    } catch (e) {
+      const tenant = e instanceof ApiError ? contentReasonTenant(e, path) : undefined;
+      const ask = askContentReason;
+      if (!tenant || !ask) throw e;
+      await giveReasonFor(tenant, e as ApiError, ask);
+      return request<T>(method, path, options);
+    }
   };
   let usageCache: { key: string; at: number; data: Map<string, MonthUsage['usage']> } | undefined;
   const fetchUsage = async (orgNumbers: string[], signal?: AbortSignal) => {
@@ -364,11 +401,6 @@ export const createApiClient = ({
     hasSettingsGrid: settingsGrid,
     settingsGrid: (signal?: AbortSignal) =>
       call<SettingsGrid>('GET', '/operator/settings/grid', { signal }),
-    holdSupport: (tenant: string, session: string | undefined) => {
-      if (session) held.set(tenant, session);
-      else held.delete(tenant);
-    },
-    supportHeld: (tenant: string) => held.has(tenant),
     actor: () => actorName?.(),
     listTenants: async (signal?: AbortSignal, options: { usage?: boolean } = {}) => {
       const tenants = (
@@ -562,26 +594,32 @@ export const createApiClient = ({
         `/settings/defaults/${encodeURIComponent(key)}`,
         { body: { value }, headers: { 'change-reason': reason } },
       ),
-    exportTenant: (tenant: string, session: string, signal?: AbortSignal) =>
+    exportTenant: (tenant: string, signal?: AbortSignal) =>
       call<Record<string, unknown>>('GET', `/tenants/${encodeURIComponent(tenant)}/export`, {
         signal,
-        headers: { 'support-session': session },
       }),
     importTenant: (
       tenant: string,
       bundle: Record<string, unknown>,
-      options: { dryRun: boolean; reason: string; session: string },
+      options: { dryRun: boolean; reason: string },
     ) =>
       call<ImportResult>(
         'POST',
         `/tenants/${encodeURIComponent(tenant)}/import?dryRun=${options.dryRun}`,
         {
           body: bundle,
-          headers: { 'change-reason': options.reason, 'support-session': options.session },
+          headers: { 'change-reason': options.reason },
         },
       ),
-    openSupportSession: (tenant: string, reason: string, minutes = 30) =>
-      call<SupportSession>('POST', '/support-sessions', { body: { tenant, reason, minutes } }),
+    onContentReason: (handler: ContentReasonHandler | undefined) => {
+      askContentReason = handler;
+    },
+    giveContentReason: (tenant: string, reason: string) =>
+      call<GivenContentReason>(
+        'POST',
+        `/operator/tenants/${encodeURIComponent(tenant)}/content-reason`,
+        { body: { reason } },
+      ),
     demos: (signal?: AbortSignal) => call<DemoLibrary>('GET', '/operator/demos', { signal }),
     demo: (id: string, signal?: AbortSignal) =>
       call<DemoDetail>('GET', `/operator/demos/${encodeURIComponent(id)}`, { signal }),
@@ -689,13 +727,6 @@ export const createApiClient = ({
         },
       ),
     tracing: (signal?: AbortSignal) => call<TracingStatus>('GET', '/operator/tracing', { signal }),
-    supportSessions: async (signal?: AbortSignal) =>
-      (await call<{ data: SupportSessionRow[] }>('GET', '/operator/support-sessions', { signal }))
-        .data,
-    endSupportSession: (id: string, reason: string) =>
-      call<SupportSessionRow>('POST', `/operator/support-sessions/${encodeURIComponent(id)}/end`, {
-        headers: { 'change-reason': reason },
-      }),
     runningTasks: async (filter: { tenant?: string; service?: string }, signal?: AbortSignal) => {
       const query = new URLSearchParams(
         Object.entries(filter).filter((e): e is [string, string] => Boolean(e[1])),
@@ -748,17 +779,17 @@ export const createApiClient = ({
       }),
     settingOverrides: (signal?: AbortSignal) =>
       call<SettingOverrides>('GET', '/operator/settings/overrides', { signal }),
-    effective: (tenant: string, service: string, session: string, signal?: AbortSignal) =>
+    effective: (tenant: string, service: string, signal?: AbortSignal) =>
       call<EffectiveSettings>(
         'GET',
         `/tenants/${encodeURIComponent(tenant)}/settings/effective?service=${encodeURIComponent(service)}`,
-        { signal, headers: { 'support-session': session } },
+        { signal },
       ),
-    timeline: (tenant: string, task: string, session: string, signal?: AbortSignal) =>
+    timeline: (tenant: string, task: string, signal?: AbortSignal) =>
       call<TaskTimeline>(
         'GET',
         `/tenants/${encodeURIComponent(tenant)}/tasks/${encodeURIComponent(task)}/timeline`,
-        { signal, headers: { 'support-session': session } },
+        { signal },
       ),
     operations: (signal?: AbortSignal) =>
       call<OperationsOverview>('GET', '/operator/operations', { signal }),
@@ -994,40 +1025,27 @@ export const createApiClient = ({
         body: { status, reason },
         headers: { 'change-reason': reason },
       }),
-    extendSupportSession: (id: string, minutes: number, reason: string) =>
-      call<SupportSession>('POST', `/operator/support-sessions/${encodeURIComponent(id)}/extend`, {
-        body: { minutes },
-        headers: { 'change-reason': reason },
-      }),
-    tenantKeys: async (tenant: string, session: string, signal?: AbortSignal) =>
+    tenantKeys: async (tenant: string, signal?: AbortSignal) =>
       (
         await call<{ keys: TenantKey[] }>('GET', `/tenants/${encodeURIComponent(tenant)}/access`, {
           signal,
-          headers: { 'support-session': session },
         })
       ).keys,
-    revokeTenantKey: (tenant: string, id: string, reason: string, session: string) =>
+    revokeTenantKey: (tenant: string, id: string, reason: string) =>
       call<TenantKey>(
         'POST',
         `/tenants/${encodeURIComponent(tenant)}/api-keys/${encodeURIComponent(id)}/revoke`,
-        { body: {}, headers: { 'change-reason': reason, 'support-session': session } },
+        { body: {}, headers: { 'change-reason': reason } },
       ),
-    tenantSettings: (tenant: string, session: string, signal?: AbortSignal) =>
+    tenantSettings: (tenant: string, signal?: AbortSignal) =>
       call<EffectiveSettings>('GET', `/tenants/${encodeURIComponent(tenant)}/settings/effective`, {
         signal,
-        headers: { 'support-session': session },
       }),
-    setTenantSetting: (
-      tenant: string,
-      key: string,
-      value: unknown,
-      reason: string,
-      session: string,
-    ) =>
+    setTenantSetting: (tenant: string, key: string, value: unknown, reason: string) =>
       call<unknown>(
         'PUT',
         `/tenants/${encodeURIComponent(tenant)}/settings/${encodeURIComponent(key)}`,
-        { body: { value }, headers: { 'change-reason': reason, 'support-session': session } },
+        { body: { value }, headers: { 'change-reason': reason } },
       ),
     accessRequests: async (signal?: AbortSignal) =>
       (await call<{ data: AccessRequest[] }>('GET', '/operator/onboarding/requests', { signal }))
@@ -1113,10 +1131,7 @@ export const createApiClient = ({
         `/operator/quota-requests/${encodeURIComponent(tenant)}/${encodeURIComponent(id)}/decision`,
         { body: { decision }, headers: { 'change-reason': reason } },
       ),
-    audit: (tenant: string, session: string, signal?: AbortSignal) =>
-      call<AuditEntry[]>('GET', `/tenants/${encodeURIComponent(tenant)}/audit`, {
-        signal,
-        headers: { 'support-session': session },
-      }),
+    audit: (tenant: string, signal?: AbortSignal) =>
+      call<AuditEntry[]>('GET', `/tenants/${encodeURIComponent(tenant)}/audit`, { signal }),
   };
 };

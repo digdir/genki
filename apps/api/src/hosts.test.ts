@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
-import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { envSecrets } from '@genai/kernel';
 import { actorNames } from './actor-names.js';
@@ -496,18 +495,10 @@ describe('hosted clients in lockdown', () => {
   const ready = async () => {
     const booted = await boot({ lockdown: true });
     expect((await booted.publish(service('klarsprak', shown))).ok).toBe(true);
-    const opened = await booted.admin.openSupportSession(
-      principals.operator as Principal,
-      digdir,
-      'tar i bruk vert',
-      30,
-    );
-    const session = opened.ok ? (opened.value as { id: string }).id : '';
     const markHosted = (id: string, as = 'operator') =>
       booted.call(`/tenants/${digdir}/clients/${id}/hosted`, {
         method: 'PUT',
         as,
-        headers: { 'support-session': session },
         body: { hosted: true, hostnames: [{ hostname: 'ka.example.no' }] },
       });
     return { ...booted, markHosted };

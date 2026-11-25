@@ -670,7 +670,7 @@ export const registerHostnameRoutes = <E extends Env, S extends Schema, B extend
   app: Hono<E, S, B>,
   deps: ClaimRouteDeps,
 ) => {
-  const access = tenantAccess(deps.admin);
+  const access = tenantAccess;
   const guard = async (c: Context, right?: Right) => {
     const principal = await deps.authenticate(c.req.raw);
     if (!principal) return problem(c, 401, 'Unauthorized');

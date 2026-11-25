@@ -51,7 +51,7 @@ describe('console in English', () => {
     const table = await screen.findByRole('region', { name: 'Organisations' });
     expect(within(table).getByRole('columnheader', { name: 'Services' })).toBeTruthy();
     expect(
-      within(table).getAllByRole('button', { name: /^Support access to / }).length,
+      within(table).getAllByRole('button', { name: /^Open organisation / }).length,
     ).toBeGreaterThan(0);
     expect(screen.getByRole('navigation', { name: 'Console menu' })).toBeTruthy();
   });

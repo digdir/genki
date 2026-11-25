@@ -16,6 +16,7 @@ import { changeReason, Problem, problemContent } from '../http.js';
 import { rights } from '../rights.js';
 import { accessPeopleRoutes } from './access-people.js';
 import { flagRoutes } from './flags.js';
+import { withContentReasons } from './content-reason.js';
 
 const json = <T extends z.ZodType>(schema: T, description: string) => ({
   description,
@@ -53,15 +54,6 @@ const optionalReason = z.object({
     .openapi({
       param: { name: 'change-reason', in: 'header' },
       description: 'Why the change is made. A default text is stored when it is left out.',
-    }),
-});
-const supportSession = z.object({
-  'support-session': z
-    .string()
-    .optional()
-    .openapi({
-      param: { name: 'support-session', in: 'header' },
-      description: 'Operators act for the tenant only inside an open support session.',
     }),
 });
 
@@ -763,19 +755,6 @@ const OwnOnboardingRequest = z
 
 const OperatorOnboardingRequest = OwnOnboardingRequest.openapi('OperatorOnboardingRequest');
 
-const SupportSession = z
-  .object({
-    id: z.string(),
-    operator: z.string(),
-    operatorName: z.string().optional(),
-    tenant: z.string(),
-    reason: z.string(),
-    openedAt: z.string(),
-    expiresAt: z.string(),
-    endedAt: z.string().optional(),
-  })
-  .openapi('SupportSessionRecord');
-
 const DefinitionVersionSummary = z.object({
   version: z.number().int(),
   publishedBy: z.string(),
@@ -960,7 +939,7 @@ const tracingRoutes: RouteConfig[] = [
   }),
 ];
 
-export const accessRoutes: RouteConfig[] = [
+export const accessRoutes: RouteConfig[] = withContentReasons([
   ...tracingRoutes,
   ...accessPeopleRoutes,
   ...flagRoutes,
@@ -968,7 +947,7 @@ export const accessRoutes: RouteConfig[] = [
     method: 'get',
     path: '/tenants/{tenant}/access',
     summary: "The tenant's services with the Altinn requirement to call them, and its API keys",
-    request: { params: z.object({ tenant }), headers: supportSession },
+    request: { params: z.object({ tenant }) },
     responses: {
       200: json(
         z.object({
@@ -1097,7 +1076,7 @@ export const accessRoutes: RouteConfig[] = [
     method: 'get',
     path: '/tenants/{tenant}/api-key-policies',
     summary: "The tenant's key policies with the keys that use each (manage-services)",
-    request: { params: z.object({ tenant }), headers: supportSession },
+    request: { params: z.object({ tenant }) },
     responses: {
       200: json(z.object({ data: z.array(KeyPolicy) }), 'Policies'),
       401: unauthorized,
@@ -1159,7 +1138,6 @@ export const accessRoutes: RouteConfig[] = [
     request: {
       params: z.object({ tenant }),
       query: z.object({ service: queryParam('service', 'Only clients of this service.') }),
-      headers: supportSession,
     },
     responses: {
       200: json(
@@ -1214,8 +1192,7 @@ export const accessRoutes: RouteConfig[] = [
   createRoute({
     method: 'put',
     path: '/tenants/{tenant}/clients/{id}/hosted',
-    summary:
-      "Mark a client hosted by genki's assistant host, or not (platform operator in a support session, audited)",
+    summary: "Mark a client hosted by genki's assistant host, or not (platform operators, audited)",
     request: {
       params: z.object({ tenant, id: pathParam('id', 'kunnskapsassistenten-web') }),
       headers: reason,
@@ -1233,7 +1210,7 @@ export const accessRoutes: RouteConfig[] = [
       400: invalid,
       401: unauthorized,
       403: problem('Not a platform operator'),
-      404: problem('No such client, or no support session for this tenant'),
+      404: problem('No such client'),
     },
   }),
   createRoute({
@@ -1620,7 +1597,7 @@ export const accessRoutes: RouteConfig[] = [
     method: 'get',
     path: '/tenants/{tenant}/me',
     summary: 'The rights the caller has in this tenant',
-    request: { params: z.object({ tenant }), headers: supportSession },
+    request: { params: z.object({ tenant }) },
     responses: {
       200: json(z.object({ rights: z.array(Right) }), 'Rights'),
       401: unauthorized,
@@ -1664,7 +1641,7 @@ export const accessRoutes: RouteConfig[] = [
     method: 'get',
     path: '/tenants/{tenant}/integrations',
     summary: "The tenant's tool connections with active and pending tools, and the trace settings",
-    request: { params: z.object({ tenant }), headers: supportSession },
+    request: { params: z.object({ tenant }) },
     responses: {
       200: json(
         z.object({
@@ -1682,7 +1659,7 @@ export const accessRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/tool-connections',
     summary:
       "The tenant's tool connections, the names of their active tools and each tool's approval",
-    request: { params: z.object({ tenant }), headers: supportSession },
+    request: { params: z.object({ tenant }) },
     responses: {
       200: json(
         z.object({
@@ -1972,7 +1949,7 @@ export const accessRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/connectors',
     summary:
       "The tenant's database connectors with status and last sync, newest first (use-services)",
-    request: { params: z.object({ tenant }), headers: supportSession },
+    request: { params: z.object({ tenant }) },
     responses: {
       200: json(z.object({ data: z.array(Connector) }), 'Connectors'),
       401: unauthorized,
@@ -2109,7 +2086,6 @@ export const accessRoutes: RouteConfig[] = [
         status: queryParam('status', `One of ${blockStatuses.join(', ')}.`),
         publisher: queryParam('publisher', 'digdir, own or shared.'),
       }),
-      headers: supportSession,
     },
     responses: {
       200: json(BuildingBlockList, 'Building blocks'),
@@ -2795,58 +2771,7 @@ export const accessRoutes: RouteConfig[] = [
       404: problem('Not found'),
     },
   }),
-  createRoute({
-    method: 'get',
-    path: '/operator/support-sessions',
-    summary: 'Every support session, newest first (operators)',
-    responses: {
-      200: json(
-        z.object({
-          data: z.array(SupportSession.extend({ status: z.enum(['active', 'expired', 'ended']) })),
-        }),
-        'Sessions',
-      ),
-      401: unauthorized,
-      403: operatorOnly,
-    },
-  }),
-  createRoute({
-    method: 'post',
-    path: '/operator/support-sessions/{id}/end',
-    summary: 'End a support session (operators, audited)',
-    request: {
-      params: z.object({ id: pathParam('id', 'id-1') }),
-      headers: reason,
-    },
-    responses: {
-      200: json(SupportSession, 'Ended'),
-      400: problem('Missing reason'),
-      401: unauthorized,
-      403: operatorOnly,
-      404: problem('No active session with that id'),
-    },
-  }),
-  createRoute({
-    method: 'post',
-    path: '/operator/support-sessions/{id}/extend',
-    summary: 'Extend your own active support session by 1 to 60 minutes (operators, audited)',
-    request: {
-      params: z.object({ id: pathParam('id', 'id-1') }),
-      headers: reason,
-      body: body(
-        z.object({ minutes: z.number().int().min(1).max(60).optional().describe('Default 15.') }),
-        false,
-      ),
-    },
-    responses: {
-      200: json(SupportSession, 'Extended'),
-      400: problem('Missing reason, or minutes out of range'),
-      401: unauthorized,
-      403: operatorOnly,
-      404: problem('No active session of yours with that id'),
-    },
-  }),
-];
+]);
 
 const OAuthError = z
   .object({ error: z.string(), error_description: z.string().optional() })

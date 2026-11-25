@@ -10,9 +10,8 @@ export const audit = {
   actionDefaultSet: 'Changed platform default',
   actionTenantImport: 'Imported',
   actionTenantCreate: 'Registered organisation',
-  actionSupportOpen: 'Opened support access',
-  actionSupportEnd: 'Ended support access',
-  actionSupportExtend: 'Extended support access',
+  actionContentRead: 'Digdir viewed content',
+  actionContentReason: 'Digdir gave a reason to see content',
   actionModelsRefresh: 'Refreshed models',
   actionModelsClassify: 'Changed model',
   actionApikeysCreate: 'Created API key',
@@ -137,7 +136,6 @@ export const audit = {
   intro: 'All actions in the platform, including what operators do in this console.',
   loading: 'Loading the audit log',
   unavailable:
-    'The audit log across organisations is not available yet. Start support access to see the log of one organisation.',
-  startSupport: 'Start support access',
-  scoped: 'Showing the log of {tenant} through the support access.',
+    'The audit log across organisations is not available yet. Open Organisation to see the log of one organisation.',
+  openOrganisation: 'Open Organisation',
 } satisfies Translation<typeof source>;

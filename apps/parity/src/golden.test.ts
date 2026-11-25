@@ -198,6 +198,7 @@ describe('stage attribution', () => {
   it('answer runs on the platform carry stages from the operator attribution route', async () => {
     let seen: IncomingHttpHeaders | undefined;
     const url = await serve((path, headers) => {
+      if (path === '/operator/tenants/991825827/content-reason') return { status: 201, body: '{}' };
       seen = headers;
       return path === '/tenants/991825827/diagnostics/tasks/t1/attribution'
         ? {
@@ -209,7 +210,12 @@ describe('stage attribution', () => {
           }
         : { status: 404, body: '{}' };
     });
-    const access = { baseUrl: url, token: 'op', supportSession: 's1', tenant: '991825827' };
+    const access = {
+      baseUrl: url,
+      token: 'op',
+      contentReason: 'Sammenligner med headless-rag',
+      tenant: '991825827',
+    };
     const records = await runQuality({
       cases: [golden],
       targets: [
@@ -231,7 +237,6 @@ describe('stage attribution', () => {
     });
     expect(records.find((r) => r.target === 'old')?.stages).toBeUndefined();
     expect(seen?.authorization).toBe('Bearer op');
-    expect(seen?.['support-session']).toBe('s1');
     expect(summarizeAnswers([golden], records, ['old', 'new']).systems[1].stages).toEqual({
       runs: 1,
       inPool: 1,
@@ -268,7 +273,7 @@ describe('fixed-query retrieval', () => {
     expect(result.detectedFilter).toEqual({ field: 'concerned_years', values: ['2024'] });
   });
 
-  it('calls the platform diagnostics route as an operator in a support session, with overrides', async () => {
+  it('calls the platform diagnostics route as an operator with overrides', async () => {
     let request: { path: string; headers: IncomingHttpHeaders; body: unknown } | undefined;
     const url = await serve((path, headers, body) => {
       request = { path, headers, body: JSON.parse(body) };
@@ -280,7 +285,12 @@ describe('fixed-query retrieval', () => {
       };
     });
     const result = await platformRetriever(
-      { baseUrl: url, token: 'op', supportSession: 's1', tenant: '991825827' },
+      {
+        baseUrl: url,
+        token: 'op',
+        contentReason: 'Sammenligner med headless-rag',
+        tenant: '991825827',
+      },
       { service: 'public-docs-retrieve-only' },
     )({ queries: ['q'], rerank: true, autoFilter: false });
 
@@ -294,6 +304,35 @@ describe('fixed-query retrieval', () => {
     expect(result).toMatchObject({ chunks: [{ chunkId: 'c2' }], rerank: 'reranked' });
   });
 
+  it("gives the operator's content reason for the tenant once, before the first diagnostics read", async () => {
+    const posted: { path: string; body: unknown }[] = [];
+    const url = await serve((path, _headers, body) => {
+      posted.push({ path, body: body ? JSON.parse(body) : undefined });
+      return path.endsWith('/content-reason')
+        ? { status: 201, body: '{}' }
+        : { body: JSON.stringify({ chunks: [] }) };
+    });
+    const retrieve = platformRetriever(
+      {
+        baseUrl: url,
+        token: 'op',
+        contentReason: 'Sammenligner med headless-rag',
+        tenant: '991825827',
+      },
+      { service: 'public-docs-retrieve-only' },
+    );
+
+    await retrieve({ queries: ['a'] });
+    await retrieve({ queries: ['b'] });
+
+    expect(posted.map((p) => p.path)).toEqual([
+      '/operator/tenants/991825827/content-reason',
+      '/tenants/991825827/diagnostics/retrieve',
+      '/tenants/991825827/diagnostics/retrieve',
+    ]);
+    expect(posted[0]?.body).toEqual({ reason: 'Sammenligner med headless-rag' });
+  });
+
   it('reads the values the platform detected from the trace, not the queries they came from', async () => {
     const detections = [
       { kind: 'year', field: 'title', values: ['2023'], queries: ['i 2024'], use: 'boost' },
@@ -302,7 +341,12 @@ describe('fixed-query retrieval', () => {
       body: JSON.stringify({ chunks: [], trace: { expansion: { detections } } }),
     }));
     const result = await platformRetriever(
-      { baseUrl: url, token: 'op', supportSession: 's1', tenant: '991825827' },
+      {
+        baseUrl: url,
+        token: 'op',
+        contentReason: 'Sammenligner med headless-rag',
+        tenant: '991825827',
+      },
       { service: 'public-docs-retrieve-only' },
     )({ queries: ['q'], autoFilter: true });
 
@@ -314,7 +358,12 @@ describe('fixed-query retrieval', () => {
     const score = await scoreRetrieval(
       [golden],
       platformRetriever(
-        { baseUrl: url, token: 'op', supportSession: 'gone', tenant: '991825827' },
+        {
+          baseUrl: url,
+          token: 'op',
+          contentReason: 'Sammenligner med headless-rag',
+          tenant: '991825827',
+        },
         { service: 's' },
       ),
     );

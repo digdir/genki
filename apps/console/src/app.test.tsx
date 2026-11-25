@@ -203,7 +203,7 @@ describe('virksomheter', () => {
     expect(within(table).getByText(/999 888 777/)).toBeTruthy();
   });
 
-  it('filters by status and search, and blocks support access for tenants in onboarding', async () => {
+  it('filters by status and search, and blocks opening the organisation for tenants in onboarding', async () => {
     await signedIn();
     await screen.findByRole('table');
 
@@ -211,7 +211,7 @@ describe('virksomheter', () => {
     const table = screen.getByRole('table');
     expect(within(table).getAllByRole('row')).toHaveLength(4);
     const blocked = within(table).getByRole('button', {
-      name: 'Støttetilgang til Eksempel kommune',
+      name: 'Åpne virksomheten Eksempel kommune',
     });
     expect(blocked.getAttribute('aria-disabled')).toBe('true');
 
@@ -226,41 +226,6 @@ describe('virksomheter', () => {
 
     expect(await screen.findByRole('heading', { name: 'Kunne ikke hente dataene' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Prøv igjen' })).toBeTruthy();
-  });
-});
-
-describe('støttetilgang', () => {
-  it('needs a reason of 10 characters, then shows a banner on every page saying changes are logged', async () => {
-    await signedIn('#/support-access?tenant=999888777');
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Start støttetilgang' }));
-    expect(await screen.findByText('Før du kan starte, må du rette opp i dette:')).toBeTruthy();
-    expect(screen.getAllByText(/Nå er det 0/).length).toBeGreaterThan(0);
-
-    fireEvent.change(screen.getByRole('textbox', { name: /Begrunnelse/ }), {
-      target: { value: 'Kunden ser ikke kvoten riktig, sak DIG-4420' },
-    });
-    fireEvent.click(screen.getByRole('radio', { name: '15 minutter' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Start støttetilgang' }));
-
-    expect(
-      await screen.findByRole('heading', { name: 'Portalen til Testetaten, støttetilgang' }),
-    ).toBeTruthy();
-    const banner = screen
-      .getAllByRole('status')
-      .find((s) => s.textContent?.includes('Støttetilgang til Testetaten')) as HTMLElement;
-    expect(banner.textContent).toMatch(/endringer logges som «Endring fra Digdir» · 15 min igjen/);
-
-    fireEvent.click(
-      within(screen.getByRole('navigation', { name: 'Konsollmeny' })).getByRole('link', {
-        name: 'Revisjon',
-      }),
-    );
-    expect(await screen.findByRole('heading', { level: 1, name: 'Revisjon' })).toBeTruthy();
-    expect(screen.getByText(/Støttetilgang til Testetaten/)).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Avslutt økten' }));
-    await waitFor(() => expect(screen.queryByText(/Støttetilgang til Testetaten/)).toBeNull());
   });
 });
 

@@ -27,9 +27,9 @@ export const dataHandling = defineNamespace({
   stored3: 'Innholdet slettes når innholdsnøkkelen slettes.',
   access1: 'Administratorer i virksomheten ser tilbakemeldinger samlet og uten navn.',
   access2:
-    'Driftere hos Digdir ser innhold bare gjennom en støtteøkt. Støtteøkten er tidsbegrenset, har en begrunnelse og vises i loggen til virksomheten.',
+    'Driftere hos Digdir ser innhold bare når de har oppgitt en grunn. Grunnen gjelder ut dagen, og hver gang de ser innhold, vises det i loggen til virksomheten med grunnen.',
   access3:
-    'I en støtteøkt kan Digdir endre oppsettet på vegne av virksomheten. Hver endring vises i loggen som «Endring fra Digdir», med navnet til den som gjorde den. Digdir lager aldri API-nøkler for virksomheten.',
+    'Digdir kan endre oppsettet og grensene på vegne av virksomheten. Hver endring vises i loggen som «Endring fra Digdir», med navnet til den som gjorde den. Digdir lager aldri API-nøkler for virksomheten.',
   logged1: 'Hver kjøring registreres i kjøringsloggen til virksomheten.',
   logged2: 'Plattformens driftslogger inneholder ikke spørsmål eller svar.',
   marking1: 'Svar fra plattformen er merket «Svar laget med KI» på skjermen.',

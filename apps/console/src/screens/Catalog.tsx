@@ -10,11 +10,9 @@ import { EngineSwitchSection } from './config/EngineSwitch';
 import { Pipelines } from './config/Pipelines';
 import {
   localId,
-  refusedWithoutSupport,
   Registry,
   ScopeBar,
   scopeEyebrow,
-  SupportNeeded,
   useConfigScope,
   type TenantView,
 } from './config/Registry';
@@ -122,12 +120,7 @@ const TenantRegistry = ({
     [api, base],
   );
   if (kinds.status === 'loading') return <Loading label={t('catalog.loadingKinds')} />;
-  if (kinds.status === 'error')
-    return refusedWithoutSupport(api, tenant, kinds.error) ? (
-      <SupportNeeded tenant={tenant} />
-    ) : (
-      <ErrorState error={kinds.error} onRetry={retry} />
-    );
+  if (kinds.status === 'error') return <ErrorState error={kinds.error} onRetry={retry} />;
   if (!kinds.data.includes(tab.kind))
     return (
       <Paragraph data-size="sm">

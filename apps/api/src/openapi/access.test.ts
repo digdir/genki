@@ -25,7 +25,7 @@ type Operation = {
 type Doc = { paths: Record<string, Record<string, Operation>> };
 
 const area =
-  /^\/(tenants\/\{tenant\}\/(api-keys|api-key-policies|clients|maskinporten-clients|me|access|connectors|tool-connections|building-blocks|secrets|private-networks|integrations|plugins|services\/\{service\}\/api-keys)(\/|$)|operator\/(building-blocks|secrets|plugins|onboarding|tenants|organizations|support-sessions)(\/|$)|onboarding\/|support-sessions$|mock\/)/;
+  /^\/(tenants\/\{tenant\}\/(api-keys|api-key-policies|clients|maskinporten-clients|me|access|connectors|tool-connections|building-blocks|secrets|private-networks|integrations|plugins|services\/\{service\}\/api-keys)(\/|$)|operator\/(building-blocks|secrets|plugins|onboarding|tenants|organizations)(\/|$)|onboarding\/|mock\/)/;
 
 const leader = [
   'read',
@@ -350,8 +350,8 @@ describe('access and extensions API reference', () => {
     );
   });
 
-  it('answers plug-in, onboarding, tenant and support session routes as documented', async () => {
-    const { send, admin } = await bootPlatform({ people, services: ['klarsprak'] });
+  it('answers plug-in, onboarding and tenant routes as documented', async () => {
+    const { send } = await bootPlatform({ people, services: ['klarsprak'] });
 
     await conforms(await send('/operator/plugins', 'drift'), 'get', '/operator/plugins', 200);
     await conforms(
@@ -452,38 +452,6 @@ describe('access and extensions API reference', () => {
       await send(`/operator/tenants/${digdir}/definitions/services/klarsprak/versions/1`, 'drift'),
       'get',
       '/operator/tenants/{tenant}/definitions/{kind}/{id}/versions/{version}',
-      200,
-    );
-
-    const opened = await admin.openSupportSession(
-      people.drift as Principal,
-      digdir,
-      'Feilsøker en tjeneste for kunden',
-      30,
-    );
-    if (!opened.ok) throw new Error('no support session');
-    await conforms(
-      await send('/operator/support-sessions', 'drift'),
-      'get',
-      '/operator/support-sessions',
-      200,
-    );
-    await conforms(
-      await send(`/operator/support-sessions/${opened.value.id}/extend`, 'drift', {
-        body: { minutes: 10 },
-        reason,
-      }),
-      'post',
-      '/operator/support-sessions/{id}/extend',
-      200,
-    );
-    await conforms(
-      await send(`/operator/support-sessions/${opened.value.id}/end`, 'drift', {
-        body: {},
-        reason,
-      }),
-      'post',
-      '/operator/support-sessions/{id}/end',
       200,
     );
   });

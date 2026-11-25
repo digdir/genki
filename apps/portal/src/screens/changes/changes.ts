@@ -11,6 +11,8 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.tenant.import': 'changes.tenantImport',
   'platform.tenant.create': 'changes.tenantCreate',
   'platform.support.open': 'changes.supportOpen',
+  'platform.content.read': 'changes.contentRead',
+  'platform.content.reason': 'changes.contentReason',
   'platform.apikeys.create': 'changes.apikeyCreate',
   'platform.apikeys.revoke': 'changes.apikeyRevoke',
   'platform.hook.save': 'changes.hookSave',
@@ -175,7 +177,7 @@ const actionKeys: Record<string, PlainKey> = {
 
 export const auditActionsWithLabels = Object.keys(actionKeys);
 
-const hiddenTargetKinds = new Set(['audit', 'support']);
+const hiddenTargetKinds = new Set(['audit', 'support', 'content', 'content-reason']);
 
 const keyIssuer = ':urn:genai:legacy-api-key:';
 
@@ -190,6 +192,7 @@ const areaPrefixes: [string, ChangeArea][] = [
   ['platform.jobs.', 'datasets'],
   ['platform.knowledge.', 'datasets'],
   ['platform.support.', 'access'],
+  ['platform.content.', 'access'],
   ['platform.keypolicy.', 'access'],
   ['platform.maskinporten-client.', 'access'],
   ['platform.clients.', 'access'],

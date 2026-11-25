@@ -422,6 +422,28 @@ describe('the media route', () => {
   });
 });
 
+describe("an operator and a run's media", () => {
+  it("refuses an operator's read of a run's media until a reason is given for that organisation today", async () => {
+    const booted = await boot();
+    await publish(booted);
+    const { text, task } = await ask(booted);
+    const [attachment] = (JSON.parse(text) as { attachments: Attachment[] }).attachments;
+    const url = attachment?.url ?? '';
+    const { tenant } = await booted.platform.kernel.task(people.drift as Principal, task);
+
+    const before = await booted.send(url, 'drift');
+    expect(before.status).toBe(404);
+    expect(await before.text()).not.toContain(png);
+
+    await booted.send(`/operator/tenants/${tenant}/content-reason`, 'drift', {
+      body: { reason: 'Feil i figuren saken gjelder' },
+    });
+    const after = await booted.send(url, 'drift');
+    expect(after.status).toBe(200);
+    expect(Buffer.from(await after.arrayBuffer())).toEqual(pngBytes);
+  });
+});
+
 describe('media kinds come from descriptors alone', () => {
   it('a new media type needs only a descriptor', async () => {
     const booted = await boot();

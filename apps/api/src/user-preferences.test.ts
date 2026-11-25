@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { tenantAccess } from './access.js';
-import type { Admin } from './admin.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import type { ModuleDeps, MountDeps } from './platform-modules.js';
 import { digdir, other } from './testkit.js';
@@ -28,7 +27,7 @@ const boot = () => {
   userPreferencesModule({ configEntries } as unknown as ModuleDeps).mount(app, {
     authenticate: async (request: Request) =>
       people[request.headers.get('authorization')?.replace(/^Bearer /, '') ?? ''],
-    access: tenantAccess({ supportSession: () => undefined } as unknown as Admin),
+    access: tenantAccess,
   } as unknown as MountDeps);
   const call = (who: string, init: { body?: unknown; reason?: string; tenant?: string } = {}) =>
     app.request(`/tenants/${init.tenant ?? digdir}/me/preferences`, {

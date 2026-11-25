@@ -3,8 +3,17 @@ import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { InMemoryEvalRunStore, InMemoryLabelStore, type EvalRun } from '@genai/eval';
-import { createAdmin, type SupportSession } from '../admin.js';
-import { auth, digdir, files, klarsprak, other, plugins, settingDefinitions } from '../testkit.js';
+import { createAdmin } from '../admin.js';
+import {
+  auth,
+  digdir,
+  files,
+  klarsprak,
+  other,
+  plugins,
+  principals,
+  settingDefinitions,
+} from '../testkit.js';
 import {
   consoleAdminExtensions,
   registerConsoleRoutes,
@@ -70,24 +79,6 @@ const setup = async (extra: Pick<ConsoleDeps, 'lifecycle' | 'pluginUsage'> = {})
     service: 'klarsprak',
   });
   const labels = new InMemoryLabelStore();
-  const sessions: (SupportSession & { endedAt?: string })[] = [
-    {
-      id: 's1',
-      operator: 'operator:test:drift',
-      tenant: other,
-      reason: 'feilsøking',
-      openedAt: '2026-10-07T09:50:00Z',
-      expiresAt: '2026-10-07T10:20:00Z',
-    },
-    {
-      id: 's0',
-      operator: 'operator:test:drift',
-      tenant: digdir,
-      reason: 'eldre',
-      openedAt: '2026-10-06T09:00:00Z',
-      expiresAt: '2026-10-06T09:30:00Z',
-    },
-  ];
   const running = [
     { task: 'task-1', tenant: digdir, status: 'running', at: '2026-10-07T09:59:00Z' },
   ];
@@ -105,20 +96,6 @@ const setup = async (extra: Pick<ConsoleDeps, 'lifecycle' | 'pluginUsage'> = {})
       content: false,
       stats: { exported: 5, dropped: 1, failed: 0, sampledOut: 0 },
     }),
-    support: {
-      list: () => sessions,
-      end: (id, when) => {
-        const s = sessions.find((x) => x.id === id && !x.endedAt && new Date(x.expiresAt) > when);
-        if (s) s.endedAt = when.toISOString();
-        return s;
-      },
-      extend: async (id, minutes, when) => {
-        const s = sessions.find((x) => x.id === id && !x.endedAt && new Date(x.expiresAt) > when);
-        if (s)
-          s.expiresAt = new Date(new Date(s.expiresAt).getTime() + minutes * 60_000).toISOString();
-        return s;
-      },
-    },
     tasks: () => running.filter((t) => !cancelled.includes(t.task)),
     taskDetails: async (task) =>
       task === 'task-1'
@@ -203,7 +180,6 @@ describe('console routes', () => {
       '/operator/quality',
       '/operator/quality/label-queue',
       '/operator/tracing',
-      '/operator/support-sessions',
       '/operator/running-tasks',
       `/operator/tenants/${digdir}/definitions`,
       `/operator/tenants/${digdir}/definitions/services/klarsprak`,
@@ -256,8 +232,6 @@ describe('console routes', () => {
     const actions = [
       'platform.service.share',
       'platform.judge.label',
-      'platform.support.end',
-      'platform.support.extend',
       'platform.task.cancel',
       'platform.audit.export',
     ];
@@ -361,6 +335,29 @@ describe('console routes', () => {
     );
   });
 
+  it("hides a judge's reasons in the label queue until a reason is given for that organisation today", async () => {
+    const { send, admin } = await setup();
+    const reasons = async () =>
+      (
+        await readJson<{ data: { reason?: string }[] }>(
+          await send('/operator/quality/label-queue', 'operator'),
+        )
+      ).data.map((i) => i.reason);
+
+    const before = await reasons();
+    await admin.giveContentReason(
+      principals.operator as Principal,
+      digdir,
+      'Kalibrering av dommer',
+    );
+    const after = await reasons();
+
+    expect(before.length).toBeGreaterThan(0);
+    expect(before.every((r) => r === undefined)).toBe(true);
+    expect(after.every((r) => r === 'ok')).toBe(true);
+    expect((await admin.audit?.(digdir))?.map((e) => e.action)).toContain('platform.content.read');
+  });
+
   it('queues judge verdicts for labelling and records a human label as an audited change', async () => {
     const { send, labels, auditFor } = await setup();
     const queue = await readJson<{ data: { item: string; judge: string; judgeLabel: string }[] }>(
@@ -397,65 +394,6 @@ describe('console routes', () => {
       stats: { dropped: 1 },
     });
     expect(body).not.toHaveProperty('tenants');
-  });
-
-  it('lists support sessions with status and ends an active one early as an audited change', async () => {
-    const { send, auditFor } = await setup();
-    const listed = await readJson<{ data: { id: string; status: string }[] }>(
-      await send('/operator/support-sessions', 'operator'),
-    );
-    expect(listed.data.map((s) => [s.id, s.status])).toEqual([
-      ['s1', 'active'],
-      ['s0', 'expired'],
-    ]);
-
-    const ended = await send('/operator/support-sessions/s1/end', 'operator', {
-      method: 'POST',
-      reason: 'Ferdig med saken',
-    });
-    const expired = await send('/operator/support-sessions/s0/end', 'operator', {
-      method: 'POST',
-      reason: 'Ferdig med saken',
-    });
-
-    expect(ended.status).toBe(200);
-    expect(expired.status).toBe(404);
-    expect((await auditFor(ended.headers.get('genai-task') ?? ''))?.data).toMatchObject({
-      reason: 'Ferdig med saken',
-    });
-  });
-
-  it('extends an active support session with a reason, but not an expired one', async () => {
-    const { send } = await setup();
-
-    const extended = await send('/operator/support-sessions/s1/extend', 'operator', {
-      method: 'POST',
-      body: { minutes: 15 },
-      reason: 'Trenger mer tid til feilsøkingen',
-    });
-    const tooLong = await send('/operator/support-sessions/s1/extend', 'operator', {
-      method: 'POST',
-      body: { minutes: 240 },
-      reason: 'Trenger mer tid til feilsøkingen',
-    });
-    const expired = await send('/operator/support-sessions/s0/extend', 'operator', {
-      method: 'POST',
-      body: { minutes: 15 },
-      reason: 'Trenger mer tid til feilsøkingen',
-    });
-    const unreasoned = await send('/operator/support-sessions/s1/extend', 'operator', {
-      method: 'POST',
-      body: { minutes: 15 },
-    });
-
-    expect(extended.status).toBe(200);
-    expect(await readJson(extended)).toMatchObject({
-      id: 's1',
-      expiresAt: '2026-10-07T10:35:00.000Z',
-    });
-    expect(tooLong.status).toBe(400);
-    expect(expired.status).toBe(404);
-    expect(unreasoned.status).toBe(400);
   });
 
   it('filters running tasks by tenant and service and cancels one as an audited change', async () => {
@@ -499,7 +437,6 @@ describe('console routes', () => {
   it('refuses audited console actions for a non-operator even when called directly', async () => {
     const deps = {
       tasks: () => [],
-      support: { list: () => [], end: () => undefined },
     } as unknown as ConsoleDeps;
     const handlers = consoleAdminExtensions(deps);
     const employee: Principal = {
@@ -511,7 +448,6 @@ describe('console routes', () => {
     for (const action of [
       'platform.service.share',
       'platform.judge.label',
-      'platform.support.end',
       'platform.task.cancel',
     ]) {
       const outcome = await handlers[action]?.({ reason: 'x', tenant: digdir }, employee);
@@ -519,7 +455,7 @@ describe('console routes', () => {
     }
   });
 
-  it("shows operators a tenant's service definitions and their version history without a support session", async () => {
+  it("shows operators a tenant's service definitions and their version history", async () => {
     const { send, store } = await setup();
     const current = await store.get('Service', digdir, 'klarsprak');
     await store.publish(
@@ -557,9 +493,10 @@ describe('console routes', () => {
 
   it('lists the audit log across tenants and logs an export with a reason', async () => {
     const { send } = await setup();
-    await send('/operator/support-sessions/s1/end', 'operator', {
-      method: 'POST',
-      reason: 'Ferdig med saken',
+    await send(`/operator/shared-services/${digdir}/klarsprak`, 'operator', {
+      method: 'PUT',
+      body: { availableTo: '*' },
+      reason: 'Fellestjeneste for alle',
     });
 
     const exported = await send('/operator/audit/exports', 'operator', {
@@ -579,7 +516,7 @@ describe('console routes', () => {
     expect(refused.status).toBe(400);
     expect(audit.data.map((e) => e.action).sort()).toEqual([
       'platform.audit.export',
-      'platform.support.end',
+      'platform.service.share',
     ]);
   });
 
