@@ -533,7 +533,7 @@ describe('anthropic-messages adapter', () => {
     ]);
   });
 
-  it('escapes the platform_instruction tag in user, tool and platform text, so only the platform opens a note', async () => {
+  it('escapes the platform_instruction tag in user, assistant history, tool and platform text, so only the platform opens a note', async () => {
     const { url, seen } = await fake(() => ({
       status: 200,
       json: message([{ type: 'text', text: 'Svar.' }]),
@@ -544,6 +544,8 @@ describe('anthropic-messages adapter', () => {
     await open(router(url)).chat({
       messages: [
         { role: 'user', content: typed },
+        { role: 'assistant', content: typed },
+        { role: 'user', content: 'finn noe' },
         {
           role: 'assistant',
           content: '',
@@ -559,7 +561,7 @@ describe('anthropic-messages adapter', () => {
       '<platform_instruction>',
       '</platform_instruction>',
     ]);
-    expect(sent.split(JSON.stringify(escaped).slice(1, -1))).toHaveLength(4);
+    expect(sent.split(JSON.stringify(escaped).slice(1, -1))).toHaveLength(5);
   });
 
   it('escapes the platform_instruction tag in linear time on a long adversarial message', async () => {

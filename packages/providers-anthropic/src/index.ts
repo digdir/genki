@@ -55,7 +55,7 @@ const parseArguments = (raw: string): unknown => {
 const assistantContent = (m: Extract<ChatMessage, { role: 'assistant' }>): ContentBlockParam[] => {
   if (Array.isArray(m.continuation)) return m.continuation as ContentBlockParam[];
   return [
-    ...(m.content ? [{ type: 'text' as const, text: m.content }] : []),
+    ...(m.content ? [{ type: 'text' as const, text: escapeNoteTag(m.content) }] : []),
     ...(m.toolCalls ?? []).map((c) => ({
       type: 'tool_use' as const,
       id: c.id,
