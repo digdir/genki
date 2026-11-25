@@ -1026,6 +1026,31 @@ describe('agent-loop sources, as headless-rag publishes them', () => {
     ]);
   });
 
+  it("a source record keeps its chunk's document type", async () => {
+    const store = new Map([
+      ['c1', chunk(1, { documentType: 'Årsrapport' })],
+      ['c2', chunk(2)],
+    ]);
+    const out = await run({
+      retrieval: retrieval({}, store).impl,
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['tildelingsbrev'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c2'] })]),
+          ],
+          synth: [() => 'Digdir skal digitalisere offentlig sektor.'],
+        },
+      },
+    });
+
+    expect(out.sources.map((s) => [s.chunkId, s.documentType])).toEqual([
+      ['c1', 'Årsrapport'],
+      ['c2', undefined],
+    ]);
+    expect(out.sources[1]).not.toHaveProperty('documentType');
+  });
+
   it("a source record keeps its chunk's publisher", async () => {
     const store = new Map([
       ['c1', chunk(1, { publisher: 'Justis- og beredskapsdepartementet' })],

@@ -1,5 +1,5 @@
 import { Button, Card, Details, Divider, Link } from '@digdir/designsystemet-react';
-import { CheckmarkIcon, FilesIcon } from '@navikt/aksel-icons';
+import { CheckmarkIcon, FilesIcon, NumberListIcon } from '@navikt/aksel-icons';
 import { useEffect, useState } from 'react';
 import { useT } from './i18n.js';
 import { referenceParts, referencesMarkdown, type Reference } from './referenceList.js';
@@ -32,14 +32,23 @@ export const References = ({
   };
   return (
     <Card className="uib-answer-references-card" variant="default">
-      <Details className="uib-answer-references">
-        <Details.Summary>{t('answer.references')}</Details.Summary>
-        <Details.Content>
+      <Details className="uib-answer-references" data-size="sm">
+        <Details.Summary>
+          <span className="uib-answer-references-summary">
+            <NumberListIcon aria-hidden />
+            {t('answer.references')}
+          </span>
+        </Details.Summary>
+        {/* The summary is small; the list keeps its own size, as dev-kildeliste. */}
+        <Details.Content data-size="md">
           <ul className="uib-answer-references-list" aria-label={t('answer.references')}>
             {list.map((reference) => {
-              const { lead, title, titleEnd, publisher, pages } = referenceParts(
-                reference,
-                t.locale,
+              const { author, year, title, titleEnd, pages } = referenceParts(reference, t.locale);
+              const named = (
+                <>
+                  <em>{title}</em>
+                  {titleEnd}
+                </>
               );
               return (
                 <li key={reference.key} className="uib-answer-references-row">
@@ -52,15 +61,27 @@ export const References = ({
                     {reference.footnotes.join(', ')}
                   </span>
                   <span className="uib-answer-references-reference">
-                    {lead.map((part) => `${part}, `).join('')}
-                    <em>{title}</em>
-                    {titleEnd}
-                    {publisher ? ` ${publisher}` : ''}
+                    {author ? (
+                      <>
+                        {author} {year ? `${year} ` : ''}
+                        {named}
+                      </>
+                    ) : (
+                      <>
+                        {named}
+                        {year ? ` ${year}` : ''}
+                      </>
+                    )}
                     {pages ? ` ${pages}.` : ''}
                     {reference.url ? (
                       <>
                         {' '}
-                        <Link href={reference.url} target="_blank" rel="noopener noreferrer">
+                        <Link
+                          href={reference.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          data-color="accent"
+                        >
                           {reference.url}
                         </Link>
                       </>
@@ -76,6 +97,7 @@ export const References = ({
               <Button
                 variant="secondary"
                 data-size="sm"
+                data-color="accent"
                 className="uib-answer-references-copy"
                 onClick={() => void copy()}
                 aria-live="polite"

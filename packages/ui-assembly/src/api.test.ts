@@ -349,6 +349,19 @@ describe('a source from the wire', () => {
     expect(first).not.toBe(second);
   });
 
+  it('a source read from the wire keeps its document type', () => {
+    expect(sourceFromWire({ document_type: 'Årsrapport', excerpts: [] }).documentType).toBe(
+      'Årsrapport',
+    );
+    expect(sourceFromWire({ document_type: '  ', excerpts: [] })).not.toHaveProperty(
+      'documentType',
+    );
+    const odd = { document_type: 42, excerpts: [] } as unknown as Parameters<
+      typeof sourceFromWire
+    >[0];
+    expect(sourceFromWire(odd)).not.toHaveProperty('documentType');
+  });
+
   it('a source read from the wire keeps its publisher', () => {
     expect(
       sourceFromWire({ publisher: 'Justis- og beredskapsdepartementet', excerpts: [] }).publisher,

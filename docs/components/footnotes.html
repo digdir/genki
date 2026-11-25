@@ -192,29 +192,27 @@
               </li>
               <li>
                 The Kildeliste, under a finished <code>plain</code> answer with
-                <code>sourcesUsed</code>: Details in a Card, «Kildeliste», closed until the reader
-                opens it. Each cited document once, with every footnote that leads to it in front,
-                «2, 5, 6», by the numbers the footnotes are drawn with, and sorted by the first. The
-                footnotes are a column as wide as the longest, up to <code>--ds-size-22</code>,
-                where they wrap. Then the reference: document type, year, <em>title</em>. Publisher.
-                Side 12–13, 27. Address. The type and the publisher are a source's
-                <code>documentType</code> and <code>publisher</code>, which a host sets: genki's
-                <code>sources[]</code> sends <code>publisher</code> but no document type yet, so
-                against genki a row reads «2022, <em>Tittel</em>. Utgiver. Side 12. Address». A part
-                the source lacks is left out, and a line break in a title or publisher becomes a
-                space. A title or publisher that ends with «.», «?» or «!» gets no second full stop.
-                The pages are those of the cited excerpts, from <code>page</code> to
+                <code>sourcesUsed</code>: small Details in a Card, a numbered-list icon and
+                «Kildeliste», closed until the reader opens it. Each cited document once, with every
+                footnote that leads to it in front, «2, 5, 6», by the numbers the footnotes are
+                drawn with, and sorted by the first. The footnotes are a column as wide as the
+                longest, up to <code>--ds-size-22</code>, where they wrap. Then the reference in APA
+                7: Publisher. (Year). <em>Title</em>. s. 12–13, 27. Address. The publisher is a
+                source's <code>publisher</code>; without one the title takes its place,
+                «<em>Tittel</em>. (2022). s. 12.» The document type is left out, as APA leaves it
+                out. A part the source lacks is left out, and a line break in a title or publisher
+                becomes a space. A title or publisher that ends with «.», «?» or «!» gets no second
+                full stop. The pages are those of the cited excerpts, from <code>page</code> to
                 <code>pageEnd</code>, joined in runs. The address is shown, as a link, only when it
                 is a web address with no <code>&lt;</code> or <code>&gt;</code>. It leads nowhere in
                 Sources; the footnotes in the text do.
               </li>
               <li>
-                <code>onCopyReferences</code>: shows «Kopier kildeliste» under the Kildeliste. The
-                app gets the list as Markdown, one bullet per document,
-                <code
-                  >- [2, 5, 6] Årsrapport, 2022, *Tittel*. Nkom. Side 12–13, 27. &lt;URL&gt;</code
-                >, with no heading, and puts it on the clipboard. When the promise it returns
-                resolves, the button says «Kopiert» for 2.5 seconds.
+                <code>onCopyReferences</code>: shows «Kopier kildeliste», in accent, under the
+                Kildeliste. The app gets the list as Markdown, one bullet per document,
+                <code>- [2, 5, 6] Nkom. (2022). *Tittel*. s. 12–13, 27. &lt;URL&gt;</code>, with no
+                heading, and puts it on the clipboard. When the promise it returns resolves, the
+                button says «Kopiert» for 2.5 seconds.
               </li>
               <li>
                 <code>highlight</code>: search matches to mark in the text, as the conversation's
@@ -437,6 +435,31 @@
                   <td><code>--genai-answer-note-icon-size</code></td>
                   <td><code>1.25em</code></td>
                   <td>note icon size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-summary-icon-size</code></td>
+                  <td><code>1.125rem</code></td>
+                  <td>Kildeliste: size of the list icon</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-summary-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>Kildeliste: between the icon and the word</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-summary-padding-block</code></td>
+                  <td><code>0.4375rem</code></td>
+                  <td>Kildeliste: space above and below «Kildeliste»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-summary-font-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>Kildeliste: size of «Kildeliste»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-summary-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>Kildeliste: line height of «Kildeliste»</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-references-column-gap</code></td>

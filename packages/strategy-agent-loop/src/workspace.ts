@@ -40,6 +40,7 @@ export interface ChunkSummary {
   version?: string;
   publishedAt?: string;
   publisher?: string;
+  documentType?: string;
   hitCount?: number;
   searchTypes?: string[];
   matchedQuestions?: string[];

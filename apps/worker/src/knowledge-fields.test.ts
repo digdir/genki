@@ -105,7 +105,7 @@ const kudosEntry = (
  */
 const fieldsOf = (
   entry: ReturnType<typeof kudosEntry>,
-  { before = false, publisher = true, report = true } = {},
+  { before = false, publisher = true, report = true, documentType = true } = {},
 ) => {
   const fields = toIndexDocument(
     `kudos:${entry.uuid}`,
@@ -118,6 +118,7 @@ const fieldsOf = (
       ([k]) =>
         !(before && (k === 'orgs_short' || k.endsWith('_orgnr'))) &&
         !(!report && k === 'report') &&
+        !(!documentType && k === 'document_type') &&
         !(!publisher && k === 'publisher_names'),
     ),
   );
@@ -131,6 +132,7 @@ const store = async (
     before: boolean;
     publisher?: boolean;
     report?: boolean;
+    documentType?: boolean;
   }[],
 ) => {
   const generation = `g-fields-job-${++generations}`;
@@ -155,7 +157,7 @@ const store = async (
     },
     async () => undefined,
   );
-  for (const { entry, before, publisher, report } of docs) {
+  for (const { entry, before, publisher, report, documentType } of docs) {
     const { rows } = await admin.query<{ number: string }>(
       `select number::text from src_documents where dataset = $1 and id = $2`,
       [name, `kudos:${entry.uuid}`],
@@ -170,6 +172,7 @@ const store = async (
           before,
           ...(publisher === undefined ? {} : { publisher }),
           ...(report === undefined ? {} : { report }),
+          ...(documentType === undefined ? {} : { documentType }),
         }),
         chunks: [{ id: `${record.id}#0`, position: 0, text: 'Tekst', vector: [0.1, 0.2, 0.3] }],
         phrases: [],
@@ -328,6 +331,26 @@ describe('the fields job', () => {
       'Direktoratet for forvaltning og økonomistyring',
     ]);
     expect(await chunks()).toEqual(chunksBefore);
+  });
+
+  it("the document types fill writes a stored Kudos document's document_type without embedding anything", async () => {
+    const name = 'digdir/kudos-fields-t';
+    const generation = await store(name, [
+      {
+        entry: kudosEntry('t1', 983544622, 'Helsedirektoratet'),
+        before: false,
+        documentType: false,
+      },
+    ]);
+    const before = await row(generation, 'kudos:t1');
+    expect(before?.fields).not.toHaveProperty('document_type');
+
+    await fieldsWork({ records }).handler(
+      job({ tenant: 'platform', dataset: name, fill: 'kudos-document-types' }),
+    );
+
+    const filled = await row(generation, 'kudos:t1');
+    expect(filled?.fields.document_type).toBe('Årsrapport');
   });
 
   it("the report keys fill writes a stored Kudos document's report key without embedding anything", async () => {

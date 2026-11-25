@@ -115,11 +115,14 @@
                 numbered 1, 2, 3 as they stand in the answer, and one excerpt can have several
                 numbers. All the cited excerpts stand as tinted Designsystemet cards in the order
                 the footnotes first cite them, «Viser 3 utdrag fra 2 dokumenter»: each card is one
-                button with its footnote numbers, the document and page, the section and two lines
-                of text. A card or a footnote in the answer shows that excerpt whole, under a row
-                that stays put: «Alle utdrag» back to the cards, and ‹ 2 av 7 › through the
-                footnotes, round at both ends. There is no search and no fold of the sources nothing
-                cites. When the footnotes name documents, the tool keeps the document cards.
+                button with its footnote numbers, the document and pages («Årsrapport Nkom 2021, s.
+                32–33»), the section and two lines of text. A card or a footnote in the answer shows
+                that excerpt whole, under a row that stays put: «Alle utdrag» back to the cards, and
+                ‹ 2 av 7 › through the footnotes, round at both ends. Under the document stand its
+                type, year and pages («Årsrapport, 2022, s. 32–33»), and the words the footnote
+                rests on are tinted in accent, as the footnote mark is. There is no search and no
+                fold of the sources nothing cites. When the footnotes name documents, the tool keeps
+                the document cards.
               </li>
               <li>
                 <strong>Panel</strong>, with a search over the excerpts, and
@@ -478,23 +481,23 @@
                 </tr>
                 <tr>
                   <td><code>--genai-sources-cited-background</code></td>
-                  <td><code>--ds-color-surface-tinted</code></td>
+                  <td><code>--ds-color-accent-surface-tinted</code></td>
                   <td>background of the words a footnote rests on</td>
                 </tr>
                 <tr>
-                  <td><code>--genai-sources-cited-line-color</code></td>
-                  <td><code>--ds-color-border-default</code></td>
-                  <td>underline colour of the cited words</td>
+                  <td><code>--genai-sources-cited-color</code></td>
+                  <td><code>--ds-color-accent-text-default</code></td>
+                  <td>text colour of the cited words</td>
                 </tr>
                 <tr>
-                  <td><code>--genai-sources-cited-line-thickness</code></td>
-                  <td><code>2px</code></td>
-                  <td>underline thickness of the cited words</td>
+                  <td><code>--genai-sources-cited-padding-block</code></td>
+                  <td><code>0.0625rem</code></td>
+                  <td>space above and below the cited words</td>
                 </tr>
                 <tr>
-                  <td><code>--genai-sources-cited-line-offset</code></td>
-                  <td><code>0.2em</code></td>
-                  <td>underline offset of the cited words</td>
+                  <td><code>--genai-sources-cited-padding-inline</code></td>
+                  <td><code>0.125rem</code></td>
+                  <td>space before and after the cited words</td>
                 </tr>
                 <tr>
                   <td><code>--genai-sources-cited-border-radius</code></td>
@@ -549,6 +552,11 @@
                   </td>
                 </tr>
                 <tr>
+                  <td><code>--genai-sources-ex-detail-gap</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>gap between the parts of an excerpt shown whole</td>
+                </tr>
+                <tr>
                   <td><code>--genai-sources-ex-lead-color</code></td>
                   <td><code>--ds-color-text-subtle</code></td>
                   <td>The excerpts: «Viser 6 utdrag fra 4 dokumenter …»</td>
@@ -570,7 +578,7 @@
                 </tr>
                 <tr>
                   <td><code>--genai-sources-ex-card-radius</code></td>
-                  <td><code>--ds-border-radius-xl</code></td>
+                  <td><code>--ds-border-radius-lg</code></td>
                   <td>The excerpts: an excerpt’s card’s corners</td>
                 </tr>
                 <tr>
@@ -585,8 +593,13 @@
                 </tr>
                 <tr>
                   <td><code>--genai-sources-ex-numbers-gap</code></td>
-                  <td><code>--ds-size-1</code></td>
+                  <td><code>0.125rem</code></td>
                   <td>The excerpts: between a card’s footnote numbers</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-numbers-offset</code></td>
+                  <td><code>0.125rem</code></td>
+                  <td>space above the numbers on a card</td>
                 </tr>
                 <tr>
                   <td><code>--genai-sources-ex-number-size</code></td>
@@ -654,13 +667,28 @@
                   <td>The excerpts: a card’s section</td>
                 </tr>
                 <tr>
+                  <td><code>--genai-sources-ex-title-font-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>font size of an excerpt card’s section</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-title-font-weight</code></td>
+                  <td><code>--ds-font-weight-semibold</code></td>
+                  <td>font weight of an excerpt card’s section</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-title-line-height</code></td>
+                  <td><code>1.4</code></td>
+                  <td>line height of an excerpt card’s section</td>
+                </tr>
+                <tr>
                   <td><code>--genai-sources-ex-preview-color</code></td>
                   <td><code>--ds-color-text-subtle</code></td>
                   <td>The excerpts: a card’s two lines of text</td>
                 </tr>
                 <tr>
                   <td><code>--genai-sources-ex-nav-gap</code></td>
-                  <td><code>--ds-size-2</code></td>
+                  <td><code>--ds-size-1</code></td>
                   <td>The excerpts: between «Alle utdrag» and the steps</td>
                 </tr>
                 <tr>
@@ -710,18 +738,23 @@
                 </tr>
                 <tr>
                   <td><code>--genai-sources-ex-head-number-offset</code></td>
-                  <td><code>--ds-size-1</code></td>
+                  <td><code>0.1875rem</code></td>
                   <td>The excerpts: how far the number sits down, level with the title</td>
                 </tr>
                 <tr>
                   <td><code>--genai-sources-ex-titles-gap</code></td>
-                  <td><code>--ds-size-1</code></td>
+                  <td><code>0.125rem</code></td>
                   <td>The excerpts: between the document’s title and its line under</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-document-line-height</code></td>
+                  <td><code>1.35</code></td>
+                  <td>line height of the document an excerpt shown whole comes from</td>
                 </tr>
                 <tr>
                   <td><code>--genai-sources-ex-meta-font-size</code></td>
                   <td><code>--ds-body-xs-font-size</code></td>
-                  <td>The excerpts: the line under the document: year and page</td>
+                  <td>The excerpts: the line under the document: type, year and pages</td>
                 </tr>
                 <tr>
                   <td><code>--genai-sources-ex-meta-color</code></td>
@@ -745,8 +778,13 @@
                 </tr>
                 <tr>
                   <td><code>--genai-sources-ex-text-border-radius</code></td>
-                  <td><code>--ds-border-radius-xl</code></td>
+                  <td><code>--ds-border-radius-md</code></td>
                   <td>The excerpts: that box’s corners</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-quote-paragraph-spacing</code></td>
+                  <td><code>1lh</code></td>
+                  <td>space between the paragraphs of an excerpt shown whole</td>
                 </tr>
                 <tr>
                   <td><code>--genai-sources-ex-text-background</code></td>
@@ -945,8 +983,8 @@
               </li>
               <li>
                 When the model cites sentences of an excerpt, the excerpt a footnote opens marks
-                those words, underlined in the host's colour family so they read apart from the
-                search's yellow, and both show when a search hit falls inside them (#971).
+                those words, tinted in accent as the footnote mark is, apart from the search's
+                yellow, and both show when a search hit falls inside them (#971).
               </li>
             </ul>
           </div>

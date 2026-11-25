@@ -443,12 +443,7 @@ const TopServices = ({
   );
 };
 
-export const Overview = ({
-  api,
-  tenant,
-  tenantName,
-  onFollowUp,
-}: ScreenProps & { onFollowUp?: (count: number) => void }) => {
+export const Overview = ({ api, tenant, tenantName }: ScreenProps) => {
   const t = useT();
   const f = useFormat();
   const rights = useRights();
@@ -511,9 +506,6 @@ export const Overview = ({
     return () => clearInterval(timer);
   }, [anyRunning, retryDatasets]);
   const followUp = datasets.status === 'ready' ? datasets.data.filter(needsFollowUp) : [];
-  useEffect(() => {
-    if (datasets.status === 'ready') onFollowUp?.(followUp.length);
-  }, [onFollowUp, datasets.status, followUp.length]);
 
   const checkedAt = useMemo(
     () => (datasets.status === 'ready' || usage.status === 'ready' ? new Date() : undefined),

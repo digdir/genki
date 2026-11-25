@@ -13,7 +13,7 @@ import {
   ShieldLockIcon,
   SidebarLeftIcon,
 } from '@navikt/aksel-icons';
-import { Alert, Avatar, Button, Divider, SkipLink, Tag } from '@digdir/designsystemet-react';
+import { Alert, Avatar, Button, Divider, SkipLink } from '@digdir/designsystemet-react';
 import {
   createContext,
   useCallback,
@@ -31,7 +31,6 @@ import { Icon, type IconComponent } from './components/Icon';
 import { formatOrgNumber, hasOwnName, organisationName, profileFor } from './data/organisations';
 import { restoringScroll, useEscape, useNarrow } from './hooks';
 import { translator, useT, type PlainKey, type T } from './i18n';
-import { needsFollowUp } from './screens/datasets/live-model';
 import { Unregistered } from './screens/Unregistered';
 import type { Organisation, PortalRight, Session } from './types';
 
@@ -258,12 +257,10 @@ interface ShellProps {
   onSwitch: (organisation: Organisation) => void;
   onLogout: () => void;
   path: string;
-  badges?: Partial<Record<string, { count: number; label: string }>>;
   unregistered?: boolean;
   registeredElsewhere?: string[];
   api: ApiClient;
   onRights?: (rights: readonly PortalRight[]) => void;
-  onFollowUp?: (count: number) => void;
   children: ReactNode;
 }
 
@@ -294,12 +291,10 @@ export const LockdownBanner = ({
 
 const NavLinks = ({
   path,
-  badges,
   onNavigate,
   compact = false,
 }: {
   path: string;
-  badges: ShellProps['badges'];
   onNavigate: () => void;
   compact?: boolean;
 }) => {
@@ -319,7 +314,6 @@ const NavLinks = ({
             <ul className="nav-list" aria-labelledby={headingId}>
               {group.items.map((item: NavItem) => {
                 const active = isActive(path, item);
-                const badge = badges?.[item.path];
                 return (
                   <li key={item.path}>
                     <a
@@ -335,11 +329,6 @@ const NavLinks = ({
                           {t(item.label)}
                         </span>
                       </span>
-                      {badge && badge.count > 0 ? (
-                        <Tag data-color="danger" data-size="sm" aria-label={badge.label}>
-                          {badge.count}
-                        </Tag>
-                      ) : null}
                     </a>
                   </li>
                 );
@@ -358,12 +347,10 @@ export const Shell = ({
   onSwitch,
   onLogout,
   path,
-  badges,
   unregistered = false,
   registeredElsewhere = [],
   api,
   onRights,
-  onFollowUp,
   children,
 }: ShellProps) => {
   const t = useT();
@@ -411,16 +398,6 @@ export const Shell = ({
     closeAll();
   }, [path, closeAll]);
   const area = path.split('/')[1] ?? '';
-  const tenant = organisation.orgNumber;
-  useEffect(() => {
-    if (!onFollowUp || unregistered) return;
-    const controller = new AbortController();
-    api.datasets
-      .list(tenant, controller.signal)
-      .then((views) => onFollowUp(views.filter(needsFollowUp).length))
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, [api, tenant, unregistered, onFollowUp]);
   const shownArea = useRef(area);
   useEffect(() => {
     if (shownArea.current === area) return;
@@ -633,7 +610,7 @@ export const Shell = ({
           </div>
           {menuOpen && userInMenu ? (
             <nav id="hovedmeny" aria-label={t('shell.mainMenu')} className="narrow-nav">
-              <NavLinks path={path} badges={badges} onNavigate={closeAll} />
+              <NavLinks path={path} onNavigate={closeAll} />
               <div className="narrow-account">{userMenu}</div>
             </nav>
           ) : null}
@@ -657,7 +634,7 @@ export const Shell = ({
                 <Icon icon={SidebarLeftIcon} />
               </Button>
             </div>
-            <NavLinks path={path} badges={badges} onNavigate={closeAll} compact={collapsed} />
+            <NavLinks path={path} onNavigate={closeAll} compact={collapsed} />
             <div className="sidebar-account">{userMenu}</div>
           </nav>
         )}

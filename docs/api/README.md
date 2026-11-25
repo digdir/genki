@@ -75,6 +75,10 @@ To announce one, add a line to a new dated entry below that names the operation 
 
 `npm run definitions:compat` checks every YAML or JSON file in the repository that is a service, step flow, skill or block definition (seeds, examples and fixtures) against the current schema, including the strategy, tool and guardrail settings. Models, datasets, rerankers, tools and blocks are not looked up, since each environment has its own. Give it the path to a tenant export (`GET /tenants/{tenant}/export`) or a folder of definitions to check those instead.
 
+### 2026-11-25: a source names its document type
+
+- A source on `/v1/chat/completions` (and on a stored conversation's messages) adds `document_type`, such as «Årsrapport», when the document's `document_type` field names one. Kudos documents get it from the type Kudos gives, at ingest and through the `kudos-document-types` fill (`POST /operator/datasets/{dataset}/fields`). A step flow's answer sources (`documentType`) and `sources` on `/api/tools/call/{tool}` add it too. The field is optional, so the shape is otherwise unchanged. Messages stored before this have none.
+
 ### 2026-11-24: the playground gives the excerpt each footnote cites
 
 - `POST /tenants/{tenant}/playground/runs` (and `/stream`) gives `markers: [{ marker, chunk_id, document }]` when each `[N]` in the answer names one excerpt, the same list `/v1` gives ([ADR 0052](../adr/0052-answers-cite-excerpts.md)). A marker whose excerpt is not among the run's sources is left out. Without `markers`, no `[N]` names an excerpt: the answer cites documents, where `[N]` names the N-th document, or it cites no excerpt among the sources. The portal's try view turns the list into the answer's `markers`, as `@genai/client` does for `/v1`.

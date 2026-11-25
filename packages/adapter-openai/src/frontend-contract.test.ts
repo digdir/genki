@@ -798,6 +798,27 @@ describe('/v1 frontend contract: steps', () => {
   });
 });
 
+describe("/v1 frontend contract: a source's document type", () => {
+  afterEach(() => {
+    pool = chunks;
+  });
+
+  it("an answer's source and a reopened conversation's source name the document's type", async () => {
+    pool = chunks.map((c) => (c.document === 'd1' ? { ...c, documentType: 'Årsrapport' } : c));
+    const { ask, stored } = setup();
+
+    const body = (await (await ask({ genai_conversation: true })).json()) as {
+      sources: { document_type?: string }[];
+    };
+
+    expect(body.sources.map((s) => s.document_type)).toEqual(['Årsrapport', undefined]);
+    expect(stored.get('conv-1')?.[1]?.sources?.map((s) => s.document_type)).toEqual([
+      'Årsrapport',
+      undefined,
+    ]);
+  });
+});
+
 describe("/v1 frontend contract: a source's publisher", () => {
   afterEach(() => {
     pool = chunks;

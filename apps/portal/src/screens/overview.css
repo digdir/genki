@@ -1,3 +1,7 @@
+.overview.stack {
+  gap: var(--ds-size-14);
+}
+
 .overview a.ds-button {
   text-decoration: none;
 }
@@ -234,7 +238,7 @@
 .overview-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 48px;
+  gap: var(--ds-size-14);
 }
 
 .overview-top {
