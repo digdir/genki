@@ -47,6 +47,8 @@ param appEnv = {
   FOUNDRY_CLAUDE_BASE_URL: readEnvironmentVariable('FOUNDRY_CLAUDE_BASE_URL', '')
   LANGFUSE_BASE_URL: readEnvironmentVariable('LANGFUSE_BASE_URL', '')
   LANGFUSE_INSTANCE_RECEIVES_CONTENT: readEnvironmentVariable('LANGFUSE_INSTANCE_RECEIVES_CONTENT', 'false')
+  // The sites whose cited PDFs the API serves in Dokumentvisning (ADR 0066, infra/README.md).
+  GENAI_DOCUMENT_FILE_ORIGINS: 'https://kudos.dfo.no'
 }
 
 param ansattportenIssuer = readEnvironmentVariable('ANSATTPORTEN_ISSUER', '')

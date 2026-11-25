@@ -1063,6 +1063,11 @@ describe('a cited document’s file through genki', () => {
     expect(asked).toEqual([]);
   });
 
+  it('frames no PDF that only the source site serves, so the view shows the excerpts', async () => {
+    answering({ kind: 'source', url: pdf, mediaType: 'application/pdf' });
+    expect(await files().documentFile('kudos:d1', signal, { file: pdf })).toBeUndefined();
+  });
+
   it('fails when genki cannot read the file now', async () => {
     answering({}, 502);
     await expect(files().documentFile('kudos:d1', signal)).rejects.toBeInstanceOf(HttpError);

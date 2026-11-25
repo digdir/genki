@@ -3060,6 +3060,114 @@ describe('the whole document in Dokumentvisning, from the host', () => {
       expect(documentFile.mock.calls.map(([, , at]) => at?.file)).toEqual([main, attachment]);
     });
   });
+
+  // The hosted assistant: the file is asked for at genki's own route, through createGenkiApi.
+  describe('through genki’s file route', () => {
+    const route = '/genki/api/datasets/kudos/documents/42/file';
+    const main = 'https://kudos.dfo.no/dokument/42/filer/hoved.pdf';
+    const attachment = 'https://kudos.dfo.no/dokument/42/filer/vedlegg.pdf';
+    afterEach(() => vi.unstubAllGlobals());
+    // genki's route, answering each question for a file as `answer` says.
+    const genki = (answer: (file: string | null) => object) =>
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string) => {
+          const address = new URL(url, 'http://localhost');
+          if (address.pathname !== route) return new Response('{}', { status: 404 });
+          return new Response(JSON.stringify(answer(address.searchParams.get('file'))), {
+            headers: { 'content-type': 'application/json' },
+          });
+        }),
+      );
+    const viaGenki = () =>
+      createGenkiApi({ baseUrl: '/genki', tenant: 'digdir', profile: { corpora: { kudos: {} } } })
+        .documentFile;
+    // One stored answer citing the document `cited`, at the excerpts its footnotes name.
+    const citing = (cited: typeof source & { url?: string }) => {
+      const { api } = fakeApi();
+      api.loadThread = vi.fn(async () => ({
+        title: 'En gammel tråd',
+        turns: [
+          {
+            id: 'm1',
+            question: 'Hva er fast?',
+            askedAt: 1,
+            answer: {
+              text: cited.excerpts.map((_, i) => `Utdrag [${i + 1}].`).join(' '),
+              status: 'complete' as const,
+              sources: [cited],
+              markers: cited.excerpts.map((e, i) => ({
+                marker: String(i + 1),
+                chunkId: e.chunkId,
+                documentId: '42',
+              })),
+              created: 2,
+            },
+          },
+        ],
+      }));
+      return api;
+    };
+    const kudosDocument = {
+      ...source,
+      url: 'https://kudos.dfo.no/dokument/42',
+      excerpts: [
+        { chunkId: 'c1', text: 'Fast.', page: 12, url: `${main}#page=12` },
+        { chunkId: 'c4', text: 'Vedlegget.', page: 3, url: `${attachment}#page=3` },
+      ],
+    };
+
+    it("opens a PDF on a listed site at the excerpt's page in its own file, not the document's first PDF", async () => {
+      genki((file) => ({ kind: 'served', mediaType: 'application/pdf', source: file ?? main }));
+      await open(viaGenki(), withView(), citing(kudosDocument));
+      fireEvent.click(footnotes()[1] as HTMLElement);
+      await waitFor(() =>
+        expect(frame()?.getAttribute('src')).toBe(
+          `${route}?file=${encodeURIComponent(attachment)}#page=3`,
+        ),
+      );
+    });
+
+    it('shows the excerpts and a «Les dokumentet» link and frames nothing for a PDF on a site not on the list', async () => {
+      const elsewhere = 'https://annen.example/dokument/42.pdf';
+      genki(() => ({ kind: 'source', url: elsewhere, mediaType: 'application/pdf' }));
+      await open(viaGenki(), withView(), citing({ ...source, url: elsewhere }));
+      expect(await screen.findByText('Hele dokumentet kan ikke vises her.')).toBeTruthy();
+      expect(excerptsShown()).toBe(1);
+      expect(screen.getByRole('link', { name: /^Les dokumentet/ }).getAttribute('href')).toBe(
+        elsewhere,
+      );
+      expect(frame()).toBeNull();
+    });
+
+    it('still shows an uploaded PDF', async () => {
+      genki(() => ({ kind: 'original', mediaType: 'application/pdf', name: 'notat.pdf' }));
+      await open(viaGenki());
+      await waitFor(() => expect(frame()?.getAttribute('src')).toBe(route));
+      expect(excerptsShown()).toBe(0);
+    });
+
+    it('shows a document that is not a PDF as its excerpts in order', async () => {
+      genki(() => ({
+        kind: 'original',
+        mediaType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        name: 'notat.docx',
+      }));
+      const word = {
+        ...source,
+        excerpts: [
+          { chunkId: 'c1', text: 'Det tredje avsnittet.', position: 3 },
+          { chunkId: 'c2', text: 'Det første avsnittet.', position: 1 },
+        ],
+      };
+      await open(viaGenki(), withView(), citing(word));
+      expect(await screen.findByText('Hele dokumentet kan ikke vises her.')).toBeTruthy();
+      expect(
+        [...document.querySelectorAll('.uib-document-view-quote')].map((q) => q.textContent),
+      ).toEqual(['Det første avsnittet.', 'Det tredje avsnittet.']);
+      expect(frame()).toBeNull();
+    });
+  });
 });
 
 describe('asking, whatever genki has said of the service', () => {

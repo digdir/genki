@@ -540,8 +540,7 @@ export const createGenkiApi = ({
         return { url: address, mediaType: 'application/pdf', source: answer.source };
       if (answer.kind === 'original' && pdfType(answer.mediaType))
         return { url: base, mediaType: 'application/pdf' };
-      if (answer.kind === 'source' && pdfType(answer.mediaType))
-        return { url: answer.url, mediaType: 'application/pdf', source: answer.url };
+      // A source's own address is never framed (ADR 0066): many sites forbid it.
       return undefined;
     },
     sendFeedback: async ({ runId, rating, reasons, comment }) => {

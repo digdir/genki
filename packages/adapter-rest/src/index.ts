@@ -4,7 +4,13 @@ import { KnowledgeError, kindsOf, type KnowledgeRouter } from '@genai/port-knowl
 import { Hono, type Context } from 'hono';
 import { disjunctiveFacets } from './facets.js';
 import { facetRequest } from './filters.js';
-import { fileNameOf, listedPdf, openRemotePdf, type RemoteFileOptions } from './remote-file.js';
+import {
+  fileNameOf,
+  listedPdf,
+  openRemotePdf,
+  remoteFileMaxBytes,
+  type RemoteFileOptions,
+} from './remote-file.js';
 
 export { disjunctiveFacets, type FacetField, type FacetOption } from './facets.js';
 export { facetRequest, filterMapErrors, toPortFilters, type FieldSpec } from './filters.js';
@@ -248,8 +254,12 @@ export const createRestAdapter = (options: RestAdapterOptions) => {
       }
       const remote = options.remoteFile?.origins.length ? options.remoteFile : undefined;
       const asked = c.req.query('file');
-      const pdf = remote ? listedPdf(found, asked, remote.origins) : undefined;
-      if (remote && asked !== undefined && !pdf) return noFile();
+      const listed = remote ? listedPdf(found, asked, remote.origins) : undefined;
+      if (remote && asked !== undefined && !listed) return noFile();
+      // A file its record says is over the cap is none to show, as kunnskapsassistenten's own server says.
+      if (remote && listed && (listed.size ?? 0) > (remote.maxBytes ?? remoteFileMaxBytes))
+        return noFile();
+      const pdf = listed?.url;
       if (remote && pdf) {
         if (wantsJson(c))
           return c.json(
