@@ -6,6 +6,7 @@ export const shell = defineNamespace({
   groupSupport: 'Støtte',
   pageQueue: 'Til behandling',
   pageTenants: 'Virksomheter',
+  pageQuotaRequests: 'Kvoteforespørsler',
   pageOnboarding: 'Oppstart',
   pageModels: 'Modeller',
   pageCatalog: 'Endepunkter og priser',
@@ -53,6 +54,10 @@ export const shell = defineNamespace({
   extendCta: 'Forleng med {minutes} minutter',
   opensInNewTab: ' (åpnes i ny fane)',
   badgeQueue: '{count} venter på beslutning',
+  badgeQuotaRequests: {
+    one: '{count} kvoteforespørsel venter',
+    other: '{count} kvoteforespørsler venter',
+  },
   badgeOperations: '{count} feil',
   completingLogin: 'Fullfører innloggingen',
   loggedOutTitle: 'Du er logget ut',

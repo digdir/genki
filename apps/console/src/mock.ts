@@ -23,6 +23,7 @@ import { exampleDescriptors, operationsMock } from './screens/models/operations-
 import type { demosMock } from './screens/demos/mock';
 import { flagsMock } from './screens/flags/mock';
 import { queueMock } from './screens/queue/mock';
+import { quotaRequestsMock } from './screens/quota-requests/mock';
 import { searchEnginesMock } from './screens/search-engines/mock';
 import { translator } from './i18n';
 import { reasonProblem, reasonTooShort } from './reason';
@@ -735,6 +736,7 @@ export const mockFetch = (
   };
 
   const decisions = queueMock(record);
+  const quotaRoutes = quotaRequestsMock(json, recordAction);
   const endpointKey = '/operator/catalog/entries?kind=model-endpoint';
   const operations = operationsMock(
     () => current,
@@ -926,6 +928,8 @@ export const mockFetch = (
     };
     const flagged = flagRoutes(path, method, reason, body);
     if (flagged) return flagged;
+    const quota = quotaRoutes(path, method, url.searchParams, reason, body);
+    if (quota) return quota;
 
     if (path === '/operator/onboarding/requests' && method === 'GET') {
       const queued =

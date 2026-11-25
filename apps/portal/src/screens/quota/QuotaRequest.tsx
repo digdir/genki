@@ -18,6 +18,7 @@ import { useT, type Format } from '../../i18n';
 import {
   extraOptions,
   pendingRequest,
+  latestDecision,
   requestedTokens,
   type AmountChoice,
   type QuotaFacts,
@@ -256,9 +257,30 @@ export const QuotaRequestAction = ({
         })}
       </span>
     );
-  if (!canRequest) return <>{fallback}</>;
+  const decided = requests.status === 'ready' ? latestDecision(requests.data) : undefined;
+  const decision = decided?.decision ? (
+    <span className="meta quota-pending" role="status">
+      {decided.state === 'approved'
+        ? t('quotaRequest.approved', {
+            amount: millions(f, decided.monthlyTokens),
+            when: f.dateTime(decided.decision.at),
+          })
+        : t('quotaRequest.rejected', {
+            when: f.dateTime(decided.decision.at),
+            reason: decided.decision.reason,
+          })}
+    </span>
+  ) : null;
+  if (!canRequest)
+    return (
+      <>
+        {decision}
+        {fallback}
+      </>
+    );
   return (
     <>
+      {decision}
       <Button variant="tertiary" data-size="sm" onClick={() => setOpen(true)}>
         {t('quotaRequest.open')}
       </Button>

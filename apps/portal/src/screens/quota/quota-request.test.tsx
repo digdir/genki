@@ -157,6 +157,35 @@ describe('Be om mer kvote', () => {
     expect(screen.queryByRole('button', { name: 'Be om mer kvote' })).toBeNull();
   });
 
+  it('tells the organisation that Digdir approved its request and still lets it ask again', async () => {
+    const approved: QuotaRequestView = {
+      ...pending,
+      state: 'approved',
+      decision: {
+        by: 'operator:drift',
+        at: '2026-10-07T08:00:00Z',
+        reason: 'Godkjent etter samtale',
+      },
+    };
+    await renderAt('#/overview', portal(alerting, [approved]));
+
+    expect(await screen.findByText(/Digdir godkjente 100 mill. tokens per måned/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Be om mer kvote' })).toBeTruthy();
+  });
+
+  it('tells the organisation why Digdir rejected its request', async () => {
+    const rejected: QuotaRequestView = {
+      ...pending,
+      state: 'rejected',
+      decision: { by: 'operator:drift', at: '2026-10-07T08:00:00Z', reason: 'Ta det opp i januar' },
+    };
+    await renderAt('#/overview', portal(alerting, [rejected]));
+
+    expect(
+      await screen.findByText(/Digdir avslo forespørselen .*: Ta det opp i januar/),
+    ).toBeTruthy();
+  });
+
   it('says a request is already waiting when the API refuses a second one', async () => {
     const base = portal(alerting);
     const fetch: typeof globalThis.fetch = async (input, init) => {

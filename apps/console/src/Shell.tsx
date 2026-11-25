@@ -29,6 +29,7 @@ export const navigation: NavGroup[] = [
     items: [
       { path: '/queue', label: 'shell.pageQueue' },
       { path: '/tenants', label: 'shell.pageTenants' },
+      { path: '/quota-requests', label: 'shell.pageQuotaRequests' },
       { path: '/onboarding', label: 'shell.pageOnboarding' },
     ],
   },
@@ -73,6 +74,7 @@ export const allPages = navigation.flatMap((g) => g.items);
 export interface NavBadges {
   queue?: number;
   operations?: number;
+  quotaRequests?: number;
 }
 
 interface ShellProps {
@@ -91,6 +93,12 @@ const badgeFor = (path: string, badges: NavBadges, t: T) => {
       count: badges.queue,
       color: 'danger' as const,
       label: t('shell.badgeQueue', { count: badges.queue }),
+    };
+  if (path === '/quota-requests' && badges.quotaRequests)
+    return {
+      count: badges.quotaRequests,
+      color: 'warning' as const,
+      label: t('shell.badgeQuotaRequests', { count: badges.quotaRequests }),
     };
   if (path === '/operations' && badges.operations)
     return {

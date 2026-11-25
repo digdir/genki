@@ -31,6 +31,7 @@ import { policies as enPolicies } from './en/policies';
 import { quality as enQuality } from './en/quality';
 import { qualityMatrix as enQualityMatrix } from './en/qualityMatrix';
 import { queue as enQueue } from './en/queue';
+import { quotaRequests as enQuotaRequests } from './en/quotaRequests';
 import { schemas as enSchemas } from './en/schemas';
 import { searchEngines as enSearchEngines } from './en/searchEngines';
 import { settings as enSettings } from './en/settings';
@@ -68,6 +69,7 @@ import { policies } from './nb/policies';
 import { quality } from './nb/quality';
 import { qualityMatrix } from './nb/qualityMatrix';
 import { queue } from './nb/queue';
+import { quotaRequests } from './nb/quotaRequests';
 import { schemas } from './nb/schemas';
 import { searchEngines } from './nb/searchEngines';
 import { settings } from './nb/settings';
@@ -107,6 +109,7 @@ export const nb = defineCatalogue({
   quality,
   qualityMatrix,
   queue,
+  quotaRequests,
   schemas,
   searchEngines,
   settings,
@@ -147,6 +150,7 @@ export const en = {
   quality: enQuality,
   qualityMatrix: enQualityMatrix,
   queue: enQueue,
+  quotaRequests: enQuotaRequests,
   schemas: enSchemas,
   searchEngines: enSearchEngines,
   settings: enSettings,

@@ -371,6 +371,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
       caller: platform.caller,
       ...(options.appLockdown ? { lockdown: true } : {}),
       unmaskedInput: platform.unmaskedInput,
+      tenantQuota: platform.quota,
       environments: (tenant, service) => environmentsOf(configEntries, tenant, service),
       tasks: kernelTaskReader(platform.kernel, {
         kind: 'operator',
