@@ -85,6 +85,8 @@ const declineJudged = (workspace: Workspace) => {
   const d = workspace.latestDecision();
   if (!d || ('degraded' in d && d.degraded)) return false;
   if ('reasonCode' in d && d.reasonCode === 'wrong-scope') return true;
+  // A cut read found support and left out more to read, so what was read does answer.
+  if ('reasonCode' in d && d.reasonCode === 'cut-read-left-out-better-hit') return false;
   return d.status === 'insufficient' || d.status === 'off-topic';
 };
 

@@ -12,7 +12,13 @@ import {
   toolMessages,
   type Script,
 } from './harness.test-utils.js';
-import type { AgentLoopRuntimeConfig } from './index.js';
+import {
+  aggregateReadSignals,
+  recordReadEvaluation,
+  Workspace,
+  type AgentLoopRuntimeConfig,
+  type EvidencePlan,
+} from './index.js';
 import type { Chunk, ChunkSummary } from './workspace.js';
 
 // One 20-chunk report, a page a chunk, as the Tromsø KI evaluation of case 014.
@@ -152,5 +158,134 @@ describe('the read check after a cut read', () => {
     expect(toolMessages(out.loops[3]).join('\n')).toContain(
       'read_chunks {"doc_num":"dA","chunk_range":{"from":10,"to":16}}',
     );
+  });
+
+  it('a read the character budget cut with no room for one more chunk finalizes as before', async () => {
+    // 1,500 characters a chunk and 6,700 to read: the budget cuts 0–16 to 0–3, and 700 are left.
+    const long = new Map(
+      [...report].map(([id, c]) => [id, { ...c, content: 'x'.repeat(1500) }] as const),
+    );
+    const r = retrieval(
+      {
+        search: async () => ({
+          chunks: case014(1.78).map((c, i) => ({ ...c, contentLength: 1500, rank: i + 1 })),
+        }),
+      },
+      long,
+    );
+    const out = await run({
+      retrieval: r.impl,
+      config: withBudget({ readChars: 6700 }),
+      scripts: { primary: { loop: readThenLeftOut, read: [supportFound] } },
+    });
+
+    expect(ranges(r)).toHaveLength(1);
+    expect(shadowGates(out)[0]).toMatchObject({ status: 'sufficient', strategy: 'finalize' });
+  });
+
+  it('a cut read with no round left to read the rest finalizes as before', async () => {
+    const r = searching(case014(1.78));
+    const out = await run({
+      retrieval: r.impl,
+      config: { ...withBudget({}), strategy: { ...withBudget({}).strategy, maxIterations: 4 } },
+      scripts: { primary: { loop: readThenLeftOut, read: [supportFound] } },
+    });
+
+    expect(out.notices.filter((n) => n.stage === 'exhausted')).toEqual([]);
+    expect(shadowGates(out)[0]).toMatchObject({ status: 'sufficient', strategy: 'finalize' });
+  });
+
+  it('an answer written after a cut read that says it found nothing still gets its citations added', async () => {
+    const r = searching(case014(1.78));
+    const out = await run({
+      retrieval: r.impl,
+      config: withBudget({}),
+      scripts: {
+        primary: {
+          loop: [
+            readThenLeftOut[0] as Script['loop'][number],
+            readThenLeftOut[1] as Script['loop'][number],
+            () => result('Jeg fant ikke årsakene i rapporten.'),
+          ],
+          read: [supportFound],
+        },
+      },
+    });
+
+    expect(out.notices.find((n) => n.stage === 'citations')).toMatchObject({
+      action: 'backfill',
+    });
+  });
+});
+
+const claimPlan: EvidencePlan = {
+  query: 'q',
+  queryIntent: {
+    'answer-type': 'lookup',
+    entity: null,
+    'year-or-date': null,
+    metric: null,
+    'doc-family-preference': null,
+    'scope-signals': [],
+  },
+  requiredClaims: [
+    { claimId: 'answer-bearing-evidence', text: 'Answer', kind: 'support', critical: true },
+  ],
+};
+
+// A workspace after one search and a 0–16 read the cap cut to 0–9, which the read check
+// found explicit support in.
+const afterCutRead = (hits: ChunkSummary[], limits = { readChars: 150000, reads: 6 }) => {
+  const w = new Workspace({ searches: 4, ...limits });
+  w.evidencePlan = claimPlan;
+  w.recordSearch(['q'], hits, false);
+  const returned = [...report.values()].filter((c) => (c.position ?? 0) <= 9);
+  w.addChunks(returned);
+  w.recordRead(
+    { document: 'dA', chunkRange: { from: 0, to: 9 }, requestedRange: { from: 0, to: 16 } },
+    returned,
+  );
+  recordReadEvaluation(w, {
+    status: 'support-found',
+    scopeAssessment: 'aligned',
+    supportedClaims: [
+      { claimId: 'answer-bearing-evidence', supportLevel: 'explicit', chunkIds: ['p2'] },
+    ],
+    partialClaims: [],
+    remainingGaps: [],
+    contradictions: [],
+    nextActionHint: 'finalize',
+    confidence: 0.9,
+    degraded: false,
+    evaluationMode: 'llm',
+    chunkIds: returned.map((c) => c.chunkId),
+  });
+  return w;
+};
+
+describe('the read-signal verdict after a cut read', () => {
+  it('a left-out hit as good as the weakest returned hit asks to read the left-out part', () => {
+    expect(aggregateReadSignals(afterCutRead(case014(1.693)))).toMatchObject({
+      status: 'insufficient',
+      suggestedStrategy: 'read-more',
+      reasonCode: 'cut-read-left-out-better-hit',
+    });
+  });
+
+  it('a cut read that returned no search hit asks to read a left-out part with one', () => {
+    expect(aggregateReadSignals(afterCutRead([hit(12, 0.2)]))).toMatchObject({
+      status: 'insufficient',
+      reasonCode: 'cut-read-left-out-better-hit',
+    });
+  });
+
+  it('a cut read with no characters left finalizes as before', () => {
+    const used = afterCutRead(case014(1.78)).readCharsUsed;
+    const w = afterCutRead(case014(1.78), { readChars: used, reads: 6 });
+    expect(w.budget().readCharsRemaining).toBe(0);
+    expect(aggregateReadSignals(w)).toMatchObject({
+      status: 'sufficient',
+      reasonCode: 'all-critical-claims-covered',
+    });
   });
 });

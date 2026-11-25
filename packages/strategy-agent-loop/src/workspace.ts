@@ -193,7 +193,7 @@ export interface ReadEntry {
   chunkIds?: string[];
   document?: string;
   chunkRange?: ChunkRange;
-  /** The range the agent asked for, before the read cap or budget cut it. */
+  /** The range the read was planned for, before the read cap or budget cut it; 0–4 when none was given. */
   requestedRange?: ChunkRange;
   defaultRange?: boolean;
   returnedCount: number;
@@ -222,6 +222,8 @@ export interface ShadowDecision {
   contradictions: ReadSignal['contradictions'];
   supportedClaimCount: number;
   stagnantGapClaims: string[];
+  /** The left-out part of a cut read to read next (`cut-read-left-out-better-hit`). */
+  leftOutRange?: { document: string; chunkRange: ChunkRange };
 }
 
 export interface OpenGap {
@@ -645,11 +647,14 @@ const repeatedGapStagnation = (workspace: Workspace) => {
 /**
  * The left-out part of the last read, when the read cap or budget cut a range read and a
  * search hit in that part scored at least as well as the weakest hit the read returned.
- * Undefined when no read or no character is left to read it.
+ * Undefined when no read, character or round is left to read it, or no chunk of it fits.
  */
 export const cutReadLeftOutBetterHit = (
   workspace: Workspace,
+  { roundsLeft = Number.POSITIVE_INFINITY }: { roundsLeft?: number } = {},
 ): { document: string; chunkRange: ChunkRange } | undefined => {
+  // The agent reads it in the next round, and a judge looks at that read only if a round follows.
+  if (roundsLeft < 2) return undefined;
   const last = workspace.reads.at(-1);
   if (last?.mode !== 'doc-range' || !last.requestedRange || last.document === undefined)
     return undefined;
@@ -683,10 +688,15 @@ export const cutReadLeftOutBetterHit = (
   for (let i = requested.from; i <= requested.to; i++) if (!read.has(i)) leftOut.push(i);
   const index = bestLeftOut.index;
   const [from, to] = spans(leftOut).find(([a, b]) => a <= index && index <= b) ?? [index, index];
+  if (planRangeRead(workspace, document, { from, to }, budget).selected === undefined)
+    return undefined;
   return { document, chunkRange: { from, to } };
 };
 
-export const aggregateReadSignals = (workspace: Workspace): ShadowDecision => {
+export const aggregateReadSignals = (
+  workspace: Workspace,
+  options: { roundsLeft?: number } = {},
+): ShadowDecision => {
   const critical = (workspace.evidencePlan?.requiredClaims ?? []).filter((c) => c.critical);
   const missing = critical
     .filter((c) => !explicitlyCovered(workspace, c.claimId))
@@ -702,7 +712,7 @@ export const aggregateReadSignals = (workspace: Workspace): ShadowDecision => {
   const gapReported = last?.status === 'gap-remaining' || last?.status === 'conflicting';
   const readCovered = missing.length === 0 && !gapReported;
   // A cut read that left out a hit as good as the ones it returned is not the whole story.
-  const cutLeftOut = readCovered ? cutReadLeftOutBetterHit(workspace) : undefined;
+  const cutLeftOut = readCovered ? cutReadLeftOutBetterHit(workspace, options) : undefined;
   const covered = readCovered && !cutLeftOut;
   const suggestedStrategy = contradictions.length
     ? 'finalize'
@@ -750,6 +760,7 @@ export const aggregateReadSignals = (workspace: Workspace): ShadowDecision => {
     contradictions,
     supportedClaimCount: workspace.claimCoverage.size,
     stagnantGapClaims: stagnation?.gapIds ?? [],
+    ...(cutLeftOut && !contradictions.length && !ambiguous ? { leftOutRange: cutLeftOut } : {}),
   };
 };
 

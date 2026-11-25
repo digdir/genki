@@ -2,12 +2,7 @@ import { untrustedData } from '@genai/port-model';
 import { questionWords } from './intent.js';
 import { sameLanguageRule } from './prompts.js';
 import { json, resolveAliasOrNormalize, structuredEvaluate, type Evaluator } from './structured.js';
-import {
-  cutReadLeftOutBetterHit,
-  type Chunk,
-  type ChunkRange,
-  type Workspace,
-} from './workspace.js';
+import type { Chunk, ChunkRange, Workspace } from './workspace.js';
 
 export const maxSufficiencyRejections = 5;
 
@@ -647,7 +642,8 @@ export const buildEvidenceSummary = (w: Workspace, query: string): EvidenceSumma
   const readIds = new Set(w.reads.flatMap((r) => r.returnedChunkIds));
   const latestSummaries = latest?.summaries ?? [];
   const unread = latestSummaries.filter((s) => !readIds.has(s['chunk-id']));
-  const cutLeftOut = cutReadLeftOutBetterHit(w);
+  // After a cut read, the part it left out is the range to read next.
+  const cutLeftOut = w.shadowDecisions.at(-1)?.leftOutRange;
   const rangeAnchor = unread.find(
     (s) =>
       s['doc-num'] !== null &&

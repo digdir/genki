@@ -926,7 +926,9 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             signal: ctx.signal,
           });
           recordReadEvaluation(workspace, { ...signal, chunkIds: pending.map((c) => c.chunkId) });
-          workspace.shadowDecisions.push(aggregateReadSignals(workspace));
+          workspace.shadowDecisions.push(
+            aggregateReadSignals(workspace, { roundsLeft: toolRounds - iteration - 1 }),
+          );
           yield {
             type: 'kernel.notice',
             data: { stage: 'read-signal', status: signal.status, degraded: signal.degraded },
