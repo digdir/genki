@@ -1569,9 +1569,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
       drawSettings();
       expect(await screen.findByRole('heading', { level: 1, name: 'Generelt' })).toBeTruthy();
       const nav = settingsNav();
-      expect(
-        within(nav).getByRole('heading', { level: 2, name: 'Innstillinger' }),
-      ).toBeTruthy();
+      expect(within(nav).getByRole('heading', { level: 2, name: 'Innstillinger' })).toBeTruthy();
       expect(within(nav).getByRole('link', { name: 'Tilbake til trådene' })).toBeTruthy();
       const pages = within(within(nav).getByRole('list', { name: 'Sidene i innstillingene' }));
       expect(pages.getAllByRole('button').map((page) => page.getAttribute('aria-current'))).toEqual(

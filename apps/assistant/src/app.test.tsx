@@ -95,6 +95,17 @@ describe('the assistant host', () => {
     expect(screen.getByRole('button', { name: 'Logg inn' })).toBeTruthy();
   });
 
+  it('asks the person to log in to Genki in one card that names the service, the button last', async () => {
+    draw('/', genki({ '/api/v1/hosts/ka.example.no': () => json(view) }));
+
+    const title = await screen.findByRole('heading', { level: 1, name: 'Logg inn på Genki' });
+    const card = title.closest('.ah-signin-card') as HTMLElement;
+    expect(
+      within(card).getByText('Logg inn med Ansattporten for å bruke Klarspråkassistenten.'),
+    ).toBeTruthy();
+    expect(card.lastElementChild?.textContent).toBe('Logg inn');
+  });
+
   it('offers no sign-in where genki names no issuer', async () => {
     const without = { ...view, login: { ...view.login, issuer: null } };
     draw('/', genki({ '/api/v1/hosts/ka.example.no': () => json(without) }));
@@ -542,7 +553,9 @@ describe('the assistant host', () => {
       </LocaleProvider>,
     );
 
-    expect(await screen.findByText('Assistenten kunne ikke lastes. Prøv igjen om litt.')).toBeTruthy();
+    expect(
+      await screen.findByText('Assistenten kunne ikke lastes. Prøv igjen om litt.'),
+    ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Logg ut' })).toBeTruthy();
   });
 

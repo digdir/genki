@@ -1,4 +1,12 @@
-import { Alert, Button, Heading, Link, Paragraph, Spinner } from '@digdir/designsystemet-react';
+import {
+  Alert,
+  Button,
+  Card,
+  Heading,
+  Link,
+  Paragraph,
+  Spinner,
+} from '@digdir/designsystemet-react';
 import type { Locale } from '@genai/i18n';
 import { useLocale } from '@genai/i18n/react';
 import {
@@ -263,20 +271,44 @@ const HostMenu = ({ host }: { host: HostView }) => {
   );
 };
 
-const SignIn = ({ host, onSignIn }: { host: HostView; onSignIn: (() => void) | undefined }) => {
+/** The login page: one card in the middle, genki's mascot, a heading, and the one way in. */
+const SignIn = ({
+  host,
+  onSignIn,
+  failed,
+}: {
+  host: HostView;
+  onSignIn: (() => void) | undefined;
+  failed: boolean;
+}) => {
   const t = useT();
+  const { locale } = useLocale();
   return (
     <div className="ah-signin">
-      {onSignIn ? (
-        <Button onClick={onSignIn}>{t('host.signIn')}</Button>
-      ) : (
-        <Alert data-color="info">
-          <Heading level={2} data-size="xs">
-            {t('host.signInUnavailable')}
-          </Heading>
-          {host.menu.length > 0 ? <Paragraph>{t('host.signInUnavailableDetail')}</Paragraph> : null}
-        </Alert>
-      )}
+      <Card className="ah-signin-card" data-color="neutral">
+        <img className="ah-signin-mascot" src="/genki-mascot.png" alt="" width={96} height={88} />
+        <Heading level={1} data-size="md">
+          {t('host.signInTitle')}
+        </Heading>
+        {onSignIn ? (
+          <>
+            <Paragraph>{t('host.signInLead', { name: textIn(host.name, locale) })}</Paragraph>
+            {failed ? <Alert data-color="danger">{t('host.signInFailed')}</Alert> : null}
+            <Button className="ah-signin-button" data-color="accent" onClick={onSignIn}>
+              {t('host.signIn')}
+            </Button>
+          </>
+        ) : (
+          <Alert data-color="info">
+            <Heading level={2} data-size="xs">
+              {t('host.signInUnavailable')}
+            </Heading>
+            {host.menu.length > 0 ? (
+              <Paragraph>{t('host.signInUnavailableDetail')}</Paragraph>
+            ) : null}
+          </Alert>
+        )}
+      </Card>
       <HostMenu host={host} />
     </div>
   );
@@ -424,12 +456,11 @@ export const App = ({
       />
     );
   return (
-    <>
+    <div className="ah-signin-page">
       <ServiceName host={view} />
       <main className="ah-main ah-signin-main" id="main">
-        {signInFailed ? <Alert data-color="danger">{t('host.signInFailed')}</Alert> : null}
-        <SignIn host={view} onSignIn={startSignIn} />
+        <SignIn host={view} onSignIn={startSignIn} failed={signInFailed} />
       </main>
-    </>
+    </div>
   );
 };
