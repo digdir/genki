@@ -162,7 +162,11 @@ export const dependentsOf = async (
   const now = (deps.now ?? Date.now)();
   const frontends = (await deps.clients.list(tenant))
     .filter((c) => c.definition.spec.service === service)
-    .map((c) => c.definition.metadata.name ?? c.definition.metadata.id);
+    .map((c) =>
+      c.definition.spec.hosted
+        ? c.definition.metadata.id
+        : (c.definition.metadata.name ?? c.definition.metadata.id),
+    );
   const apiKeys = (await deps.apiKeys.list(tenant))
     .filter(
       (k) =>

@@ -15,7 +15,12 @@ import type { Principal } from '@genai/contracts';
 import { admittedCredentialScope, apiKeyDigest } from '@genai/identity';
 import type { MiddlewareHandler } from 'hono';
 import { decodeJwt } from 'jose';
-import { reasonFreeWrites, routeOf, writeMethods } from './change-reason.js';
+import {
+  reasonFreeWrites,
+  routeOf,
+  selfAuthenticatedWrites,
+  writeMethods,
+} from './change-reason.js';
 import { t } from './i18n/index.js';
 
 export const lockedEnvironmentType = 'urn:genai:problem:locked-environment';
@@ -174,7 +179,7 @@ export const refuseLockedRoutes =
   (caller: (request: Request) => Promise<Principal | undefined>): MiddlewareHandler =>
   async (c, next) => {
     const route = routeOf(c);
-    if (!route || !locks(route)) return next();
+    if (!route || selfAuthenticatedWrites.has(route) || !locks(route)) return next();
     const principal = await caller(c.req.raw);
     if (!principal) {
       if (!presentsCredential(c.req.raw)) return next();

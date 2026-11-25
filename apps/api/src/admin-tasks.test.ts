@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
-import { reasonFreeWrites } from './change-reason.js';
+import { reasonFreeWrites, selfAuthenticatedWrites } from './change-reason.js';
 import { bootPlatform, digdir, testService } from './testkit.js';
 
 const kari: Principal = {
@@ -202,6 +202,10 @@ const throughAdminTasks = [
   'PUT /tenants/:tenant/catalog/:kind/:id',
   'PUT /tenants/:tenant/clients/:id',
   'PUT /tenants/:tenant/clients/:id/hosted',
+  'POST /tenants/:tenant/clients/:client/hostnames',
+  'DELETE /tenants/:tenant/clients/:client/hostnames/:hostname',
+  'POST /tenants/:tenant/services/:service/address',
+  'POST /internal/hostnames/:id/result',
   'PUT /tenants/:tenant/connectors/:id/credentials',
   'PUT /tenants/:tenant/datasets/:dataset/pipelines/:id',
   'PUT /tenants/:tenant/datasets/:id',
@@ -385,7 +389,7 @@ describe('the change-reason header', () => {
           )
           .map((r) => `${r.method} ${r.path}`),
       ),
-    ].filter((route) => !(route in reasonFreeWrites));
+    ].filter((route) => !(route in reasonFreeWrites) && !selfAuthenticatedWrites.has(route));
 
   const concrete = (template: string) =>
     template.replace(':tenant', digdir).replace(/:[A-Za-z]+(\{[^}]*\})?/g, 'x');

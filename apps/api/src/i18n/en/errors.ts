@@ -716,7 +716,42 @@ export const demoErrors = {
   recordingNotQueued: 'the recording could not be queued',
 } satisfies Translation<typeof source.demoErrors>;
 
+export const hostnameErrors = {
+  hostnameLimitClient: '{hostnameLimitCode}: at most {maxHostnames} hostnames per client',
+  hostnameLimitTenant:
+    '{hostnameLimitCode}: at most {maxHostnamesPerTenant} hostnames per organisation',
+  hostnameLimitPending:
+    '{hostnameLimitCode}: at most {maxPendingPerTenant} hostnames waiting for DNS',
+  hostnameLimitPlatform: '{hostnameLimitCode}: the platform holds as many hostnames as it can',
+  hostnameNotClaimable: '{hostnameNotAllowed}: not a hostname that can be claimed',
+  hostnameReservedDomain: '{hostnameNotAllowed}: {hostname} is under a reserved domain',
+  hostnameOpenedByPlatform: '{hostnameNotAllowed}: {hostname} is opened by the platform',
+  hostnameNoZone: 'no_zone: the platform assigns no names',
+  hostnameNotPublished: 'not_published: the service has no published version',
+  hostnameNoInterface: 'no_interface: the service has no assistant interface',
+  hostnameHasAddress: 'has_address: the service has an address already',
+  hostnameNoClientId: 'no free client id',
+  hostnameNoFreeName: 'no free name under apps.',
+  onlyTenantClaimsHostnames: 'only the tenant or an operator claims its hostnames',
+  noSuchHostedClient: 'no such hosted client',
+  hostnameEnvironmentOrRedirect: 'give either environment or redirectTo',
+  hostnameEnvironmentNotAllowed: 'the client may not use {environment}',
+  hostnameRedirectTarget: 'redirectTo must be another hostname of the client',
+  hostnameClaimedAlready: '{hostname} is claimed by this organisation already',
+  hostnameNoApex: 'apex names are not offered on this platform',
+  onlyTenantRemovesHostnames: 'only the tenant or an operator removes its hostnames',
+  noSuchHostname: 'no such hostname',
+  hostnameChanged: 'the hostname changed meanwhile; try again',
+  onlyTenantGivesAddress: 'only the tenant or an operator gives an address',
+  onlyBinderReports: 'only the hostname binder reports results',
+  noSuchClaim: 'no such claim',
+  claimChanged: 'the claim changed meanwhile',
+  binderStepAndOk: 'give step and ok',
+  binderStepMismatch: 'step_mismatch: the claim is at another step',
+} satisfies Translation<typeof source.hostnameErrors>;
+
 export const errors = {
+  hostnameErrors,
   catalogErrors,
   knowledgeErrors,
   blockErrors,

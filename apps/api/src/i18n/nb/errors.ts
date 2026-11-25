@@ -722,7 +722,42 @@ export const demoErrors = defineNamespace({
   recordingNotQueued: 'opptaket kunne ikke settes i kø',
 });
 
+export const hostnameErrors = defineNamespace({
+  hostnameLimitClient: '{hostnameLimitCode}: høyst {maxHostnames} vertsnavn per klient',
+  hostnameLimitTenant:
+    '{hostnameLimitCode}: høyst {maxHostnamesPerTenant} vertsnavn per virksomhet',
+  hostnameLimitPending:
+    '{hostnameLimitCode}: høyst {maxPendingPerTenant} vertsnavn som venter på DNS',
+  hostnameLimitPlatform: '{hostnameLimitCode}: plattformen har så mange vertsnavn den kan ha',
+  hostnameNotClaimable: '{hostnameNotAllowed}: ikke et vertsnavn som kan legges til',
+  hostnameReservedDomain: '{hostnameNotAllowed}: {hostname} er under et reservert domene',
+  hostnameOpenedByPlatform: '{hostnameNotAllowed}: {hostname} er åpnet av plattformen',
+  hostnameNoZone: 'no_zone: plattformen tildeler ingen navn',
+  hostnameNotPublished: 'not_published: tjenesten har ingen publisert versjon',
+  hostnameNoInterface: 'no_interface: tjenesten har ikke assistentgrensesnitt',
+  hostnameHasAddress: 'has_address: tjenesten har allerede en adresse',
+  hostnameNoClientId: 'ingen ledig klient-id',
+  hostnameNoFreeName: 'ingen ledig navn under apps.',
+  onlyTenantClaimsHostnames: 'bare virksomheten eller en operatør legger til vertsnavn',
+  noSuchHostedClient: 'ingen slik klient som genki er vert for',
+  hostnameEnvironmentOrRedirect: 'oppgi enten environment eller redirectTo',
+  hostnameEnvironmentNotAllowed: 'klienten kan ikke bruke {environment}',
+  hostnameRedirectTarget: 'redirectTo må være et annet vertsnavn for klienten',
+  hostnameClaimedAlready: '{hostname} er allerede lagt til av denne virksomheten',
+  hostnameNoApex: 'toppdomener tilbys ikke på denne plattformen',
+  onlyTenantRemovesHostnames: 'bare virksomheten eller en operatør fjerner vertsnavn',
+  noSuchHostname: 'ikke noe slikt vertsnavn',
+  hostnameChanged: 'vertsnavnet ble endret i mellomtiden; prøv igjen',
+  onlyTenantGivesAddress: 'bare virksomheten eller en operatør gir en adresse',
+  onlyBinderReports: 'bare vertsnavnkobleren melder resultater',
+  noSuchClaim: 'ikke noe slikt krav',
+  claimChanged: 'kravet ble endret i mellomtiden',
+  binderStepAndOk: 'oppgi step og ok',
+  binderStepMismatch: 'step_mismatch: kravet er på et annet steg',
+});
+
 export const errors = {
+  hostnameErrors,
   catalogErrors,
   knowledgeErrors,
   blockErrors,

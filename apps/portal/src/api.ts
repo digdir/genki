@@ -52,6 +52,8 @@ import type {
   ClientSpec,
   ClientView,
   ClientsView,
+  HostnameView,
+  ServiceHostnamesView,
   ServiceKeyView,
   IntegrationsView,
   Overview,
@@ -717,6 +719,37 @@ export const createApiClient = ({
         'PUT',
         `${tenantPath(tenant)}/clients/${encodeURIComponent(id)}`,
         client,
+        { 'change-reason': reason },
+      ),
+    serviceHostnames: (tenant: string, service: string, signal?: AbortSignal) =>
+      get<ServiceHostnamesView>(
+        `${tenantPath(tenant)}/services/${encodeURIComponent(service)}/hostnames`,
+        signal,
+      ),
+    assignAddress: (tenant: string, service: string, reason: string) =>
+      request<HostnameView>(
+        'POST',
+        `${tenantPath(tenant)}/services/${encodeURIComponent(service)}/address`,
+        {},
+        { 'change-reason': reason },
+      ),
+    addHostname: (
+      tenant: string,
+      client: string,
+      body: { hostname: string; environment?: string; redirectTo?: string; apex?: boolean },
+      reason: string,
+    ) =>
+      request<HostnameView>(
+        'POST',
+        `${tenantPath(tenant)}/clients/${encodeURIComponent(client)}/hostnames`,
+        body,
+        { 'change-reason': reason },
+      ),
+    removeHostname: (tenant: string, client: string, hostname: string, reason: string) =>
+      request<HostnameView>(
+        'DELETE',
+        `${tenantPath(tenant)}/clients/${encodeURIComponent(client)}/hostnames/${encodeURIComponent(hostname)}`,
+        {},
         { 'change-reason': reason },
       ),
     removeClient: (tenant: string, id: string, reason: string) =>

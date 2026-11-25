@@ -281,6 +281,9 @@ export interface BootOptions {
   onWarning?: (message: string) => void;
   discoveredModels?: DiscoveredModelStore;
   policy?: (inner: PolicyDecisionPoint, configEntries: ConfigEntryStore) => PolicyDecisionPoint;
+  appLockdown?: boolean;
+  hostnames?: Parameters<typeof createPlatform>[0]['hostnames'];
+  binder?: Parameters<typeof createPlatform>[0]['binder'];
 }
 
 export const bootPlatform = async (options: BootOptions = {}) => {
@@ -316,6 +319,8 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     ...(options.federatedTokens ? { federatedTokens: options.federatedTokens } : {}),
     ...(options.onWarning ? { onWarning: options.onWarning } : {}),
     ...(options.discoveredModels ? { discoveredModels: options.discoveredModels } : {}),
+    ...(options.hostnames ? { hostnames: options.hostnames } : {}),
+    ...(options.binder ? { binder: options.binder } : {}),
     ...(options.demoRecorderKeyDigest
       ? { demoRecorderKeyDigest: options.demoRecorderKeyDigest }
       : {}),
@@ -364,6 +369,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
       tenantGate: platform.tenantGate,
       registered: platform.registered,
       caller: platform.caller,
+      ...(options.appLockdown ? { lockdown: true } : {}),
       unmaskedInput: platform.unmaskedInput,
       environments: (tenant, service) => environmentsOf(configEntries, tenant, service),
       tasks: kernelTaskReader(platform.kernel, {

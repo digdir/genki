@@ -1,5 +1,5 @@
 import type { AuditRow } from './api';
-import type { ClientSpec, ClientView, ServiceKeyView } from './types';
+import type { ClientSpec, ClientView, HostnameView, ServiceKeyView } from './types';
 
 const reply = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -160,6 +160,27 @@ export const clientMock = (
 ) => {
   let clients = structuredClone(initial);
   let keys: ServiceKeyView[] = structuredClone(initialKeys);
+  let hostnames: HostnameView[] = [];
+  const hostnameOf = (
+    client: string,
+    hostname: string,
+    fields: Partial<HostnameView>,
+  ): HostnameView => ({
+    id: `claim-${hostnames.length + 1}`,
+    hostname,
+    client,
+    environment: 'prod',
+    redirectTo: null,
+    apex: false,
+    assigned: false,
+    managed: false,
+    state: 'pending-dns',
+    failure: null,
+    records: [],
+    checkedAt: null,
+    createdAt: '2026-10-07T12:00:00Z',
+    ...fields,
+  });
 
   return (path: string, url: URL, init: RequestInit | undefined, needsReason: () => boolean) => {
     const method = init?.method ?? 'GET';
@@ -205,7 +226,7 @@ export const clientMock = (
           'spec.oidc',
           'a browser client logs users in, so it needs an OIDC registration',
         );
-      if (spec.kind === 'browser' && spec.allowedOrigins.length === 0)
+      if (spec.kind === 'browser' && spec.allowedOrigins.length === 0 && !spec.hosted)
         return invalid('spec.allowedOrigins', 'a browser client needs at least one allowed origin');
       const [, tenant = '', id = ''] = one;
       const before = clients.find(
@@ -230,6 +251,80 @@ export const clientMock = (
       if (needsReason()) return invalid('change-reason', 'a reason is required');
       clients = clients.filter((c) => c.definition.metadata.id !== one[2]);
       return reply({ id: one[2] });
+    }
+    const ofService = /^\/tenants\/([^/]+)\/services\/([^/]+)\/(hostnames|address)$/.exec(path);
+    if (ofService) {
+      const [, tenant = '', service = ''] = ofService;
+      const hosted = () =>
+        clients.find(
+          (c) =>
+            c.definition.metadata.tenant === tenant &&
+            c.definition.spec.service === service &&
+            c.definition.spec.hosted,
+        );
+      if (ofService[3] === 'hostnames' && method === 'GET') {
+        const client = hosted()?.definition.metadata.id ?? null;
+        return reply({
+          client,
+          hostnames: hostnames.filter((h) => h.client === client),
+          assigns: true,
+        });
+      }
+      if (ofService[3] === 'address' && method === 'POST') {
+        if (needsReason()) return invalid('change-reason', 'a reason is required');
+        const id = hosted()?.definition.metadata.id ?? `${service}-host`;
+        if (!hosted())
+          clients.push({
+            definition: {
+              apiVersion: 'genai/v1',
+              kind: 'Client',
+              metadata: { tenant, id },
+              spec: {
+                service,
+                kind: 'browser',
+                channels: ['openai'],
+                allowedOrigins: [],
+                hosted: true,
+                hostnames: [],
+              },
+            },
+            version: 1,
+            updatedAt: '2026-10-07T12:00:00Z',
+            updatedBy: 'platform:hostnames',
+            deliveries: [],
+          });
+        const claim = hostnameOf(id, `${service}.apps.genki-test.digdir.cloud`, {
+          assigned: true,
+          state: 'binding',
+        });
+        hostnames.push(claim);
+        return reply(claim, 201);
+      }
+    }
+    const claims = /^\/tenants\/([^/]+)\/clients\/([^/]+)\/hostnames(?:\/([^/]+))?$/.exec(path);
+    if (claims && method === 'POST') {
+      if (needsReason()) return invalid('change-reason', 'a reason is required');
+      const hostname = String(body().hostname ?? '').toLowerCase();
+      if (hostname.endsWith('digdir.cloud'))
+        return invalid('hostname', `hostname_not_allowed: ${hostname} is under a reserved domain`);
+      const claim = hostnameOf(claims[2] ?? '', hostname, {
+        records: [
+          { type: 'TXT', name: `_genki-challenge.${hostname}`, value: 'eksempel-token' },
+          { type: 'TXT', name: `asuid.${hostname}`, value: 'EKSEMPEL0123456789' },
+          { type: 'CNAME', name: hostname, value: 'genki-assistant.example.azurecontainerapps.io' },
+        ],
+      });
+      hostnames.push(claim);
+      return reply(claim, 201);
+    }
+    if (claims && method === 'DELETE') {
+      if (needsReason()) return invalid('change-reason', 'a reason is required');
+      const found = hostnames.find(
+        (h) => h.client === claims[2] && h.hostname === decodeURIComponent(claims[3] ?? ''),
+      );
+      if (!found) return invalid('id', 'no such hostname');
+      hostnames = hostnames.filter((h) => h !== found);
+      return reply({ ...found, state: 'removed' });
     }
     const test = /^\/tenants\/([^/]+)\/clients\/([^/]+)\/webhook\/test$/.exec(path);
     if (test && method === 'POST')

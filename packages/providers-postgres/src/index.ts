@@ -27,6 +27,7 @@ import {
   PostgresTestSetStore,
 } from './eval.js';
 import { PostgresBffSessions } from './bff-sessions.js';
+import { PostgresHostnameClaims } from './hostname-claims.js';
 import { PostgresTenantSecrets } from './secrets.js';
 import { PostgresSettingsStore } from './settings.js';
 import { PostgresChangeFeed } from './change-feed.js';
@@ -92,6 +93,7 @@ export {
 } from './eval.js';
 export { PostgresTenantSecrets } from './secrets.js';
 export { PostgresBffSessions, type BffSessionRow } from './bff-sessions.js';
+export { PostgresHostnameClaims } from './hostname-claims.js';
 export { PostgresSettingsStore } from './settings.js';
 export {
   PostgresApiKeys,
@@ -218,6 +220,7 @@ export const createPostgresStores = async (
     adminRecords: await PostgresAdminRecords.open(pool),
     tenantSecrets: new PostgresTenantSecrets(pool, keys),
     bffSessions: new PostgresBffSessions(pool, keys),
+    hostnameClaims: new PostgresHostnameClaims(pool),
     connections: new PostgresConnections(pool),
     eval: {
       testSets: new PostgresTestSetStore(pool),

@@ -1,4 +1,5 @@
 import type { DefinitionStore, ServiceDefinition, ServiceInterface } from '@genai/definitions';
+import type { HostnameClaimStore } from '@genai/kernel';
 import {
   isHostname,
   oidcAudienceOf,
@@ -63,7 +64,31 @@ export interface HostingRules {
   reservedDomains: readonly string[];
   /** genki's own assistant hostname, the one name in its zones a hosted Client may claim. */
   assistantHostname?: string | undefined;
+  claims?: Pick<HostnameClaimStore, 'holder'> | undefined;
 }
+
+export interface HostnameOpening {
+  tenant: string;
+  client?: string;
+  environment?: string;
+  redirectTo?: string;
+}
+
+export const openingOf = async (
+  rules: HostingRules,
+  hostname: string,
+): Promise<HostnameOpening | undefined> => {
+  const tenant = openedTo(rules, hostname);
+  if (tenant) return { tenant };
+  const claim = await rules.claims?.holder(hostname);
+  if (claim?.state !== 'active') return undefined;
+  return {
+    tenant: claim.tenant,
+    client: claim.client,
+    ...(claim.environment ? { environment: claim.environment } : {}),
+    ...(claim.redirectTo ? { redirectTo: claim.redirectTo } : {}),
+  };
+};
 
 /** The tenant a hostname is open to, when it is open to hosting at all. */
 export const openedTo = (rules: HostingRules, hostname: string): string | undefined =>
@@ -144,22 +169,45 @@ export interface HostDeps {
   platformLogin?: { clientId: string; audience: string } | undefined;
 }
 
-const resolve = async (
+export interface HostRedirect {
+  hostname: string;
+  redirectTo: string;
+}
+
+const hostedClient = async (
   deps: HostDeps,
-  asked: string,
-): Promise<{ view: HostView; shown: ServiceInterface } | undefined> => {
-  const hostname = asked.toLowerCase();
-  if (!isHostname(hostname)) return undefined;
-  const tenant = openedTo(deps.rules, hostname);
-  if (!tenant) return undefined;
+  hostname: string,
+  opening: HostnameOpening,
+): Promise<{ client: ClientDefinition; environment: string } | undefined> => {
+  const { tenant } = opening;
+  if (opening.client) {
+    const client = (await deps.clients.get(tenant, opening.client))?.definition;
+    if (!client || client.metadata.tenant !== tenant || client.spec.hosted !== true)
+      return undefined;
+    return { client, environment: opening.environment ?? 'prod' };
+  }
   const client = (await deps.clients.list(tenant)).find(
     (c) =>
       c.definition.metadata.tenant === tenant &&
       c.definition.spec.hosted === true &&
       (c.definition.spec.hostnames ?? []).some((n) => n.hostname === hostname),
   )?.definition;
-  const claim = client?.spec.hostnames?.find((n) => n.hostname === hostname);
-  if (!client || !claim) return undefined;
+  const named = client?.spec.hostnames?.find((n) => n.hostname === hostname);
+  return client && named ? { client, environment: named.environment } : undefined;
+};
+
+const resolve = async (
+  deps: HostDeps,
+  asked: string,
+): Promise<{ view: HostView; shown: ServiceInterface } | undefined> => {
+  const hostname = asked.toLowerCase();
+  if (!isHostname(hostname)) return undefined;
+  const opening = await openingOf(deps.rules, hostname);
+  if (!opening || opening.redirectTo) return undefined;
+  const tenant = opening.tenant;
+  const hosted = await hostedClient(deps, hostname, opening);
+  if (!hosted) return undefined;
+  const { client, environment } = hosted;
   const login = client.spec.oidc
     ? {
         clientId: client.spec.oidc.clientId,
@@ -171,10 +219,7 @@ const resolve = async (
   if (await isHiddenService(deps.definitions, tenant, service)) return undefined;
   if ((await lifecycleOf(deps.configEntries, tenant, service)).state === 'archived')
     return undefined;
-  const pointer = pointerOf(
-    await environmentsOf(deps.configEntries, tenant, service),
-    claim.environment,
-  );
+  const pointer = pointerOf(await environmentsOf(deps.configEntries, tenant, service), environment);
   if (!pointer) return undefined;
   const found = await deps.definitions.get('Service', tenant, service, pointer.version);
   if (!found || found.definition.kind !== 'Service') return undefined;
@@ -186,7 +231,7 @@ const resolve = async (
     hostname,
     tenant,
     service,
-    environment: claim.environment,
+    environment,
     name: shown.layout.profile?.assistantName ?? definition.metadata.name ?? service,
     login: {
       issuer: deps.issuer ?? null,
@@ -207,8 +252,27 @@ const resolve = async (
   return { view, shown };
 };
 
+const redirectOf = async (deps: HostDeps, asked: string): Promise<HostRedirect | undefined> => {
+  const hostname = asked.toLowerCase();
+  if (!isHostname(hostname)) return undefined;
+  const opening = await openingOf(deps.rules, hostname);
+  if (!opening?.redirectTo || !opening.client) return undefined;
+  const target = await openingOf(deps.rules, opening.redirectTo);
+  if (!target || target.tenant !== opening.tenant || target.redirectTo) return undefined;
+  const served = await resolve(deps, opening.redirectTo);
+  return served && served.view.tenant === opening.tenant
+    ? { hostname, redirectTo: opening.redirectTo }
+    : undefined;
+};
+
 /** What the host draws on `hostname` before anyone logs in, or nothing for a name that is not active. */
 export const hostView = async (deps: HostDeps, asked: string) => (await resolve(deps, asked))?.view;
+
+export const hostAnswer = async (
+  deps: HostDeps,
+  asked: string,
+): Promise<HostView | HostRedirect | undefined> =>
+  (await hostView(deps, asked)) ?? (await redirectOf(deps, asked));
 
 export const hostPage = async (deps: HostDeps, asked: string, id: string) =>
   (await resolve(deps, asked))?.shown.pages?.find((p) => p.id === id);
@@ -228,7 +292,7 @@ export const registerHostRoutes = <E extends Env, S extends Schema, B extends st
     });
   const cached = { 'cache-control': `public, max-age=${hostCacheSeconds}` };
   app.get('/v1/hosts/:hostname', async (c) => {
-    const found = await hostView(deps, c.req.param('hostname') ?? '');
+    const found = await hostAnswer(deps, c.req.param('hostname') ?? '');
     return found ? c.json(found, 200, cached) : notFound(c);
   });
   app.get('/v1/hosts/:hostname/pages/:id', async (c) => {

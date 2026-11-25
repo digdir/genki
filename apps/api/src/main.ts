@@ -1,6 +1,8 @@
 import { actingClient, createBff, InMemoryBffSessions, organisationsOf } from './bff/index.js';
 import { remoteFileOriginsFrom } from '@genai/adapter-rest';
 import { platformLoginFrom } from './platform-login.js';
+import { binderTrustFrom } from './binder-token.js';
+import { hostnameSetupFrom } from './hostname-claims.js';
 import {
   assistantHostnameFrom,
   hostedHostnamesFrom,
@@ -28,6 +30,7 @@ import {
 import {
   envSecrets,
   InMemoryEventLog,
+  InMemoryHostnameClaims,
   InMemoryStateStore,
   InMemoryTaskStore,
   type EventLog,
@@ -492,11 +495,20 @@ const processorRecords = processorRecordCheckOf(process.env);
 
 const hostedHostnames = hostedHostnamesFrom(process.env);
 if (platformLogin) hostedHostnames.delete(platformLogin.hostname);
+const hostnameClaims = db?.hostnameClaims ?? new InMemoryHostnameClaims();
 const hosting = {
   hostnames: hostedHostnames,
   reservedDomains: reservedDomainsFrom(process.env),
   assistantHostname: assistantHostnameFrom(process.env),
+  claims: hostnameClaims,
 };
+const hostnames = hostnameSetupFrom(process.env, hostnameClaims, hosting);
+const binder = binderTrustFrom(process.env);
+log('hostname claims', {
+  zone: hostnames.zone ?? null,
+  target: Object.keys(hostnames.target),
+  binder: binder !== undefined,
+});
 const platform = await createPlatform({
   envFlags: envFlagsIn(process.env),
   platformTenant,
@@ -527,6 +539,8 @@ const platform = await createPlatform({
   clients,
   reservedClientIds,
   hosting,
+  hostnames,
+  ...(binder ? { binder } : {}),
   documentFileOrigins: remoteFileOriginsFrom(process.env.GENAI_DOCUMENT_FILE_ORIGINS),
   ...(platformLogin
     ? { platformLogin: { clientId: platformLogin.clientId, audience: platformLogin.audience } }

@@ -7,7 +7,7 @@ import {
   type ClientDefinition,
   type ClientStore,
 } from '@genai/identity';
-import { openedTo, type HostingRules } from '../hosts.js';
+import { openingOf, type HostingRules } from '../hosts.js';
 import { t, translatorFor } from '../i18n/index.js';
 import { actFor } from './acting.js';
 import {
@@ -256,15 +256,20 @@ export const createBff = (deps: BffDeps) => {
   const platformLogin = deps.platformLogin;
 
   const hostOf = async (hostname: string): Promise<Host | undefined> => {
-    const tenant = openedTo(deps.rules, hostname);
-    if (!tenant) return undefined;
-    const client = (await deps.clients.list(tenant)).find(
+    const opening = await openingOf(deps.rules, hostname);
+    if (!opening || opening.redirectTo) return undefined;
+    const { tenant } = opening;
+    const candidates = opening.client
+      ? [await deps.clients.get(tenant, opening.client)].flatMap((c) => (c ? [c] : []))
+      : (await deps.clients.list(tenant)).filter((c) =>
+          (c.definition.spec.hostnames ?? []).some((n) => n.hostname === hostname),
+        );
+    const client = candidates.find(
       (c) =>
         c.definition.metadata.tenant === tenant &&
         c.definition.spec.hosted === true &&
         (c.definition.spec.oidc !== undefined ||
-          (platformLogin !== undefined && usesPlatformLogin(c.definition))) &&
-        (c.definition.spec.hostnames ?? []).some((n) => n.hostname === hostname),
+          (platformLogin !== undefined && usesPlatformLogin(c.definition))),
     )?.definition;
     return client && { hostname, tenant, client, platform: usesPlatformLogin(client) };
   };

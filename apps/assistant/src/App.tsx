@@ -26,6 +26,7 @@ import {
   inLanguage,
   isPageLink,
   loadHost,
+  redirectAddress,
   loadLayout,
   type ShownInterface,
   loadPage,
@@ -335,7 +336,13 @@ export const App = ({
   const t = useT();
   const { locale } = useLocale();
   const bff = useMemo(() => givenBff ?? bffSignIn(fetcher), [givenBff, fetcher]);
-  const host = useLoaded<HostView>(() => loadHost(fetcher, hostname), [hostname]);
+  const host = useLoaded<HostView>(async () => {
+    const answer = await loadHost(fetcher, hostname);
+    if (!answer || !('redirectTo' in answer)) return answer;
+    const away = redirectAddress(answer, path);
+    if (away) navigate(away);
+    return undefined;
+  }, [hostname]);
   const hostFound = host.kind === 'ok';
   const icon = host.kind === 'ok' ? host.value.icon : undefined;
   useEffect(() => showIcon(icon), [icon]);
