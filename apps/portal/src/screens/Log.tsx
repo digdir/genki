@@ -8,7 +8,7 @@ import { RunsTab } from './log/RunsTab';
 import { LiveChanges } from './changes/LiveChanges';
 import './log.css';
 
-export const Log = ({ api, tenant, route, live }: ScreenProps) => {
+export const Log = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
   const t = useT();
   const [, first, second] = route.segments;
   const tab = first === 'changes' || route.query.get('tab') === 'changes' ? 'changes' : 'runs';
@@ -57,7 +57,9 @@ export const Log = ({ api, tenant, route, live }: ScreenProps) => {
       {tab === 'runs' ? (
         <RunsTab api={api} tenant={tenant} live={live} query={route.query} />
       ) : null}
-      {tab === 'changes' ? <LiveChanges api={api} tenant={tenant} filters paged /> : null}
+      {tab === 'changes' ? (
+        <LiveChanges api={api} tenant={tenant} tenantName={tenantName} filters paged />
+      ) : null}
     </div>
   );
 };

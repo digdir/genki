@@ -837,7 +837,7 @@ export const Overview = ({ api, tenant, tenantName }: ScreenProps) => {
               <Heading level={2} data-size="xs" id="changes-h">
                 {t('overview.changes')}
               </Heading>
-              <LiveChanges api={api} tenant={tenant} limit={3} />
+              <LiveChanges api={api} tenant={tenant} tenantName={tenantName} limit={3} />
               <a href="#/log/changes">{t('overview.seeLog')}</a>
             </section>
           </aside>

@@ -212,6 +212,68 @@ describe('feature flags', () => {
     ]);
   });
 
+  describe('flag detail on audit rows', () => {
+    type Row = {
+      action: string;
+      flag?: { key: string; on?: boolean | null; person?: { self: boolean; name?: string } };
+    };
+    const rows = async (send: Awaited<ReturnType<typeof boot>>['send'], as = 'kari') =>
+      (await readJson<{ data: Row[] }>(await send(`/tenants/${digdir}/audit`, as))).data;
+
+    it('says on or off in the audit row for a tenant switch', async () => {
+      const { put, send } = await boot();
+      await put(`/tenants/${digdir}/flags/blockStudio`, 'kari', { on: true }, orgReason);
+      await put(`/tenants/${digdir}/flags/blockStudio`, 'kari', { on: false }, orgReason);
+
+      expect((await rows(send)).map((r) => r.flag)).toEqual([
+        { key: 'blockStudio', on: true },
+        { key: 'blockStudio', on: false },
+      ]);
+    });
+
+    it('marks a personal switch as the person acting for themselves', async () => {
+      const { put, send } = await boot();
+      await put(`/tenants/${digdir}/me/flags/blockStudio`, 'ingrid', { on: true });
+
+      expect((await rows(send)).at(-1)?.flag).toEqual({
+        key: 'blockStudio',
+        on: true,
+        person: { self: true },
+      });
+    });
+
+    it('reports on as null when a personal choice is removed', async () => {
+      const { put, send } = await boot();
+      await put(`/tenants/${digdir}/me/flags/blockStudio`, 'ingrid', { on: null });
+
+      expect((await rows(send)).at(-1)?.flag).toMatchObject({ on: null });
+    });
+
+    it('marks an operator switch for someone else as not self', async () => {
+      const { put, send } = await boot();
+      await put(
+        '/operator/flags/blockStudio',
+        'operator',
+        { tenant: digdir, person: { issuer: 'test', subject: 'ingrid' }, on: true },
+        'Driften slår på for piloten',
+      );
+
+      const all = await readJson<{ data: Row[] }>(await send('/operator/audit', 'operator'));
+
+      expect(all.data.find((r) => r.action === 'platform.flag.person')?.flag).toEqual({
+        key: 'blockStudio',
+        on: true,
+        person: { self: false },
+      });
+    });
+
+    it('leaves other audit rows without flag detail', async () => {
+      const { send } = await boot();
+
+      expect((await rows(send)).every((r) => r.flag === undefined)).toBe(true);
+    });
+  });
+
   it('lets an operator switch any flag for a tenant or one person, audited in that tenant', async () => {
     const { put, send, admin, mine } = await boot();
     const reason = 'Driften slår på for piloten';

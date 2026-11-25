@@ -22,7 +22,7 @@ Flags are declared in code and are off by default ([ADR 0071](../adr/0071-featur
 - `PUT /tenants/{tenant}/flags/{key}` sets or clears the tenant's choice. It needs `manage-services` and `change-reason`.
 - Both answer `403` `urn:genai:problem:flag-operator-only` for a flag that is not self-service, to operators too, and `404` for a key that is not registered.
 - `GET /operator/flags` and `PUT /operator/flags/{key}` (`{ tenant, person?: { issuer, subject }, on }`) let operators read and switch any flag for any tenant or person.
-- Every change is an admin task, `platform.flag.person` or `platform.flag.tenant`, in the tenant's audit log with the actor, the target and the reason.
+- Every change is an admin task, `platform.flag.person` or `platform.flag.tenant`, in the tenant's audit log with the actor, the target and the reason. These rows carry a `flag` object with the flag `key`, whether it is now `on` (`null` when a personal choice was removed) and, for a personal change, whom it concerned (`person`).
 
 ## Typical sequence: a key for a system that calls one service
 

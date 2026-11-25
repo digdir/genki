@@ -1,3 +1,4 @@
+import { withFlagDetails } from './flag-audit.js';
 import { isHiddenAuditTarget } from './internal-services.js';
 import { refusedAsArchived, serviceArchived, serviceArchivedType } from './archived-services.js';
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
@@ -222,6 +223,17 @@ const AuditEntry = z
     outcome: z.enum(['applied', 'rejected']),
     target: z.string(),
     reason: z.string(),
+    flag: z
+      .object({
+        key: z.string(),
+        on: z.boolean().nullable().optional().describe('Null when the personal choice was removed'),
+        person: z
+          .object({ self: z.boolean(), name: z.string().optional() })
+          .optional()
+          .describe('Set when the change concerned one person'),
+      })
+      .optional()
+      .describe('What a feature flag change did, for platform.flag.* entries'),
   })
   .openapi('AuditEntry');
 
@@ -1390,9 +1402,10 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const names = await options.names?.namesOf(
       entries.filter((e) => e.actor.startsWith('employee:')).map((e) => e.actor),
     );
+    const detailed = await withFlagDetails(entries, { events: admin.events, names: options.names });
     return c.json(
       {
-        data: entries.map((e) => {
+        data: detailed.map((e) => {
           const actorName = e.actor.startsWith('employee:') ? names?.get(e.actor) : undefined;
           return actorName ? { ...e, actorName } : e;
         }),
