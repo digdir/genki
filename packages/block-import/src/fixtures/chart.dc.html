@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Søyler</title>
+    <style>
+      .bar {
+        transition: width 200ms;
+        background: #0062ba;
+      }
+      @import url('https://fonts.example.com/inter.css');
+    </style>
+  </head>
+  <body>
+    <h2 onclick="evil()">Svar per dag</h2>
+    <canvas id="chart" width="300" height="120"></canvas>
+    <a href="javascript:alert(1)">Ikke trykk</a>
+    <script src="https://cdn.example.com/chart.js"></script>
+    <script>
+      const ctx = document.getElementById('chart').getContext('2d');
+      ctx.fillRect(10, 10, 50, 100);
+      genki.emit('notify', { text: 'Tegnet' });
+      genki.emit('steal', {});
+    </script>
+  </body>
+</html>

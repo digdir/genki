@@ -250,6 +250,7 @@ import { serviceDrafts } from './service-drafts.js';
 import { resolveInterfaceBlocks } from './interface-blocks.js';
 import { blockFrameUrl } from './block-origin.js';
 import { blockCatalogueModule } from './block-catalogue.js';
+import { blockImportModule } from './block-import-routes.js';
 import { serviceSchemaOf } from './service-schema.js';
 import { problem } from './http.js';
 
@@ -424,6 +425,7 @@ export const platformModules: PlatformModuleFactory[] = [
   buildingBlocksModule,
   blockUsageModule,
   blockCatalogueModule,
+  blockImportModule,
   skillsModule,
   playgroundModule,
   engineSwitchesModule,

@@ -239,6 +239,8 @@ Plain settings come from the GitHub environment's variables (Settings → Enviro
 | `OPERATOR_CLIENT_IDS`                                                      | Test only. The Ansattporten client ids, comma separated, whose Entra logins count for `LOCKDOWN_ENTRA_GROUPS` and `LOCKDOWN_USER_GROUPS`: the portal, workspace and console clients (each app's `OIDC_CLIENT_ID`). Set it before deploying: in lockdown the API refuses to start with either group setting and without it                                                             |
 | `ALERT_EMAILS`                                                             | Email addresses that get the alerts, comma separated. Set it per environment, test and prod; never in the repository. Empty means the alerts fire in the portal without notifying anyone. See the [runbook](../docs/runbook.md#alerts)                                                                                                                                                |
 | `DEMO_RECORDER_KEY_SHA256`                                                 | Test only. The SHA-256 hex digest of the `DEMO_RECORDER_KEY` secret in `genki-test`, for the `demo-recorder` workflow ([ADR 0059](../docs/adr/0059-demos-are-records-in-the-api.md)). With it, `test.bicepparam`'s `GENAI_DEMO_RECORDER=scheduled` lets the console queue recordings; unset, queuing answers 503                                                                      |
+| `HOSTNAME_BINDER_AUDIENCE`                                                 | Test only. `api://<client id>` of genki's API app registration, which the hostname binder asks a token for; empty keeps the binder's job off. See [Hostname binder](#hostname-binder)                                                                                                                                                                                                 |
+| `HOSTNAME_BINDER_ENABLED`                                                  | Test only. `false` turns the hostname binder off for the first deploy of a new resource group, which has no host app to read yet; unset or anything else keeps it on. See [Hostname binder](#hostname-binder)                                                                                                                                                                         |
 
 `GENAI_DOCUMENT_FILE_ORIGINS` in `appEnv` lists the sites whose cited PDFs the API reads and serves in Dokumentvisning ([ADR 0066](../docs/adr/0066-genki-serves-a-cited-remote-pdf.md)): comma-separated `https://` origins written out in full. Test and prod both list `https://kudos.dfo.no`. To add a site, add its origin to that line in each environment's parameter file, such as `'https://kudos.dfo.no,https://example.no'`. The next deploy sets it, since every deploy applies the container apps with the parameter file's `appEnv`, also one that skips the infrastructure. Whether `infra.yml` alone can change it is not checked in Azure (see below). Never set it by hand on the container app: the next deploy puts the parameter file's value back. A rollback brings back the previous revision with its own settings, so after a rollback to a revision from before the site was listed, that site's PDFs show as excerpts until the next deploy. A PDF on a site not on the list shows as its excerpts and a «Les dokumentet» link.
 
@@ -336,7 +338,7 @@ param hostedHostnames = [
 - Nothing binds while `assistantHostEnabled` is off, but the API still opens the hostname.
 - `scripts/hosted-hostnames-infra.test.ts` checks every entry in both parameter files: either a subdomain that is one valid label or a lowercase hostname outside genki's own zones, a nine-digit organisation number, a known stage, and no name twice; and that none of the four app hostnames sits under `apps.`.
 
-Removing an entry unbinds the hostname and closes it in the API at the next deploy; the certificate stays in the environment until deleted by hand (`az containerapp env certificate delete`). Moving a team's existing domain is in [docs/runbook.md](../docs/runbook.md#moving-a-teams-domain-to-genki).
+Removing an entry unbinds the hostname and closes it in the API at the next deploy (while `keepBoundDomains` is on, it only closes it, and the name is unbound by hand as in [docs/runbook.md](../docs/runbook.md#hostname-binder); stage `none` still unbinds it); the certificate stays in the environment until deleted by hand (`az containerapp env certificate delete`). Moving a team's existing domain is in [docs/runbook.md](../docs/runbook.md#moving-a-teams-domain-to-genki).
 
 ### Turning on the assistant host
 
@@ -406,7 +408,7 @@ A hosted Client without its own `oidc` logs in through genki's platform login ([
    pbpaste | az keyvault secret set --vault-name genai-test-kv-q63pldec6l -n platform-login-client-secret --file /dev/stdin -o none; pbcopy </dev/null
    ```
 
-3. **Deploy** (Azure), as in step 2 of "Turning on the assistant host". It writes `CNAME` and `TXT asuid` for `login.apps` in genki's zone and gives the API `PLATFORM_LOGIN_CLIENT_ID`, `PLATFORM_LOGIN_HOSTNAME` and the secret.
+3. **Deploy** (Azure), as in step 2 of "Turning on the assistant host". It writes `CNAME` and `TXT asuid` for `login.apps` in genki's zone (in `apps.<zone>` while the binder is on) and gives the API `PLATFORM_LOGIN_CLIENT_ID`, `PLATFORM_LOGIN_HOSTNAME` and the secret.
 4. **Stages** (a pull request each, then its deploy). Move `platformLoginStage` to `hostnames`, then to `certificates`. After the second, `https://login.apps.genki-test.digdir.cloud/auth/logged-out` answers a signed-out page.
 
 **A service moves to the platform login** (genki, an operator in lockdown, since only an operator changes the client id of a hosted Client). Take its hosted Client, remove `oidc`, and save it:
@@ -419,6 +421,20 @@ curl -fsS -X PUT "$API/tenants/312521172/clients/$(jq -r .metadata.id shared.jso
 ```
 
 The next login on its hostname goes through `login.apps`. People's threads start fresh, since the platform login gives each person a subject of its own on every Client (ADR 0061). The service's own Ansattporten client, its redirect URIs on the hostname and its tenant secret are no longer used; delete them once the login works. To go back, put `oidc` back as it was. A Client that keeps `oidc` logs in with its own client as before.
+
+### Hostname binder
+
+The self-service side of hosted hostnames ([ADR 0062](../docs/adr/0062-a-service-owner-adds-a-hostname.md), "Self-service claims"). `hostnameBinderEnabled` turns it on (test only; it needs `assistantHostEnabled` and an existing host app), and the template then adds:
+
+- the identity `<name>-binder-id`, with AcrPull on genki's registry and nothing else from the template
+- the job `<name>-hostname-binder` in `<name>-hosted-env`, once `hostnameBinderAudience` is set: `scripts/hostname-binder.ts` in the worker image, every minute, one replica, stopped after 55 seconds, with only that identity and no secret
+- the zone `apps.<dnsZoneName>`, delegated from genki's zone, which now holds every `<label>.apps` name and its `asuid` record, the template's as well as the binder's
+- the host app's current custom domains, passed through so a deploy keeps what the binder bound (`keepBoundDomains`, which follows `hostnameBinderEnabled`; keep it on after turning the binder off, or the next deploy unbinds them). It reads the host app, so a new environment's first deploy runs with the binder off: GitHub variable `HOSTNAME_BINDER_ENABLED=false` in `test`, deleted again afterwards
+- `GENAI_HOSTNAME_BINDER_PRINCIPAL_ID`, `GENAI_HOSTNAME_BINDER_AUDIENCE`, `GENAI_HOSTNAME_BINDER_TENANT_ID` and `GENAI_DNS_ZONE` on the API, for its check of the binder's Entra token on `/internal/hostnames/*`, which is built with the claims API, not here
+- `GENAI_ASSISTANT_HOST_FQDN`, `GENAI_ASSISTANT_HOST_VERIFICATION_ID` and `GENAI_ASSISTANT_HOST_STATIC_IP` on the API and the worker, read from the existing host app and `<name>-hosted-env`, for the records a claim asks for and the worker's DNS check; and `GENAI_HOSTNAME_LIMIT` from `hostnameLimit` when above 0, else the API's default
+- two Activity Log alerts when alerts are on: every write by the binder, mailed only when `alertMailMaxSeverity` is 2 or more, and every write Azure Policy refuses in the resource group, always mailed
+
+`hostnameBinderAudience` (GitHub variable `HOSTNAME_BINDER_AUDIENCE`) is `api://<client id>` of an Entra app registration for genki's API, which the binder asks a token for. The binder's role and fences are not in `main.bicep`, since the deploy identity may not write roles or policies: an owner applies `infra/hostname-binder-access.bicep` once, as in [docs/runbook.md](../docs/runbook.md#hostname-binder).
 
 ## Login registrations
 

@@ -14,6 +14,7 @@
     "@genai/adapter-mcp": "0.0.0",
     "@genai/adapter-openai": "0.0.0",
     "@genai/adapter-rest": "0.0.0",
+    "@genai/block-import": "0.0.0",
     "@genai/composition": "0.0.0",
     "@genai/contracts": "0.0.0",
     "@genai/conversations": "0.0.0",
