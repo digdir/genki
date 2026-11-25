@@ -1916,7 +1916,6 @@ export const SetupTab = ({
       chosen={datasets.map((x) => x.dataset)}
       options={live.datasets}
       addedInDraft={(ref) => !!inUse && !publishedDatasets.includes(ref)}
-      withSources={s.output.kind !== 'answer' || s.output.withSources === true}
       readOnly={readOnly}
       onAdd={(ref) =>
         patch((cur) => withDatasets(cur.spec, [...datasetsOf(cur.spec), { dataset: ref }]))

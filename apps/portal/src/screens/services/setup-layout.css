@@ -688,15 +688,6 @@
   color: var(--ds-color-neutral-text-subtle);
 }
 
-.area-note {
-  margin: 0;
-  font-size: 0.9375rem;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background: var(--ds-color-accent-surface-tinted);
-  color: var(--ds-color-accent-text-default);
-}
-
 .kind-card {
   padding: 12px 14px;
   border: 1px solid var(--ds-color-neutral-border-subtle);

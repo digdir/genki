@@ -14,14 +14,14 @@
   min-width: 0;
 }
 
-/* Below the tab row, which stays at the top of the page (49 px). */
+/* Sticks under the 49 px tab row; setup-form.tsx sets --chat-top so the field stays in sight. */
 .setup-form-chat {
   position: sticky;
   top: 64px;
   display: flex;
   min-width: 0;
-  min-height: 640px;
-  height: calc(100dvh - 80px);
+  min-height: 320px;
+  height: calc(100dvh - var(--chat-top, 64px) - 16px);
   border-radius: var(--ds-border-radius-lg);
   background: var(--ds-color-neutral-background-tinted);
 }
@@ -60,6 +60,12 @@
 
 .setup-form-chat .msg-user .msg-text {
   background: var(--ds-color-neutral-surface-tinted);
+}
+
+/* Before the first message: what the assistant is for, quietly. */
+.setup-form-chat .assistant-welcome {
+  margin: 0;
+  color: var(--ds-color-neutral-text-subtle);
 }
 
 .setup-form-chat .assistant-compose {

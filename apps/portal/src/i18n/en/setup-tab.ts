@@ -439,8 +439,6 @@ export const setupList = {
   resultWish: 'What do you want to get out of the service?',
   resultWishHelp:
     'Describe in your own words what the user should end up with, for example a draft that can be sent, or a short answer that points to the regulations.',
-  sourcesShown: 'The sources are always shown under the answer.',
-  sourcesHidden: 'The sources are not shown under the answer. You choose that under Result.',
   whatUserSends: 'What does the user send?',
   kindText: 'Question',
   kindTextDesc: 'Free text. Always included.',

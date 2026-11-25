@@ -1,6 +1,7 @@
 import { Alert, Divider, Heading, Paragraph } from '@digdir/designsystemet-react';
 import {
   Fragment,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -49,6 +50,37 @@ const keepWidth = (n: number) => {
 
 const clamp = (n: number) => Math.min(chatWidth.max, Math.max(chatWidth.min, Math.round(n)));
 
+/** Where the chat sticks: under the tab row, as `top` in setup-form.css. */
+export const chatStickyTop = 64;
+
+/** Sizes the chat to the room below where it stands, so its field stays on screen. */
+const useChatTop = (on: boolean) => {
+  const chat = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = chat.current;
+    const layout = element?.parentElement;
+    if (!on || !element || !layout) return;
+    let frame = 0;
+    const place = () => {
+      frame = 0;
+      const top = Math.max(chatStickyTop, Math.round(layout.getBoundingClientRect().top));
+      element.style.setProperty('--chat-top', `${top}px`);
+    };
+    const later = () => {
+      if (!frame) frame = requestAnimationFrame(place);
+    };
+    place();
+    window.addEventListener('scroll', later, { passive: true, capture: true });
+    window.addEventListener('resize', later);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', later, { capture: true });
+      window.removeEventListener('resize', later);
+    };
+  }, [on]);
+  return chat;
+};
+
 /** The new Oppsett: every area in one form, the builder assistant left of a movable line. */
 export const SetupForm = ({
   facts,
@@ -64,6 +96,7 @@ export const SetupForm = ({
   const t = useT();
   const [width, setWidth] = useState(keptWidth);
   const drag = useRef<{ x: number; width: number } | undefined>(undefined);
+  const chatRef = useChatTop(assistant !== undefined);
   const resize = (n: number) => {
     const next = clamp(n);
     setWidth(next);
@@ -101,7 +134,12 @@ export const SetupForm = ({
     >
       {assistant === undefined ? null : (
         <>
-          <div className="setup-form-chat" role="region" aria-label={t('setupList.sideLabel')}>
+          <div
+            ref={chatRef}
+            className="setup-form-chat"
+            role="region"
+            aria-label={t('setupList.sideLabel')}
+          >
             {assistant}
           </div>
           <div

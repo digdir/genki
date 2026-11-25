@@ -9,7 +9,7 @@ import {
   TabsPanel,
   TabsTab,
 } from '@digdir/designsystemet-react';
-import { PlayIcon, TrashIcon } from '@navikt/aksel-icons';
+import { ExternalLinkIcon, PlayIcon, TrashIcon } from '@navikt/aksel-icons';
 import { BackLink } from '../../components/BackLink';
 import { Icon } from '../../components/Icon';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -121,6 +121,7 @@ import { setAt } from '../../definition-path';
 import { checkFlowInputs } from '../../data/flow-inputs';
 import { hasOperationSteps, operationKindsIn } from '../../data/step-operations';
 import { PublishedTest } from '../service/PublishedTest';
+import { serviceAddress } from '../service/service-address';
 import { DraftOutdated, type ConflictPick } from './DraftOutdated';
 import { VersionsTab, type VersionItem } from './VersionsTab';
 import { YamlTab } from './YamlTab';
@@ -336,6 +337,9 @@ const withRiskStamp = (definition: Record<string, unknown>, stamp: object) => {
 
 const archivedSections: ServiceSection[] = ['overview', 'quality', 'versions', 'log'];
 
+// New services whose Publiser was pressed this page session; the publish page remounts the Builder.
+const publishTriedFor = new Set<string>();
+
 export const Builder = ({
   api,
   tenant,
@@ -404,6 +408,12 @@ export const Builder = ({
   const [service, setService] = useState(init.definition);
   const [variantPicks, setVariantPicks] = useState<Record<string, VariantChoice>>({});
   const [frontends, setFrontends] = useState<string[]>();
+  // A new service's form lists what an area lacks only once the person has tried to publish (#995).
+  const [publishTried, setTried] = useState(() => publishTriedFor.has(id));
+  const setPublishTried = (tried: true) => {
+    publishTriedFor.add(id);
+    setTried(tried);
+  };
   const serviceRef = useRef(service);
   serviceRef.current = service;
   const [files, setFiles] = useState(init.files ?? {});
@@ -959,6 +969,18 @@ export const Builder = ({
     [api, tenant, id, draftBar, liveVersion?.version, pointerRound],
     { keepPreviousFor: id },
   );
+  const [hostedClients] = useAsync(
+    async (signal) =>
+      (draftBar && liveVersion) || (live && !isNew && showsInUse)
+        ? api.listClients(tenant, id, signal).catch(() => undefined)
+        : undefined,
+    [api, tenant, id, draftBar, Boolean(liveVersion), live, isNew, showsInUse],
+    { keepPreviousFor: id },
+  );
+  const address =
+    hostedClients.status === 'ready'
+      ? serviceAddress(hostedClients.data?.clients ?? [], id)
+      : undefined;
   const inUseVersion =
     pointers.status === 'ready'
       ? (pointers.data?.environments?.find((e) => e.name === productionEnvironment)?.version ??
@@ -1595,7 +1617,7 @@ export const Builder = ({
               ? 'optional'
               : 'done',
         summary: areaSummary[area],
-        problems: areaProblems.get(area) ?? [],
+        problems: fresh && !publishTried ? [] : (areaProblems.get(area) ?? []),
         fromAssistant: Object.keys(fromAi).some((key) => areaOfSection[key] === area),
       },
     ]),
@@ -1714,6 +1736,9 @@ export const Builder = ({
   }, [draftBar, publishPage]);
   const firstPublishPage =
     !draftBar && !showsInUse && canPublish && section === 'setup' && detail === 'publish';
+  useEffect(() => {
+    if (publishPage || firstPublishPage) setPublishTried(true);
+  }, [publishPage, firstPublishPage]);
   useEffect(() => {
     if (draftBar) return;
     if (!firstPublishPage) {
@@ -2504,6 +2529,15 @@ export const Builder = ({
                   {...(live ? { onCopy: () => void copyService() } : {})}
                 />
               ) : null}
+              {address && !archived ? (
+                <Button asChild variant="secondary" data-size="sm">
+                  <a href={address} target="_blank" rel="noopener noreferrer">
+                    {t('edition.openService')}
+                    <Icon icon={ExternalLinkIcon} />
+                    <span className="visually-hidden"> {t('edition.opensInNewTab')}</span>
+                  </a>
+                </Button>
+              ) : null}
               {fresh ? (
                 <Button asChild variant="secondary" data-size="sm">
                   <a href={`#${servicePath(routeId, 'interface', '/preview')}`}>
@@ -2563,12 +2597,22 @@ export const Builder = ({
                   variant="primary"
                   data-size="sm"
                   aria-disabled={!canSend || missingCount > 0 || undefined}
-                  onClick={() => canSend && missingCount === 0 && go('setup', '/publish')}
+                  onClick={() => {
+                    setPublishTried(true);
+                    if (canSend && missingCount === 0) go('setup', '/publish');
+                  }}
                 >
                   {t('edition.publish')}
                 </Button>
               ) : (
-                <Button variant="primary" data-size="sm" onClick={() => go('setup', '/publish')}>
+                <Button
+                  variant="primary"
+                  data-size="sm"
+                  onClick={() => {
+                    setPublishTried(true);
+                    go('setup', '/publish');
+                  }}
+                >
                   {t('edition.publish')}
                 </Button>
               )}
