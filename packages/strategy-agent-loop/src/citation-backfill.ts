@@ -40,19 +40,48 @@ const refusalPatterns = [
   /\b(could not|couldn't|did not|didn't) find\b/,
 ];
 
+// «Kudos har ingen oppskrift på …»: a name of one or two words that has none of what was asked.
+// «Rapporten har ingen anbefalinger om X, men peker på Y» goes on to answer, so «men» rules it out.
+const hasNoOpening = /^[^ ]+( [^ ]+)? har (ingen|ikke|ikkje)(?![\p{L}\p{N}])/u;
+const butWord = /(?<![\p{L}\p{N}])men(?![\p{L}\p{N}])/u;
+
+const opensWithHasNo = (normalized: string) => {
+  const end = normalized.search(/[.!?]/);
+  const first = end === -1 ? normalized : normalized.slice(0, end);
+  return hasNoOpening.test(first) && !butWord.test(first);
+};
+
 export const soundsLikeRefusal = (text: string): boolean => {
   const normalized = text.toLowerCase().replace(/\s+/g, ' ').trim();
   if (normalized === '') return true;
   if (isFallbackText(text)) return true;
   return (
     detectInsufficientContext(normalized).insufficient ||
+    opensWithHasNo(normalized) ||
     refusalPatterns.some((p) => p.test(normalized))
   );
+};
+
+const offerOpening =
+  /^(jeg kan|eg kan|vil du|ønsker du|ønskjer du|skal jeg|skal eg)(?![\p{L}\p{N}])/u;
+
+/** A decline's first paragraph and its closing offer, without what the model added between them. */
+const paragraphsOf = (text: string) =>
+  text
+    .split(/\n[^\S\n]*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+export const declineOnly = (text: string): string => {
+  const [first = '', ...rest] = paragraphsOf(text);
+  const last = rest.at(-1);
+  return last && offerOpening.test(last.toLowerCase()) ? `${first}\n\n${last}` : first;
 };
 
 export type CitationSettlement =
   | { action: 'keep'; reason: string }
   | { action: 'carry-through' }
+  | { action: 'decline'; text: string }
   | { action: 'backfill'; readFirst: string[]; refusal?: true };
 
 const readPool = (workspace: Workspace): Chunk[] => {
@@ -104,7 +133,13 @@ export const settleCitations = (answer: string, workspace: Workspace): CitationS
     return { action: 'carry-through' };
   if (refusal) {
     if (workspace.citationIndex.size > 0) return { action: 'keep', reason: 'generated-uncited' };
-    if (declineJudged(workspace)) return { action: 'keep', reason: 'declined-after-insufficient' };
+    if (declineJudged(workspace)) {
+      // Nothing read answers the question, so a section after an opening decline adds only what is beside it.
+      const decline = declineOnly(answer);
+      return decline === answer.trim() || !soundsLikeRefusal(paragraphsOf(answer)[0] ?? '')
+        ? { action: 'keep', reason: 'declined-after-insufficient' }
+        : { action: 'decline', text: decline };
+    }
     return refusalBackfillCandidates(workspace).length
       ? { action: 'backfill', readFirst: [], refusal: true }
       : { action: 'keep', reason: 'no-answer-text' };

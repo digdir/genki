@@ -677,6 +677,20 @@ describe('the run mapper', () => {
     expect(mapper.steps.filter((s) => s.type === 'note')).toEqual([]);
   });
 
+  it('shows a decline cut to its decline and offer as a cut, not as a rewrite for citations', () => {
+    const mapper = new RunMapper({ details: true });
+    [
+      notice(0, { stage: 'citations', action: 'decline' }),
+      notice(1, { stage: 'answer-discarded', reason: 'beyond-decline' }),
+      at(2, 'kernel.part.delta', { text: 'Kudos har ingen oppskrift på brunost.' }),
+    ].flatMap((e) => mapper.push(e));
+
+    expect(mapper.steps.map((s) => [s.title, s.summary])).toEqual([
+      ['Kontrollerte kildehenvisningene', 'Beholdt avslaget uten det som ble lagt til etter det'],
+      ['Svarutkast forkastet', 'Svaret ble kortet ned til avslaget og tilbudet.'],
+    ]);
+  });
+
   it('shows a clarification as the result', () => {
     seq = 0;
     const steps = mapRun([

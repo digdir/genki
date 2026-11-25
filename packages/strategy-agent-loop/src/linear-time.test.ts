@@ -7,7 +7,7 @@ import {
   stripSourceLists,
 } from './citations.js';
 import { sentenceUnits } from './sentences.js';
-import { keepsTheDraft, soundsLikeRefusal } from './citation-backfill.js';
+import { declineOnly, keepsTheDraft, soundsLikeRefusal } from './citation-backfill.js';
 import { stripCodeFences } from './structured.js';
 import { questionLanguage } from './prompts.js';
 import { searchFailures } from './tools.js';
@@ -52,6 +52,18 @@ describe('answer cleanup on adversarial input', () => {
     expect(quickly(() => soundsLikeRefusal('kan ikkje '.repeat(30_000)))).toBeLessThan(1000);
     expect(quickly(() => soundsLikeRefusal(`har ${'ikkje '.repeat(30_000)}`))).toBeLessThan(1000);
     expect(soundsLikeRefusal('Eg fann ikkje noko om dette.')).toBe(true);
+    expect(quickly(() => soundsLikeRefusal('kudos '.repeat(30_000)))).toBeLessThan(1000);
+    expect(quickly(() => soundsLikeRefusal(`kudos ${'har '.repeat(30_000)}`))).toBeLessThan(1000);
+    expect(
+      quickly(() => soundsLikeRefusal(`kudos har ingen ${'men '.repeat(30_000)}`)),
+    ).toBeLessThan(1000);
+    expect(soundsLikeRefusal('Kudos har ingen oppskrift på brunost.')).toBe(true);
+  });
+
+  it('cuts a decline to its first paragraph and offer in linear time', () => {
+    expect(quickly(() => declineOnly(`a\n${' \t'.repeat(50_000)}x`))).toBeLessThan(1000);
+    expect(quickly(() => declineOnly('\n'.repeat(100_000)))).toBeLessThan(1000);
+    expect(declineOnly('Nei.\n\nMer.\n \nVil du?')).toBe('Nei.\n\nVil du?');
   });
 
   it('guesses the language of a question in linear time', () => {
