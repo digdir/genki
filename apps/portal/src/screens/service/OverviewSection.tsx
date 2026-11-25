@@ -11,9 +11,10 @@ import { mediaKind } from '../../data/unmasked-input';
 import { usePortalFormat } from '../../format';
 import { useAsync } from '../../hooks';
 import type { PlainKey, T } from '../../i18n';
-import { rightLabel } from '../../Shell';
+import { rightLabel, useRights } from '../../Shell';
 import type { ModelOption, PublishedDefinition, TaskRow } from '../../types';
 import { gateStopReason, gateStops } from '../quality/QualityOverview';
+import { draftLayoutOf } from '../services/blocks/layoutStore';
 import { draftChanges } from '../services/setup-diff';
 import type { VersionItem } from '../services/VersionsTab';
 import {
@@ -27,6 +28,7 @@ import {
   unusedDays,
 } from './overview-model';
 import { PausedBanner } from './PausedBanner';
+import { ServiceWebPage } from './ServiceAddress';
 import { servicePath } from './sections';
 import './overview.css';
 
@@ -229,6 +231,7 @@ export const OverviewSection = ({
   now?: () => Date;
 }) => {
   const { t, f, actor, status } = usePortalFormat();
+  const canManage = useRights().has('manage-services');
   const today = startOfDay(now());
   const dayOfMonth = today.getDate();
   const periodStart = new Date(today.getTime() - (barDays - 1) * dayMs).toISOString();
@@ -959,6 +962,17 @@ export const OverviewSection = ({
             loading={running.status === 'loading'}
           >
             <dl className="kv ov-kv">
+              <dt>{t('serviceAddress.webPage')}</dt>
+              <dd>
+                <ServiceWebPage
+                  api={api}
+                  tenant={tenant}
+                  service={id}
+                  published={published !== undefined}
+                  hasApp={published ? draftLayoutOf(published.definition) !== undefined : false}
+                  canManage={canManage}
+                />
+              </dd>
               <dt>{t('serviceHealth.version')}</dt>
               <dd>
                 {latest

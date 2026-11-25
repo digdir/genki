@@ -31,3 +31,7 @@
   gap: var(--ds-size-2);
   flex-wrap: wrap;
 }
+
+.dv-panel.fe-address {
+  flex: none;
+}

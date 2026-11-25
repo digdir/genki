@@ -482,7 +482,13 @@ export const createAdmin = (options: AdminOptions) => {
         return { ok: false, errors: sharing, target: refusedTarget, type: shareOperatorOnlyType };
       const code = await codeProblems(input.definition, files, principal);
       if (code.length > 0) return { ok: false, errors: code, target: refusedTarget };
-      const result = await store.publish(input.definition, actorOf(principal), input.reason, files);
+      const result = await store.publish(
+        input.definition,
+        actorOf(principal),
+        input.reason,
+        files,
+        { publisher: principal },
+      );
       if (!result.ok)
         return {
           ok: false,
