@@ -114,7 +114,13 @@ export interface KnowledgeHandlerDeps {
   /** How many convert jobs this worker works at once; 2 when left out. */
   convertConcurrency?: number;
   /** `knowledge.heavyThreshold` and `knowledge.nightWindow`, read again for every job. */
-  heavy: { threshold(): number; window(): string; now?: () => Date };
+  heavy: {
+    threshold(): number;
+    window(): string;
+    now?: () => Date;
+    /** Logs who holds a generation's lock when a writer gives way to it (issue 948). */
+    givingWay?: (generation: string) => Promise<void>;
+  };
   /** The run's counts on the platform server. */
   runs: {
     report(id: string, counts: Record<string, number>, mode: 'set' | 'add'): Promise<void>;
@@ -750,6 +756,7 @@ export const knowledgeWork = (
           } catch (error) {
             if (!(error instanceof GenerationBusy)) throw error;
             // VACUUM holds the generation: give way, and keep every retry.
+            void deps.heavy.givingWay?.(job.data.generation).catch(() => undefined);
             await deps.knowledge.sendAgain(queue, job, {
               key: knowledgeKeys.index(job.data.generation, job.data.record),
               startAfter: new Date(now.getTime() + givingWayMs),

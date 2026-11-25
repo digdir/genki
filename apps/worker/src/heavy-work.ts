@@ -25,12 +25,40 @@ const convertQueue = knowledgeConvertQueue(defaultMarkerTimeoutMs);
 export interface MaintenanceOptions {
   maintenanceWorkers?: number;
   onBackend?: (pid: number) => void;
+  /** The job the work runs for, which names its database session. */
+  job?: string;
 }
 
 export interface VacuumOptions extends MaintenanceOptions {
   analyze?: boolean;
   freeze?: boolean;
   throttled: boolean;
+  rebuildAbove?: number;
+  takeOver?: boolean;
+  onTakeover?: (pid: number) => void;
+}
+
+/** What a VACUUM did: whether it rebuilt the HNSW indexes first, from the chunks written and live. */
+export interface VacuumResult {
+  rebuilt: boolean;
+  written?: number;
+  live?: number;
+}
+
+/** The backends of this worker's heavy work, and whether the worker is stopping. */
+export interface HeavyRunning {
+  backends: Set<number>;
+  stopping: boolean;
+}
+
+export const heavyRunning = (): HeavyRunning => ({ backends: new Set(), stopping: false });
+
+/** The session holding a generation's lock, as writers that give way log it (issue 948). */
+export interface LockHolder {
+  pid: number;
+  application: string;
+  since?: string;
+  progress?: unknown;
 }
 
 export interface RecallSample {
@@ -46,13 +74,19 @@ export interface HeavyServer {
   /** Whether a generation is standalone, attached or being dropped; nothing when it does not exist. */
   state(generation: string): Promise<'standalone' | 'attached' | 'detaching' | undefined>;
   chunks(generation: string): Promise<number>;
-  vacuum(generation: string, options: VacuumOptions): Promise<void>;
+  vacuum(generation: string, options: VacuumOptions): Promise<VacuumResult | undefined>;
   build(dataset: DatasetConfig, generation: string, options: MaintenanceOptions): Promise<void>;
   reindex(generation: string, options: MaintenanceOptions): Promise<void>;
   prewarm(generations: string[]): Promise<number | undefined>;
   toFreeze(): Promise<string[]>;
   progress(pid: number): Promise<unknown>;
   cancel(pid: number): Promise<unknown>;
+  /** Ends a backend's session, which a cancel misses between two statements. */
+  terminate(pid: number): Promise<unknown>;
+  /** `ANALYZE` of a generation's partitions alone. */
+  analyze(generation: string, options: { throttled: boolean }): Promise<unknown>;
+  /** The session that holds the generation's lock exclusively, or nothing. */
+  lockHolder?(generation: string): Promise<LockHolder | undefined>;
   /** recall@10 on a sample: `stop` is asked before each exact search, `signal` cancels it. */
   recall(
     generation: string,
@@ -82,6 +116,13 @@ export interface HeavyDeps {
   vcores?: number;
   now?: () => Date;
   log?: (event: string, fields: Record<string, unknown>) => void;
+  /** Adds to a run's report: a closing VACUUM records its duration there. */
+  report?: (id: string, counts: Record<string, number>, mode: 'add') => Promise<void>;
+  /**
+   * This worker's running heavy work, which `cancelHeavyWork` cancels when the worker stops, so
+   * none outlives it holding a generation's lock (issue 948).
+   */
+  running?: HeavyRunning;
 }
 
 /**
@@ -126,6 +167,21 @@ export const fewestRecallVerdict = 20;
 /** A build still running this long after the window's end is cancelled (ADR 0042, "Heavy work"). */
 export const buildOverrunMs = 60 * 60_000;
 
+/** A running `knowledge.build` job logs its phase and blocks this often (#983). */
+export const buildProgressMs = 10 * 60_000;
+
+/** Writers that give way log the lock's holder at most this often per generation (issue 948). */
+export const givingWayLogMs = 60_000;
+
+/**
+ * A closing VACUUM rebuilds the HNSW indexes first when the chunks written since the last VACUUM
+ * pass this share of the live ones (each write replaces a document, so leaves a dead entry): patching the graph around each removed entry reads it at random, one entry at
+ * a time, and took Kudos's 13.6 GB index more than 21 h on 24 Nov, while a rebuild reads only the
+ * live rows, in parallel (#983). A fifth is the issue's starting point, to be checked against the
+ * first measured rebuild and VACUUM of Kudos.
+ */
+export const rebuildDeadShare = 0.2;
+
 type BuildData = (typeof knowledgeBuildQueue)['payload']['_output'];
 
 const nowOf = (deps: HeavyDeps) => deps.now?.() ?? new Date();
@@ -138,12 +194,112 @@ const activeGenerations = (deps: HeavyDeps) =>
 const maintenance = (deps: HeavyDeps): MaintenanceOptions =>
   deps.vcores === undefined ? {} : { maintenanceWorkers: Math.max(deps.vcores - 1, 0) };
 
+/**
+ * Whether heavy work may run at full speed now: only inside a night window with an end. With the
+ * window `always`, heavy jobs start at any hour, but services may be searching, so a VACUUM stays
+ * throttled and a rebuild leaves half the cores to search (#983).
+ */
+export const fullSpeed = (deps: HeavyDeps) => {
+  const now = nowOf(deps);
+  return inNightWindow(deps.window(), now) && nightWindowEnd(deps.window(), now) !== undefined;
+};
+
+/** The maintenance workers of a closing VACUUM's rebuild: half the vCores outside a real window. */
+const closingMaintenance = (deps: HeavyDeps): MaintenanceOptions =>
+  deps.vcores === undefined || fullSpeed(deps)
+    ? maintenance(deps)
+    : { maintenanceWorkers: Math.max(Math.floor(deps.vcores / 2), 0) };
+
+/**
+ * The options of a run's closing `VACUUM (ANALYZE)`, which rebuilds first after a big run, but
+ * not right after a build: its fresh index has nothing to repair, while every row it loaded counts
+ * as written since the last VACUUM.
+ */
+const closingVacuum = (
+  deps: HeavyDeps,
+  options: MaintenanceOptions,
+  how: { afterBuild?: boolean; takeOver?: boolean },
+): VacuumOptions => ({
+  ...options,
+  ...closingMaintenance(deps),
+  analyze: true,
+  ...(how.afterBuild ? {} : { rebuildAbove: rebuildDeadShare }),
+  ...(how.takeOver ? { takeOver: true } : {}),
+  throttled: !fullSpeed(deps),
+  onTakeover: (pid) => deps.log?.('knowledge build took over', { pid }),
+});
+
+/** Tracks a heavy backend in `deps.running` while its work runs. */
+const tracked = (deps: HeavyDeps, onBackend?: (pid: number) => void) => {
+  const pids = new Set<number>();
+  return {
+    onBackend: (backend: number) => {
+      // Called before the session's long statement: a stopping worker starts no more heavy work.
+      if (deps.running?.stopping) throw new Error('the worker is stopping');
+      pids.add(backend);
+      deps.running?.backends.add(backend);
+      onBackend?.(backend);
+    },
+    done: () => {
+      for (const pid of pids) deps.running?.backends.delete(pid);
+    },
+  };
+};
+
+/**
+ * Ends this worker's running heavy work when it stops: the database would otherwise go on with a
+ * VACUUM and keep the generation's lock for hours with no worker left (issue 948). It ends the
+ * sessions, since a cancel is lost on one between two statements. Each job ended this way sends
+ * itself again, so a deploy does not spend its retry.
+ */
+export const cancelHeavyWork = async (deps: HeavyDeps) => {
+  if (!deps.running) return;
+  deps.running.stopping = true;
+  for (const pid of [...deps.running.backends]) {
+    deps.log?.('knowledge build stopped with the worker', { pid });
+    await deps.server
+      .terminate(pid)
+      .catch((error: unknown) =>
+        deps.log?.('knowledge build stop failed', { pid, error: String(error) }),
+      );
+  }
+};
+
+/**
+ * Logs, when a writer gives way, which session holds the generation's lock, since when and how far
+ * it has got, at most once a minute per generation (issue 948).
+ */
+export const givingWay = (deps: HeavyDeps) => {
+  const last = new Map<string, number>();
+  return async (generation: string) => {
+    const now = nowOf(deps).getTime();
+    const seen = last.get(generation);
+    if (seen !== undefined && now - seen < givingWayLogMs) return;
+    last.set(generation, now);
+    const holder = await deps.server.lockHolder?.(generation);
+    deps.log?.('knowledge writers giving way', { generation, holder: holder ?? null });
+  };
+};
+
 /** Sends a `knowledge.build` job to start at the next window start, or at once inside it. */
 export const sendHeavy = (deps: HeavyDeps, data: BuildData) =>
   deps.queue.send(knowledgeBuildQueue, data, {
     key: knowledgeKeys.build(),
     startAfter: heavyWorkStart(deps.window(), nowOf(deps)),
   });
+
+/** A stopping worker's job is sent again this much later, so its own poller does not take it. */
+export const stoppingResendMs = 60_000;
+
+/** Sends a job this stopping worker gives up again, for the next worker (issue 948). */
+const sendForNextWorker = (deps: HeavyDeps, data: BuildData) => {
+  const start = heavyWorkStart(deps.window(), nowOf(deps));
+  const later = new Date(nowOf(deps).getTime() + stoppingResendMs);
+  return deps.queue.send(knowledgeBuildQueue, data, {
+    key: knowledgeKeys.build(),
+    startAfter: start > later ? start : later,
+  });
+};
 
 /**
  * The `VACUUM (ANALYZE)` a run ends with: at once below the heavy threshold (throttled outside the
@@ -155,6 +311,12 @@ export const runVacuum = async (
   generation: string,
 ): Promise<'done' | 'sent'> => {
   if ((await deps.server.chunks(generation)) > deps.threshold()) {
+    // Statistics now, not when the VACUUM's window comes: ANALYZE leaves the HNSW indexes alone.
+    await deps.server
+      .analyze(generation, { throttled: !fullSpeed(deps) })
+      .catch((error: unknown) =>
+        deps.log?.('knowledge run analyze failed', { generation, error: String(error) }),
+      );
     await sendHeavy(deps, {
       tenant: tenantOf(run.dataset),
       generation,
@@ -163,11 +325,37 @@ export const runVacuum = async (
     });
     return 'sent';
   }
-  await deps.server.vacuum(generation, {
-    analyze: true,
-    throttled: !inNightWindow(deps.window(), nowOf(deps)),
-  });
+  await closingVacuumOf(deps, run.id, generation, {}, {});
   return 'done';
+};
+
+/** Runs a run's closing VACUUM and adds its duration, and whether it rebuilt, to the run's report. */
+const closingVacuumOf = async (
+  deps: HeavyDeps,
+  run: string | undefined,
+  generation: string,
+  options: MaintenanceOptions,
+  how: { afterBuild?: boolean; takeOver?: boolean },
+) => {
+  const backend = tracked(deps, options.onBackend);
+  const started = nowOf(deps).getTime();
+  try {
+    const result = await deps.server.vacuum(generation, {
+      ...closingVacuum(deps, options, how),
+      onBackend: backend.onBackend,
+    });
+    const vacuumMs = nowOf(deps).getTime() - started;
+    // The VACUUM is done either way, so a report that cannot be written is only logged.
+    if (run)
+      await deps
+        .report?.(run, { vacuumMs, ...(result?.rebuilt ? { vacuumRebuilt: 1 } : {}) }, 'add')
+        .catch((error: unknown) =>
+          deps.log?.('knowledge run report failed', { run, error: String(error) }),
+        );
+    return { vacuumMs, rebuilt: result?.rebuilt ?? false };
+  } finally {
+    backend.done();
+  }
 };
 
 const datasetConfig = async (deps: HeavyDeps, generation: string) => {
@@ -180,24 +368,35 @@ const datasetConfig = async (deps: HeavyDeps, generation: string) => {
 };
 
 /**
- * `knowledge.build`, worked only inside the night window: builds, VACUUM and REINDEX at full
- * speed, cancelled when still running an hour after the window ends, then prewarms.
+ * `knowledge.build`, worked only inside the night window: builds and REINDEX with the window's
+ * workers, VACUUM throttled unless the window has an end, cancelled when still running an hour
+ * after the window ends, then prewarms. It ends a leftover session of an earlier try first.
  */
 export const buildWork = (deps: HeavyDeps) =>
   queueWork(knowledgeBuildQueue, async (job) => {
     const { generation, kind } = job.data;
     if (kind === 'catch-up')
       throw new Error('a catch-up build comes with candidate generations, which do not exist yet');
+    // Taken by this worker's poller after it began to stop: the next worker runs it.
+    if (deps.running?.stopping) {
+      await sendForNextWorker(deps, job.data);
+      deps.log?.('knowledge build sent again', { generation, kind, reason: 'worker stopped' });
+      return;
+    }
     const started = nowOf(deps);
     const end = nightWindowEnd(deps.window(), started);
+    const run = 'run' in job.data ? job.data.run : undefined;
     let backend: number | undefined;
     let overrun: unknown;
+    const watched = tracked(deps, (pid) => {
+      backend = pid;
+    });
     const options: MaintenanceOptions = {
       ...maintenance(deps),
-      onBackend: (pid) => {
-        backend = pid;
-      },
+      onBackend: watched.onBackend,
+      job: job.id,
     };
+    deps.log?.('knowledge build started', { generation, kind, ...(run ? { run } : {}) });
     const timer =
       end &&
       setTimeout(
@@ -213,25 +412,47 @@ export const buildWork = (deps: HeavyDeps) =>
           }),
         Math.max(end.getTime() + buildOverrunMs - started.getTime(), 0),
       );
+    const ticker = setInterval(
+      () =>
+        void (async () => {
+          if (backend === undefined) return;
+          const progress = await deps.server.progress(backend);
+          deps.log?.('knowledge build progress', {
+            generation,
+            kind,
+            minutes: Math.round((nowOf(deps).getTime() - started.getTime()) / 60_000),
+            progress: progress ?? null,
+          });
+        })().catch(() => undefined),
+      buildProgressMs,
+    );
+    let closing: { vacuumMs: number; rebuilt: boolean } | undefined;
     try {
       if (kind === 'index') {
         await deps.server.build(await datasetConfig(deps, generation), generation, options);
         // A build that ends a run is that run's last step, so it also leaves the planner statistics.
-        if ('run' in job.data)
-          await deps.server.vacuum(generation, {
-            ...options,
-            analyze: true,
-            throttled: !inNightWindow(deps.window(), nowOf(deps)),
+        if (run)
+          closing = await closingVacuumOf(deps, run, generation, options, {
+            afterBuild: true,
+            takeOver: true,
           });
       } else if (kind === 'reindex') await deps.server.reindex(generation, options);
+      else if (kind === 'vacuum')
+        closing = await closingVacuumOf(deps, run, generation, options, { takeOver: true });
       else
         await deps.server.vacuum(generation, {
           ...options,
-          analyze: kind === 'vacuum',
-          freeze: kind === 'freeze',
-          throttled: !inNightWindow(deps.window(), nowOf(deps)),
+          freeze: true,
+          takeOver: true,
+          throttled: !fullSpeed(deps),
         });
     } catch (error) {
+      if (deps.running?.stopping) {
+        // Ended because the worker stops: the same job again, which waits for the next worker.
+        await sendForNextWorker(deps, job.data);
+        deps.log?.('knowledge build sent again', { generation, kind, reason: 'worker stopped' });
+        return;
+      }
       deps.log?.('knowledge build failed', { generation, kind, error: String(error) });
       if (overrun !== undefined)
         throw new Error(
@@ -241,9 +462,17 @@ export const buildWork = (deps: HeavyDeps) =>
       throw error;
     } finally {
       if (timer) clearTimeout(timer);
+      clearInterval(ticker);
+      watched.done();
     }
     const blocks = await deps.server.prewarm(activeGenerations(deps));
-    deps.log?.('knowledge build done', { generation, kind, prewarmedBlocks: blocks ?? null });
+    deps.log?.('knowledge build done', {
+      generation,
+      kind,
+      durationMs: nowOf(deps).getTime() - started.getTime(),
+      ...(closing ? { rebuilt: closing.rebuilt } : {}),
+      prewarmedBlocks: blocks ?? null,
+    });
   });
 
 /**
@@ -395,15 +624,16 @@ export const finishRun =
           await report(run.id, { buildSent: 1 }, 'add');
           return false;
         }
-        await deps.server.build(
-          await datasetConfig(deps, generation),
-          generation,
-          maintenance(deps),
-        );
-        await deps.server.vacuum(generation, {
-          analyze: true,
-          throttled: !inNightWindow(deps.window(), nowOf(deps)),
-        });
+        const built = tracked(deps);
+        try {
+          await deps.server.build(await datasetConfig(deps, generation), generation, {
+            ...maintenance(deps),
+            onBackend: built.onBackend,
+          });
+        } finally {
+          built.done();
+        }
+        await closingVacuumOf(deps, run.id, generation, {}, { afterBuild: true });
         return true;
       }
       // The build job that attached it also ran its VACUUM (ANALYZE).

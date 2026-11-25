@@ -139,7 +139,12 @@ const scenario = async (
     embedded?: string[];
     bound?: () => void;
     /** `knowledge.heavyThreshold` and `knowledge.nightWindow` as the worker reads them. */
-    heavy?: { threshold: number; window: string; now?: Date };
+    heavy?: {
+      threshold: number;
+      window: string;
+      now?: Date;
+      givingWay?: (generation: string) => Promise<void>;
+    };
     /** Leaves the catalog's generation unmade, as for a dataset just published. */
     unprepared?: boolean;
     /** How the dataset differs at an engine switch's endpoint, for runs that name the switch. */
@@ -205,6 +210,7 @@ const scenario = async (
       threshold: () => extra.heavy?.threshold ?? 100_000,
       window: () => extra.heavy?.window ?? '01:00-06:00',
       ...(extra.heavy?.now ? { now: () => extra.heavy?.now as Date } : {}),
+      ...(extra.heavy?.givingWay ? { givingWay: extra.heavy.givingWay } : {}),
     },
     runs: runRecords,
     pipeline: async () => spec,
@@ -378,12 +384,14 @@ const ingestOnly = async (s: Awaited<ReturnType<typeof scenario>>) => {
 };
 
 describe('heavy work and the VACUUM lock', () => {
-  it("a writer that cannot get its generation's lock is sent again later", async () => {
+  it("a writer that cannot get its generation's lock is sent again later, and says what holds it", async () => {
     const embedded: string[] = [];
+    const givingWay = vi.fn(async () => undefined);
     const s = await scenario({}, undefined, {
       builtWith: { model: 'fake/embed', dimensions: 3 },
       catalogEmbedding: { model: 'fake/embed', dimensions: 3 },
       embedded,
+      heavy: { threshold: 100_000, window: '01:00-06:00', givingWay },
     });
     await s.file('a.md', '# A\n\nInnhold i a.');
     const { sent } = await ingestOnly(s);
@@ -404,6 +412,7 @@ describe('heavy work and the VACUUM lock', () => {
     }
     expect(s.sentAgain).toHaveLength(1);
     expect(s.sentAgain[0]?.queue).toBe('knowledge.index');
+    expect(givingWay).toHaveBeenCalledWith(s.generation);
     const wait = (s.sentAgain[0]?.startAfter.getTime() ?? 0) - before;
     expect(wait).toBeGreaterThanOrEqual(110_000);
     expect(wait).toBeLessThanOrEqual(130_000);

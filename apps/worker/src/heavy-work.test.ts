@@ -12,11 +12,16 @@ import {
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  buildProgressMs,
   buildWork,
+  cancelHeavyWork,
   checkWork,
   finishRun,
+  givingWay,
+  heavyRunning,
   heavyWindow,
   recallMargin,
+  rebuildDeadShare,
   recallQueries,
   runVacuum,
   type HeavyDeps,
@@ -46,6 +51,8 @@ const server = (overrides: Partial<HeavyServer> = {}): HeavyServer => ({
   toFreeze: vi.fn(async () => []),
   progress: vi.fn(async () => ({ phase: 'building index', blocks: '10/40' })),
   cancel: vi.fn(async () => undefined),
+  terminate: vi.fn(async () => undefined),
+  analyze: vi.fn(async () => undefined),
   recall: vi.fn(async () => ({ recall: 0.995, queries: 200, cut: false })),
   baseline: vi.fn(async (_g: string, measured: number) => measured),
   datasetOf: vi.fn(async () => dataset.id),
@@ -389,6 +396,367 @@ describe("a run's end", () => {
     });
     const t = deps({ server: server({ vacuum: vi.fn(async () => Promise.reject(busy)) }) });
     expect(await finishRun(t.deps, async () => undefined)(run)).toBe(false);
+  });
+});
+
+describe("a run's closing VACUUM keeps search fast (#983)", () => {
+  const closing = (at = day, overrides: Partial<HeavyDeps> = {}) => {
+    const reports: { id: string; counts: Record<string, number> }[] = [];
+    const t = deps(
+      {
+        window: () => 'always',
+        vcores: 4,
+        report: async (id, counts) => {
+          reports.push({ id, counts });
+        },
+        ...overrides,
+      },
+      at,
+    );
+    return { ...t, reports };
+  };
+  const vacuumJob = job(knowledgeBuildQueue, {
+    tenant: '991825827',
+    generation: 'g-docs-1',
+    kind: 'vacuum',
+    run: 'run-1',
+  });
+
+  it("analyzes the generation's partitions before its closing VACUUM", async () => {
+    const t = closing();
+    await buildWork(t.deps).handler(vacuumJob);
+    expect(t.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ analyze: true }),
+    );
+  });
+
+  it('asks for a rebuild of the HNSW index when the chunks written pass a fifth of the live ones', async () => {
+    const t = closing();
+    await buildWork(t.deps).handler(vacuumJob);
+    expect(rebuildDeadShare).toBe(0.2);
+    expect(t.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ rebuildAbove: 0.2 }),
+    );
+  });
+
+  it('throttles a VACUUM when the night window is always', async () => {
+    const t = closing(night);
+    await buildWork(t.deps).handler(vacuumJob);
+    expect(t.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ throttled: true }),
+    );
+    const small = closing(night);
+    await runVacuum(small.deps, { id: 'run-1', dataset: dataset.id }, 'g-docs-1');
+    expect(small.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ throttled: true }),
+    );
+    const freeze = closing(night);
+    await buildWork(freeze.deps).handler(
+      job(knowledgeBuildQueue, { tenant: '991825827', generation: 'g-docs-1', kind: 'freeze' }),
+    );
+    expect(freeze.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ freeze: true, throttled: true }),
+    );
+    const window = closing(night, { window: () => '01:00-06:00' });
+    await buildWork(window.deps).handler(vacuumJob);
+    expect(window.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ throttled: false }),
+    );
+  });
+
+  it('keeps a finished VACUUM when its report cannot be written', async () => {
+    const log = vi.fn();
+    const t = closing(day, {
+      log,
+      report: async () => Promise.reject(new Error('connection terminated')),
+    });
+    await buildWork(t.deps).handler(vacuumJob);
+    expect(log).toHaveBeenCalledWith(
+      'knowledge run report failed',
+      expect.objectContaining({ run: 'run-1' }),
+    );
+    expect(t.deps.server.prewarm).toHaveBeenCalled();
+  });
+
+  it('rebuilds with half the vCores outside a real night window', async () => {
+    const t = closing();
+    await buildWork(t.deps).handler(vacuumJob);
+    expect(t.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ maintenanceWorkers: 2 }),
+    );
+    const window = closing(night, { window: () => '01:00-06:00' });
+    await buildWork(window.deps).handler(vacuumJob);
+    expect(window.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ maintenanceWorkers: 3 }),
+    );
+  });
+
+  it("logs a build job's start, then its phase and blocks every 10 minutes", async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    try {
+      let finish: () => void = () => undefined;
+      const log = vi.fn();
+      const slow = server({
+        vacuum: vi.fn(
+          (_g: string, options: { onBackend?: (pid: number) => void }) =>
+            new Promise<undefined>((resolve) => {
+              options.onBackend?.(4242);
+              finish = () => resolve(undefined);
+            }),
+        ),
+        progress: vi.fn(async () => ({ phase: 'vacuuming indexes', blocks: '120/900' })),
+      });
+      const t = closing(day, { server: slow, log });
+      const running = buildWork(t.deps).handler(vacuumJob);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(log).toHaveBeenCalledWith(
+        'knowledge build started',
+        expect.objectContaining({ generation: 'g-docs-1', kind: 'vacuum', run: 'run-1' }),
+      );
+      await vi.advanceTimersByTimeAsync(buildProgressMs - 1_000);
+      expect(log).not.toHaveBeenCalledWith('knowledge build progress', expect.anything());
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(log).toHaveBeenCalledWith(
+        'knowledge build progress',
+        expect.objectContaining({
+          generation: 'g-docs-1',
+          progress: { phase: 'vacuuming indexes', blocks: '120/900' },
+        }),
+      );
+      finish();
+      await running;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('vacuums a generation it just built without rebuilding the index it built', async () => {
+    const t = closing(night, { window: () => '01:00-06:00' });
+    await buildWork(t.deps).handler(
+      job(knowledgeBuildQueue, {
+        tenant: '991825827',
+        generation: 'g-docs-2',
+        kind: 'index',
+        run: 'run-1',
+      }),
+    );
+    expect(t.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-2',
+      expect.not.objectContaining({ rebuildAbove: expect.anything() }),
+    );
+    const small = closing(night, {
+      server: server({ state: vi.fn(async () => 'standalone' as const) }),
+    });
+    await finishRun(
+      small.deps,
+      async () => undefined,
+    )({
+      id: 'run-1',
+      dataset: dataset.id,
+      generation: 'g-docs-3',
+    } as Parameters<ReturnType<typeof finishRun>>[0]);
+    expect(small.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-3',
+      expect.not.objectContaining({ rebuildAbove: expect.anything() }),
+    );
+  });
+
+  it("analyzes a heavy run's generation at once, while its VACUUM waits for the window", async () => {
+    const t = closing(day, {
+      window: () => '01:00-06:00',
+      server: server({ chunks: vi.fn(async () => 500) }),
+    });
+    expect(await runVacuum(t.deps, { id: 'run-1', dataset: dataset.id }, 'g-docs-1')).toBe('sent');
+    expect(t.deps.server.analyze).toHaveBeenCalledWith('g-docs-1', { throttled: true });
+    expect(t.deps.server.vacuum).not.toHaveBeenCalled();
+  });
+
+  it("records the closing VACUUM's duration in the run's report", async () => {
+    let at = day.getTime();
+    const t = closing(day, {
+      now: () => new Date(at),
+      server: server({
+        vacuum: vi.fn(async () => {
+          at += 90_000;
+          return { rebuilt: true, written: 900, live: 100 };
+        }),
+      }),
+    });
+    await buildWork(t.deps).handler(vacuumJob);
+    expect(t.reports).toEqual([{ id: 'run-1', counts: { vacuumMs: 90_000, vacuumRebuilt: 1 } }]);
+  });
+});
+
+describe('a VACUUM that outlives its worker (issue 948)', () => {
+  it('ends its heavy backends when the worker stops, and sends the job again without spending its retry', async () => {
+    let fail: (error: Error) => void = () => undefined;
+    const slow = server({
+      vacuum: vi.fn(
+        (_g: string, options: { onBackend?: (pid: number) => void }) =>
+          new Promise<undefined>((_resolve, reject) => {
+            options.onBackend?.(4242);
+            fail = reject;
+          }),
+      ),
+      terminate: vi.fn(async () =>
+        fail(new Error('terminating connection due to administrator command')),
+      ),
+    });
+    const t = deps({ server: slow, running: heavyRunning() }, night);
+    const data = {
+      tenant: '991825827',
+      generation: 'g-docs-1',
+      kind: 'vacuum',
+      run: 'run-1',
+    } as const;
+    const running = buildWork(t.deps).handler(job(knowledgeBuildQueue, data));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await cancelHeavyWork(t.deps);
+    await running;
+    // Ended, not cancelled: a cancel is lost on a session between two statements.
+    expect(slow.terminate).toHaveBeenCalledWith(4242);
+    expect(slow.cancel).not.toHaveBeenCalled();
+    expect(t.deps.running?.backends.size).toBe(0);
+    // A minute on, so this stopping worker's own poller does not take it again.
+    expect(t.sent).toEqual([
+      { queue: 'knowledge.build', data, startAfter: new Date(night.getTime() + 60_000) },
+    ]);
+    expect(slow.prewarm).not.toHaveBeenCalled();
+  });
+
+  it("logs which backend holds a busy generation's lock, at most once a minute", async () => {
+    let at = day.getTime();
+    const log = vi.fn();
+    const holder = {
+      pid: 341548,
+      application: 'genki-heavy',
+      since: '2026-11-22T14:50:00Z',
+      progress: { phase: 'vacuuming indexes', blocks: '10/40' },
+    };
+    const t = deps({
+      log,
+      now: () => new Date(at),
+      server: server({ lockHolder: vi.fn(async () => holder) }),
+    });
+    const busy = givingWay(t.deps);
+    await busy('g-docs-1');
+    at += 30_000;
+    await busy('g-docs-1');
+    expect(log.mock.calls.filter(([event]) => event === 'knowledge writers giving way')).toEqual([
+      ['knowledge writers giving way', { generation: 'g-docs-1', holder }],
+    ]);
+    at += 31_000;
+    await busy('g-docs-1');
+    expect(
+      log.mock.calls.filter(([event]) => event === 'knowledge writers giving way'),
+    ).toHaveLength(2);
+  });
+  it('a job taken while the worker stops is sent again for the next worker, and runs nothing', async () => {
+    const running = heavyRunning();
+    running.stopping = true;
+    const t = deps({ running }, night);
+    const data = {
+      tenant: '991825827',
+      generation: 'g-docs-1',
+      kind: 'vacuum',
+      run: 'run-1',
+    } as const;
+    await buildWork(t.deps).handler(job(knowledgeBuildQueue, data));
+    expect(t.deps.server.vacuum).not.toHaveBeenCalled();
+    expect(t.sent).toEqual([
+      { queue: 'knowledge.build', data, startAfter: new Date(night.getTime() + 60_000) },
+    ]);
+  });
+
+  it('starts no heavy session once the worker is stopping, and leaves none tracked', async () => {
+    const running = heavyRunning();
+    const t = deps(
+      {
+        running,
+        server: server({
+          state: vi.fn(async () => 'standalone' as const),
+          build: vi.fn(async (_d, _g, options: { onBackend?: (pid: number) => void }) => {
+            options.onBackend?.(7);
+            // The worker begins to stop while the reconciler's build runs.
+            await cancelHeavyWork({ ...t.deps, running });
+          }),
+          vacuum: vi.fn(async (_g, options: { onBackend?: (pid: number) => void }) => {
+            options.onBackend?.(8);
+            return undefined;
+          }),
+        }),
+      },
+      night,
+    );
+    const finished = await finishRun(
+      t.deps,
+      async () => undefined,
+    )({
+      id: 'run-1',
+      dataset: dataset.id,
+      generation: 'g-docs-3',
+    } as Parameters<ReturnType<typeof finishRun>>[0]);
+    // The run's VACUUM never started: it is tried again on a later pass.
+    expect(finished).toBe(false);
+    expect(t.deps.server.terminate).toHaveBeenCalledWith(7);
+    expect(t.deps.server.terminate).not.toHaveBeenCalledWith(8);
+    expect([...running.backends]).toEqual([]);
+  });
+
+  it('forgets every backend of a job once it ends', async () => {
+    const t = deps(
+      {
+        running: heavyRunning(),
+        server: server({
+          build: vi.fn(async (_d, _g, options: { onBackend?: (pid: number) => void }) => {
+            options.onBackend?.(1);
+          }),
+          vacuum: vi.fn(async (_g, options: { onBackend?: (pid: number) => void }) => {
+            options.onBackend?.(2);
+            return undefined;
+          }),
+        }),
+      },
+      night,
+    );
+    await buildWork(t.deps).handler(
+      job(knowledgeBuildQueue, {
+        tenant: '991825827',
+        generation: 'g-docs-2',
+        kind: 'index',
+        run: 'run-1',
+      }),
+    );
+    expect([...(t.deps.running?.backends ?? [])]).toEqual([]);
+  });
+
+  it('only a build job takes over a leftover session, and names itself by its job', async () => {
+    const t = deps({}, night);
+    const vacuum = job(knowledgeBuildQueue, {
+      tenant: '991825827',
+      generation: 'g-docs-1',
+      kind: 'vacuum',
+      run: 'run-1',
+    });
+    await buildWork(t.deps).handler(vacuum);
+    expect(t.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ takeOver: true, job: vacuum.id }),
+    );
+    const inline = deps();
+    await runVacuum(inline.deps, { id: 'run-1', dataset: dataset.id }, 'g-docs-1');
+    expect(inline.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.not.objectContaining({ takeOver: true }),
+    );
   });
 });
 
