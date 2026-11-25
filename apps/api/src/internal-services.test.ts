@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, platformSettings, SettingsRegistry } from '@genai/definitions';
 import { createAuthenticator, trustedEntraScope } from '@genai/identity';
@@ -10,6 +10,7 @@ import { callerFrom, createPlatform, platformModules } from './composition.js';
 import { InMemoryConfigEntryStore, platformScope } from './config-store.js';
 import { InMemoryTenantApiKeys } from './routes/portal-routes.js';
 import { kernelTaskReader } from './timeline.js';
+import { deletedInternalServiceKind } from './internal-services.js';
 import { digdir, files, other, testService } from './testkit.js';
 
 const servers: FakeServer[] = [];
@@ -183,7 +184,7 @@ const boot = async () => {
     send('/v1/chat/completions', as, {
       body: { model: `${service}__default`, messages: [{ role: 'user', content: 'Hei' }] },
     });
-  return { app, send, key, keyId, run, platform };
+  return { app, send, key, keyId, run, platform, configEntries };
 };
 
 const portal = { 'genki-surface': 'portal' };
@@ -390,6 +391,41 @@ describe('an internal service', () => {
     expect(usage.byService.map((r) => r.service)).not.toContain('smoke');
     expect(detail.status).toBe(404);
     expect(seen.data.map((t) => t.id)).toContain(task);
+  });
+
+  it('is looked up as deleted once per request, however many runs the log lists', async () => {
+    const { send, run, key, configEntries } = await boot();
+    const caller = await key();
+    for (let i = 0; i < 4; i++) await run(caller, 'klarsprak');
+    const history = vi.spyOn(configEntries, 'history');
+
+    const log = (await (await send(`/tenants/${digdir}/tasks`, 'eva')).json()) as {
+      data: unknown[];
+    };
+
+    const deletionReads = history.mock.calls.filter(
+      ([kind]) => kind === deletedInternalServiceKind,
+    );
+    expect(log.data).toHaveLength(4);
+    expect(deletionReads).toHaveLength(1);
+  });
+
+  it('stays out of the usage this month a tenant admin sees right after the test-runner key', async () => {
+    const { send, run, key } = await boot();
+    const runner = await key({ testRunner: true });
+    await run(runner, 'smoke');
+    const thisMonth = async (as: string, headers: Record<string, string> = {}) =>
+      (
+        (await (await send(`/tenants/${digdir}/overview`, as, { headers })).json()) as {
+          usageThisMonth?: { requests: number };
+        }
+      ).usageThisMonth?.requests;
+
+    const seenByRunner = await thisMonth(runner, portal);
+    const seenByAdmin = await thisMonth('eva');
+
+    expect(seenByRunner).toBe(1);
+    expect(seenByAdmin).toBe(0);
   });
 
   it('keeps a draft of an internal service out of the draft list for a tenant admin', async () => {

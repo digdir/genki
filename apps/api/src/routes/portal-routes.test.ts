@@ -1447,6 +1447,33 @@ describe('usage from an AI gateway', () => {
     expect((await counted.send('/operator/usage/unassigned', 'operator')).status).toBe(200);
   });
 
+  it("reads the month's usage once for overviews within 30 seconds, and again after", async () => {
+    let reads = 0;
+    let clock = new Date('2026-10-06T12:00:00Z');
+    const { send } = await setup({
+      now: () => clock,
+      gatewayUsage: {
+        tenantRows: async () => {
+          reads += 1;
+          return [];
+        },
+        unassignedRows: async () => [],
+        rates: async () => [],
+      },
+    });
+    const overview = () => send(`/tenants/${digdir}/overview`, 'kari');
+
+    await overview();
+    clock = new Date('2026-10-06T12:00:29Z');
+    await overview();
+    const withinTtl = reads;
+    clock = new Date('2026-10-06T12:00:30Z');
+    await overview();
+
+    expect(withinTtl).toBe(1);
+    expect(reads).toBe(2);
+  });
+
   it("shows a tenant only its own organisation's gateway usage, whatever tenant or organisation the request names", async () => {
     let now = new Date('2026-10-06T08:00:00Z');
     const gateway = memoryUsageSource({ now: () => now });
