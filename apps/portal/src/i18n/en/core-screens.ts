@@ -192,6 +192,7 @@ export const changes = {
   blockDecide: 'decided on the request for the part',
   blockRequest: 'asked for approval of the part',
   blockSettings: 'changed the customisations of the part',
+  blockArchive: 'deleted the design element',
   blockShareRequest: 'asked to share the design element with everyone',
   blockShareApprove: 'approved sharing the design element with everyone',
   blockShareDecline: 'declined sharing the design element with everyone',

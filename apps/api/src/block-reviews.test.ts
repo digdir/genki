@@ -109,6 +109,31 @@ const boot = async (studio = true) => {
 };
 
 describe('review before a code block is shared with everyone', () => {
+  const archive = (send: Awaited<ReturnType<typeof boot>>['send']) =>
+    send(`/tenants/${digdir}/blocks/figur`, 'kari', {
+      method: 'DELETE',
+      reason: 'figuren brukes ikke lenger',
+    });
+
+  it('refuses a review for an archived block', async () => {
+    const { save, ask, send } = await boot();
+    await save();
+    expect((await archive(send)).status).toBe(200);
+
+    expect((await ask(1)).status).toBe(404);
+  });
+
+  it('does not approve a review for a block archived while it waited', async () => {
+    const { save, ask, pending, decide, send, versionsOf } = await boot();
+    await save();
+    await ask(1);
+    expect((await archive(send)).status).toBe(200);
+    const [request] = await pending();
+
+    expect((await decide(request?.id ?? '', 'approve')).status).toBe(422);
+    expect(await versionsOf()).toBe(1);
+  });
+
   it('sends a code block to review instead of sharing it with everyone', async () => {
     const { save, ask, pending, sharingOf } = await boot();
     await save();

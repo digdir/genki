@@ -19,6 +19,7 @@ import { auth, plugins, settingDefinitions } from './testkit.js';
 const metadataRoutes = new Set([
   'DELETE /tenants/:tenant/api-key-policies/:id',
   'DELETE /tenants/:tenant/api-keys/:id/policy',
+  'DELETE /tenants/:tenant/blocks/:id',
   'DELETE /tenants/:tenant/building-blocks/approval-requests/:request',
   'DELETE /tenants/:tenant/catalog/:kind/:id',
   'DELETE /tenants/:tenant/clients/:client/hostnames/:hostname',

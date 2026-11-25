@@ -251,6 +251,7 @@ import { serviceDrafts } from './service-drafts.js';
 import { resolveInterfaceBlocks } from './interface-blocks.js';
 import { codeBlockProblems } from './block-bundles.js';
 import { blockFrameUrl } from './block-origin.js';
+import { blockArchiveModule } from './block-archive.js';
 import { blockCatalogueModule } from './block-catalogue.js';
 import { blockReviewsModule, createBlockReviewsModule } from './block-reviews.js';
 import { blockImportModule } from './block-import-routes.js';
@@ -429,6 +430,7 @@ export const platformModules: PlatformModuleFactory[] = [
   blockUsageModule,
   blockReviewsModule,
   blockCatalogueModule,
+  blockArchiveModule,
   blockImportModule,
   skillsModule,
   playgroundModule,

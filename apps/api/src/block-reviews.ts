@@ -8,6 +8,7 @@ import {
 import type { Context } from 'hono';
 import { enterTenant } from './access.js';
 import { actorOf, AdminRefused, routeOnlyActions } from './admin.js';
+import { isBlockArchived } from './block-archive.js';
 import type { ConfigEntryStore } from './config-store.js';
 import { appendVersion, serialized } from './config-store.js';
 import { onForTenant, requireFlag } from './feature-flags.js';
@@ -189,6 +190,8 @@ export const createBlockReviewsModule =
                   errors: [{ path: 'version', message: t('problems.blockShareNotLatest') }],
                 }),
               };
+            if (await isBlockArchived(store, tenant, block, version))
+              return { response: problem(c, 404, t('problems.blockNotFound')) };
             if ((await requestsOf(store, tenant, block)).some((r) => r.status === 'pending'))
               return {
                 response: problem(c, 409, t('problems.blockSharePending'), {
@@ -342,6 +345,10 @@ export const createBlockReviewsModule =
                     409,
                     blockShareProblems.stale,
                   );
+                if (await isBlockArchived(store, request.tenant, request.block, request.version))
+                  throw new ApprovalFailed([
+                    { path: 'version', message: t('problems.blockNotFound') },
+                  ]);
                 const shared = sharedCopy(edition);
                 const published = await definitions.publish(
                   shared,

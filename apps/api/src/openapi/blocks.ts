@@ -303,4 +303,48 @@ export const blockRoutes: RouteConfig[] = [
       409: problem('The draft was changed by someone else'),
     },
   }),
+  createRoute({
+    method: 'delete',
+    path: '/tenants/{tenant}/blocks/{id}',
+    summary:
+      "Archive one of the organisation's own blocks: Utforming stops listing it and it can no longer be pinned, its editions stay, and saving a new edition lists it again. Never genki's built-in blocks or another organisation's. Refused while the draft, latest or an environment-pinned version of any service that is not archived pins it, in any organisation, so a block shared with everyone is never taken from a service that uses it. Only while blockStudio is on for the caller. Needs manage-services; audited",
+    request: {
+      params: z.object({ tenant, id: pathParam('id', 'sporsmal-kort') }),
+      headers: changeReason,
+    },
+    responses: {
+      200: {
+        ...json(
+          z.object({ id: z.string(), archived: z.literal(true), version: z.number().int() }),
+          'Archived',
+        ),
+        headers: z.object({
+          'genai-task': z
+            .string()
+            .openapi({ description: 'The audit task that recorded the change' }),
+        }),
+      },
+      400: problem('No change-reason'),
+      ...writeErrors,
+      404: problem(
+        'blockStudio is off for the caller, or the organisation has no such block of its own, or it is built-in or already archived',
+      ),
+      409: {
+        description:
+          "urn:genai:problem:block-in-use: services still pin the block. usedBy names the caller's own services it may see; otherServices counts the rest, in other organisations or internal",
+        content: {
+          'application/problem+json': {
+            schema: z.object({
+              type: z.literal('urn:genai:problem:block-in-use'),
+              title: z.string(),
+              status: z.literal(409),
+              errors: z.array(fieldError),
+              usedBy: z.array(z.object({ tenant: z.string(), service: z.string() })),
+              otherServices: z.number().int().optional(),
+            }),
+          },
+        },
+      },
+    },
+  }),
 ];
