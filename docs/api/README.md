@@ -77,7 +77,7 @@ To announce one, add a line to a new dated entry below that names the operation 
 
 ### 2026-11-25: usage counts what the quota counts
 
-- `GET /tenants/{tenant}/usage` and `GET /tenants/{tenant}/overview` count runs of internal services in their totals for every viewer, as the monthly quota does. Where the viewer does not see internal services, they are summed under the new `internal` (and `internal` on each day) without being named. The quota counts neither ingestion nor the AI gateway.
+- `GET /tenants/{tenant}/usage` and `GET /tenants/{tenant}/overview` count runs of internal services in their totals for every viewer, as the monthly quota does. Where the viewer does not see internal services, `GET /tenants/{tenant}/usage` sums them under the new `internal` (and `internal` on each day) without naming them; the overview's `usageThisMonth` has them in its totals only. The quota counts neither ingestion nor the AI gateway.
 
 ### 2026-11-25: a hostname may redirect, and claims open hostnames
 
