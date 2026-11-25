@@ -90,60 +90,34 @@ resource hostFence 'Microsoft.Authorization/policyDefinitions@2023-04-01' = {
               {
                 count: {
                   field: env
-                  where: { field: '${env}.name', notIn: ['APP', 'API_UPSTREAM', 'ANSATTPORTEN_ISSUER', 'GENAI_PROXY_KEY'] }
-                }
-                greater: 0
-              }
-              {
-                count: {
-                  field: env
-                  where: { allOf: [{ field: '${env}.name', equals: 'APP' }, { field: '${env}.value', notEquals: 'assistant' }] }
-                }
-                greater: 0
-              }
-              {
-                count: {
-                  field: env
                   where: {
-                    allOf: [
-                      { field: '${env}.name', equals: 'API_UPSTREAM' }
-                      { field: '${env}.value', notEquals: '[parameters(\'apiUpstream\')]' }
-                    ]
-                  }
-                }
-                greater: 0
-              }
-              {
-                count: {
-                  field: env
-                  where: {
-                    allOf: [
-                      { field: '${env}.name', equals: 'ANSATTPORTEN_ISSUER' }
-                      { field: '${env}.value', notEquals: '[parameters(\'issuer\')]' }
-                    ]
-                  }
-                }
-                greater: 0
-              }
-              {
-                count: {
-                  field: env
-                  where: {
-                    allOf: [
-                      { field: '${env}.name', equals: 'GENAI_PROXY_KEY' }
-                      { field: '${env}.secretRef', notEquals: 'genai-proxy-key' }
-                    ]
-                  }
-                }
-                greater: 0
-              }
-              {
-                count: {
-                  field: env
-                  where: {
-                    allOf: [
-                      { field: '${env}.name', notEquals: 'GENAI_PROXY_KEY' }
-                      { field: '${env}.secretRef', exists: true }
+                    anyOf: [
+                      { field: '${env}.name', notIn: ['APP', 'API_UPSTREAM', 'ANSATTPORTEN_ISSUER', 'GENAI_PROXY_KEY'] }
+                      { allOf: [{ field: '${env}.name', equals: 'APP' }, { field: '${env}.value', notEquals: 'assistant' }] }
+                      {
+                        allOf: [
+                          { field: '${env}.name', equals: 'API_UPSTREAM' }
+                          { field: '${env}.value', notEquals: '[parameters(\'apiUpstream\')]' }
+                        ]
+                      }
+                      {
+                        allOf: [
+                          { field: '${env}.name', equals: 'ANSATTPORTEN_ISSUER' }
+                          { field: '${env}.value', notEquals: '[parameters(\'issuer\')]' }
+                        ]
+                      }
+                      {
+                        allOf: [
+                          { field: '${env}.name', equals: 'GENAI_PROXY_KEY' }
+                          { field: '${env}.secretRef', notEquals: 'genai-proxy-key' }
+                        ]
+                      }
+                      {
+                        allOf: [
+                          { field: '${env}.name', notEquals: 'GENAI_PROXY_KEY' }
+                          { field: '${env}.secretRef', exists: true }
+                        ]
+                      }
                     ]
                   }
                 }

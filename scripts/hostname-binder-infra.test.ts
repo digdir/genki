@@ -55,10 +55,8 @@ const envField = (name: string) => `[format('{0}.${name}', variables('env'))]`;
 const app = (path: string) => `Microsoft.App/containerApps/${path}`;
 const counted = (field: string) => ['count', field, null, ['greater', 0]];
 const envWhere = (name: string, operator: unknown[]) => [
-  'count',
-  env,
-  ['allOf', [[envField('name'), ['equals', name]], operator]],
-  ['greater', 0],
+  'allOf',
+  [[envField('name'), ['equals', name]], operator],
 ];
 
 const build = (file: string) =>
@@ -267,29 +265,32 @@ describe.skipIf(!hasAz && !process.env.CI)('the hostname binder in the template'
               'count',
               env,
               [
-                envField('name'),
-                ['notIn', ['APP', 'API_UPSTREAM', 'ANSATTPORTEN_ISSUER', 'GENAI_PROXY_KEY']],
-              ],
-              ['greater', 0],
-            ],
-            envWhere('APP', [envField('value'), ['notEquals', 'assistant']]),
-            envWhere('API_UPSTREAM', [
-              envField('value'),
-              ['notEquals', "[[parameters('apiUpstream')]"],
-            ]),
-            envWhere('ANSATTPORTEN_ISSUER', [
-              envField('value'),
-              ['notEquals', "[[parameters('issuer')]"],
-            ]),
-            envWhere('GENAI_PROXY_KEY', [envField('secretRef'), ['notEquals', 'genai-proxy-key']]),
-            [
-              'count',
-              env,
-              [
-                'allOf',
+                'anyOf',
                 [
-                  [envField('name'), ['notEquals', 'GENAI_PROXY_KEY']],
-                  [envField('secretRef'), ['exists', true]],
+                  [
+                    envField('name'),
+                    ['notIn', ['APP', 'API_UPSTREAM', 'ANSATTPORTEN_ISSUER', 'GENAI_PROXY_KEY']],
+                  ],
+                  envWhere('APP', [envField('value'), ['notEquals', 'assistant']]),
+                  envWhere('API_UPSTREAM', [
+                    envField('value'),
+                    ['notEquals', "[[parameters('apiUpstream')]"],
+                  ]),
+                  envWhere('ANSATTPORTEN_ISSUER', [
+                    envField('value'),
+                    ['notEquals', "[[parameters('issuer')]"],
+                  ]),
+                  envWhere('GENAI_PROXY_KEY', [
+                    envField('secretRef'),
+                    ['notEquals', 'genai-proxy-key'],
+                  ]),
+                  [
+                    'allOf',
+                    [
+                      [envField('name'), ['notEquals', 'GENAI_PROXY_KEY']],
+                      [envField('secretRef'), ['exists', true]],
+                    ],
+                  ],
                 ],
               ],
               ['greater', 0],
@@ -345,6 +346,32 @@ describe.skipIf(!hasAz && !process.env.CI)('the hostname binder in the template'
       ],
     ]);
     expect(built().access.parameters.policyEffect?.defaultValue).toBe('Deny');
+  });
+
+  it('no policy rule has more than 5 count expressions on one array field', () => {
+    const variables = built().access.variables ?? {};
+    const resolve = (field: string) =>
+      field.replace(/^\[variables\('(\w+)'\)\]$/, (_, name: string) => String(variables[name]));
+    const countFields = (node: unknown): string[] => {
+      if (Array.isArray(node)) return node.flatMap(countFields);
+      if (!node || typeof node !== 'object') return [];
+      const own = (node as Condition).count as { field?: string } | undefined;
+      return [
+        ...(typeof own?.field === 'string' ? [resolve(own.field)] : []),
+        ...Object.values(node).flatMap(countFields),
+      ];
+    };
+    const definitions = built().access.resources.filter(
+      (r) => r.type === 'Microsoft.Authorization/policyDefinitions',
+    );
+    expect(definitions.length).toBeGreaterThan(0);
+    for (const definition of definitions) {
+      const perField = new Map<string, number>();
+      for (const field of countFields(definition.properties.policyRule))
+        perField.set(field, (perField.get(field) ?? 0) + 1);
+      for (const [field, total] of perField)
+        expect(total, `${definition.name}: ${field}`).toBeLessThanOrEqual(5);
+    }
   });
 
   it('the policy on the apps zone denies records that do not point at the host', () => {
