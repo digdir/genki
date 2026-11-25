@@ -16,7 +16,8 @@ description:
 responsibilities:
   - Draw any layout the block catalogue allows, live against a service
   - Resolve each layout entry, by id or by a Block definition's ref, to a built-in block through the registry, and draw a placeholder for a ref it has no component for
-  - Pick a `block: ref` entry's edition and only the fields it reads from what the interface serves, draw a declarative edition with its template and send its events to the assistant, and draw a placeholder for a code edition until its sandbox is built
+  - Pick a `block: ref` entry's edition and only the fields it reads from what the interface serves, and draw a declarative edition with its template and send its events to the assistant
+  - Draw a code block in a sandboxed frame from the block origin and take only typed, rate-limited messages from it (ADR 0069)
   - Keep the state the blocks share and link their events
   - Call genki for models, threads, facets and answers through one interface
 files:
@@ -26,6 +27,8 @@ files:
   - packages/ui-assembly/src/ref-block.tsx
   - packages/ui-assembly/src/block-data.ts
   - packages/ui-assembly/src/declarative-block.tsx
+  - packages/ui-assembly/src/code-block.tsx
+  - packages/ui-assembly/src/bridge.ts
   - packages/ui-assembly/src/api.ts
   - packages/ui-assembly/src/i18n.ts
 input: A layout and its profile, a service, the host's profile if any, and a way to reach genki

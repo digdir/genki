@@ -45,3 +45,13 @@ export const FlagsOn = ({
 
 export const useFlag = (key: FlagKey) =>
   useContext(FlagsContext).some((s) => s.key === key && s.on);
+
+export const WhenFlag = ({
+  flag,
+  children,
+  otherwise = null,
+}: {
+  flag: FlagKey;
+  children: ReactNode;
+  otherwise?: ReactNode;
+}) => <>{useFlag(flag) ? children : otherwise}</>;

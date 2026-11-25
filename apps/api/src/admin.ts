@@ -1,3 +1,4 @@
+import { codeBlockProblems } from './block-bundles.js';
 import { publishRefusals } from './internal-services.js';
 import {
   archivedPublishRefusal,
@@ -6,7 +7,7 @@ import {
   type LifecycleOf,
 } from './archived-services.js';
 import type { Event, Part, Principal, Usage } from '@genai/contracts';
-import { defaultPlatformTenant } from '@genai/composition';
+import { defaultPlatformTenant, type Flags } from '@genai/composition';
 import {
   checkPromptFiles,
   importTenant,
@@ -172,6 +173,8 @@ export interface AdminOptions {
   tenants?: () => Promise<{ orgNumber: string; name: string }[]>;
   names?: { remember(principal: Principal, name: string): Promise<void> };
   lifecycle?: LifecycleOf;
+  blockOrigin?: string | undefined;
+  flags?: Pick<Flags, 'on'>;
 }
 
 export type AdminOutcome = Outcome;
@@ -350,16 +353,39 @@ export const createAdmin = (options: AdminOptions) => {
     }
   >();
 
-  const check = (definition: unknown, files: PromptFiles): ValidationError[] => {
-    const validated = validateDefinition(definition, plugins);
-    return validated.ok ? checkPromptFiles(validated.definition, files) : validated.errors;
+  const codeProblems = async (definition: unknown, files: PromptFiles, principal: Principal) => {
+    const d = definition as
+      { kind?: unknown; metadata?: { tenant?: unknown }; spec?: { tier?: unknown } } | undefined;
+    if (d?.kind !== 'Block' || d.spec?.tier !== 'code') return [];
+    const tenant = d.metadata?.tenant;
+    const studio =
+      typeof tenant === 'string' &&
+      (await options.flags?.on({ principal, tenant }, 'blockStudio')) === true;
+    return studio
+      ? codeBlockProblems(definition, files, options.blockOrigin)
+      : [{ path: 'spec.tier', message: t('problems.blockStudioOff') }];
   };
 
-  const checkImport = async (definition: unknown, files: PromptFiles) => {
+  const check = async (
+    definition: unknown,
+    files: PromptFiles,
+    principal: Principal,
+  ): Promise<ValidationError[]> => {
     const validated = validateDefinition(definition, plugins);
     return validated.ok
       ? [
           ...checkPromptFiles(validated.definition, files),
+          ...(await codeProblems(validated.definition, files, principal)),
+        ]
+      : validated.errors;
+  };
+
+  const checkImport = async (definition: unknown, files: PromptFiles, principal: Principal) => {
+    const validated = validateDefinition(definition, plugins);
+    return validated.ok
+      ? [
+          ...checkPromptFiles(validated.definition, files),
+          ...(await codeProblems(validated.definition, files, principal)),
           ...riskConfirmationProblems(validated.definition),
           ...(validated.definition.kind === 'Service'
             ? await blockRefProblems(store, validated.definition)
@@ -389,7 +415,7 @@ export const createAdmin = (options: AdminOptions) => {
   const importCheck =
     (principal: Principal) =>
     async (definition: unknown, files: PromptFiles): Promise<ValidationError[]> => [
-      ...(await checkImport(definition, files)),
+      ...(await checkImport(definition, files, principal)),
       ...(await sharingProblems(definition, principal)),
       ...(await publishRefusals(store, definition)),
       ...(await archivedProblems(definition)),
@@ -455,6 +481,8 @@ export const createAdmin = (options: AdminOptions) => {
       const refusedTarget = definitionTarget(input.definition);
       if (sharing.length > 0)
         return { ok: false, errors: sharing, target: refusedTarget, type: shareOperatorOnlyType };
+      const code = await codeProblems(input.definition, files, principal);
+      if (code.length > 0) return { ok: false, errors: code, target: refusedTarget };
       const result = await store.publish(input.definition, actorOf(principal), input.reason, files);
       if (!result.ok)
         return {
@@ -514,7 +542,7 @@ export const createAdmin = (options: AdminOptions) => {
           const sharing = await sharingProblems(definition, principal);
           if (sharing.length > 0) sharingRefused = true;
           return [
-            ...(await checkImport(definition, files)),
+            ...(await checkImport(definition, files, principal)),
             ...sharing,
             ...(await archivedProblems(definition)),
           ];

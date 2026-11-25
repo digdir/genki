@@ -11,6 +11,7 @@ export const shell = defineNamespace({
   pageModels: 'Modeller',
   pageCatalog: 'Endepunkter og priser',
   pageBuildingBlocks: 'Tillegg',
+  pageBlockReviews: 'Designelementer til gjennomgang',
   pageSearchEngines: 'Søkemotorer',
   pageSharedServices: 'Delte tjenester',
   pageDemos: 'Demoer',

@@ -12,6 +12,7 @@ export const shell = {
   pageModels: 'Models',
   pageCatalog: 'Endpoints and prices',
   pageBuildingBlocks: 'Plug-ins',
+  pageBlockReviews: 'Design elements in review',
   pageSearchEngines: 'Search engines',
   pageSharedServices: 'Shared services',
   pageDemos: 'Demos',

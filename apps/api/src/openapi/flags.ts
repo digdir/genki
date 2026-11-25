@@ -20,7 +20,7 @@ const reason = z.object({
     .openapi({
       param: { name: 'change-reason', in: 'header' },
       description: 'Why the change is made, at least 10 characters. Stored in the audit log.',
-      example: 'Laben prøver Block Studio før resten av virksomheten',
+      example: 'Laben prøver ny utforming før resten av virksomheten',
     }),
 });
 const optionalReason = z.object({

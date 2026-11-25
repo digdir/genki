@@ -1778,6 +1778,7 @@
               'Model classification by residency and capability',
               'New kinds of model API from descriptors (upload, try with made-up data, record fixtures from tries, approve or withdraw), kind maturity and processor records (ADR 0047)',
               'Operations and support sessions',
+              'Review code design elements before they are shared with everyone, approve or decline with a reason (ADR 0069)',
             ],
             files: [
               'apps/console/src/App.tsx',
@@ -2115,8 +2116,9 @@
               "Resolve each layout entry, by id or by a Block definition's ref, to a built-in block through the registry, and draw a placeholder for a ref it has no component for",
               {
                 'Pick a `block':
-                  "ref` entry's edition and only the fields it reads from what the interface serves, draw a declarative edition with its template and send its events to the assistant, and draw a placeholder for a code edition until its sandbox is built",
+                  "ref` entry's edition and only the fields it reads from what the interface serves, and draw a declarative edition with its template and send its events to the assistant",
               },
+              'Draw a code block in a sandboxed frame from the block origin and take only typed, rate-limited messages from it (ADR 0069)',
               'Keep the state the blocks share and link their events',
               'Call genki for models, threads, facets and answers through one interface',
             ],
@@ -2127,6 +2129,8 @@
               'packages/ui-assembly/src/ref-block.tsx',
               'packages/ui-assembly/src/block-data.ts',
               'packages/ui-assembly/src/declarative-block.tsx',
+              'packages/ui-assembly/src/code-block.tsx',
+              'packages/ui-assembly/src/bridge.ts',
               'packages/ui-assembly/src/api.ts',
               'packages/ui-assembly/src/i18n.ts',
             ],
@@ -2428,6 +2432,7 @@
               'Let operators upload operation descriptors with their fixtures, checked by the loader rules and operation@1 before they are stored, record fixtures from their synthetic tries in test, and move or withdraw them, audited (ADR 0047)',
               'List the operations a step may call in a tenant, with their typed input and the models that offer each kind',
               'List the interface blocks an organisation may use across publishers, preview one, pin an edition in a service draft, and serve each pinned edition with the interface (ADR 0067)',
+              "Serve code blocks' frames, bundles and bridge runtime on the block origin, a listener of its own with none of the API's routes, and send each code edition shared with everyone to one operator's review (ADR 0069)",
             ],
             files: [
               'apps/api/src/main.ts',
@@ -2446,7 +2451,9 @@
               'apps/api/src/step-operations.ts',
               'apps/api/src/block-catalogue.ts',
               'apps/api/src/interface-blocks.ts',
+              'apps/api/src/block-frames.ts',
               'apps/api/src/block-import-routes.ts',
+              'apps/api/src/block-reviews.ts',
             ],
             input: 'Environment and catalogs at boot; HTTP at runtime',
             output: 'A running platform on :8080',
@@ -5081,11 +5088,7 @@
                           type: 'object',
                           properties: {
                             sha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
-                            bytes: {
-                              type: 'integer',
-                              exclusiveMinimum: 0,
-                              maximum: 9007199254740991,
-                            },
+                            bytes: { type: 'integer', exclusiveMinimum: 0, maximum: 262144 },
                             reads: {
                               default: [],
                               maxItems: 32,

@@ -56,6 +56,8 @@ import type { PolicyDecisionPoint } from '@genai/kernel';
 import { documentConverterFrom, phraseArchiveFrom } from './document-converter.js';
 import { evalSlotLimitsFromEnv, shutdownGraceFromEnv } from './eval-slots.js';
 import { drainBeforeExit } from './shutdown.js';
+import { blockOriginFrom, blockPortFrom, frameAncestorsFrom } from './block-origin.js';
+import { createBlockFrames } from './block-frames.js';
 import { createAdmin, platformActor } from './admin.js';
 import { createAccessPeopleModule, peopleSourceFrom, selectedPeople } from './access-people.js';
 import { draftServices } from './access-draft-services.js';
@@ -502,6 +504,7 @@ const hosting = {
   assistantHostname: assistantHostnameFrom(process.env),
   claims: hostnameClaims,
 };
+const blockOrigin = blockOriginFrom(process.env);
 const hostnames = hostnameSetupFrom(process.env, hostnameClaims, hosting);
 const binder = binderTrustFrom(process.env);
 log('hostname claims', {
@@ -512,6 +515,7 @@ log('hostname claims', {
 const platform = await createPlatform({
   envFlags: envFlagsIn(process.env),
   platformTenant,
+  blockOrigin,
   federatedTokens: federatedAppTokens({
     assertion: managedIdentityTokenSource(process.env.AZURE_CLIENT_ID),
   }),
@@ -696,6 +700,8 @@ void learnAndAnnounce().catch((error: unknown) =>
 );
 const admin = createAdmin({
   platformTenant,
+  blockOrigin: platform.blockOrigin,
+  flags: platform.flags,
   store: platform.definitions,
   lifecycle: platform.lifecycle,
   plugins: platform.plugins,
@@ -938,6 +944,19 @@ const server = serve(
   },
 );
 attachSessionUpgrade(server as unknown as Server, app, platform.liveSessions);
+const blockServer =
+  blockOrigin &&
+  serve(
+    {
+      fetch: createBlockFrames({
+        origin: blockOrigin,
+        store: platform.definitions,
+        frameAncestors: frameAncestorsFrom(process.env, hosting),
+      }).fetch,
+      port: blockPortFrom(process.env),
+    },
+    (info) => log('block origin listening', { port: info.port, origin: blockOrigin }),
+  );
 
 // A deploy stops this instance: start no new test-set case, let the ones running finish, then go.
 const shutdownGraceMs = shutdownGraceFromEnv(process.env);
@@ -958,6 +977,7 @@ const stop = (signal: string) => {
       runsInFlight: platform.kernel.running(),
     });
     server.close();
+    if (blockServer) blockServer.close();
     process.exit(0);
   });
 };

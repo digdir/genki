@@ -79,7 +79,7 @@ export const blockImportModule: PlatformModuleFactory = () => ({
         }
         const problems = [
           ...blockPublisherProblems(proposal.definition, entered.principal),
-          ...mounted.admin.check(proposal.definition, proposal.files),
+          ...(await mounted.admin.check(proposal.definition, proposal.files, entered.principal)),
         ];
         if (problems.length > 0)
           return problem(c, 422, t('blockImport.invalid'), { errors: problems });

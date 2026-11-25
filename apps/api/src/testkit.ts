@@ -3,6 +3,7 @@ import { refusingArchivedPublishes } from './archived-services.js';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { Principal } from '@genai/contracts';
+import type { FlagKey } from '@genai/contracts/flags';
 import {
   InMemoryDefinitionStore,
   platformSettings,
@@ -278,6 +279,9 @@ export interface BootOptions {
   demoRecorderKeyDigest?: string;
   demoRecorder?: 'scheduled';
   configEntries?: InMemoryConfigEntryStore;
+  blockOrigin?: string;
+  envFlags?: FlagKey[];
+  now?: () => number;
   federatedTokens?: FederatedTokens;
   onWarning?: (message: string) => void;
   discoveredModels?: DiscoveredModelStore;
@@ -318,6 +322,9 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     ...(options.processorRecords ? { processorRecords: options.processorRecords } : {}),
     ...(options.blobStore ? { blobStore: options.blobStore } : {}),
     ...(options.federatedTokens ? { federatedTokens: options.federatedTokens } : {}),
+    ...(options.blockOrigin ? { blockOrigin: options.blockOrigin } : {}),
+    ...(options.envFlags ? { envFlags: options.envFlags } : {}),
+    ...(options.now ? { now: options.now } : {}),
     ...(options.onWarning ? { onWarning: options.onWarning } : {}),
     ...(options.discoveredModels ? { discoveredModels: options.discoveredModels } : {}),
     ...(options.hostnames ? { hostnames: options.hostnames } : {}),
@@ -358,6 +365,8 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     models: modelAdmin,
     tenants: () => platform.directory.list(),
     lifecycle: platform.lifecycle,
+    flags: platform.flags,
+    ...(options.blockOrigin ? { blockOrigin: options.blockOrigin } : {}),
   });
   const app = createApp('test', {
     modelDiscovery: platform.modelDiscovery.state,

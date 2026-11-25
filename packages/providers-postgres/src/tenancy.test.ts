@@ -740,6 +740,41 @@ describe('postgres definition store', () => {
     expect((await store.capabilities()).some((c) => c.service.id === 'klarsprak')).toBe(true);
   });
 
+  it('refuses a publish when a newer edition is published between the check and the publish', async () => {
+    const store = new PostgresDefinitionStore(runtime, plugins);
+    const block = {
+      apiVersion: 'genai/v1',
+      kind: 'Block',
+      metadata: { tenant: ORG_A, id: 'utgave-sjekk' },
+      spec: { tier: 'built-in', builtIn: 'chat', title: { nb: 'Chat' }, zones: ['main'] },
+    };
+    await store.publish(block, 'platform:seed', 'første utgave');
+    await store.publish(block, 'platform:seed', 'andre utgave');
+
+    const stale = await store.publish(
+      block,
+      'platform:seed',
+      'delt med alle',
+      {},
+      {
+        expectedLatest: 1,
+      },
+    );
+    const current = await store.publish(
+      block,
+      'platform:seed',
+      'delt med alle',
+      {},
+      {
+        expectedLatest: 2,
+      },
+    );
+
+    expect(stale).toMatchObject({ ok: false, stale: true });
+    expect(current.ok).toBe(true);
+    expect((await store.versions('Block', ORG_A, 'utgave-sjekk')).length).toBe(3);
+  });
+
   it('lists the blocks of every tenant once each, and nothing of another kind', async () => {
     const store = new PostgresDefinitionStore(runtime, plugins);
     const block = (tenant: string, id: string) => ({

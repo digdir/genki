@@ -10,11 +10,12 @@ import { Catalog } from './screens/Catalog';
 import { BuildingBlocks } from './screens/BuildingBlocks';
 import { Diagnostics } from './screens/Diagnostics';
 import { Forward, Models } from './screens/Models';
+import { BlockReviews } from './screens/BlockReviews';
 import { Onboarding } from './screens/Onboarding';
 import { Operations } from './screens/Operations';
 import { PlatformDefaults } from './screens/PlatformDefaults';
 import { PlatformSecrets } from './screens/PlatformSecrets';
-import { FlagsProvider } from './flags';
+import { FlagsProvider, WhenFlag } from './flags';
 import { Policies } from './screens/Policies';
 import { pendingCount, Queue } from './screens/Queue';
 import { QuotaRequests } from './screens/QuotaRequests';
@@ -277,6 +278,11 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
       </Suspense>
     );
   const page = allPages.find((p) => p.path === current);
+  const notFound = (
+    <EmptyState title={t('shell.notFound')}>
+      <Paragraph>{t('shell.notFoundHelp')}</Paragraph>
+    </EmptyState>
+  );
   const screens: Record<string, () => React.ReactNode> = {
     '/tenants': () => <Tenants api={api} />,
     '/queue': () => (
@@ -314,6 +320,11 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     '/policies': () => <Policies api={api} tab={params.get('tab') ?? undefined} />,
     '/building-blocks': () => (
       <BuildingBlocks api={api} initial={params.get('block') ?? undefined} live={live} />
+    ),
+    '/block-reviews': () => (
+      <WhenFlag flag="blockStudio" otherwise={notFound}>
+        <BlockReviews api={api} />
+      </WhenFlag>
     ),
     '/shared-services': () => <SharedServices api={api} />,
     '/demos': () => (

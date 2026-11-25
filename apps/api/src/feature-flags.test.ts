@@ -70,7 +70,7 @@ const boot = async () => {
   return { ...booted, put, mine };
 };
 
-const orgReason = 'Laben prøver Block Studio først';
+const orgReason = 'Laben prøver ny utforming først';
 
 describe('feature flags', () => {
   it('answers 404 like an unknown route while the flag is off for the caller', async () => {

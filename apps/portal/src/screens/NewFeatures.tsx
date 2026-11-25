@@ -82,7 +82,7 @@ const Feature = ({
       </div>
       <Paragraph data-size="sm">{t(texts.text)}</Paragraph>
       <Switch
-        label={t('profile.flagForYou', { name })}
+        label={t('profile.flagForYou')}
         checked={state.on}
         aria-disabled={busy ? true : undefined}
         onChange={() => void run(() => api.flags.setMine(tenant, state.key, !state.on))}

@@ -154,6 +154,7 @@ export const Assistant = ({ mainId, frameWidth, refBlocks, ...options }: Assista
     mainId={mainId}
     frameWidth={frameWidth}
     refBlocks={refBlocks}
+    host={options.tenant}
   />
 );
 
@@ -332,11 +333,13 @@ export const AssistantView = ({
   mainId = 'main-content',
   frameWidth,
   refBlocks = {},
+  host,
 }: {
   assistant: AssistantState;
   mainId?: string | undefined;
   frameWidth?: number | undefined;
   refBlocks?: RefBlocks | undefined;
+  host?: string | undefined;
 }) => {
   const t = useT();
   const approachHeadingId = useId();
@@ -397,6 +400,17 @@ export const AssistantView = ({
         state={blockState(turn)}
         settings={placed.settings as Record<string, boolean | string> | undefined}
         level={level}
+        locale={blockContext.locale}
+        host={host}
+        handlers={{
+          onAsk: a.setDraft,
+          onOpenDocument: (index) => {
+            const target = turn ?? latestTurn;
+            if (!target) return;
+            if (sourcesOn) a.showSources(target.id, { index });
+            else if (documentOn) a.openDocument(target.id, { index }, 'answer');
+          },
+        }}
       />
     </BlockHostContext.Provider>
   );

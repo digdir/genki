@@ -175,14 +175,14 @@ describe('feature flag changes', () => {
       on: true,
       person: { self: true },
     });
-    expect(sentence(entry)).toBe('slo på «Block Studio» for seg selv');
-    expect(sentence(entry, en)).toBe('switched on «Block Studio» for themselves');
+    expect(sentence(entry)).toBe('slo på «Ny utforming» for seg selv');
+    expect(sentence(entry, en)).toBe('switched on «New design tools» for themselves');
   });
 
   it('says switched off for the whole organisation by name on a tenant switch', () => {
     const entry = flagRow('platform.flag.tenant', { key: 'blockStudio', on: false });
-    expect(sentence(entry)).toBe('slo av «Block Studio» for hele Digdir');
-    expect(sentence(entry, en)).toBe('switched off «Block Studio» for all of Digdir');
+    expect(sentence(entry)).toBe('slo av «Ny utforming» for hele Digdir');
+    expect(sentence(entry, en)).toBe('switched off «New design tools» for all of Digdir');
   });
 
   it('says the person followed the organisation when a personal choice is removed', () => {
@@ -191,7 +191,7 @@ describe('feature flag changes', () => {
       on: null,
       person: { self: true },
     });
-    expect(sentence(entry)).toBe('fulgte virksomhetens valg for «Block Studio»');
+    expect(sentence(entry)).toBe('fulgte virksomhetens valg for «Ny utforming»');
   });
 
   it('names the other person when someone changed another person’s setting', () => {
@@ -200,7 +200,7 @@ describe('feature flag changes', () => {
       on: true,
       person: { self: false, name: 'Ingrid Berg' },
     });
-    expect(sentence(entry)).toBe('slo på «Block Studio» for Ingrid Berg');
+    expect(sentence(entry)).toBe('slo på «Ny utforming» for Ingrid Berg');
   });
 
   it('leaves the person out when another person’s name is not known', () => {
@@ -209,12 +209,12 @@ describe('feature flag changes', () => {
       on: true,
       person: { self: false },
     });
-    expect(sentence(entry)).toBe('slo på «Block Studio»');
+    expect(sentence(entry)).toBe('slo på «Ny utforming»');
   });
 
   it('reads an old flag entry without on or off as a neutral change that still names the feature', () => {
-    expect(sentence(flagRow('platform.flag.tenant'))).toBe('endret «Block Studio» for hele Digdir');
-    expect(sentence(flagRow('platform.flag.person'))).toBe('endret «Block Studio»');
+    expect(sentence(flagRow('platform.flag.tenant'))).toBe('endret «Ny utforming» for hele Digdir');
+    expect(sentence(flagRow('platform.flag.person'))).toBe('endret «Ny utforming»');
   });
 
   it('never shows the raw flag entry id or the issuer', () => {

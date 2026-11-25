@@ -24,9 +24,11 @@ import { enterTenant } from './access.js';
 import { actorNames } from './actor-names.js';
 import { actorOf, AdminRefused, blockPublisherProblems, refusedBy } from './admin.js';
 import { blockFrameUrl } from './block-origin.js';
+import { latestReview } from './block-reviews.js';
 import { VersionConflict } from './config-store.js';
 import { readDefinition } from './definitions.js';
 import { changeReasonOf, problem } from './http.js';
+import { definitionBodyLimit } from './block-bundles.js';
 import { t } from './i18n/index.js';
 import { blockRefProblems } from './interface-catalogue.js';
 import { blockSpecOf, mayUseEdition, refBlockPayload } from './interface-blocks.js';
@@ -148,15 +150,18 @@ export const blockCatalogueModule: PlatformModuleFactory = (deps) => {
     ];
   };
 
-  const visibleEditions = async (tenant: string, publisher: string, id: string) =>
-    (await store.versions('Block', publisher, id)).filter((v) =>
-      mayUseEdition(tenant, publisher, v),
+  const mayShow = (studio: boolean, version: PublishedVersion) =>
+    studio || blockSpecOf(version).tier !== 'code';
+
+  const visibleEditions = async (tenant: string, publisher: string, id: string, studio: boolean) =>
+    (await store.versions('Block', publisher, id)).filter(
+      (v) => mayUseEdition(tenant, publisher, v) && mayShow(studio, v),
     );
 
-  const visibleBlocks = async (tenant: string): Promise<Visible[]> => {
+  const visibleBlocks = async (tenant: string, studio: boolean): Promise<Visible[]> => {
     const found: Visible[] = [];
     for (const { tenant: publisher, id } of await blocksAcross(tenant)) {
-      const editions = await visibleEditions(tenant, publisher, id);
+      const editions = await visibleEditions(tenant, publisher, id, studio);
       if (editions.length > 0) found.push({ publisher, id, editions });
     }
     return found;
@@ -261,13 +266,15 @@ export const blockCatalogueModule: PlatformModuleFactory = (deps) => {
         return mounted.admin.tenantNames();
       };
       const notFound = (c: Context) => problem(c, 404, t('problems.blockNotFound'));
+      const studioFor = (guard: { principal: Principal; tenant: string }) =>
+        deps.flags.on({ principal: guard.principal, tenant: guard.tenant }, 'blockStudio');
 
       app.get('/tenants/:tenant/blocks', async (c) => {
         const guard = await member(c);
         if (guard.response) return guard.response;
         const origin = c.req.query('origin');
         const [blocks, uses, publishers] = await Promise.all([
-          visibleBlocks(guard.tenant),
+          visibleBlocks(guard.tenant, await studioFor(guard)),
           usesIn(guard.tenant),
           publisherNames(),
         ]);
@@ -294,7 +301,8 @@ export const blockCatalogueModule: PlatformModuleFactory = (deps) => {
         if (guard.response) return guard.response;
         const publisher = c.req.param('publisher') ?? '';
         const id = c.req.param('id') ?? '';
-        const editions = await visibleEditions(guard.tenant, publisher, id);
+        const studio = await studioFor(guard);
+        const editions = await visibleEditions(guard.tenant, publisher, id, studio);
         const asked = c.req.query('version');
         const chosen =
           asked === undefined ? editions.at(-1) : editions.find((v) => String(v.version) === asked);
@@ -320,7 +328,12 @@ export const blockCatalogueModule: PlatformModuleFactory = (deps) => {
           publisher,
           spec,
           spec.code
-            ? blockFrameUrl({ publisher, id, version: chosen.version, sha256: spec.code.sha256 })
+            ? blockFrameUrl(deps.blockOrigin)({
+                publisher,
+                id,
+                version: chosen.version,
+                sha256: spec.code.sha256,
+              })
             : undefined,
           summary.publisherName,
         );
@@ -334,10 +347,14 @@ export const blockCatalogueModule: PlatformModuleFactory = (deps) => {
           },
           usedIn,
         };
-        return c.json(detail);
+        const review =
+          studio && publisher === guard.tenant
+            ? await latestReview(deps.configEntries, publisher, id)
+            : undefined;
+        return c.json(review ? { ...detail, review } : detail);
       });
 
-      app.post('/tenants/:tenant/blocks/preview', async (c) => {
+      app.post('/tenants/:tenant/blocks/preview', definitionBodyLimit, async (c) => {
         const guard = await member(c, 'manage-services');
         if (guard.response) return guard.response;
         const read = await readDefinition(c, deps.plugins);
@@ -362,7 +379,7 @@ export const blockCatalogueModule: PlatformModuleFactory = (deps) => {
         const definition = validated.definition as BlockDefinition;
         const errors: ValidationError[] = [
           ...blockPublisherProblems(definition, guard.principal),
-          ...mounted.admin.check(definition, read.files),
+          ...(await mounted.admin.check(definition, read.files, guard.principal)),
         ];
         if (errors.length > 0) return c.json({ valid: false, errors, reads: [], fixtures });
         const render = refBlockPayload(
@@ -470,7 +487,12 @@ export const blockCatalogueModule: PlatformModuleFactory = (deps) => {
         if (invalid.length > 0)
           return problem(c, 400, t('problems.invalidRequest'), { errors: invalid });
         const edition = await store.get('Block', publisher, blockId, version as number);
-        if (!edition || !mayUseEdition(guard.tenant, publisher, edition)) return notFound(c);
+        if (
+          !edition ||
+          !mayUseEdition(guard.tenant, publisher, edition) ||
+          !mayShow(await studioFor(guard), edition)
+        )
+          return notFound(c);
         const spec = blockSpecOf(edition);
         const start = await startingDraft(guard.tenant, service);
         if (!start) return problem(c, 404, t('problems.notFound'));

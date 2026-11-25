@@ -40,7 +40,10 @@ const RefBlockPayload = z
     frame: z
       .object({ url: z.string(), sha256: z.string(), height: z.number().int().optional() })
       .optional()
-      .openapi({ description: 'A code edition, only when a block origin is set up' }),
+      .openapi({
+        description:
+          'A code edition, only when a block origin is set up and blockStudio is on for the caller, or for the organisation of the service that draws it',
+      }),
   })
   .openapi('RefBlockPayload');
 
@@ -88,6 +91,18 @@ const BlockDetail = BlockSummary.omit({ editions: true })
         inUse: z.number().int().optional(),
       }),
     ),
+    review: z
+      .object({
+        status: z.enum(['pending', 'approved', 'declined']),
+        version: z.number().int(),
+        at: z.string(),
+        reason: z.string().optional(),
+      })
+      .optional()
+      .openapi({
+        description:
+          "The newest request to share the organisation's own block, while blockStudio is on for the caller",
+      }),
   })
   .openapi('BlockDetail');
 
@@ -180,6 +195,7 @@ export const blockRoutes: RouteConfig[] = [
       403: problem(
         "Missing manage-services, or the block's metadata.tenant is another organisation",
       ),
+      413: problem('urn:genai:problem:definition-too-large: the body is over 4 MiB'),
       422: problem('The definition is not a Block'),
     },
   }),

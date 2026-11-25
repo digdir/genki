@@ -172,6 +172,9 @@ export const adminActionRights: Readonly<
   'platform.block.adopt': byKind,
   'platform.block.request': byKind,
   'platform.block.settings': byKind,
+  'platform.block-share.request': 'manage-services',
+  'platform.block-share.approve': 'operator',
+  'platform.block-share.decline': 'operator',
   'platform.proposal.create': 'manage-services',
   'platform.proposal.decide': (input) =>
     input.op === 'send-for-approval'

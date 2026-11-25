@@ -239,4 +239,18 @@ export const problems = defineNamespace({
   platformSecretUsedBy: '{kind} {id} bruker plattformhemmeligheten',
   platformSecretUsesUnknown:
     'Genki kan ikke sjekke hva som bruker plattformhemmeligheten, så den slettes ikke',
+  blockStudioOff: 'Kodeblokker er av for deg til ny utforming er slått på',
+  blockStudioOffForTenant:
+    'Ny utforming er ikke slått på for hele virksomheten som eier designelementet',
+  blockShareNotCode: 'Bare en utgave med kode går til gjennomgang før den deles med alle',
+  blockShareAlreadyShared: 'Utgaven er allerede delt med alle',
+  blockSharePending: 'Designelementet har allerede en utgave til gjennomgang',
+  blockShareNotPending: 'Forespørselen er allerede avgjort',
+  blockShareNotFound: 'Fant ingen forespørsel om deling',
+  blockShareOperatorOnly: 'Bare plattformoperatører godkjenner og avviser deling med alle',
+  blockShareApproved: 'Delt med alle etter gjennomgang: {reason}',
+  blockShareNotLatest: 'Bare den nyeste utgaven av designelementet kan sendes til gjennomgang',
+  blockShareStale:
+    'En nyere utgave av designelementet er lagret etter denne forespørselen, så virksomheten må spørre på nytt',
+  requestTooLarge: 'Forespørselen er større enn {limit}',
 });

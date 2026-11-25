@@ -1,6 +1,6 @@
 import type { Principal } from '@genai/contracts';
 import { flags as registry, isFlagKey, type FlagKey } from '@genai/contracts/flags';
-import { flagPersonOf, type FlagPerson } from '@genai/composition';
+import { flagPersonOf, type FlagPerson, type Flags } from '@genai/composition';
 import type { Context, Env, Hono, MiddlewareHandler, Schema } from 'hono';
 import { z } from 'zod';
 import { enterTenant } from './access.js';
@@ -14,6 +14,9 @@ export const flagActions = ['platform.flag.person', 'platform.flag.tenant'] as c
 type FlagAction = (typeof flagActions)[number];
 
 export const flagOperatorOnlyType = 'urn:genai:problem:flag-operator-only';
+
+export const onForTenant = async (flags: Pick<Flags, 'states'>, tenant: string, key: FlagKey) =>
+  (await flags.states(tenant)).some((state) => state.key === key && state.on);
 
 export const requireFlag =
   (
