@@ -27,6 +27,10 @@ export const person = z.strictObject({
   description: z.string().optional(),
   userId: z.number().int().optional(),
   parties: z.array(party).default([]),
+  /** Logs in with Entra ID: tokens carry `acr: entraid`, these group object ids and the email, and no `pid`. */
+  entra: z
+    .strictObject({ groups: z.array(z.string().min(1)).default([]), email: z.email() })
+    .optional(),
 });
 
 export const tokenEndpointAuthMethod = z.enum([

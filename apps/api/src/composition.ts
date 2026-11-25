@@ -1859,7 +1859,6 @@ export const createPlatform = async (input: PlatformInput) => {
     definitions,
     configEntries,
     locked: input.lockdown !== undefined,
-    ...(testRunnerOperator ? { isPlatformOperator: testRunnerOperator } : {}),
     ...(input.reservedClientIds ? { reservedClientIds: input.reservedClientIds } : {}),
     ...(input.now ? { now: () => new Date(input.now?.() ?? 0) } : {}),
   });
@@ -1871,9 +1870,7 @@ export const createPlatform = async (input: PlatformInput) => {
     if (definition.kind !== 'Service' || !hostnameSetup.zone) return;
     const { tenant, id } = definition.metadata as { tenant: string; id: string };
     const operator =
-      by.startsWith('operator:') ||
-      (publisher !== undefined &&
-        (isOperator(publisher) || testRunnerOperator?.(publisher) === true));
+      by.startsWith('operator:') || (publisher !== undefined && isOperator(publisher));
     try {
       const admin = claimHooks.admin;
       if (!admin || !(await wantsAutoAddress(claimDeps(), tenant, id, { operator }))) return;

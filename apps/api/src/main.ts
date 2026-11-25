@@ -247,8 +247,10 @@ const registeredClients = clientRegistry(
 );
 
 const trustedEntra = trustedEntraFrom(process.env, platformTenant, resource);
+const entraOnly = altinnPdp.kind === 'none';
 if (trustedEntra)
-  log('lockdown: Entra logins in the configured groups are admitted', {
+  log('Entra logins in the configured groups get rights in the platform organisation', {
+    entraOnly,
     groups: trustedEntra.groups.length,
     userGroups: trustedEntra.userGroups?.length ?? 0,
     serviceGroups: trustedEntra.serviceGroups?.length ?? 0,
@@ -266,6 +268,7 @@ const { trusted, mock, mockIssuer } = await loginIssuers({
   ...(platformLogin ? { platformLoginKey: platformLogin.subjectKey } : {}),
   platformAppSession: () => platformAppActing() !== undefined,
   ...(trustedEntra ? { trustedEntra } : {}),
+  entraOnly,
   onKeysNotFetched: (fields) => log('login keys not fetched', fields),
 });
 let clientSecretOf: (tenant: string, name: string) => Promise<string | undefined> = async () =>
@@ -941,7 +944,8 @@ const bff = createBff({
   platformTenant,
   isOperator: async (accessToken) =>
     operators.isOperator((await verifier.verify(accessToken)).principal),
-  altinnResource: resource,
+  altinnResource: entraOnly ? undefined : resource,
+  acrValues: entraOnly ? 'entraid' : undefined,
   secrets: {
     value: clientSecretOf,
     hosts: (tenant, name) => platform.vault.hosts(tenant, name),

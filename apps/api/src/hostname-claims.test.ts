@@ -3,7 +3,7 @@ import { createLocalJWKSet, SignJWT } from 'jose';
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
-import { createSigningKey, trustedEntraScope } from '@genai/identity';
+import { createSigningKey, PLATFORM_RIGHTS, trustedEntraScope } from '@genai/identity';
 import { envSecrets, InMemoryHostnameClaims, type HostnameClaim } from '@genai/kernel';
 import { tenantAccess } from './access.js';
 import { actorNames } from './actor-names.js';
@@ -40,7 +40,7 @@ const people: Record<string, Principal> = {
     subject: 'nina',
     tenant: digdir,
     scopes: [trustedEntraScope],
-    authorizedFor: [{ org: digdir, resource, actions: ['manage-services', 'use-services'] }],
+    authorizedFor: [{ org: digdir, resource, actions: [...PLATFORM_RIGHTS] }],
   },
   'nina-other': {
     kind: 'operator',
@@ -877,7 +877,7 @@ describe('a published service gets an address', () => {
     expect((await t.work()).map((i) => i.hostname)).toEqual([`nynorsk.apps.${zone}`]);
   });
 
-  it('in lockdown counts a platform operator acting in their own organisation as an operator', async () => {
+  it('counts a platform operator holding every right in their own organisation as an operator there', async () => {
     const t = await boot({
       lockdown: true,
       isOperator: (p) => p.kind === 'employee' && (p.scopes ?? []).includes(trustedEntraScope),
@@ -901,7 +901,7 @@ describe('a published service gets an address', () => {
     expect(await given.json()).toMatchObject({ hostname: `klarsprak.apps.${zone}` });
   });
 
-  it('in lockdown still refuses an address to an organisation member who is no platform operator', async () => {
+  it('still refuses an address to an organisation member who is no platform operator', async () => {
     const t = await boot({
       lockdown: true,
       isOperator: (p) => p.kind === 'employee' && (p.scopes ?? []).includes(trustedEntraScope),
@@ -916,7 +916,7 @@ describe('a published service gets an address', () => {
     expect(refused.status).toBe(403);
   });
 
-  it('in lockdown counts a platform operator as one only in the platform organisation', async () => {
+  it('counts a platform operator with only some rights in another organisation as no operator there', async () => {
     const t = await boot({
       lockdown: true,
       isOperator: (p) => p.kind === 'employee' && (p.scopes ?? []).includes(trustedEntraScope),

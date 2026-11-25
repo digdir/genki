@@ -39,6 +39,13 @@ const people: Record<string, Principal> = {
     authorizedFor: [{ org: other }],
   },
   drift: { kind: 'operator', issuer: 'test', subject: 'drift' },
+  driftsmedlem: {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'driftsmedlem',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir }],
+  },
 };
 
 const reason = 'Arkivsystemet skal bare nå to tjenester';
@@ -226,6 +233,15 @@ describe('access policies for API keys', () => {
     expect((await send(policies, 'bruker', { body: { name: 'x' }, reason })).status).toBe(403);
     expect((await send(policies, 'ola')).status).toBe(404);
     expect((await send(policies, 'drift')).status).toBe(200);
+  });
+
+  it('lets an operator who is a member of the organisation shape its policies, but not an operator from outside', async () => {
+    const { create } = await boot();
+
+    const member = await create({ name: 'Drift' }, 'driftsmedlem');
+    const outsider = await create({ name: 'Utenfra' }, 'drift');
+
+    expect([member.status, outsider.status]).toEqual([201, 403]);
   });
 
   it('keeps one tenant policies out of reach of another', async () => {

@@ -1,7 +1,7 @@
 import type { Principal } from '@genai/contracts';
 import type { Context } from 'hono';
 import { actsAsOperator } from './content-reason.js';
-import { requireRight, rightRefused, type Right } from './rights.js';
+import { requireRight, rightRefused, rights, rightsOf, type Right } from './rights.js';
 
 export type Access = (
   principal: Principal,
@@ -10,10 +10,13 @@ export type Access = (
 ) => Principal | undefined;
 
 export const tenantAccess: Access = (principal, tenant) => {
-  if (principal.kind === 'operator')
-    return actsAsOperator(principal, tenant)
-      ? { ...principal, tenant, actor: principal }
-      : { ...principal, kind: 'employee', tenant };
+  if (principal.kind === 'operator') {
+    if (actsAsOperator(principal, tenant)) return { ...principal, tenant, actor: principal };
+    const member: Principal = { ...principal, kind: 'employee', tenant };
+    return rightsOf(member, tenant).size === rights.length
+      ? { ...member, actor: principal }
+      : member;
+  }
   if (principal.tenant === tenant) return principal;
   if (principal.authorizedFor?.some((a) => a.org === tenant)) return { ...principal, tenant };
   return undefined;

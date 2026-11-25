@@ -35,6 +35,8 @@ const OWN_SECRET = 'own-secret-value';
 const LOGIN_HOST = 'login.apps.genki-test.digdir.cloud';
 const start = Date.parse('2026-11-19T10:00:00Z');
 const SUBJECT_KEY = new Uint8Array(32).fill(7);
+const MEMBER_GROUP = '789b5488-39ec-47b3-9217-840e5cd957fd';
+const EMPLOYEE_GROUP = '30a76637-d1ff-4040-bc1f-fb9b8ccd749c';
 
 let key: Awaited<ReturnType<typeof createSigningKey>>;
 beforeAll(async () => {
@@ -71,6 +73,7 @@ const setup = async (
     inactive?: string[];
     tokenEndpoint?: string;
     noSecret?: boolean;
+    entraGroups?: string[];
   } = {},
 ) => {
   let clock = start;
@@ -84,6 +87,9 @@ const setup = async (
           pid: PID,
           name: 'Kari Nordmann',
           parties: [{ orgno: ORG_A, name: 'Digdir', resources: { [RESOURCE]: ['read'] } }],
+          ...(options.entraGroups
+            ? { entra: { groups: options.entraGroups, email: 'kari@digdir.no' } }
+            : {}),
         },
       ],
     },
@@ -130,6 +136,19 @@ const setup = async (
         }),
         platformLoginClients: [PLATFORM_CLIENT],
         platformLoginKey: SUBJECT_KEY,
+        ...(options.entraGroups
+          ? {
+              trustedEntra: {
+                groups: [],
+                userGroups: [MEMBER_GROUP],
+                serviceGroups: [EMPLOYEE_GROUP],
+                clientIds: [],
+                tenant: ORG_A,
+                resource: RESOURCE,
+              },
+              entraOnly: true,
+            }
+          : {}),
       },
     ],
     now: () => new Date(clock),
@@ -176,7 +195,8 @@ const setup = async (
     },
     hostActive: async (hostname) => !options.inactive?.includes(hostname),
     issuer: ISSUER,
-    altinnResource: RESOURCE,
+    altinnResource: options.entraGroups ? undefined : RESOURCE,
+    acrValues: options.entraGroups ? 'entraid' : undefined,
     platformLogin: {
       clientId: PLATFORM_CLIENT,
       secret: options.noSecret ? undefined : PLATFORM_SECRET,
@@ -650,5 +670,38 @@ describe('the subject of a platform login', () => {
     await expect(remote.kernel.task(onNynorsk, task)).rejects.toMatchObject({
       code: 'not_found',
     });
+  });
+});
+
+describe('the platform login when Entra groups give the rights', () => {
+  it('sends people straight to Entra ID and asks Altinn for nothing', async () => {
+    const s = await setup({ entraGroups: [EMPLOYEE_GROUP] });
+
+    const { started } = await s.toHandoff();
+
+    const authorize = s.atLocation(started).searchParams;
+    expect(authorize.get('acr_values')).toBe('entraid');
+    expect(authorize.has('authorization_details')).toBe(false);
+  });
+
+  it('lets an employee in the service group into a hosted assistant', async () => {
+    const s = await setup({ entraGroups: [EMPLOYEE_GROUP] });
+
+    const { id } = await s.signIn();
+
+    expect(id).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  });
+
+  it('shows a person in no group a page that says they have no access, with no session', async () => {
+    const s = await setup({ entraGroups: ['00000000-0000-4000-8000-000000000000'] });
+
+    const { callback } = await s.toHandoff();
+
+    expect(callback.status).toBe(403);
+    expect(callback.headers.get('location')).toBeNull();
+    expect(await callback.text()).toContain('Denne assistenten er bare åpen for ansatte i Digdir');
+    expect(callback.headers.getSetCookie().some((c) => c.startsWith(`${handoffCookie}=`))).toBe(
+      false,
+    );
   });
 });

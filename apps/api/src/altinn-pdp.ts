@@ -11,10 +11,12 @@ import {
   type IdentityTestDataInput,
   type VerifiedIdentity,
 } from '@genai/identity';
+import { rightsFromEntraGroups } from '@genai/composition';
 import type { JWK } from 'jose';
 import { isDevMode } from './boot-guard.js';
 
 export type AltinnPdpChoice =
+  | { kind: 'none'; authorization: AltinnAuthorization }
   | {
       kind: 'mock';
       authorization: AltinnAuthorization;
@@ -47,6 +49,8 @@ const privateKeyOf = (raw: string): JWK => {
   return key;
 };
 
+const noAltinn: AltinnAuthorization = { decide: async () => 'NotApplicable' };
+
 export const mockRightsWanted = (env: Record<string, string | undefined>) =>
   isDevMode(env) && env.GENAI_MOCK_RIGHTS === 'true';
 
@@ -55,6 +59,8 @@ export const altinnPdpFrom = (
   testData: IdentityTestDataInput,
   fetchFn: typeof fetch = fetch,
 ): AltinnPdpChoice => {
+  if (!env.ALTINN_PDP_URL && rightsFromEntraGroups(env) && !mockRightsWanted(env))
+    return { kind: 'none', authorization: noAltinn };
   if (!env.ALTINN_PDP_URL || mockRightsWanted(env)) {
     if (!isDevMode(env))
       throw new Error(

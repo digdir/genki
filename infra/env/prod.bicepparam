@@ -42,7 +42,14 @@ param keyVaultSecretNames = [
   'foundry-claude-key'
 ]
 
+var emailDomain = readEnvironmentVariable('ENTRA_EMAIL_DOMAIN', '')
+
 param appEnv = {
+  OPERATOR_ENTRA_GROUPS: readEnvironmentVariable('OPERATOR_ENTRA_GROUPS', '')
+  MEMBER_ENTRA_GROUPS: readEnvironmentVariable('MEMBER_ENTRA_GROUPS', '')
+  SERVICE_ENTRA_GROUPS: readEnvironmentVariable('SERVICE_ENTRA_GROUPS', '')
+  SERVICE_ENTRA_CLIENT_IDS: readEnvironmentVariable('SERVICE_ENTRA_CLIENT_IDS', '')
+  ENTRA_EMAIL_DOMAIN: empty(emailDomain) ? 'digdir.no' : emailDomain
   FOUNDRY_OPENAI_BASE_URL: readEnvironmentVariable('FOUNDRY_OPENAI_BASE_URL', '')
   FOUNDRY_CLAUDE_BASE_URL: readEnvironmentVariable('FOUNDRY_CLAUDE_BASE_URL', '')
   LANGFUSE_BASE_URL: readEnvironmentVariable('LANGFUSE_BASE_URL', '')

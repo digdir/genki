@@ -108,11 +108,11 @@ jobs:
       TRACES_RESIDENCY: ${{ vars.TRACES_RESIDENCY }}
       PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
       ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
-      LOCKDOWN_ENTRA_GROUPS: ${{ vars.LOCKDOWN_ENTRA_GROUPS }}
-      LOCKDOWN_USER_GROUPS: ${{ vars.LOCKDOWN_USER_GROUPS }}
-      LOCKDOWN_SERVICE_GROUPS: ${{ vars.LOCKDOWN_SERVICE_GROUPS }}
-      LOCKDOWN_SERVICE_CLIENT_IDS: ${{ vars.LOCKDOWN_SERVICE_CLIENT_IDS }}
-      LOCKDOWN_ENTRA_EMAIL_DOMAIN: ${{ vars.LOCKDOWN_ENTRA_EMAIL_DOMAIN }}
+      OPERATOR_ENTRA_GROUPS: ${{ vars.OPERATOR_ENTRA_GROUPS }}
+      MEMBER_ENTRA_GROUPS: ${{ vars.MEMBER_ENTRA_GROUPS }}
+      SERVICE_ENTRA_GROUPS: ${{ vars.SERVICE_ENTRA_GROUPS }}
+      SERVICE_ENTRA_CLIENT_IDS: ${{ vars.SERVICE_ENTRA_CLIENT_IDS }}
+      ENTRA_EMAIL_DOMAIN: ${{ vars.ENTRA_EMAIL_DOMAIN }}
       OPERATOR_CLIENT_IDS: ${{ vars.OPERATOR_CLIENT_IDS }}
       KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
       ALERT_EMAILS: ${{ vars.ALERT_EMAILS }}
@@ -145,7 +145,7 @@ jobs:
             [ -n "$live" ] || live=$(field api .properties.latestReadyRevisionName)
             previous=$(field api '.properties.configuration.ingress.traffic[]? | select(.label == "previous") | .revisionName')
           fi
-          if [ -n "$ALTINN_PDP_URL" ]; then
+          if [ -n "$ANSATTPORTEN_ISSUER" ]; then
             image="${{ needs.build.outputs.api }}"
             version="${{ github.sha }}"
             suffix="r${{ github.run_id }}-${{ github.run_attempt }}"
@@ -164,7 +164,7 @@ jobs:
             echo "docling=$(image_of docling)"
           } >> "$GITHUB_OUTPUT"
       - id: infra
-        if: env.ALTINN_PDP_URL != ''
+        if: env.ANSATTPORTEN_ISSUER != ''
         env:
           RG: ${{ vars.AZURE_RESOURCE_GROUP }}
           FORCE_INFRASTRUCTURE: ${{ inputs.infrastructure }}
@@ -173,19 +173,19 @@ jobs:
           echo "$state" >> "$GITHUB_OUTPUT"
           echo "Candidate deploy applies the whole template: $(sed -n 's/^infrastructure=//p' <<< "$state")" >> "$GITHUB_STEP_SUMMARY"
       - name: stop every API revision but the live one
-        if: env.ALTINN_PDP_URL != '' && steps.plan.outputs.live != ''
+        if: env.ANSATTPORTEN_ISSUER != '' && steps.plan.outputs.live != ''
         env:
           RG: ${{ vars.AZURE_RESOURCE_GROUP }}
           APP: ${{ steps.plan.outputs.app }}
           LIVE: ${{ steps.plan.outputs.live }}
         run: scripts/stop-unused-revisions.sh "$RG" "$APP" "$LIVE" all-but-live
       - name: stop the worker before its new revision starts
-        if: env.ALTINN_PDP_URL != ''
+        if: env.ANSATTPORTEN_ISSUER != ''
         env:
           RG: ${{ vars.AZURE_RESOURCE_GROUP }}
         run: scripts/worker-revisions.sh "$RG" stop
       - id: deploy
-        if: env.ALTINN_PDP_URL != ''
+        if: env.ANSATTPORTEN_ISSUER != ''
         run: |
           az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
@@ -199,7 +199,7 @@ jobs:
             echo "url=$(jq -r .apiCandidateUrl.value outputs.json)"
           } >> "$GITHUB_OUTPUT"
       - name: start the worker's newest revision
-        if: always() && env.ALTINN_PDP_URL != ''
+        if: always() && env.ANSATTPORTEN_ISSUER != ''
         env:
           RG: ${{ vars.AZURE_RESOURCE_GROUP }}
           DEPLOYMENT: genki-${{ github.run_id }}-${{ github.run_attempt }}-candidate
@@ -214,12 +214,12 @@ jobs:
           done
           echo "the candidate revision did not report ${{ github.sha }} with its models found and no catalog entry skipped that something uses: $body; users keep ${{ steps.plan.outputs.live }}"; exit 1
       - name: api skipped
-        if: env.ALTINN_PDP_URL == ''
+        if: env.ANSATTPORTEN_ISSUER == ''
         run: |
           {
             echo "### API not deployed"
             echo
-            echo "ALTINN_PDP_URL is not set in the test environment, and the API refuses to start without the real Altinn decision point. The worker and the apps are deployed; the API keeps its current image."
+            echo "ANSATTPORTEN_ISSUER is not set in the test environment, and the API refuses to start without a login. The worker and the apps are deployed; the API keeps its current image."
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Later jobs name their needs' results, so a skipped `check` cannot skip the gate.
@@ -368,11 +368,11 @@ jobs:
           TRACES_RESIDENCY: ${{ vars.TRACES_RESIDENCY }}
           PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
           ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
-          LOCKDOWN_ENTRA_GROUPS: ${{ vars.LOCKDOWN_ENTRA_GROUPS }}
-          LOCKDOWN_USER_GROUPS: ${{ vars.LOCKDOWN_USER_GROUPS }}
-          LOCKDOWN_SERVICE_GROUPS: ${{ vars.LOCKDOWN_SERVICE_GROUPS }}
-          LOCKDOWN_SERVICE_CLIENT_IDS: ${{ vars.LOCKDOWN_SERVICE_CLIENT_IDS }}
-          LOCKDOWN_ENTRA_EMAIL_DOMAIN: ${{ vars.LOCKDOWN_ENTRA_EMAIL_DOMAIN }}
+          OPERATOR_ENTRA_GROUPS: ${{ vars.OPERATOR_ENTRA_GROUPS }}
+          MEMBER_ENTRA_GROUPS: ${{ vars.MEMBER_ENTRA_GROUPS }}
+          SERVICE_ENTRA_GROUPS: ${{ vars.SERVICE_ENTRA_GROUPS }}
+          SERVICE_ENTRA_CLIENT_IDS: ${{ vars.SERVICE_ENTRA_CLIENT_IDS }}
+          ENTRA_EMAIL_DOMAIN: ${{ vars.ENTRA_EMAIL_DOMAIN }}
           OPERATOR_CLIENT_IDS: ${{ vars.OPERATOR_CLIENT_IDS }}
           KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
           ALERT_EMAILS: ${{ vars.ALERT_EMAILS }}
@@ -551,6 +551,11 @@ jobs:
           LANGFUSE_INSTANCE_RECEIVES_CONTENT: ${{ vars.LANGFUSE_INSTANCE_RECEIVES_CONTENT }}
           PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
           ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
+          OPERATOR_ENTRA_GROUPS: ${{ vars.OPERATOR_ENTRA_GROUPS }}
+          MEMBER_ENTRA_GROUPS: ${{ vars.MEMBER_ENTRA_GROUPS }}
+          SERVICE_ENTRA_GROUPS: ${{ vars.SERVICE_ENTRA_GROUPS }}
+          SERVICE_ENTRA_CLIENT_IDS: ${{ vars.SERVICE_ENTRA_CLIENT_IDS }}
+          ENTRA_EMAIL_DOMAIN: ${{ vars.ENTRA_EMAIL_DOMAIN }}
           KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
           ALERT_EMAILS: ${{ vars.ALERT_EMAILS }}
         run: |

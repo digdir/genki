@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { negotiate } from '@genai/i18n';
 import {
+  AuthenticationError,
   isHostname,
   oidcAudienceOf,
   usesPlatformLogin,
@@ -65,6 +66,8 @@ export interface BffDeps {
   hostActive: (hostname: string) => Promise<boolean>;
   issuer: string | undefined;
   altinnResource?: string | undefined;
+  /** Sent as `acr_values`, so a login goes straight to that method. */
+  acrValues?: string | undefined;
   /** genki's own Ansattporten client, which a hosted Client without `oidc` and the platform apps log in through. */
   platformLogin?: PlatformLogin | undefined;
   /** The tenant a platform app's sessions and back-channel logouts are kept under. */
@@ -242,14 +245,42 @@ const json = (body: unknown, status = 200, cookies: string[] = []) => {
 
 const notFound = () => problem(404, 'host-not-found', t('problems.hostNotFoundTitle'));
 
-const signedOutPage = (request: Request, cookies: string[] = []) => {
+type Say = ReturnType<typeof translatorFor>;
+
+const page = (
+  request: Request,
+  words: (say: Say) => { title: string; text: string },
+  cookies: string[] = [],
+  status = 200,
+) => {
   const lang = negotiate(request.headers.get('accept-language')) ?? 'nb';
-  const say = translatorFor(lang);
-  const body = `<!doctype html><html lang="${lang}"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${say('problems.bffLoggedOutTitle')}</title><h1>${say('problems.bffLoggedOutTitle')}</h1><p>${say('problems.bffLoggedOutBody')}</p></html>`;
+  const { title, text } = words(translatorFor(lang));
+  const body = `<!doctype html><html lang="${lang}"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title><h1>${title}</h1><p>${text}</p></html>`;
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8', ...noStore });
   for (const c of cookies) headers.append('set-cookie', c);
-  return new Response(body, { headers });
+  return new Response(body, { status, headers });
 };
+
+const signedOutPage = (request: Request, cookies: string[] = []) =>
+  page(
+    request,
+    (say) => ({ title: say('problems.bffLoggedOutTitle'), text: say('problems.bffLoggedOutBody') }),
+    cookies,
+  );
+
+const noAccessPage = (request: Request, host: Host, cookies: string[]) =>
+  page(
+    request,
+    (say) =>
+      host.app
+        ? { title: say('problems.entraNotTrusted'), text: say('problems.entraNotTrustedDetail') }
+        : { title: say('problems.serviceLocked'), text: say('problems.serviceLockedDetail') },
+    cookies,
+    403,
+  );
+
+const refusedLogin = (error: unknown) =>
+  error instanceof AuthenticationError && error.code === 'entra_not_trusted';
 
 const encodeHostCookie = (hostname: string, sealed: string) =>
   Buffer.from(JSON.stringify({ h: hostname, s: sealed })).toString('base64url');
@@ -446,6 +477,7 @@ export const createBff = (deps: BffDeps) => {
     query.set('code_challenge', codeChallenge(pending.verifier));
     query.set('code_challenge_method', 'S256');
     if (audience) query.set('resource', audience);
+    if (deps.acrValues) query.set('acr_values', deps.acrValues);
     if (deps.altinnResource)
       query.set(
         'authorization_details',
@@ -500,7 +532,7 @@ export const createBff = (deps: BffDeps) => {
     return redirect(location, [cookie(loginCookie, sealed, loginMs / 1000)]);
   };
 
-  /** Swaps an authorization code for the person's tokens, or undefined when anything is refused. */
+  /** Swaps an authorization code for the person's tokens, `refused` when the person has no access, or undefined when anything else fails. */
   const signedIn = async (
     host: Host,
     credentials: ClientCredentials,
@@ -508,7 +540,7 @@ export const createBff = (deps: BffDeps) => {
     redirect: string,
     verifier: string,
     nonce: string,
-  ): Promise<SessionPayload | undefined> => {
+  ): Promise<SessionPayload | 'refused' | undefined> => {
     const discovery = await oidc.discover(deps.issuer ?? '');
     try {
       const tokens = await oidc.token(discovery, credentials, {
@@ -551,6 +583,10 @@ export const createBff = (deps: BffDeps) => {
         logoutKeys: Object.values(keys),
       };
     } catch (error) {
+      if (refusedLogin(error)) {
+        log('bff login refused', { hostname: host.hostname, reason: 'no-access' });
+        return 'refused';
+      }
       log('bff login failed', {
         hostname: host.hostname,
         error: error instanceof Error ? error.name : 'unknown',
@@ -619,6 +655,7 @@ export const createBff = (deps: BffDeps) => {
       pending.verifier,
       pending.nonce,
     );
+    if (payload === 'refused') return noAccessPage(request, host, [clear]);
     if (!payload) return back();
     return redirect(pending.next, [await startSession(request, host, payload), clear]);
   };
@@ -706,6 +743,7 @@ export const createBff = (deps: BffDeps) => {
       pending.verifier,
       pending.nonce,
     );
+    if (session === 'refused') return noAccessPage(request, host, [clear]);
     if (!session) return refused('login', host);
     if (host.app === 'console' && session.operator !== true) {
       log('bff platform login refused', { reason: 'not-operator', hostname: host.hostname });

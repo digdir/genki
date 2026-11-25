@@ -56,7 +56,7 @@ change-reason: Register the team's own frontend for the service
 - `environments` (optional) limits the frontend to some of the service's environments, such as `["test"]`.
 - A client id can be registered once across genki. `GET /tenants/{tenant}/clients?service=<id>` lists the service's frontends.
 
-**On genki-test**, which is locked ([ADR 0033](adr/0033-locked-test-environment.md)), two more things hold. People log in with Entra ID through Ansattporten, and a login from the all-employees group reaches a service only through a client id listed in `LOCKDOWN_SERVICE_CLIENT_IDS` and registered in the platform organisation. Adding a client id to that list is a change to the GitHub environment variable and a deploy, so ask the genki maintainers. TestID logins on genki-test can only read, so they get no answers.
+**On genki**, where rights come from Digdir's Entra groups ([ADR 0033](adr/0033-locked-test-environment.md#rights-from-entra-groups)), two more things hold. People log in with Entra ID through Ansattporten, and a login from the all-employees group reaches a service only through a client id listed in `SERVICE_ENTRA_CLIENT_IDS` and registered in the platform organisation. Adding a client id to that list is a change to the GitHub environment variable and a deploy, so ask the genki maintainers. Other logins are refused while genki has no Altinn.
 
 ## 2. Log in
 
@@ -109,4 +109,4 @@ Production login is decided in #464, and genki's production environment does not
 
 - You register a client in Ansattporten's production environment and register its client id in genki's production, as in step 1. The issuer and client id change, so threads from test do not follow (ADR 0061, Consequences).
 - Before real people log in, keep tokens off the browser: run a small server of your own as a confidential client that keeps the tokens and gives the page an `HttpOnly`, `Secure`, `__Host-` session cookie, the rule genki follows for its own apps ([ADR 0034](adr/0034-tokens-in-the-browser.md)). Or move to the genki host once its BFF, proposed in ADR 0061 and not built yet, is in place.
-- `LOCKDOWN_SERVICE_CLIENT_IDS` is a genki-test setting; production checks the person's Altinn rights for the service.
+- `SERVICE_ENTRA_CLIENT_IDS` belongs to the Entra group rule; once genki has Altinn, it can check the person's Altinn rights for the service instead.

@@ -53,10 +53,10 @@ export const problems = {
     'The environment is locked: tests that use stored secrets need an Entra ID login',
   secretChecksLockedDetail:
     'In this test environment only Digdir staff who log in with Entra ID can run tests that send a stored secret to an address.',
-  entraNotTrusted: 'Your Entra ID login gives no access to this environment',
+  entraNotTrusted: 'Your login gives no access to genki',
   entraNotTrustedDetail:
-    'Only members of the configured Digdir Entra groups can log in with Entra ID here. Log in with TestID to read, or ask for access.',
-  serviceLocked: 'This assistant is only open to Digdir employees in the test environment',
+    'genki only lets in Digdir accounts (Entra ID) in the groups given access. Ask the people who run genki for access.',
+  serviceLocked: 'This assistant is only open to Digdir employees',
   serviceLockedDetail:
     'Log in with your Digdir account (Entra ID). If you have and still cannot get in, ask the team behind the service for access.',
   unreadableDefinition: 'Unreadable definition',

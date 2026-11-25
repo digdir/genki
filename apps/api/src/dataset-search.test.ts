@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
-import { configuredCredentialScope, lockdownUserScope } from '@genai/composition';
+import { configuredCredentialScope, memberEntraScope } from '@genai/composition';
 import { LEGACY_KEY_ISSUER } from '@genai/identity';
 import { envSecrets, KernelError } from '@genai/kernel';
 import {
@@ -66,7 +66,7 @@ const people: Record<string, Principal> = {
     issuer: 'test',
     subject: 'admitted',
     tenant: digdir,
-    scopes: [lockdownUserScope],
+    scopes: [memberEntraScope],
   },
 };
 

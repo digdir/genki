@@ -54,6 +54,8 @@ param keyVaultSecretNames = concat(
   empty(altinnPeople) || empty(altinnPeopleClient) ? [] : ['altinn-people-maskinporten-key']
 )
 
+var emailDomain = readEnvironmentVariable('ENTRA_EMAIL_DOMAIN', '')
+
 // An unset variable comes as an empty value here too.
 var langfuseContent = readEnvironmentVariable('LANGFUSE_INSTANCE_RECEIVES_CONTENT', '')
 
@@ -65,11 +67,11 @@ param appEnv = {
   LANGFUSE_INSTANCE_RECEIVES_CONTENT: empty(langfuseContent) ? 'true' : langfuseContent
   TRACES_ENDPOINT: readEnvironmentVariable('TRACES_ENDPOINT', '')
   TRACES_RESIDENCY: readEnvironmentVariable('TRACES_RESIDENCY', '')
-  LOCKDOWN_ENTRA_GROUPS: readEnvironmentVariable('LOCKDOWN_ENTRA_GROUPS', '')
-  LOCKDOWN_USER_GROUPS: readEnvironmentVariable('LOCKDOWN_USER_GROUPS', '')
-  LOCKDOWN_SERVICE_GROUPS: readEnvironmentVariable('LOCKDOWN_SERVICE_GROUPS', '')
-  LOCKDOWN_SERVICE_CLIENT_IDS: readEnvironmentVariable('LOCKDOWN_SERVICE_CLIENT_IDS', '')
-  LOCKDOWN_ENTRA_EMAIL_DOMAIN: readEnvironmentVariable('LOCKDOWN_ENTRA_EMAIL_DOMAIN', 'digdir.no')
+  OPERATOR_ENTRA_GROUPS: readEnvironmentVariable('OPERATOR_ENTRA_GROUPS', '')
+  MEMBER_ENTRA_GROUPS: readEnvironmentVariable('MEMBER_ENTRA_GROUPS', '')
+  SERVICE_ENTRA_GROUPS: readEnvironmentVariable('SERVICE_ENTRA_GROUPS', '')
+  SERVICE_ENTRA_CLIENT_IDS: readEnvironmentVariable('SERVICE_ENTRA_CLIENT_IDS', '')
+  ENTRA_EMAIL_DOMAIN: empty(emailDomain) ? 'digdir.no' : emailDomain
   OPERATOR_CLIENT_IDS: readEnvironmentVariable('OPERATOR_CLIENT_IDS', '')
   GATEWAY_USAGE_URL: 'https://api.aivar.no'
   GATEWAY_USAGE_APP_CLIENT_ID: '334f8fa1-437e-4b84-bceb-f320fb60f3ed'
