@@ -132,7 +132,6 @@ export const SourcesArea = ({
   chosen,
   options,
   addedInDraft,
-  withSources,
   readOnly,
   onAdd,
   onRemove,
@@ -144,7 +143,6 @@ export const SourcesArea = ({
   chosen: string[];
   options: AsyncState<DatasetOption[]>;
   addedInDraft: (id: string) => boolean;
-  withSources: boolean;
   readOnly: boolean;
   onAdd: (id: string) => void;
   onRemove: (index: number) => void;
@@ -168,9 +166,6 @@ export const SourcesArea = ({
           nameOf={nameOf}
           onChange={onSet}
         />
-        <p className="area-note">
-          {withSources ? t('setupList.sourcesShown') : t('setupList.sourcesHidden')}
-        </p>
       </div>
     );
   const needle = query.trim().toLowerCase();
@@ -273,9 +268,6 @@ export const SourcesArea = ({
           </ul>
         ) : null}
       </div>
-      <p className="area-note">
-        {withSources ? t('setupList.sourcesShown') : t('setupList.sourcesHidden')}
-      </p>
     </div>
   );
 };

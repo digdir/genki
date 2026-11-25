@@ -437,8 +437,6 @@ export const setupList = defineNamespace({
   resultWish: 'Hva ønsker dere å få ut av tjenesten?',
   resultWishHelp:
     'Beskriv med egne ord hva brukeren skal sitte igjen med, for eksempel et utkast som kan sendes, eller et kort svar med henvisning til regelverket.',
-  sourcesShown: 'Kildene vises alltid under svaret.',
-  sourcesHidden: 'Kildene vises ikke under svaret. Det velger du under Resultat.',
   whatUserSends: 'Hva sender brukeren?',
   kindText: 'Spørsmål',
   kindTextDesc: 'Fritekst. Alltid med.',
