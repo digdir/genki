@@ -147,6 +147,14 @@ describe('the demo-recorder workflow', () => {
     expect(voice.permissions).toEqual({ contents: 'read', 'id-token': 'write' });
   });
 
+  it('uploads the voiced clips from the hidden .voice folder and downloads them where recording looks', () => {
+    const upload = voice.steps.find((s) => s.with?.name === 'demo-voice');
+    const download = record.steps.find((s) => s.with?.name === 'demo-voice');
+    expect(upload?.with?.path).toBe('demos/out/.voice/*.mp3');
+    expect(upload?.with?.['include-hidden-files']).toBe(true);
+    expect(download?.with?.path).toBe('demos/out/.voice');
+  });
+
   it('records the queued recordings with the key in genki-test, with read access only', () => {
     expect(record.steps.at(-1)?.run).toBe('node scripts/demo.ts recording --queued');
     expect(record.steps.at(-1)?.env?.DEMO_RECORDER_KEY).toBe('${{ secrets.DEMO_RECORDER_KEY }}');
