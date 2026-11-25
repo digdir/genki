@@ -904,7 +904,7 @@ export const AssistantView = ({
       />
     ) : undefined;
 
-  // The next look's sizes, the dev-navbar board's at 1720: threads 220, tools 380.
+  // The next look's sizes: threads 220 (dev-navbar), tools 482 (dev-kilder-hoyre at 1440).
   const nextPrimary: Partial<ShellPanel> = next ? { size: threadsWidth, ...profileFoot } : {};
   const threadsTitle = next ? { title: t('builder.threads') } : {};
 
@@ -1065,7 +1065,11 @@ export const AssistantView = ({
             disclaimer: false,
             foldUncited: true,
             footnote: a.shownFootnote,
-            onFootnoteChange: a.setShownFootnote,
+            // A card opened in Kilder makes it the chosen tool, so its footnote is filled.
+            onFootnoteChange: (footnote: number | undefined) => {
+              a.setShownFootnote(footnote);
+              if (footnote !== undefined) a.setTool('sources');
+            },
             ...(documentOn
               ? {
                   onOpenDocument: ({ source, excerpt }: Required<SourceSelection>) => {
@@ -1254,9 +1258,9 @@ export const AssistantView = ({
           // start when Chat stands here, or there would be nothing to ask in.
           ...(chatZone === 'secondary' ? { defaultCollapsed: false } : {}),
           // The next look titles the panel by how many tools it has: the tool's name for one
-          // (dev-verktoy-1), else «Verktøy» with the switcher under it; 380 wide.
+          // (dev-verktoy-1), else «Verktøy» with the switcher under it; 482 wide, as dev-kilder-hoyre.
           ...(next
-            ? { title: singleTool ? singleTool.label : t('shell.tools'), size: { width: 380 } }
+            ? { title: singleTool ? singleTool.label : t('shell.tools'), size: { width: 482 } }
             : {}),
         }
       : undefined;

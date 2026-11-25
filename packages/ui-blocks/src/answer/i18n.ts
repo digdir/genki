@@ -58,7 +58,7 @@ export const nbAnswer = defineNamespace({
   copyPart: '{title}, «{part}»',
   references: 'Kildeliste',
   referenceFootnotes: { one: 'Fotnote', other: 'Fotnoter' },
-  referencePages: { one: 'Side {pages}', other: 'Side {pages}' },
+  referencePages: { one: 's. {pages}', other: 's. {pages}' },
   copyReferences: 'Kopier kildeliste',
   referencesCopied: 'Kopiert',
 });
@@ -123,7 +123,7 @@ export const enAnswer = {
   copyPart: '{title}, “{part}”',
   references: 'Reference list',
   referenceFootnotes: { one: 'Footnote', other: 'Footnotes' },
-  referencePages: { one: 'Page {pages}', other: 'Pages {pages}' },
+  referencePages: { one: 'p. {pages}', other: 'pp. {pages}' },
   copyReferences: 'Copy reference list',
   referencesCopied: 'Copied',
 } satisfies Translation<typeof nbAnswer>;

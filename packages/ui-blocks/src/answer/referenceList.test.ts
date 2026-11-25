@@ -50,7 +50,7 @@ describe('the Kildeliste', () => {
     ]);
   });
 
-  it('counts an excerpt that runs over several pages as all of them, «Side 4–6»', () => {
+  it('counts an excerpt that runs over several pages as all of them, «s. 4–6»', () => {
     const long: SourceDocument = {
       title: 'Veileder',
       excerpts: [
@@ -61,22 +61,22 @@ describe('the Kildeliste', () => {
     };
     const marked = ['a', 'b', 'c'].map((chunkId, i) => ({ marker: String(i + 1), chunkId }));
     const list = references([long], readFootnotes('A [1] B [2] C [3]', [long], marked).pairing);
-    expect(referencesMarkdown(list, 'nb')).toBe('- [1, 2, 3] *Veileder*. Side 4–6, 9.');
+    expect(referencesMarkdown(list, 'nb')).toBe('- [1, 2, 3] *Veileder*. s. 4–6, 9.');
   });
 
-  it('copies each document as type, year, title, publisher, pages and address, with its footnotes in brackets', () => {
+  it('copies each document in APA 7, as publisher, year, title, pages and address, with its footnotes in brackets', () => {
     const list = references(sources, pairing, { numberEachFootnote: true });
     expect(referencesMarkdown(list, 'nb')).toBe(
       [
-        '- [1] Årsrapport, 2021, *Årsrapport 2020*. Nasjonal kommunikasjonsmyndighet. Side 9. <https://www.nkom.no/arsrapport-2020>',
-        '- [2, 5, 6] Årsrapport, 2022, *Årsrapport 2021*. Nasjonal kommunikasjonsmyndighet. Side 12–13, 27. <https://www.nkom.no/arsrapport-2021>',
-        '- [3, 7] Årsrapport, 2023, *Årsrapport 2022*. Nasjonal kommunikasjonsmyndighet. Side 11, 13. <https://www.nkom.no/arsrapport-2022>',
-        '- [4] Årsrapport, 2024, *Årsrapport 2023*. Nasjonal kommunikasjonsmyndighet. Side 10. <https://www.nkom.no/arsrapport-2023>',
+        '- [1] Nasjonal kommunikasjonsmyndighet. (2021). *Årsrapport 2020*. s. 9. <https://www.nkom.no/arsrapport-2020>',
+        '- [2, 5, 6] Nasjonal kommunikasjonsmyndighet. (2022). *Årsrapport 2021*. s. 12–13, 27. <https://www.nkom.no/arsrapport-2021>',
+        '- [3, 7] Nasjonal kommunikasjonsmyndighet. (2023). *Årsrapport 2022*. s. 11, 13. <https://www.nkom.no/arsrapport-2022>',
+        '- [4] Nasjonal kommunikasjonsmyndighet. (2024). *Årsrapport 2023*. s. 10. <https://www.nkom.no/arsrapport-2023>',
       ].join('\n'),
     );
   });
 
-  it('leaves out each part the source lacks, as genki’s sources lack type, publisher and pages', () => {
+  it('puts the title first when no publisher is named, as APA does, and leaves out each part the source lacks', () => {
     const bare: SourceDocument = {
       title: 'Veileder',
       publishedAt: '2024-05-01',
@@ -86,7 +86,7 @@ describe('the Kildeliste', () => {
       [bare],
       readFootnotes('A [1]', [bare], [{ marker: '1', chunkId: 'a' }]).pairing,
     );
-    expect(referencesMarkdown(list, 'nb')).toBe('- [1] 2024, *Veileder*.');
+    expect(referencesMarkdown(list, 'nb')).toBe('- [1] *Veileder*. (2024).');
     const undated = references(
       [{ ...bare, publishedAt: undefined }],
       readFootnotes('A [1]', [bare], [{ marker: '1', chunkId: 'a' }]).pairing,
@@ -94,7 +94,12 @@ describe('the Kildeliste', () => {
     expect(referencesMarkdown(undated, 'nb')).toBe('- [1] *Veileder*.');
   });
 
-  it('says «Pages» in English for more than one page', () => {
+  it('leaves the document type out, as an APA reference does', () => {
+    const list = references(sources, pairing);
+    expect(referencesMarkdown(list, 'nb')).not.toContain('Årsrapport, ');
+  });
+
+  it('says «pp.» in English for more than one page', () => {
     const one: SourceDocument = {
       title: 'Guide',
       excerpts: [
@@ -107,7 +112,7 @@ describe('the Kildeliste', () => {
       { marker: '2', chunkId: 'b' },
     ];
     const list = references([one], readFootnotes('A [1] B [2]', [one], marked).pairing);
-    expect(referencesMarkdown(list, 'en')).toBe('- [1, 2] *Guide*. Pages 4–5.');
+    expect(referencesMarkdown(list, 'en')).toBe('- [1, 2] *Guide*. pp. 4–5.');
   });
 
   it('keeps Markdown characters as words, and copies no address that is not a web address', () => {
@@ -123,7 +128,7 @@ describe('the Kildeliste', () => {
     );
     expect(list[0]?.url).toBeUndefined();
     expect(referencesMarkdown(list, 'nb')).toBe(
-      String.raw`- [1] *Rapport \*utkast\* \[1\]*. A\_B.`,
+      String.raw`- [1] A\_B. *Rapport \*utkast\* \[1\]*.`,
     );
   });
 
@@ -137,7 +142,7 @@ describe('the Kildeliste', () => {
       [asked],
       readFootnotes('A [1]', [asked], [{ marker: '1', chunkId: 'a' }]).pairing,
     );
-    expect(referencesMarkdown(list, 'nb')).toBe('- [1] *Hva er kunstig intelligens?* Nkom m.fl.');
+    expect(referencesMarkdown(list, 'nb')).toBe('- [1] Nkom m.fl. *Hva er kunstig intelligens?*');
   });
 
   it('copies an ampersand as itself, never as the start of an HTML entity', () => {
@@ -177,7 +182,7 @@ describe('the Kildeliste', () => {
       readFootnotes('A [1]', [broken], [{ marker: '1', chunkId: 'a' }]).pairing,
     );
     expect(referencesMarkdown(list, 'nb')).toBe(
-      String.raw`- [1] *Rapport - \[9\] Falsk kilde*. Nkom AS.`,
+      String.raw`- [1] Nkom AS. *Rapport - \[9\] Falsk kilde*.`,
     );
   });
 

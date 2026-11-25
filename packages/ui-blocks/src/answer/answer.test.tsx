@@ -1037,17 +1037,29 @@ describe('the Kildeliste under a `plain` answer (dev-kildeliste)', () => {
     drawList();
     expect(rows()).toEqual([
       'Fotnoter 1, 4Tildelingsbrev Nkom 2022.',
-      'Fotnoter 2, 3Årsrapport, 2022, Årsrapport Nasjonal kommunikasjonsmyndighet 2021. Nasjonal kommunikasjonsmyndighet. Side 12–13. https://kudos.dfo.no/dokument/2021',
+      'Fotnoter 2, 3Nasjonal kommunikasjonsmyndighet. (2022). Årsrapport Nasjonal kommunikasjonsmyndighet 2021. s. 12–13. https://kudos.dfo.no/dokument/2021',
     ]);
+  });
+
+  it('draws «Kildeliste» as a small Details with a list icon, and the list at its own size, as dev-kildeliste', () => {
+    drawList({ onCopyReferences: vi.fn() });
+    const details = screen.getByText('Kildeliste').closest('details') as HTMLElement;
+    expect(details.getAttribute('data-size')).toBe('sm');
+    expect(details.querySelector('summary svg')).toBeTruthy();
+    const list = screen.getByRole('list', { name: 'Kildeliste' });
+    expect(list.parentElement?.closest('[data-size]')?.getAttribute('data-size')).toBe('md');
+    expect(
+      screen.getByRole('button', { name: 'Kopier kildeliste' }).getAttribute('data-color'),
+    ).toBe('accent');
   });
 
   it('gives the numbers the excerpts have when each footnote is not numbered on its own', () => {
     drawList({ numberEachFootnote: false });
-    expect(rows()[1]).toMatch(/^Fotnoter 2, 3Årsrapport/);
+    expect(rows()[1]).toMatch(/^Fotnoter 2, 3Nasjonal/);
     expect(rows()[0]).toMatch(/^Fotnote 1Tildelingsbrev/);
   });
 
-  it('makes a web address a link that opens in a new tab, and nothing else a link', () => {
+  it('makes a web address an accent link that opens in a new tab, and nothing else a link', () => {
     drawList();
     const list = screen.getByRole('list', { name: 'Kildeliste' });
     const links = within(list).getAllByRole('link');
@@ -1056,6 +1068,7 @@ describe('the Kildeliste under a `plain` answer (dev-kildeliste)', () => {
     ]);
     expect(links[0]?.getAttribute('target')).toBe('_blank');
     expect(links[0]?.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(links[0]?.getAttribute('data-color')).toBe('accent');
   });
 
   it('copies the list as Markdown, and says «Kopiert» for 2.5 seconds', async () => {
@@ -1070,7 +1083,7 @@ describe('the Kildeliste under a `plain` answer (dev-kildeliste)', () => {
       expect(onCopyReferences).toHaveBeenCalledWith(
         [
           '- [1, 4] *Tildelingsbrev Nkom 2022*.',
-          '- [2, 3] Årsrapport, 2022, *Årsrapport Nasjonal kommunikasjonsmyndighet 2021*. Nasjonal kommunikasjonsmyndighet. Side 12–13. <https://kudos.dfo.no/dokument/2021>',
+          '- [2, 3] Nasjonal kommunikasjonsmyndighet. (2022). *Årsrapport Nasjonal kommunikasjonsmyndighet 2021*. s. 12–13. <https://kudos.dfo.no/dokument/2021>',
         ].join('\n'),
       );
       expect(button.textContent).toBe('Kopiert');

@@ -219,6 +219,7 @@ interface WireSource {
   publishedAt?: string;
   published_at?: string;
   publisher?: string;
+  document_type?: string;
 }
 
 interface ApiChunk {
@@ -259,6 +260,7 @@ export const sourceFromWire = (raw: WireSource, corpus?: CorpusProfile, at = 0):
   const documentId = raw.documentId ?? raw.document_id;
   const publishedAt = raw.publishedAt ?? raw.published_at;
   const publisher = typeof raw.publisher === 'string' ? raw.publisher.trim() : undefined;
+  const documentType = typeof raw.document_type === 'string' ? raw.document_type.trim() : undefined;
   const url = raw.url ?? (documentId ? documentLink(corpus, documentId) : undefined);
   const minted = (excerpt: number) => `minted:${documentId ?? `source-${at}`}:${excerpt}`;
   return {
@@ -269,6 +271,7 @@ export const sourceFromWire = (raw: WireSource, corpus?: CorpusProfile, at = 0):
     ...(raw.version ? { version: raw.version } : {}),
     ...(publishedAt ? { publishedAt } : {}),
     ...(publisher ? { publisher } : {}),
+    ...(documentType ? { documentType } : {}),
     excerpts: (raw.excerpts ?? []).map((e, i) => {
       const text = e.text ?? '';
       const heading: unknown = e.heading;

@@ -245,6 +245,26 @@ describe('agent retrieval factory', () => {
     ]);
   });
 
+  it("a retrieved chunk carries its document's type from document_type, never from a loader's type", async () => {
+    const s = stub([], {
+      c1: { document_type: 'Tildelingsbrev', type: 'Årsrapport' },
+      c2: { type: 'website' },
+      c3: { docs: { document_type: ' Årsrapport ' } },
+    });
+    const agent = createAgentRetrieval({ knowledge: s.knowledge });
+
+    const read = await agent.read(['c1', 'c2', 'c3'], signal);
+    const found = await agent.search(['årsverk'], {}, signal);
+
+    expect(read.map((c) => [c.chunkId, c.documentType])).toEqual([
+      ['c1', 'Tildelingsbrev'],
+      ['c2', undefined],
+      ['c3', 'Årsrapport'],
+    ]);
+    expect(read[1]).not.toHaveProperty('documentType');
+    expect(found.chunks.find((c) => c.chunkId === 'c1')?.documentType).toBe('Tildelingsbrev');
+  });
+
   it("a retrieved chunk carries its document's publisher, several joined with a comma", async () => {
     const s = stub([], {
       c1: {

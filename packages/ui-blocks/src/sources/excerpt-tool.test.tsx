@@ -16,12 +16,14 @@ const r2021: SourceDocument = {
   title: 'Årsrapport Nkom 2021',
   documentId: 'kudos::2021',
   publishedAt: '2022-03-01',
+  documentType: 'Årsrapport',
   excerpts: [
     {
       chunkId: 'kudos::2021-1',
       text: 'Nkoms totale utgiftsbevilgning for 2021 var på 594,2 mill. kroner.',
       heading: 'Del III › Ressursbruk og måloppnåelse',
       page: 32,
+      pageEnd: 33,
     },
     {
       chunkId: 'kudos::2021-2',
@@ -84,7 +86,27 @@ describe('the excerpts in Kilder (dev-kilder-hoyre)', () => {
       'Fotnote 3: Internkontroll og risikovurdering, Årsrapport Nkom 2021',
     ]);
     const first = cards()[0] as HTMLElement;
-    expect(first.textContent).toContain('Årsrapport Nkom 2021 · s. 32');
+    expect(first.textContent).toContain('Årsrapport Nkom 2021, s. 32–33');
+  });
+
+  it('names an excerpt by its document and page over its card, and by its document alone without one', () => {
+    render(<Host />);
+    expect((cards()[2] as HTMLElement).textContent).toContain('Årsrapport Nkom 2021, s. 41');
+    expect((cards()[1] as HTMLElement).textContent).toContain('Årsrapport Nkom 2022');
+    expect((cards()[1] as HTMLElement).textContent).not.toContain(',');
+  });
+
+  it('gives an excerpt shown whole its document type, year and pages, as «Årsrapport, 2022, s. 32–33»', () => {
+    render(<Host start={0} />);
+    expect(screen.getByText('Årsrapport, 2022, s. 32–33')).toBeTruthy();
+  });
+
+  it('leaves out of the line under the document what the source does not give', () => {
+    render(<Host start={1} />);
+    expect(screen.queryByText(/s\. /)).toBeNull();
+    cleanup();
+    render(<Host start={2} sources={[{ ...r2021, documentType: undefined }, r2022, r2023]} />);
+    expect(screen.getByText('2022, s. 41')).toBeTruthy();
   });
 
   it('draws no search and no fold of the sources nothing cites', () => {
@@ -155,7 +177,7 @@ describe('the excerpts in Kilder (dev-kilder-hoyre)', () => {
   it('gives the year a document was published as the Kildeliste does, in UTC', () => {
     const late = { ...r2021, publishedAt: '2021-12-31T23:30:00Z' };
     render(<Host start={0} sources={[late, r2022, r2023]} />);
-    expect(screen.getByText(/2021 · s\. 32/)).toBeTruthy();
+    expect(screen.getByText('Årsrapport, 2021, s. 32–33')).toBeTruthy();
   });
 
   it('goes back to the answer on Escape', () => {

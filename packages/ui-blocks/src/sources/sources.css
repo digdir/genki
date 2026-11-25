@@ -80,14 +80,12 @@
     color: var(--genai-sources-mark-color, var(--ds-color-warning-text-default));
     border-radius: var(--genai-sources-mark-border-radius, var(--ds-border-radius-sm));
   }
-  /* The words the open footnote rests on: in the host's colour family, apart from the search's yellow. */
+  /* The words the open footnote rests on: pinned to accent, as the board and the footnote mark. */
   .uib-sources-cited {
-    background: var(--genai-sources-cited-background, var(--ds-color-surface-tinted));
-    color: inherit;
-    text-decoration: underline;
-    text-decoration-color: var(--genai-sources-cited-line-color, var(--ds-color-border-default));
-    text-decoration-thickness: var(--genai-sources-cited-line-thickness, 2px);
-    text-underline-offset: var(--genai-sources-cited-line-offset, 0.2em);
+    padding: var(--genai-sources-cited-padding-block, 0.0625rem)
+      var(--genai-sources-cited-padding-inline, 0.125rem);
+    background: var(--genai-sources-cited-background, var(--ds-color-accent-surface-tinted));
+    color: var(--genai-sources-cited-color, var(--ds-color-accent-text-default));
     border-radius: var(--genai-sources-cited-border-radius, var(--ds-border-radius-sm));
   }
   .uib-sources-mark[data-current='true'] {
@@ -434,6 +432,9 @@
     min-inline-size: 0;
     overflow-wrap: anywhere;
   }
+  .uib-sources-ex-detail {
+    gap: var(--genai-sources-ex-detail-gap, var(--ds-size-4));
+  }
   .uib-sources-ex-lead {
     margin: 0;
     color: var(--genai-sources-ex-lead-color, var(--ds-color-text-subtle));
@@ -446,9 +447,9 @@
     padding: 0;
     list-style: none;
   }
-  /* The whole card is the button; its hover is pinned to accent, as the board draws it. */
+  /* The whole card is the button; hover pinned to accent and corner lg, as the board draws it. */
   .uib-sources-ex-card {
-    --dsc-card-border-radius: var(--genai-sources-ex-card-radius, var(--ds-border-radius-xl));
+    --dsc-card-border-radius: var(--genai-sources-ex-card-radius, var(--ds-border-radius-lg));
     display: flex;
     flex-direction: column;
     gap: var(--genai-sources-ex-card-gap, var(--ds-size-2));
@@ -474,7 +475,8 @@
   .uib-sources-ex-numbers {
     display: flex;
     flex-shrink: 0;
-    gap: var(--genai-sources-ex-numbers-gap, var(--ds-size-1));
+    gap: var(--genai-sources-ex-numbers-gap, 0.125rem);
+    padding-block-start: var(--genai-sources-ex-numbers-offset, 0.125rem);
   }
   /* The answer's footnote mark, pinned to accent as it is, so a card's numbers are the text's. */
   .uib-sources-ex-number {
@@ -511,6 +513,9 @@
   }
   .uib-sources-ex-title {
     margin: 0;
+    font-size: var(--genai-sources-ex-title-font-size, var(--ds-font-size-3));
+    font-weight: var(--genai-sources-ex-title-font-weight, var(--ds-font-weight-semibold));
+    line-height: var(--genai-sources-ex-title-line-height, 1.4);
     color: var(--genai-sources-ex-title-color, var(--ds-color-text-default));
   }
   .uib-sources-ex-preview {
@@ -531,7 +536,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--genai-sources-ex-nav-gap, var(--ds-size-2));
+    gap: var(--genai-sources-ex-nav-gap, var(--ds-size-1));
     padding-block-end: var(--genai-sources-ex-nav-padding, var(--ds-size-3));
     border-block-end: var(--genai-sources-ex-nav-border-width, var(--ds-border-width-default)) solid
       var(--genai-sources-ex-nav-border-color, var(--ds-color-border-subtle));
@@ -560,17 +565,18 @@
   }
   .uib-sources-ex-head > .uib-sources-ex-number {
     flex-shrink: 0;
-    margin-block-start: var(--genai-sources-ex-head-number-offset, var(--ds-size-1));
+    margin-block-start: var(--genai-sources-ex-head-number-offset, 0.1875rem);
   }
   .uib-sources-ex-titles {
     display: flex;
     flex-direction: column;
-    gap: var(--genai-sources-ex-titles-gap, var(--ds-size-1));
+    gap: var(--genai-sources-ex-titles-gap, 0.125rem);
     min-inline-size: 0;
   }
-  /* Heading 2xs, Designsystemet's own size and weight. */
+  /* Heading 2xs, Designsystemet's own size and weight, at the board's line height. */
   .uib-sources-ex-document {
     margin: 0;
+    line-height: var(--genai-sources-ex-document-line-height, 1.35);
   }
   .uib-sources-ex-meta {
     font-size: var(--genai-sources-ex-meta-font-size, var(--ds-body-xs-font-size));
@@ -585,12 +591,16 @@
   }
   .uib-sources-ex-text {
     padding: var(--genai-sources-ex-text-padding, var(--ds-size-4));
-    border-radius: var(--genai-sources-ex-text-border-radius, var(--ds-border-radius-xl));
+    border-radius: var(--genai-sources-ex-text-border-radius, var(--ds-border-radius-md));
     background: var(--genai-sources-ex-text-background, var(--ds-color-background-tinted));
   }
   .uib-sources-ex-quote {
     font-size: var(--genai-sources-ex-quote-font-size, var(--ds-body-sm-font-size));
     line-height: var(--genai-sources-ex-quote-line-height, var(--ds-line-height-lg));
+  }
+  /* A blank line between paragraphs, as the board's text has. */
+  .uib-sources-ex-quote > * {
+    margin-block: 0 var(--genai-sources-ex-quote-paragraph-spacing, 1lh);
   }
   .uib-sources-ex-quote > :first-child {
     margin-block-start: 0;

@@ -260,6 +260,27 @@
   .uib-answer-references-card {
     margin-block: var(--genai-answer-references-spacing, var(--ds-size-8));
   }
+  /* As dev-kildeliste: font-size-3 is 14 px under data-size="sm". */
+  .uib-answer-references > summary {
+    padding-block: var(--genai-answer-references-summary-padding-block, 0.4375rem);
+    font-size: var(--genai-answer-references-summary-font-size, var(--ds-font-size-3));
+    line-height: var(--genai-answer-references-summary-line-height, var(--ds-line-height-md));
+  }
+  /* The chevron in the middle of the row, beside the word, as the board has it. */
+  .uib-answer-references > summary::before {
+    align-self: center;
+    translate: none;
+  }
+  .uib-answer-references-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--genai-answer-references-summary-gap, var(--ds-size-3));
+  }
+  .uib-answer-references-summary > svg {
+    flex-shrink: 0;
+    inline-size: var(--genai-answer-references-summary-icon-size, 1.125rem);
+    block-size: var(--genai-answer-references-summary-icon-size, 1.125rem);
+  }
   /* One grid for the whole list, so the footnote column is as wide in every row. */
   .uib-answer-references-list {
     display: grid;

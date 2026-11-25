@@ -166,6 +166,13 @@ describe('flow checks', () => {
 });
 
 describe("a step flow's answer sources", () => {
+  it("a step flow's answer source names its document type", () => {
+    const named = sourceRecord({ chunkId: 'c1', content: 'Tekst', documentType: 'Årsrapport' });
+
+    expect(named.documentType).toBe('Årsrapport');
+    expect(sourceRecord({ chunkId: 'c2', content: 'Tekst' })).not.toHaveProperty('documentType');
+  });
+
   it("a step flow's answer source names its publisher", () => {
     const named = sourceRecord({
       chunkId: 'c1',

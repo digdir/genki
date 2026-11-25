@@ -118,8 +118,13 @@ export const ExcerptTool = ({
     card?.focus();
   }, [shown?.chunkId, footnote, request]);
 
+  // «s. 32», or «s. 32–33» when the excerpt runs on to a later page.
   const pageOf = (excerpt: SourceExcerpt) =>
-    excerpt.page === undefined ? undefined : t('sources.pageShort', { page: excerpt.page });
+    excerpt.page === undefined
+      ? undefined
+      : excerpt.pageEnd !== undefined && excerpt.pageEnd > excerpt.page
+        ? t('sources.pagesShort', { from: excerpt.page, to: excerpt.pageEnd })
+        : t('sources.pageShort', { page: excerpt.page });
   const sectionOf = (excerpt: SourceExcerpt) => {
     const path = headingText(excerpt.heading);
     return path?.split(' › ').at(-1);
@@ -136,7 +141,7 @@ export const ExcerptTool = ({
     };
     const meta = shown.source.meta?.length
       ? [...shown.source.meta]
-      : [yearOf(shown.source.publishedAt), pageOf(shown.excerpt)];
+      : [shown.source.documentType, yearOf(shown.source.publishedAt), pageOf(shown.excerpt)];
     const section = sectionOf(shown.excerpt);
     return (
       <div
@@ -199,7 +204,7 @@ export const ExcerptTool = ({
               {shown.name}
             </Heading>
             {meta.some(Boolean) ? (
-              <span className="uib-sources-ex-meta">{meta.filter(Boolean).join(' · ')}</span>
+              <span className="uib-sources-ex-meta">{meta.filter(Boolean).join(', ')}</span>
             ) : null}
           </div>
         </div>
@@ -279,13 +284,13 @@ export const ExcerptTool = ({
                       ))}
                     </span>
                     <span className="uib-sources-ex-doc">
-                      {page ? `${c.name} · ${page}` : c.name}
+                      {page ? `${c.name}, ${page}` : c.name}
                     </span>
                   </span>
                   <span className="ds-heading uib-sources-ex-title" data-size="2xs">
                     {section}
                   </span>
-                  <span className="ds-paragraph uib-sources-ex-preview" data-size="sm">
+                  <span className="ds-paragraph uib-sources-ex-preview" data-size="xs">
                     {c.excerpt.textUnavailable
                       ? t('sources.excerptUnavailable')
                       : visibleText(excerptMarkdown(c.excerpt.text), false).text}

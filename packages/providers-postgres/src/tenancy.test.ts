@@ -174,6 +174,7 @@ describe('postgres conversations', () => {
         version: '3',
         published_at: '2025-01-15',
         publisher: 'Justis- og beredskapsdepartementet',
+        document_type: 'Årsrapport',
       },
     ];
     await conversations.append(kari, created.id, { role: 'assistant', text: '[1]', sources });

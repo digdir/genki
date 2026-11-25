@@ -7,7 +7,6 @@ import { translator } from './i18n.js';
 export interface Reference {
   key: string;
   footnotes: readonly number[];
-  documentType?: string | undefined;
   title: string;
   year?: number | undefined;
   publisher?: string | undefined;
@@ -79,7 +78,6 @@ export const references = (
       {
         key,
         footnotes,
-        documentType: oneLine(source.documentType),
         title: oneLine(source.title) ?? '',
         year: yearOf(source.publishedAt),
         publisher: oneLine(source.publisher),
@@ -96,18 +94,17 @@ export const pageRanges = (runs: readonly PageRun[]) =>
 
 const ended = (text: string) => /[.?!]/.test(text.at(-1) ?? '');
 
+/** APA 7 (dev-kildeliste): publisher, (year), title, pages; no publisher puts the title first. */
 export const referenceParts = (reference: Reference, locale: Locale) => {
   const t = translator(locale);
   const title = reference.title || t('sources.untitled');
   return {
-    lead: [reference.documentType, reference.year?.toString()].filter(
-      (part): part is string => !!part,
-    ),
-    title,
-    titleEnd: ended(title) ? '' : '.',
-    publisher:
+    author:
       reference.publisher &&
       (ended(reference.publisher) ? reference.publisher : `${reference.publisher}.`),
+    year: reference.year === undefined ? undefined : `(${reference.year}).`,
+    title,
+    titleEnd: ended(title) ? '' : '.',
     pages: reference.pages.length
       ? t('answer.referencePages', {
           count: reference.pages.reduce((n, [from, to]) => n + (to > from ? 2 : 1), 0),
@@ -122,11 +119,11 @@ const escaped = (text: string) => text.replace(/[\\`*_[\]<>#|~&]/g, (c) => `\\${
 export const referencesMarkdown = (list: readonly Reference[], locale: Locale) =>
   list
     .map((reference) => {
-      const { lead, title, titleEnd, publisher, pages } = referenceParts(reference, locale);
+      const { author, year, title, titleEnd, pages } = referenceParts(reference, locale);
+      const named = `*${escaped(title)}*${titleEnd}`;
       return [
         reference.footnotes.length ? `- [${reference.footnotes.join(', ')}]` : '-',
-        `${lead.map((part) => `${escaped(part)}, `).join('')}*${escaped(title)}*${titleEnd}`,
-        publisher ? escaped(publisher) : undefined,
+        ...(author ? [escaped(author), year, named] : [named, year]),
         pages ? `${pages}.` : undefined,
         reference.url ? `<${reference.url}>` : undefined,
       ]

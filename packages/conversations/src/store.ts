@@ -43,6 +43,7 @@ export interface MessageSource {
   version?: string;
   published_at?: string;
   publisher?: string;
+  document_type?: string;
 }
 
 export interface MessageMarker {
