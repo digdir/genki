@@ -101,7 +101,7 @@ describe('the assistant host', () => {
     const title = await screen.findByRole('heading', { level: 1, name: 'Logg inn på Genki' });
     const card = title.closest('.ah-signin-card') as HTMLElement;
     expect(
-      within(card).getByText('Logg inn med Ansattporten for å bruke Klarspråkassistenten.'),
+      within(card).getByText('For å bruke Klarspråkassistenten må du logge inn med Ansattporten.'),
     ).toBeTruthy();
     expect(card.lastElementChild?.textContent).toBe('Logg inn');
   });
