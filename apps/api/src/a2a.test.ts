@@ -21,6 +21,8 @@ const kari: Principal = {
   authorizedFor: [{ org: digdir }],
 };
 
+const drift: Principal = { kind: 'operator', issuer: 'test', subject: 'drift' };
+
 const service = (id: string, exposure: Record<string, boolean>) => ({
   apiVersion: 'genai/v1',
   kind: 'Service',
@@ -69,8 +71,11 @@ const boot = async () => {
     secrets: envSecrets({ FAKE_KEY: 'k' }),
     definitions: (p) => new InMemoryDefinitionStore(p),
     policy: { decide: async () => ({ allow: true }) },
-    authenticate: async (request) =>
-      request.headers.get('authorization') === 'Bearer kari' ? { principal: kari } : undefined,
+    authenticate: async (request) => {
+      const bearer = request.headers.get('authorization');
+      if (bearer === 'Bearer kari') return { principal: kari };
+      return bearer === 'Bearer drift' ? { principal: drift } : undefined;
+    },
   });
   await platform.definitions.publish(service('agent', { a2a: true }), 'test', 'test', {});
   await platform.definitions.publish(service('bare-mcp', { mcp: true }), 'test', 'test', {});
@@ -94,10 +99,10 @@ const boot = async () => {
   });
   const app = new Hono();
   platform.mount(app, admin);
-  const send = (path: string, body?: unknown) =>
+  const send = (path: string, body?: unknown, who = 'kari') =>
     app.request(`https://plattform.test${path}`, {
       method: body === undefined ? 'GET' : 'POST',
-      headers: { authorization: 'Bearer kari', 'content-type': 'application/json' },
+      headers: { authorization: `Bearer ${who}`, 'content-type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   return { send, app };
@@ -142,6 +147,31 @@ describe('services as A2A agents', () => {
         },
       },
     });
+  });
+
+  it("never shows an operator an organisation's run through GetTask", async () => {
+    const { send } = await boot();
+    const sent = (await (
+      await send('/a2a/agent__default', {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'SendMessage',
+        params: { message: { messageId: 'm1', role: 'ROLE_USER', parts: [{ text: 'Hei' }] } },
+      })
+    ).json()) as { result: { task: { id: string } } };
+    const getTask = async () =>
+      (await (
+        await send(
+          '/a2a/agent__default',
+          { jsonrpc: '2.0', id: 2, method: 'GetTask', params: { id: sent.result.task.id } },
+          'drift',
+        )
+      ).json()) as { result?: unknown; error?: unknown };
+
+    const read = await getTask();
+
+    expect(read).toMatchObject({ error: expect.anything() });
+    expect(read.result).toBeUndefined();
   });
 
   it('refuses a caller without credentials', async () => {

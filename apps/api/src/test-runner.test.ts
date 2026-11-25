@@ -771,7 +771,7 @@ describe('a test-runner key in its own tenant', () => {
   });
 
   it.each([
-    ['support sessions', 'POST', '/support-sessions', { tenant: digdir, reason }],
+    ['content reasons', 'POST', `/operator/tenants/${digdir}/content-reason`, { reason }],
     ['key creation', 'POST', `/tenants/${digdir}/api-keys`, { name: 'Ny' }],
     ['secret values', 'PUT', `/tenants/${digdir}/secrets/token`, { value: 'hemmelig' }],
     ['Maskinporten clients', 'POST', `/tenants/${digdir}/maskinporten-clients`, {}],
@@ -821,7 +821,6 @@ describe('a test-runner key on operator routes', () => {
     ['onboarding requests', '/operator/onboarding/requests'],
     ['tenant definitions', `/operator/tenants/${digdir}/definitions`],
     ['usage', '/operator/usage'],
-    ['support sessions', '/operator/support-sessions'],
     ['running tasks', '/operator/running-tasks'],
     ['label queue', '/operator/quality/label-queue'],
     ['secret names', '/operator/knowledge/secrets'],
@@ -946,7 +945,7 @@ describe('the principal a test-runner key acts as', () => {
     '/operator/onboarding/requests',
     `/operator/tenants/${digdir}/definitions`,
     '/operator/usage',
-    '/operator/support-sessions',
+    `/operator/tenants/${digdir}/content-reason`,
     '/operator/tasks',
     '/operator/tenants/',
     '/operator/tenants/x',

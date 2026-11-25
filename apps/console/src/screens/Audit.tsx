@@ -21,7 +21,6 @@ import { definitionKindParams, type DefinitionKind } from '../definition-kinds';
 import { navigate, useAsync } from '../hooks';
 import { useT, type PlainKey, type T } from '../i18n';
 import { ErrorState, Loading } from '../states';
-import { useSupport } from '../support';
 import { tenantLabel, useTenantNames } from '../tenant-names';
 import type { AuditEntry } from '../types';
 import { Flash, formatWhen, isMissing, PageHeader, TableRegion, useFlash } from '../ui';
@@ -34,9 +33,8 @@ export const actionKey: Record<string, PlainKey> = {
   'platform.default.set': 'audit.actionDefaultSet',
   'platform.tenant.import': 'audit.actionTenantImport',
   'platform.tenant.create': 'audit.actionTenantCreate',
-  'platform.support.open': 'audit.actionSupportOpen',
-  'platform.support.end': 'audit.actionSupportEnd',
-  'platform.support.extend': 'audit.actionSupportExtend',
+  'platform.content.read': 'audit.actionContentRead',
+  'platform.content.reason': 'audit.actionContentReason',
   'platform.models.refresh': 'audit.actionModelsRefresh',
   'platform.models.classify': 'audit.actionModelsClassify',
   'platform.apikeys.create': 'audit.actionApikeysCreate',
@@ -241,15 +239,7 @@ const describe = (name: (orgNumber: string) => string, t: T) => {
   return { tenantOf, orgOf, personOf };
 };
 
-const Log = ({
-  api,
-  entries,
-  scoped,
-}: {
-  api: ApiClient;
-  entries: AuditEntry[];
-  scoped?: string;
-}) => {
+const Log = ({ api, entries }: { api: ApiClient; entries: AuditEntry[] }) => {
   const t = useT();
   const f = useFormat();
   const tRef = useRef(t);
@@ -309,19 +299,17 @@ const Log = ({
     <div className="stack">
       <Flash message={flash.message} />
       <div className="filters">
-        {scoped ? null : (
-          <div className="field">
-            <Label htmlFor="r-virk">{t('audit.tenant')}</Label>
-            <Select id="r-virk" value={tenant} onChange={(e) => setTenant(e.target.value)}>
-              <Select.Option value="all">{t('common.allTenants')}</Select.Option>
-              {tenants.map((name) => (
-                <Select.Option key={name} value={name}>
-                  {name}
-                </Select.Option>
-              ))}
-            </Select>
-          </div>
-        )}
+        <div className="field">
+          <Label htmlFor="r-virk">{t('audit.tenant')}</Label>
+          <Select id="r-virk" value={tenant} onChange={(e) => setTenant(e.target.value)}>
+            <Select.Option value="all">{t('common.allTenants')}</Select.Option>
+            {tenants.map((name) => (
+              <Select.Option key={name} value={name}>
+                {name}
+              </Select.Option>
+            ))}
+          </Select>
+        </div>
         <Textfield
           id="r-person"
           label={t('audit.person')}
@@ -425,22 +413,7 @@ const Log = ({
 
 export const Audit = ({ api }: { api: ApiClient }) => {
   const t = useT();
-  const support = useSupport();
-  const session = support.session;
-  const [state, retry] = useAsync(
-    async (signal) => {
-      try {
-        return { entries: await api.operatorAudit(signal), scoped: undefined };
-      } catch (error) {
-        if (!isMissing(error) || !session) throw error;
-        return {
-          entries: await api.audit(session.tenant, session.id, signal),
-          scoped: session.tenantName,
-        };
-      }
-    },
-    [api, session?.id],
-  );
+  const [state, retry] = useAsync((signal) => api.operatorAudit(signal), [api]);
   return (
     <>
       <PageHeader title={t('audit.title')} intro={t('audit.intro')} />
@@ -455,25 +428,14 @@ export const Audit = ({ api }: { api: ApiClient }) => {
               data-size="sm"
               onClick={() => (window.location.hash = '/support-access')}
             >
-              {t('audit.startSupport')}
+              {t('audit.openOrganisation')}
             </Button>
           </Alert>
         ) : (
           <ErrorState error={state.error} onRetry={retry} />
         )
       ) : (
-        <>
-          {state.data.scoped ? (
-            <Alert data-color="info" data-size="sm">
-              {t('audit.scoped', { tenant: state.data.scoped })}
-            </Alert>
-          ) : null}
-          <Log
-            api={api}
-            entries={state.data.entries}
-            {...(state.data.scoped ? { scoped: state.data.scoped } : {})}
-          />
-        </>
+        <Log api={api} entries={state.data} />
       )}
     </>
   );

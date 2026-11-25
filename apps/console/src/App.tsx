@@ -31,7 +31,7 @@ import { Schemas } from './screens/Schemas';
 import { Tracing } from './screens/Tracing';
 import { allPages, Shell, type NavBadges } from './Shell';
 import { EmptyState, Loading } from './states';
-import { SupportProvider } from './support';
+import { ContentReasonProvider } from './content-reason';
 import { definitionKindOfParam } from './definition-kinds';
 import { useSessionRenewal } from './session-renewal';
 import {
@@ -364,7 +364,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
   };
   const render = Object.hasOwn(screens, current) ? screens[current] : undefined;
   return (
-    <SupportProvider api={api}>
+    <ContentReasonProvider api={api}>
       <FlagsProvider load={api.myFlags}>
         <Shell
           session={session}
@@ -387,6 +387,6 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
           )}
         </Shell>
       </FlagsProvider>
-    </SupportProvider>
+    </ContentReasonProvider>
   );
 };

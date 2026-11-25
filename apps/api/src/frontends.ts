@@ -377,7 +377,7 @@ export const registerFrontendRoutes = <E extends Env, S extends Schema, B extend
   const newId = deps.newId ?? (() => randomUUID());
   const reasonOf = (c: Context) => changeReasonOf(c)?.trim() ?? '';
 
-  const access = tenantAccess(deps.admin);
+  const access = tenantAccess;
   const guard = async (c: Context, right?: Right) => {
     const principal = await deps.authenticate(c.req.raw);
     if (!principal) return problem(c, 401, 'Unauthorized');

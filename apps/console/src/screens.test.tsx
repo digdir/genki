@@ -42,13 +42,12 @@ const recording = (fetch = mockFetch()) => {
   return { calls, fetch: wrapped };
 };
 
-const startSupport = async (tenant = '999888777') => {
-  window.location.hash = `#/support-access?tenant=${tenant}`;
-  fireEvent.change(await screen.findByRole('textbox', { name: /Begrunnelse/ }), {
+const giveContentReason = async () => {
+  const dialog = await screen.findByRole('dialog', { name: 'Grunn for å se innhold' });
+  fireEvent.change(within(dialog).getByLabelText('Begrunnelse'), {
     target: { value: 'Kunden melder feil svar, sak DIG-4412' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Start støttetilgang' }));
-  await screen.findByRole('heading', { name: /^Portalen til / });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Se innhold' }));
 };
 
 beforeEach(() => {
@@ -674,21 +673,8 @@ describe('drift', () => {
 });
 
 describe('diagnostikk', () => {
-  it('asks for a support session before reading tenant data', async () => {
-    await open('#/diagnostics?tenant=999888777');
-
-    fireEvent.change(await screen.findByRole('textbox', { name: 'ID for kjøringen' }), {
-      target: { value: 'opg_7f2kq9d1' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Slå opp' }));
-    expect(await screen.findByText(/krever derfor en støttetilgang/)).toBeTruthy();
-  });
-
   it('shows a run with the service name, a pseudonym and resolved settings in the layered layout', async () => {
-    await open('#/tenants');
-    await screen.findByRole('table');
-    await startSupport();
-    window.location.hash = '#/diagnostics?tenant=999888777';
+    await open('#/diagnostics?tenant=999888777');
 
     const field = (await screen.findByRole('textbox', {
       name: 'ID for kjøringen',
@@ -696,6 +682,7 @@ describe('diagnostikk', () => {
     expect(field.value).toBe('');
     fireEvent.change(field, { target: { value: 'opg_7f2kq9d1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Slå opp' }));
+    await giveContentReason();
     expect(await screen.findByRole('heading', { name: 'opg_7f2kq9d1' })).toBeTruthy();
     expect(screen.getByText(/Ansatt i Testetaten \(A-4K7Q\)/, { selector: 'span' })).toBeTruthy();
     expect(screen.getByText(/Rapportassistenten v7/, { selector: 'span' })).toBeTruthy();
@@ -719,7 +706,9 @@ describe('diagnostikk', () => {
     const base = mockFetch();
     const failed: typeof fetch = async (input, init) => {
       if (!String(input).endsWith('/tasks/opg_7f2kq9d1/timeline')) return base(input, init);
-      const run = (await (await base(input, init)).json()) as TaskTimeline;
+      const answered = await base(input, init);
+      if (!answered.ok) return answered;
+      const run = (await answered.json()) as TaskTimeline;
       return Response.json({
         ...run,
         status: 'failed',
@@ -738,28 +727,24 @@ describe('diagnostikk', () => {
         ],
       });
     };
-    await open('#/tenants', failed);
-    await screen.findByRole('table');
-    await startSupport();
-    window.location.hash = '#/diagnostics?tenant=999888777';
+    await open('#/diagnostics?tenant=999888777', failed);
 
     fireEvent.change(await screen.findByRole('textbox', { name: 'ID for kjøringen' }), {
       target: { value: 'opg_7f2kq9d1' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Slå opp' }));
+    await giveContentReason();
     expect(await screen.findByText('Leverandøren svarte 503: upstream reset')).toBeTruthy();
   });
 
   it('says when a run is not found', async () => {
-    await open('#/tenants');
-    await screen.findByRole('table');
-    await startSupport();
-    window.location.hash = '#/diagnostics?tenant=999888777';
+    await open('#/diagnostics?tenant=999888777');
 
     fireEvent.change(await screen.findByRole('textbox', { name: 'ID for kjøringen' }), {
       target: { value: 'opg_x' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Slå opp' }));
+    await giveContentReason();
     expect(
       await screen.findByText(
         'Fant ingen kjøring med ID «opg_x». Kjøringer slettes etter oppbevaringstiden.',

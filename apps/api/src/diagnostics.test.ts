@@ -151,20 +151,17 @@ const boot = async () => {
     },
     authenticate: async (request) =>
       people[request.headers.get('authorization')?.replace('Bearer ', '') ?? ''],
-    access: tenantAccess({
-      supportSession: (id, _operator, t) => (id === `sesjon-${t}` ? ({ id } as never) : undefined),
-    }),
+    access: tenantAccess,
   });
   const send = async (
     method: string,
     path: string,
-    options: { who?: string; session?: string; body?: unknown } = {},
+    options: { who?: string; body?: unknown } = {},
   ) => {
     const res = await app.request(path, {
       method,
       headers: {
         authorization: `Bearer ${options.who ?? 'operator'}`,
-        ...(options.session === undefined ? {} : { 'support-session': options.session }),
         ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
       },
       ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
@@ -175,14 +172,13 @@ const boot = async () => {
 };
 
 const retrievePath = `/tenants/${tenant}/diagnostics/retrieve`;
-const session = `sesjon-${tenant}`;
 
 describe('operator diagnostics', () => {
   it('a fixed-query retrieve runs no planner and returns the same chunks twice', async () => {
     const { send, modelCalls } = await boot();
     const body = { service: 'svar', queries: ['tilskudd skyplattform'] };
-    const first = await send('POST', retrievePath, { session, body });
-    const second = await send('POST', retrievePath, { session, body });
+    const first = await send('POST', retrievePath, { body });
+    const second = await send('POST', retrievePath, { body });
     expect(first.status).toBe(200);
     const chunks = first.body.chunks as { chunkId: string; document?: string }[];
     expect(chunks.length).toBeGreaterThan(0);
@@ -192,20 +188,10 @@ describe('operator diagnostics', () => {
     expect(modelCalls).toEqual([]);
   });
 
-  it('retrieve refuses an operator without a support session', async () => {
-    const { send } = await boot();
-    const body = { dataset: 'digdir/felles', queries: ['tilskudd'] };
-    expect((await send('POST', retrievePath, { body })).status).toBe(404);
-    expect((await send('POST', retrievePath, { body, session: `sesjon-${other}` })).status).toBe(
-      404,
-    );
-  });
-
   it('retrieve refuses a tenant user', async () => {
     const { send } = await boot();
     const res = await send('POST', retrievePath, {
       who: 'kari',
-      session,
       body: { dataset: 'digdir/felles', queries: ['tilskudd'] },
     });
     expect(res.status).toBe(404);
@@ -214,12 +200,10 @@ describe('operator diagnostics', () => {
   it("retrieve cannot reach another tenant's dataset or service", async () => {
     const { send } = await boot();
     const dataset = await send('POST', retrievePath, {
-      session,
       body: { dataset: `${other}/hemmelig`, queries: ['tilskudd'] },
     });
     expect(dataset.status).toBe(404);
     const service = await send('POST', retrievePath, {
-      session,
       body: { service: 'hemmelig-svar', queries: ['tilskudd'] },
     });
     expect(service.status).toBe(404);
@@ -228,7 +212,6 @@ describe('operator diagnostics', () => {
   it('retrieve needs exactly one of service and dataset', async () => {
     const { send } = await boot();
     const res = await send('POST', retrievePath, {
-      session,
       body: { service: 'svar', dataset: 'digdir/felles', queries: ['tilskudd'] },
     });
     expect(res.status).toBe(400);
@@ -237,7 +220,6 @@ describe('operator diagnostics', () => {
   it('overrides switch rerank and auto-filter in the effective config', async () => {
     const { send } = await boot();
     const plain = await send('POST', retrievePath, {
-      session,
       body: { service: 'svar', queries: ['tilskudd'] },
     });
     expect(plain.body.config).toMatchObject({
@@ -246,7 +228,6 @@ describe('operator diagnostics', () => {
       rerank: { enabled: false },
     });
     const changed = await send('POST', retrievePath, {
-      session,
       body: {
         service: 'svar',
         queries: ['tilskudd'],
@@ -266,9 +247,7 @@ describe('operator diagnostics', () => {
 
   it("resolution shows the service's retrieval settings without calling a model", async () => {
     const { send, modelCalls } = await boot();
-    const res = await send('GET', `/tenants/${tenant}/diagnostics/services/svar/resolution`, {
-      session,
-    });
+    const res = await send('GET', `/tenants/${tenant}/diagnostics/services/svar/resolution`);
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
       service: 'svar',
@@ -286,7 +265,6 @@ describe('operator diagnostics', () => {
   it("plan runs the service's query planner once with the service model", async () => {
     const { send, modelCalls } = await boot();
     const res = await send('POST', `/tenants/${tenant}/diagnostics/plan`, {
-      session,
       body: { service: 'svar', query: 'Når er fristen for tilskudd?' },
     });
     expect(res.status).toBe(200);
@@ -297,9 +275,7 @@ describe('operator diagnostics', () => {
 
   it('attribution splits a run into search pool, the chunks of the first page of documents and read chunks', async () => {
     const { send } = await boot();
-    const res = await send('GET', `/tenants/${tenant}/diagnostics/tasks/t1/attribution`, {
-      session,
-    });
+    const res = await send('GET', `/tenants/${tenant}/diagnostics/tasks/t1/attribution`);
     expect(res.status).toBe(200);
     const ids = (key: string) => (res.body[key] as { chunkId: string }[]).map((h) => h.chunkId);
     expect(res.body.service).toBe('svar');
@@ -315,9 +291,7 @@ describe('operator diagnostics', () => {
 
   it('attribution refuses a task from another tenant', async () => {
     const { send } = await boot();
-    const res = await send('GET', `/tenants/${tenant}/diagnostics/tasks/t2/attribution`, {
-      session,
-    });
+    const res = await send('GET', `/tenants/${tenant}/diagnostics/tasks/t2/attribution`);
     expect(res.status).toBe(404);
   });
 });

@@ -26,7 +26,7 @@ export type Retriever = (request: RetrieveRequest) => Promise<FixedRetrieval>;
 export interface OperatorAccess {
   baseUrl: string;
   token: string;
-  supportSession: string;
+  contentReason: string;
   tenant: string;
 }
 
@@ -69,7 +69,6 @@ const operatorTarget = (access: OperatorAccess): Target => ({
 
 const operatorHeaders = (access: OperatorAccess) => ({
   authorization: `Bearer ${access.token}`,
-  'support-session': access.supportSession,
 });
 
 const failure = (what: string, status: number, body: JsonValue | string | undefined) => {
@@ -79,9 +78,35 @@ const failure = (what: string, status: number, body: JsonValue | string | undefi
   );
 };
 
+const given = new WeakMap<OperatorAccess, Promise<void>>();
+
+const giveContentReason = async (access: OperatorAccess) => {
+  const response = await send(operatorTarget(access), {
+    method: 'POST',
+    path: `/operator/tenants/${encodeURIComponent(access.tenant)}/content-reason`,
+    auth: false,
+    headers: operatorHeaders(access),
+    body: { reason: access.contentReason },
+  });
+  if (response.status < 200 || response.status >= 300)
+    throw failure('content-reason', response.status, response.body);
+};
+
+const withContentReason = (access: OperatorAccess) => {
+  const pending =
+    given.get(access) ??
+    giveContentReason(access).catch((error: unknown) => {
+      given.delete(access);
+      throw error;
+    });
+  given.set(access, pending);
+  return pending;
+};
+
 export const platformRetriever =
   (access: OperatorAccess, scope: { service?: string; dataset?: string }): Retriever =>
   async (request) => {
+    await withContentReason(access);
     const started = Date.now();
     const response = await send(operatorTarget(access), {
       method: 'POST',
@@ -168,6 +193,7 @@ export const platformAttributor =
   (access: OperatorAccess, newTarget: string): Attributor =>
   async (target, run) => {
     if (target.name !== newTarget || !run.task) return undefined;
+    await withContentReason(access);
     const response = await send(operatorTarget(access), {
       method: 'GET',
       path: `/tenants/${encodeURIComponent(access.tenant)}/diagnostics/tasks/${encodeURIComponent(run.task)}/attribution`,
@@ -183,12 +209,12 @@ export const operatorAccessFromEnv = (
   env: Record<string, string | undefined>,
 ): OperatorAccess | undefined => {
   const token = env.PARITY_NEW_OPERATOR_TOKEN;
-  const supportSession = env.PARITY_NEW_SUPPORT_SESSION;
-  if (!token || !supportSession) return undefined;
+  const contentReason = env.PARITY_NEW_CONTENT_REASON;
+  if (!token || !contentReason) return undefined;
   return {
     baseUrl: env.PARITY_NEW_URL ?? 'http://127.0.0.1:8080',
     token,
-    supportSession,
+    contentReason,
     tenant: env.PARITY_NEW_TENANT ?? '991825827',
   };
 };

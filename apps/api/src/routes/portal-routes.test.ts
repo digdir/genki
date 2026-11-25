@@ -133,13 +133,12 @@ const setup = async (extra: Partial<Parameters<typeof registerPortalRoutes>[1]> 
   const send = (
     path: string,
     who: string | undefined,
-    init: { method?: string; body?: unknown; reason?: string; session?: string } = {},
+    init: { method?: string; body?: unknown; reason?: string } = {},
   ) =>
     app.request(path, {
       method: init.method ?? (init.body !== undefined ? 'POST' : 'GET'),
       headers: {
         ...(who ? { authorization: `Bearer ${who}` } : {}),
-        ...(init.session ? { 'support-session': init.session } : {}),
         ...(init.body !== undefined ? { 'content-type': 'application/json' } : {}),
         ...(init.reason ? { 'change-reason': init.reason } : {}),
       },
@@ -183,12 +182,6 @@ Object.assign(principals, {
   },
 });
 
-const operatorPrincipal: Principal = {
-  kind: 'operator',
-  issuer: 'test',
-  subject: 'drift',
-  tenant: digdir,
-};
 const anonymous: Principal = { kind: 'citizen', issuer: 'none', subject: 'none' };
 
 const areas = ['overview', 'access', 'usage', 'tasks', 'integrations'];
@@ -203,32 +196,21 @@ describe('portal routes', () => {
     }
   });
 
-  it('hides every tenant route from an operator without a support session', async () => {
+  it('lets an operator read tenant routes directly, but never create a key the tenant would not see', async () => {
     const { send } = await setup();
     for (const area of areas)
-      expect((await send(`/tenants/${digdir}/${area}`, 'operator')).status).toBe(404);
-    expect(
-      (
-        await send(`/tenants/${digdir}/api-keys`, 'operator', {
-          body: { name: 'Bakdør' },
-          reason: 'test av endringen',
-        })
-      ).status,
-    ).toBe(404);
-  });
-
-  it('lets an operator read tenant routes in a support session, but never create a key the tenant would not see', async () => {
-    const { send, admin } = await setup();
-    const opened = await admin.openSupportSession(operatorPrincipal, digdir, 'feilsøking', 30);
-    const session = opened.ok ? opened.value.id : '';
-    for (const area of areas)
-      expect((await send(`/tenants/${digdir}/${area}`, 'operator', { session })).status).toBe(200);
+      expect((await send(`/tenants/${digdir}/${area}`, 'operator')).status).toBe(200);
+    await send(`/operator/tenants/${digdir}/content-reason`, 'operator', {
+      body: { reason: 'Feilsøking' },
+    });
     const created = await send(`/tenants/${digdir}/api-keys`, 'operator', {
       body: { name: 'Bakdør' },
       reason: 'test av endringen',
-      session,
     });
     expect(created.status).toBe(403);
+    expect(((await created.json()) as { type?: string }).type).not.toBe(
+      'urn:genai:problem:content-reason-required',
+    );
   });
 
   it('lets a person authorized for several organisations use the routes of each', async () => {

@@ -65,7 +65,7 @@ export {
 export {
   PostgresAdminRecords,
   type PostgresAuditEntry,
-  type PostgresSupportSession,
+  type PostgresContentReason,
 } from './admin-records.js';
 export { PostgresClients } from './clients.js';
 export { PostgresTraceDeliveries } from './trace-deliveries.js';

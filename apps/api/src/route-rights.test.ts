@@ -268,16 +268,11 @@ describe('platform rights on the tenant routes', () => {
     expect((await timeline('eriks', 'kari')).status).toBe(200);
   });
 
-  it('keeps access for operators with a support session', async () => {
+  it('lets an operator publish and read the audit log in a tenant directly', async () => {
     const { publish, send } = setup();
 
-    expect((await publish('drift', klarsprak())).status).toBe(403);
-    const opened = await send('/support-sessions', 'drift', {
-      body: { tenant: digdir, reason: 'feilsøking av sak 4711', minutes: 30 },
-    });
-    const { id } = (await opened.json()) as { id: string };
-    expect((await publish('drift', klarsprak(), 'retting av teksten', id)).status).toBe(201);
-    expect((await send(`/tenants/${digdir}/audit`, 'drift', { session: id })).status).toBe(200);
+    expect((await publish('drift', klarsprak(), 'retting av teksten')).status).toBe(201);
+    expect((await send(`/tenants/${digdir}/audit`, 'drift')).status).toBe(200);
   });
 
   it('gives a machine principal without a grant no right on the tenant routes', async () => {

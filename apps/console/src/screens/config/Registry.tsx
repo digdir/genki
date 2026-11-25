@@ -154,32 +154,6 @@ export const ScopeBar = ({ scope }: { scope: ConfigScope }) => {
   );
 };
 
-export const refusedWithoutSupport = (
-  api: ApiClient,
-  tenant: TenantView | undefined,
-  error: unknown,
-) =>
-  tenant !== undefined &&
-  !api.supportHeld(tenant.id) &&
-  error instanceof ApiError &&
-  (error.status === 404 || error.status === 403);
-
-export const SupportNeeded = ({ tenant }: { tenant: TenantView }) => {
-  const t = useT();
-  return (
-    <EmptyState title={t('config.supportNeededTitle')}>
-      <Paragraph>{t('config.supportNeededText', { name: tenant.name })}</Paragraph>
-      <Button
-        variant="secondary"
-        data-size="sm"
-        onClick={() => navigate('/support-access', { tenant: tenant.id })}
-      >
-        {t('config.supportNeededAction')}
-      </Button>
-    </EmptyState>
-  );
-};
-
 const problemText = (error: unknown, t: T) => {
   const errors =
     error instanceof ApiError
@@ -435,12 +409,7 @@ export const Registry = ({
   const flash = useFlash();
   if (state.status === 'loading')
     return <Loading label={t('config.loading', { label: label.toLowerCase() })} />;
-  if (state.status === 'error')
-    return refusedWithoutSupport(api, tenant, state.error) && tenant ? (
-      <SupportNeeded tenant={tenant} />
-    ) : (
-      <ErrorState error={state.error} onRetry={retry} />
-    );
+  if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const rows = state.data.data.filter(filter ?? (() => true));
   const selected = rows.find((r) => `${r.scope ?? ''}/${r.id}` === open);
   return (

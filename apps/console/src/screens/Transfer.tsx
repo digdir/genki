@@ -19,7 +19,7 @@ import {
   Textarea,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ApiClient } from '../api';
 import { useAsync } from '../hooks';
 import { useT, type PlainKey } from '../i18n';
@@ -123,22 +123,9 @@ export const Transfer = ({
   const [failed, setFailed] = useState<string | undefined>();
   const [bundle, setBundle] = useState<Bundle | undefined>();
   const [plan, setPlan] = useState<ImportPlanItem[]>([]);
-  const [session, setSession] = useState<string | undefined>();
   const [policy, setPolicy] = useState<Policy>('skip');
   const [perRow, setPerRow] = useState<Record<string, Policy>>({});
   const [done, setDone] = useState<string | undefined>();
-
-  const heldSession = useRef<string | undefined>(undefined);
-  heldSession.current = session;
-  useEffect(
-    () => () => {
-      if (heldSession.current)
-        void api
-          .endSupportSession(heldSession.current, tRef.current('support.endedEarlyReason'))
-          .catch(() => undefined);
-    },
-    [api],
-  );
 
   if (tenants.status === 'loading') return <Loading label={t('transfer.loadingTenants')} />;
   if (tenants.status === 'error') return <ErrorState error={tenants.error} onRetry={retry} />;
@@ -151,16 +138,7 @@ export const Transfer = ({
       ? [t('transfer.stepChoose'), t('transfer.stepReview')]
       : [t('transfer.stepChoose'), t('transfer.stepDryRun'), t('transfer.stepDone')];
 
-  const endSession = (id: string | undefined) => {
-    if (id)
-      void api
-        .endSupportSession(id, tRef.current('support.endedEarlyReason'))
-        .catch(() => undefined);
-  };
-
   const reset = (next: Mode = mode) => {
-    endSession(session);
-    setSession(undefined);
     setMode(next);
     setStep(1);
     setErrors({});
@@ -208,47 +186,20 @@ export const Transfer = ({
     setFailed(undefined);
     try {
       if (mode === 'export') {
-        const opened = await api.openSupportSession(
-          target,
-          t('transfer.exportReason', { reason: reason.trim() }),
-          15,
-        );
-        try {
-          setBundle(pick((await api.exportTenant(target, opened.id)) as Bundle, include, target));
-        } finally {
-          endSession(opened.id);
-        }
+        setBundle(pick((await api.exportTenant(target)) as Bundle, include, target));
         setStep(2);
         return;
       }
       let incoming = file?.bundle;
       if (mode === 'clone') {
-        const read = await api.openSupportSession(
-          source,
-          t('transfer.cloneReadReason', { name: nameOf(target), reason: reason.trim() }),
-          15,
-        );
-        try {
-          incoming = (await api.exportTenant(source, read.id)) as Bundle;
-        } finally {
-          endSession(read.id);
-        }
+        incoming = (await api.exportTenant(source)) as Bundle;
       }
-      const write = await api.openSupportSession(
-        target,
-        t(mode === 'clone' ? 'transfer.cloneReason' : 'transfer.importReason', {
-          reason: reason.trim(),
-        }),
-        15,
-      );
       const picked = pick(incoming ?? {}, include, target);
       const result = await api.importTenant(target, picked, {
         dryRun: true,
         reason: reason.trim(),
-        session: write.id,
       });
       setBundle(picked);
-      setSession(write.id);
       setPlan(result.plan);
       setStep(2);
     } catch {
@@ -259,7 +210,7 @@ export const Transfer = ({
   };
 
   const apply = async () => {
-    if (!bundle || !session) return;
+    if (!bundle) return;
     setBusy(true);
     setFailed(undefined);
     try {
@@ -267,10 +218,7 @@ export const Transfer = ({
       await api.importTenant(target, without(bundle, skipped), {
         dryRun: false,
         reason: reason.trim(),
-        session,
       });
-      endSession(session);
-      setSession(undefined);
       setDone(
         mode === 'clone'
           ? tRef.current('transfer.cloned', { name: nameOf(target) })
@@ -608,14 +556,7 @@ export const Transfer = ({
 
       <div className="actions-row">
         {step === 2 ? (
-          <Button
-            variant="secondary"
-            onClick={() => {
-              endSession(session);
-              setSession(undefined);
-              setStep(1);
-            }}
-          >
+          <Button variant="secondary" onClick={() => setStep(1)}>
             {t('transfer.previous')}
           </Button>
         ) : null}

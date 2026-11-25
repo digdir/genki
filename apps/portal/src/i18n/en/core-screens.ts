@@ -175,6 +175,8 @@ export const changes = {
   tenantImport: 'imported',
   tenantCreate: 'registered the organisation',
   supportOpen: 'opened support access',
+  contentRead: 'viewed content',
+  contentReason: 'gave a reason to see content',
   apikeyCreate: 'created the API key',
   apikeyRevoke: 'revoked the API key',
   hookSave: 'saved the run point',

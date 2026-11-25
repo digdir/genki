@@ -1,13 +1,6 @@
 import {
   Alert,
   Button,
-  Chip,
-  Details,
-  DetailsContent,
-  DetailsSummary,
-  ErrorSummary,
-  Fieldset,
-  FieldsetLegend,
   Heading,
   Label,
   Paragraph,
@@ -24,38 +17,26 @@ import {
   TabsPanel,
   TabsTab,
   Tag,
-  Textarea,
   Textfield,
 } from '@digdir/designsystemet-react';
-import type { Format } from '@genai/i18n';
 import { useFormat } from '@genai/i18n/react';
-import {
-  useEffect,
-  useRef,
-  useState,
-  type ComponentRef,
-  type FormEvent,
-  type ReactNode,
-} from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ApiClient } from '../api';
-import { ApiCall } from '../api-call';
-import { useAsync } from '../hooks';
+import { navigate, useAsync } from '../hooks';
 import { definitionKindLabels, definitionKindParams } from '../definition-kinds';
 import { useT, type T } from '../i18n';
 import { settingLabels } from '../setting-labels';
 import { shapeFromSchema } from '../settings-model';
 import { EmptyState, ErrorState, Loading } from '../states';
-import { reasonError, SupportDialog } from '../support-dialog';
-import { useSupport, type ActiveSupport } from '../support';
-import type {
-  AuditEntry,
-  EffectiveSettings,
-  SettingInfo,
-  SupportSessionRow,
-  Tenant,
-  TenantKey,
-} from '../types';
+import { SupportDialog } from '../support-dialog';
+import type { AuditEntry, EffectiveSettings, SettingInfo, TenantKey } from '../types';
 import { Flash, formatDay, formatWhen, NotDecided, PageHeader, TableRegion, useFlash } from '../ui';
+import { actionKey } from './Audit';
+
+interface Org {
+  tenant: string;
+  name: string;
+}
 
 export interface Change {
   key: string;
@@ -151,15 +132,13 @@ const matches = (f: Field, needle: string) =>
 
 const SettingsTab = ({
   api,
-  session,
+  org,
   focus,
-  onPending,
   onSaved,
 }: {
   api: ApiClient;
-  session: ActiveSupport;
+  org: Org;
   focus?: string | undefined;
-  onPending: (changes: Change[]) => void;
   onSaved: (text: string) => void;
 }) => {
   const t = useT();
@@ -169,11 +148,11 @@ const SettingsTab = ({
     async (signal) => {
       const [catalog, effective] = await Promise.all([
         api.settingsCatalog(signal),
-        api.tenantSettings(session.tenant, session.id, signal),
+        api.tenantSettings(org.tenant, signal),
       ]);
       return { catalog, effective };
     },
-    [api, session.tenant, session.id],
+    [api, org.tenant],
   );
   const [stored, setSaved] = useState<EffectiveSettings | undefined>();
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -200,8 +179,6 @@ const SettingsTab = ({
       { key: f.key, label: f.label, from: show(valueOf(f.key), t), to: show(value, t), value },
     ];
   });
-  const signature = JSON.stringify(changes);
-  useEffect(() => onPending(changes), [signature]);
   const ready = state.status === 'ready';
   useEffect(() => {
     if (!ready || !focus || focused.current) return;
@@ -272,9 +249,9 @@ const SettingsTab = ({
     items: shown.filter((f) => f.category === category),
   }));
   return (
-    <Frame path={t('supportAccess.settingsPath')} tenant={session.tenantName}>
+    <Frame path={t('supportAccess.settingsPath')} tenant={org.name}>
       <Paragraph data-size="sm" className="meta">
-        {t('supportAccess.tenantLevel', { tenant: session.tenantName })}
+        {t('supportAccess.tenantLevel', { tenant: org.name })}
       </Paragraph>
       {fields.length === 0 ? (
         <Paragraph>{t('supportAccess.noneSettable')}</Paragraph>
@@ -318,20 +295,18 @@ const SettingsTab = ({
       </div>
       <SupportDialog
         open={confirming}
-        title={t('supportAccess.changeTitle', { tenant: session.tenantName })}
-        initialReason={session.reason}
-        hint={t('supportAccess.hintFromSession')}
-        sees={t('supportAccess.seesChange', { tenant: session.tenantName })}
+        title={t('supportAccess.changeTitle', { tenant: org.name })}
+        hint={t('supportAccess.reasonHint')}
+        sees={t('supportAccess.seesChange', { tenant: org.name })}
         cta={t('supportAccess.saveAsDigdir')}
         api={{
           method: 'PUT',
-          path: `/tenants/${session.tenant}/settings/${first?.key ?? '{key}'}`,
+          path: `/tenants/${org.tenant}/settings/${first?.key ?? '{key}'}`,
           body: () => ({ value: first?.value }),
         }}
         onClose={() => setConfirming(false)}
         onConfirm={async (reason) => {
-          for (const c of changes)
-            await api.setTenantSetting(session.tenant, c.key, c.value, reason, session.id);
+          for (const c of changes) await api.setTenantSetting(org.tenant, c.key, c.value, reason);
           setSaved(
             Object.fromEntries(
               Object.entries(saved ?? {}).map(([k, v]) => {
@@ -341,13 +316,11 @@ const SettingsTab = ({
             ),
           );
           setDraft({});
-          onSaved(tRef.current('supportAccess.savedAsDigdir', { tenant: session.tenantName }));
+          onSaved(tRef.current('supportAccess.savedAsDigdir', { tenant: org.name }));
         }}
       >
         <ChangeList changes={changes} />
-        <Paragraph data-size="sm">
-          {t('supportAccess.affectsAll', { tenant: session.tenantName })}
-        </Paragraph>
+        <Paragraph data-size="sm">{t('supportAccess.affectsAll', { tenant: org.name })}</Paragraph>
       </SupportDialog>
     </Frame>
   );
@@ -366,17 +339,17 @@ export const ChangeList = ({ changes }: { changes: Change[] }) => (
   </ul>
 );
 
-const DraftsTab = ({ api, session }: { api: ApiClient; session: ActiveSupport }) => {
+const DraftsTab = ({ api, org }: { api: ApiClient; org: Org }) => {
   const t = useT();
   const f = useFormat();
   const [state, retry] = useAsync(
-    (signal) => api.tenantDefinitions(session.tenant, signal),
-    [api, session.tenant],
+    (signal) => api.tenantDefinitions(org.tenant, signal),
+    [api, org.tenant],
   );
   return (
-    <Frame path={t('supportAccess.servicesPath')} tenant={session.tenantName}>
+    <Frame path={t('supportAccess.servicesPath')} tenant={org.name}>
       <Paragraph data-size="sm" className="tag-line">
-        {t('supportAccess.onlyTenantPublishes', { tenant: session.tenantName })} <NotDecided />
+        {t('supportAccess.onlyTenantPublishes', { tenant: org.name })} <NotDecided />
         {t('supportAccess.operatorsPublish')}
       </Paragraph>
       {state.status === 'loading' ? (
@@ -384,14 +357,14 @@ const DraftsTab = ({ api, session }: { api: ApiClient; session: ActiveSupport })
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : state.data.length === 0 ? (
-        <Paragraph>{t('supportAccess.noServices', { tenant: session.tenantName })}</Paragraph>
+        <Paragraph>{t('supportAccess.noServices', { tenant: org.name })}</Paragraph>
       ) : (
         <ul className="plain row-list">
           {state.data.map((d) => (
             <li key={`${d.kind}/${d.id}`}>
               <span className="two-line grow">
                 <a
-                  href={`#/tenants/services?tenant=${session.tenant}&kind=${definitionKindParams[d.kind]}&id=${encodeURIComponent(d.id)}`}
+                  href={`#/tenants/services?tenant=${org.tenant}&kind=${definitionKindParams[d.kind]}&id=${encodeURIComponent(d.id)}`}
                 >
                   {d.name}
                 </a>
@@ -418,11 +391,11 @@ const DraftsTab = ({ api, session }: { api: ApiClient; session: ActiveSupport })
 
 const KeysTab = ({
   api,
-  session,
+  org,
   onSaved,
 }: {
   api: ApiClient;
-  session: ActiveSupport;
+  org: Org;
   onSaved: (text: string) => void;
 }) => {
   const t = useT();
@@ -430,8 +403,8 @@ const KeysTab = ({
   const tRef = useRef(t);
   tRef.current = t;
   const [state, retry] = useAsync(
-    (signal) => api.tenantKeys(session.tenant, session.id, signal),
-    [api, session.tenant, session.id],
+    (signal) => api.tenantKeys(org.tenant, signal),
+    [api, org.tenant],
   );
   const [keys, setKeys] = useState<TenantKey[]>([]);
   const [revoking, setRevoking] = useState<TenantKey | undefined>();
@@ -439,7 +412,7 @@ const KeysTab = ({
     if (state.status === 'ready') setKeys(state.data);
   }, [state]);
   return (
-    <Frame path={t('supportAccess.keysPath')} tenant={session.tenantName}>
+    <Frame path={t('supportAccess.keysPath')} tenant={org.name}>
       <Alert data-color="info" data-size="sm">
         {t('supportAccess.keysNote')}
       </Alert>
@@ -448,7 +421,7 @@ const KeysTab = ({
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : keys.length === 0 ? (
-        <Paragraph>{t('supportAccess.noKeys', { tenant: session.tenantName })}</Paragraph>
+        <Paragraph>{t('supportAccess.noKeys', { tenant: org.name })}</Paragraph>
       ) : (
         <TableRegion label={t('supportAccess.keysLabel')}>
           <Table>
@@ -505,20 +478,19 @@ const KeysTab = ({
       <SupportDialog
         open={Boolean(revoking)}
         title={t('supportAccess.revokeTitle', { name: revoking?.name ?? '' })}
-        lead={t('supportAccess.revokeLead', { tenant: session.tenantName })}
-        initialReason={session.reason}
-        hint={t('supportAccess.hintFromSession')}
-        sees={t('supportAccess.seesChange', { tenant: session.tenantName })}
+        lead={t('supportAccess.revokeLead', { tenant: org.name })}
+        hint={t('supportAccess.reasonHint')}
+        sees={t('supportAccess.seesChange', { tenant: org.name })}
         cta={t('supportAccess.revoke')}
         danger
         api={{
           method: 'POST',
-          path: `/tenants/${session.tenant}/api-keys/${revoking?.id ?? ''}/revoke`,
+          path: `/tenants/${org.tenant}/api-keys/${revoking?.id ?? ''}/revoke`,
         }}
         onClose={() => setRevoking(undefined)}
         onConfirm={async (reason) => {
           if (!revoking) return;
-          const done = await api.revokeTenantKey(session.tenant, revoking.id, reason, session.id);
+          const done = await api.revokeTenantKey(org.tenant, revoking.id, reason);
           setKeys((all) =>
             all.map((k) =>
               k.id === revoking.id
@@ -529,7 +501,7 @@ const KeysTab = ({
           onSaved(
             tRef.current('supportAccess.revokedDone', {
               name: revoking.name,
-              tenant: session.tenantName,
+              tenant: org.name,
             }),
           );
         }}
@@ -538,156 +510,40 @@ const KeysTab = ({
   );
 };
 
-const minutesBetween = (a: string, b: string) =>
-  Math.max(1, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000));
-
-const windowOf = (s: SupportSessionRow, t: T, f: Format) =>
-  t('supportAccess.window', {
-    from: f.time(s.openedAt),
-    to: f.time(s.endedAt ?? s.expiresAt),
-  });
-
-const operatorLabel = (s: { operatorName?: string; operator: string }) =>
-  s.operatorName ?? s.operator.replace(/^operator:(entra:)?/, '');
-
-const isSessionEvent = (e: AuditEntry) =>
-  e.action.startsWith('platform.support.') ||
-  (e.actionLabel ?? e.action).startsWith('Støttetilgang');
-
-export const sessionGroups = (sessions: SupportSessionRow[], entries: AuditEntry[]) =>
-  sessions.map((s) => {
-    const from = new Date(s.openedAt).getTime();
-    const to = new Date(s.endedAt ?? s.expiresAt).getTime();
-    return {
-      session: s,
-      entries: entries
-        .filter((e) => {
-          const at = new Date(e.at).getTime();
-          return (
-            at >= from &&
-            at <= to &&
-            !isSessionEvent(e) &&
-            (e.actor === s.operator ||
-              (s.operatorName !== undefined && e.actorName === s.operatorName))
-          );
-        })
-        .sort((a, b) => a.at.localeCompare(b.at)),
-    };
-  });
-
-const LogTab = ({
-  api,
-  session,
-  sessions,
-}: {
-  api: ApiClient;
-  session: ActiveSupport;
-  sessions: SupportSessionRow[];
-}) => {
+const LogTab = ({ api, org }: { api: ApiClient; org: Org }) => {
   const t = useT();
   const f = useFormat();
-  const [state, retry] = useAsync(
-    (signal) => api.audit(session.tenant, session.id, signal),
-    [api, session.tenant, session.id],
-  );
-  const mine = sessions
-    .filter((s) => s.tenant === session.tenant)
-    .map((s) => (s.id === session.id ? { ...s, expiresAt: session.expiresAt } : s));
+  const [state, retry] = useAsync((signal) => api.audit(org.tenant, signal), [api, org.tenant]);
   if (state.status === 'loading') return <Loading label={t('supportAccess.loadingLog')} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
-  const groups = sessionGroups(mine, state.data);
-  const grouped = new Set(groups.flatMap((g) => g.entries.map((e) => e.task)));
-  const others = state.data.filter((e) => !grouped.has(e.task)).slice(0, 10);
+  const latest = [...state.data].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 50);
+  const labelOf = (e: AuditEntry) => {
+    const key = actionKey[e.action];
+    return key ? t(key) : (e.actionLabel ?? e.action);
+  };
   return (
-    <div className="stack">
-      <Frame
-        path={t('supportAccess.logPath', { tenant: session.tenantName })}
-        tenant={session.tenantName}
-      >
-        {groups.length === 0 ? <Paragraph>{t('supportAccess.noSessions')}</Paragraph> : null}
-        {groups.map(({ session: s, entries }) => (
-          <Details key={s.id} defaultOpen={s.id === session.id}>
-            <DetailsSummary>
-              <span className="tag-line">
-                <Tag data-size="sm" data-color="warning">
-                  {t('supportAccess.supportTag')}
-                </Tag>
+    <Frame path={t('supportAccess.logPath', { tenant: org.name })} tenant={org.name}>
+      {latest.length === 0 ? (
+        <Paragraph>{t('supportAccess.noEntries')}</Paragraph>
+      ) : (
+        <ol className="plain log-rows">
+          {latest.map((e) => (
+            <li key={e.task}>
+              <span className="meta">{formatWhen(e.at, f, t)}</span>
+              <span className="two-line">
                 <span className="label-strong">
-                  {t('supportAccess.openedPortal', { name: operatorLabel(s) })}
+                  {labelOf(e)}
+                  {e.target ? `: ${e.target}` : ''}
                 </span>
                 <span className="meta">
-                  {t('supportAccess.sessionMeta', {
-                    when: formatWhen(s.openedAt, f, t),
-                    minutes: minutesBetween(s.openedAt, s.endedAt ?? s.expiresAt),
-                    changes: t('supportAccess.changes', { count: entries.length }),
-                  })}
+                  {e.actorName ?? e.actor} · {e.reason}
                 </span>
               </span>
-            </DetailsSummary>
-            <DetailsContent>
-              <div className="stack-sm">
-                <Paragraph data-size="sm">
-                  <strong>{t('common.reason')}:</strong> {s.reason}
-                </Paragraph>
-                {entries.length === 0 ? (
-                  <Paragraph data-size="sm" className="meta">
-                    {t('supportAccess.noChangesInSession')}
-                  </Paragraph>
-                ) : (
-                  <ol className="plain log-rows">
-                    {entries.map((e) => (
-                      <li key={e.task}>
-                        <span className="meta">
-                          {t('supportAccess.atTime', { time: f.time(e.at) })}
-                        </span>
-                        <span className="two-line">
-                          <span className="tag-line">
-                            <Tag data-size="sm" data-color="warning">
-                              {t('supportAccess.digdirChange')}
-                            </Tag>
-                            <span className="label-strong">
-                              {e.actionLabel ?? e.action}
-                              {e.target ? `: ${e.target}` : ''}
-                            </span>
-                          </span>
-                          <span className="meta">
-                            {t('supportAccess.byActor', {
-                              actor: e.actorName ?? operatorLabel(s),
-                              reason: e.reason,
-                            })}
-                          </span>
-                          <span className="meta">
-                            {t('supportAccess.duringSupport', { window: windowOf(s, t, f) })}
-                          </span>
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </div>
-            </DetailsContent>
-          </Details>
-        ))}
-        {others.length ? (
-          <ol className="plain log-rows">
-            {others.map((e) => (
-              <li key={e.task}>
-                <span className="meta">{formatWhen(e.at, f, t)}</span>
-                <span className="two-line">
-                  <span className="label-strong">
-                    {e.actionLabel ?? e.action}
-                    {e.target ? `: ${e.target}` : ''}
-                  </span>
-                  <span className="meta">
-                    {e.actorName ?? e.actor} · {e.reason}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ol>
-        ) : null}
-      </Frame>
-    </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Frame>
   );
 };
 
@@ -695,19 +551,15 @@ const portalTabs = ['settings', 'drafts', 'keys', 'log'];
 
 const Portal = ({
   api,
-  session,
-  sessions,
+  org,
   initialTab,
   focus,
-  onPending,
   onSaved,
 }: {
   api: ApiClient;
-  session: ActiveSupport;
-  sessions: SupportSessionRow[];
+  org: Org;
   initialTab?: string | undefined;
   focus?: string | undefined;
-  onPending: (changes: Change[]) => void;
   onSaved: (text: string) => void;
 }) => {
   const t = useT();
@@ -717,7 +569,7 @@ const Portal = ({
   return (
     <section className="stack" aria-labelledby="portal-h">
       <Heading level={2} data-size="xs" id="portal-h">
-        {t('supportAccess.portalTitle', { tenant: session.tenantName })}
+        {t('supportAccess.portalTitle', { tenant: org.name })}
       </Heading>
       <Tabs value={tab} onChange={setTab}>
         <TabsList aria-label={t('supportAccess.tabsLabel')}>
@@ -727,149 +579,17 @@ const Portal = ({
           <TabsTab value="log">{t('supportAccess.tabLog')}</TabsTab>
         </TabsList>
         <TabsPanel value="settings">
-          <SettingsTab
-            api={api}
-            session={session}
-            focus={focus}
-            onPending={onPending}
-            onSaved={onSaved}
-          />
+          <SettingsTab api={api} org={org} focus={focus} onSaved={onSaved} />
         </TabsPanel>
         <TabsPanel value="drafts">
-          {tab === 'drafts' ? <DraftsTab api={api} session={session} /> : null}
+          {tab === 'drafts' ? <DraftsTab api={api} org={org} /> : null}
         </TabsPanel>
         <TabsPanel value="keys">
-          {tab === 'keys' ? <KeysTab api={api} session={session} onSaved={onSaved} /> : null}
+          {tab === 'keys' ? <KeysTab api={api} org={org} onSaved={onSaved} /> : null}
         </TabsPanel>
-        <TabsPanel value="log">
-          {tab === 'log' ? <LogTab api={api} session={session} sessions={sessions} /> : null}
-        </TabsPanel>
+        <TabsPanel value="log">{tab === 'log' ? <LogTab api={api} org={org} /> : null}</TabsPanel>
       </Tabs>
     </section>
-  );
-};
-
-const StartForm = ({
-  tenants,
-  initial,
-  onStart,
-}: {
-  tenants: Tenant[];
-  initial?: string | undefined;
-  onStart: (tenant: Tenant, reason: string, minutes: number) => Promise<void>;
-}) => {
-  const t = useT();
-  const usable = tenants.filter((x) => x.status !== 'onboarding');
-  const [tenant, setTenant] = useState(
-    usable.find((x) => x.orgNumber === initial)?.orgNumber ?? usable[0]?.orgNumber ?? '',
-  );
-  const [reason, setReason] = useState('');
-  const [minutes, setMinutes] = useState(30);
-  const [tried, setTried] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const summary = useRef<ComponentRef<typeof ErrorSummary>>(null);
-  const error = reasonError(t, reason);
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    const chosen = usable.find((x) => x.orgNumber === tenant);
-    if (error || !chosen) {
-      setTried(true);
-      setTimeout(() => summary.current?.focus(), 0);
-      return;
-    }
-    setBusy(true);
-    try {
-      await onStart(chosen, reason.trim(), minutes);
-      setReason('');
-      setTried(false);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form
-      className="card stack form-card"
-      onSubmit={(e) => void submit(e)}
-      aria-labelledby="start-h"
-      noValidate
-    >
-      <Heading level={2} data-size="sm" id="start-h">
-        {t('supportAccess.startTitle')}
-      </Heading>
-      {tried && error ? (
-        <ErrorSummary ref={summary} tabIndex={-1}>
-          <ErrorSummary.Heading>{t('supportAccess.fixHeading')}</ErrorSummary.Heading>
-          <ErrorSummary.List>
-            <ErrorSummary.Item>
-              <ErrorSummary.Link href="#s-grunn">{error}</ErrorSummary.Link>
-            </ErrorSummary.Item>
-          </ErrorSummary.List>
-        </ErrorSummary>
-      ) : null}
-      <div className="field narrow">
-        <Label htmlFor="s-virk">{t('supportAccess.tenant')}</Label>
-        <Select id="s-virk" value={tenant} onChange={(e) => setTenant(e.target.value)}>
-          {usable.map((x) => (
-            <Select.Option key={x.orgNumber} value={x.orgNumber}>
-              {x.name}
-            </Select.Option>
-          ))}
-        </Select>
-      </div>
-      <div className="field">
-        <Label htmlFor="s-grunn">{t('common.reason')}</Label>
-        <Paragraph data-size="sm" className="meta" id="s-grunn-h">
-          {t('supportAccess.reasonHelp')}
-        </Paragraph>
-        <Textarea
-          id="s-grunn"
-          rows={2}
-          value={reason}
-          aria-describedby="s-grunn-h"
-          aria-invalid={tried && error ? true : undefined}
-          onChange={(e) => setReason(e.target.value)}
-        />
-      </div>
-      <Fieldset>
-        <FieldsetLegend>{t('supportAccess.duration')}</FieldsetLegend>
-        <div className="chips">
-          {[15, 30, 60].map((m) => (
-            <Chip.Radio
-              key={m}
-              name="varighet"
-              checked={minutes === m}
-              onChange={() => setMinutes(m)}
-            >
-              {t('supportAccess.minutes', { count: m })}
-            </Chip.Radio>
-          ))}
-        </div>
-      </Fieldset>
-      <div className="tinted-block stack-sm">
-        <Heading level={3} data-size="2xs">
-          {t('supportAccess.grantsTitle')}
-        </Heading>
-        <ul>
-          <li>{t('supportAccess.grant1')}</li>
-          <li>{t('supportAccess.grant2')}</li>
-          <li>{t('supportAccess.grant3')}</li>
-          <li>{t('supportAccess.grant4')}</li>
-          <li>{t('supportAccess.grant5')}</li>
-        </ul>
-      </div>
-      <ApiCall
-        method="POST"
-        path="/support-sessions"
-        body={{ tenant, reason: reason.trim(), minutes }}
-      />
-      <div>
-        <Button type="submit" loading={busy}>
-          {t('supportAccess.startTitle')}
-        </Button>
-      </div>
-    </form>
   );
 };
 
@@ -885,32 +605,10 @@ export const SupportAccess = ({
   setting?: string | undefined;
 }) => {
   const t = useT();
-  const f = useFormat();
-  const tRef = useRef(t);
-  tRef.current = t;
-  const [state, retry] = useAsync(
-    async (signal) => {
-      const [tenants, sessions] = await Promise.all([
-        api.listTenants(signal),
-        api.supportSessions(signal),
-      ]);
-      return { tenants, sessions };
-    },
-    [api],
-  );
-  const support = useSupport();
+  const [state, retry] = useAsync((signal) => api.listTenants(signal), [api]);
   const flash = useFlash();
-  const pending = useRef<Change[]>([]);
-  const [lost, setLost] = useState<{ tenant: string; at: string; changes: Change[] }>();
 
-  useEffect(() => {
-    const expired = support.expired;
-    if (!expired || !pending.current.length) return;
-    setLost({ tenant: expired.tenantName, at: expired.expiresAt, changes: pending.current });
-    pending.current = [];
-  }, [support.expired]);
-
-  if (state.status === 'loading') return <Loading label={t('supportAccess.loadingSessions')} />;
+  if (state.status === 'loading') return <Loading label={t('supportAccess.loadingTenants')} />;
   if (state.status === 'error')
     return (
       <>
@@ -918,8 +616,8 @@ export const SupportAccess = ({
         <ErrorState error={state.error} onRetry={retry} />
       </>
     );
-  const nameOf = (org: string) => state.data.tenants.find((x) => x.orgNumber === org)?.name ?? org;
-  const notice = support.notice;
+  const usable = state.data.filter((x) => x.status !== 'onboarding');
+  const chosen = usable.find((x) => x.orgNumber === tenant) ?? usable[0];
 
   return (
     <>
@@ -928,93 +626,33 @@ export const SupportAccess = ({
         title={t('supportAccess.title')}
         intro={t('supportAccess.intro')}
       />
-      <Flash message={flash.message ?? (notice && !lost ? { text: notice } : undefined)} />
-      {lost && !support.session ? (
-        <Alert data-color="warning">
-          <Heading level={2} data-size="2xs">
-            {t('supportAccess.lostTitle')}
-          </Heading>
-          <Paragraph>
-            {t('supportAccess.lostText', { tenant: lost.tenant, time: f.time(lost.at) })}
-          </Paragraph>
-          <ChangeList changes={lost.changes} />
-          <Button data-size="sm" onClick={() => setLost(undefined)}>
-            {t('supportAccess.newSession')}
-          </Button>
-        </Alert>
-      ) : support.session ? (
-        <Portal
-          key={support.session.id}
-          api={api}
-          session={support.session}
-          sessions={state.data.sessions}
-          {...(support.session.tenant === tenant ? { initialTab: tab, focus: setting } : {})}
-          onPending={(changes) => {
-            pending.current = changes;
-          }}
-          onSaved={(text) => flash.show(text)}
-        />
-      ) : (
-        <StartForm
-          tenants={state.data.tenants}
-          initial={tenant}
-          onStart={async (chosen, reason, minutes) => {
-            try {
-              await support.start(chosen.orgNumber, chosen.name, reason, minutes);
-              setLost(undefined);
-              flash.show(tRef.current('supportAccess.started', { name: chosen.name }));
-              retry();
-            } catch {
-              flash.show(tRef.current('supportAccess.startFailed'), 'danger');
-            }
-          }}
-        />
-      )}
-      {support.session ? null : (
-        <section className="stack" aria-labelledby="okter-h">
-          <Heading level={2} data-size="xs" id="okter-h">
-            {t('supportAccess.recent')}
-          </Heading>
-          {state.data.sessions.length === 0 ? (
-            <EmptyState title={t('supportAccess.noneYet')} />
-          ) : (
-            <ul className="plain row-list">
-              {state.data.sessions.map((s) => (
-                <li key={s.id}>
-                  <span className="when meta">{formatWhen(s.openedAt, f, t)}</span>
-                  <span className="grow2">
-                    <strong>{operatorLabel(s)}</strong>
-                    {t('supportAccess.inTenant', { tenant: nameOf(s.tenant), reason: s.reason })}
-                  </span>
-                  <span className="row-actions">
-                    {s.status === 'active'
-                      ? t('supportAccess.statusActive', { time: f.time(s.expiresAt) })
-                      : s.status === 'ended'
-                        ? t('supportAccess.statusEnded', { time: f.time(s.endedAt ?? s.expiresAt) })
-                        : t('supportAccess.statusExpired', { time: f.time(s.expiresAt) })}
-                    {s.status === 'active' ? (
-                      <Button
-                        variant="tertiary"
-                        data-size="sm"
-                        aria-label={t('supportAccess.endListedFor', { tenant: nameOf(s.tenant) })}
-                        onClick={() => {
-                          void api
-                            .endSupportSession(s.id, tRef.current('support.endedEarlyReason'))
-                            .then(
-                              () => retry(),
-                              () => flash.show(tRef.current('supportAccess.endFailed'), 'danger'),
-                            );
-                        }}
-                      >
-                        {t('supportAccess.endListed')}
-                      </Button>
-                    ) : null}
-                  </span>
-                </li>
+      <Flash message={flash.message} />
+      {chosen ? (
+        <>
+          <div className="field narrow">
+            <Label htmlFor="org-pick">{t('supportAccess.tenant')}</Label>
+            <Select
+              id="org-pick"
+              value={chosen.orgNumber}
+              onChange={(e) => navigate('/support-access', { tenant: e.target.value })}
+            >
+              {usable.map((x) => (
+                <Select.Option key={x.orgNumber} value={x.orgNumber}>
+                  {x.name}
+                </Select.Option>
               ))}
-            </ul>
-          )}
-        </section>
+            </Select>
+          </div>
+          <Portal
+            key={chosen.orgNumber}
+            api={api}
+            org={{ tenant: chosen.orgNumber, name: chosen.name }}
+            {...(chosen.orgNumber === tenant ? { initialTab: tab, focus: setting } : {})}
+            onSaved={(text) => flash.show(text)}
+          />
+        </>
+      ) : (
+        <EmptyState title={t('supportAccess.noTenants')} />
       )}
     </>
   );

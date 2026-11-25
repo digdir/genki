@@ -12,7 +12,6 @@ interface Call {
   path: string;
   body: unknown;
   reason: string;
-  session: string | null;
 }
 
 // 'pending' never answers, for a screen that is still loading.
@@ -29,7 +28,6 @@ const platform = (routes: Record<string, Handler>) => {
       path,
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
       reason: decodeURIComponent(new Headers(init?.headers).get('change-reason') ?? ''),
-      session: new Headers(init?.headers).get('support-session'),
     };
     calls.push(call);
     const handler = routes[`${method} ${path}`];
@@ -392,7 +390,7 @@ describe('engine switch of a platform dataset in the console', () => {
     expect(screen.getByText(/Den nye søkemotoren treffer dårligere/)).toBeTruthy();
   });
 
-  it("an agency's dataset is moved through its own routes under a support session", async () => {
+  it("an agency's dataset is moved through its own routes", async () => {
     const agency = '/tenants/405003309/datasets/notater';
     const { api, calls } = platform({
       [`GET ${agency}/engine`]: () => [200, engineOn('kudos-typesense')],
@@ -404,7 +402,6 @@ describe('engine switch of a platform dataset in the console', () => {
       [`POST ${agency}/engine-switches`]: () => [202, switchView('running')],
       [`GET ${agency}/engine-switches/s1`]: () => [200, switchView('ready')],
     });
-    api.holdSupport('405003309', 'support-1');
     render(<EngineSwitchSection api={api} base={agency} pollMs={1} />);
 
     await startMove();
@@ -412,7 +409,6 @@ describe('engine switch of a platform dataset in the console', () => {
     expect(await screen.findByText('Klar til å tas i bruk')).toBeTruthy();
     const start = calls.find((c) => c.method === 'POST');
     expect(start?.path).toBe(`${agency}/engine-switches`);
-    expect(start?.session).toBe('support-1');
   });
 
   it('a running move can be cancelled with a reason', async () => {

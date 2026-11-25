@@ -852,7 +852,7 @@ await platform.toolConnections
 if (db)
   followChanges(db.changes, {
     settings,
-    supportSessions: db.adminRecords,
+    contentReasons: db.adminRecords,
     catalog: platform.catalog,
     descriptors: platform.descriptors,
     definitions: platform,

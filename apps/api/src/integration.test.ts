@@ -1035,22 +1035,15 @@ describe('the integrated platform', () => {
     expect(JSON.stringify(keys)).not.toContain(key);
   });
 
-  it('serves the console pages: sharing a service, ending a support session and cancelling a running task', async () => {
-    const { platform, app, admin, state } = await boot();
+  it('serves the console pages: sharing a service and cancelling a running task', async () => {
+    const { platform, app, state } = await boot();
     await platform.definitions.publish(singleCall('shared'), 'test', 'test');
     await chat(app, 'shared__default', 'Hei');
-    const ops: Principal = { kind: 'operator', issuer: 'test', subject: 'ops' };
 
     const shared = await app.request(`/operator/shared-services/${tenant}/shared`, {
       method: 'PUT',
       headers: as('ops', { 'change-reason': 'tilby alle virksomheter' }),
       body: JSON.stringify({ availableTo: '*' }),
-    });
-    const opened = await admin.openSupportSession(ops, tenant, 'feilsøking', 30);
-    const session = opened.ok ? (opened.value as { id: string }).id : '';
-    const ended = await app.request(`/operator/support-sessions/${session}/end`, {
-      method: 'POST',
-      headers: as('ops', { 'change-reason': 'ferdig med saken' }),
     });
     const finished = (await (
       await app.request(`/tenants/${tenant}/tasks`, { headers: as('kari') })
@@ -1083,8 +1076,6 @@ describe('the integrated platform', () => {
 
     expect(shared.status).toBe(200);
     expect((await platform.definitions.get('Service', tenant, 'shared'))?.version).toBe(2);
-    expect(ended.status).toBe(200);
-    expect(admin.supportSession(session, ops, tenant)).toBeUndefined();
     expect(cancelFinished.status).toBe(404);
     expect(running.length).toBe(1);
     expect(cancelled.status).toBe(200);

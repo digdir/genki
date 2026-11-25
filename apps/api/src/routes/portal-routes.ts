@@ -715,7 +715,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     return (await found).slice();
   };
 
-  const access = tenantAccess(deps.admin);
+  const access = tenantAccess;
   const guard = async (
     c: Context,
     right?: Right,

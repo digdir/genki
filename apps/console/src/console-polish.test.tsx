@@ -23,15 +23,6 @@ const open = async (path: string, fetch = mockFetch()) => {
   render(<App auth={auth} fetch={fetch} />);
 };
 
-const startSupport = async (tenant = '999888777') => {
-  window.location.hash = `#/support-access?tenant=${tenant}`;
-  fireEvent.change(await screen.findByRole('textbox', { name: /Begrunnelse/ }), {
-    target: { value: 'Kunden melder feil svar, sak DIG-4412' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: 'Start støttetilgang' }));
-  await screen.findByRole('heading', { name: /^Portalen til / });
-};
-
 beforeEach(() => {
   window.location.hash = '';
 });
@@ -73,10 +64,7 @@ describe('console polish', () => {
             headers: { 'content-type': 'application/json' },
           })
         : base(input, init);
-    await open('#/tenants', fetch);
-    await screen.findByRole('table');
-    await startSupport();
-    window.location.hash = '#/diagnostics?tenant=999888777';
+    await open('#/diagnostics?tenant=999888777', fetch);
     fireEvent.click(await screen.findByRole('radio', { name: 'Tjeneste' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Navn på tjenesten' }), {
       target: { value: 'kunnskapsassistenten' },
@@ -93,7 +81,7 @@ describe('console polish', () => {
     expect(within(grid).queryByText('corpus-aware-2hop')).toBeNull();
   });
 
-  it('keeps the sidebar below the top bar, also when the support banner makes it taller', async () => {
+  it('keeps the sidebar below the top bar, also when the top bar grows taller', async () => {
     const offset = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
     Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
       configurable: true,

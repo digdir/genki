@@ -90,7 +90,7 @@ describe('operator model changes', () => {
       target: 'model:foundry-openai/gpt-4o-2m-tps',
       reason: 'bekreftet EU-datasone',
       scope: 'platform',
-      supportSession: 'not required: models are platform-wide, not tenant data',
+      contentReason: 'not required: models are platform-wide, not tenant data',
       before: { residency: 'global', enabled: true },
       after: { residency: 'eu', enabled: true },
     });

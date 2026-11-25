@@ -489,7 +489,7 @@ export const EngineSwitchSection = ({
   now = () => new Date(),
 }: {
   api: ApiClient;
-  /** The dataset's path: `/operator/datasets/{id}`, or `/tenants/{org}/datasets/{id}` under a support session. */
+  /** The dataset's path: `/operator/datasets/{id}`, or `/tenants/{org}/datasets/{id}` for an organisation's dataset. */
   base: string;
   pollMs?: number;
   now?: () => Date;

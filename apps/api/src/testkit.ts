@@ -157,14 +157,12 @@ export interface SendInit {
   body?: unknown;
   yaml?: string;
   reason?: string;
-  session?: string;
   actFor?: string;
   name?: string;
 }
 
 export const setup = (
   options: {
-    minutes?: number;
     tenantQuota?: PlatformOptions['tenantQuota'];
     lifecycle?: PlatformOptions['lifecycle'];
     organisationName?: PlatformOptions['organisationName'];
@@ -187,7 +185,6 @@ export const setup = (
     names,
     ...(options.lifecycle ? { lifecycle: options.lifecycle } : {}),
     newId: () => `id-${++ids}`,
-    ...(options.minutes ? { maxSupportMinutes: options.minutes } : {}),
   });
   const app = createApp('test', {
     platform: {
@@ -213,18 +210,13 @@ export const setup = (
         ...(init.yaml ? { 'content-type': 'application/yaml' } : {}),
         ...(init.body !== undefined ? { 'content-type': 'application/json' } : {}),
         ...(init.reason ? { 'change-reason': init.reason } : {}),
-        ...(init.session ? { 'support-session': init.session } : {}),
         ...(init.name ? { 'actor-name': encodeURIComponent(init.name) } : {}),
       },
       ...(init.yaml ? { body: init.yaml } : {}),
       ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
     });
-  const publish = (who: string, definition: unknown, reason = 'første versjon', session?: string) =>
-    send('/definitions', who, {
-      body: { definition, files },
-      reason,
-      ...(session ? { session } : {}),
-    });
+  const publish = (who: string, definition: unknown, reason = 'første versjon') =>
+    send('/definitions', who, { body: { definition, files }, reason });
   const advance = (minutes: number) => {
     clock = new Date(clock.getTime() + minutes * 60_000);
   };

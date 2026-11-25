@@ -11,6 +11,7 @@ import { tenantAccess, type Access } from './access.js';
 import { refuseWritesToArchived } from './archived-services.js';
 import { publicSkipped, skippedEntries, type SkippedSource } from './catalog-health.js';
 import { requireChangeReason } from './change-reason.js';
+import { requireContentReason } from './content-reason.js';
 import { rememberActorNames, type ActorNames } from './actor-names.js';
 import { createAdmin, type Admin, type AdminOptions, type ModelAdmin } from './admin.js';
 import { acceptDecodedIds } from './decoded-ids.js';
@@ -299,7 +300,8 @@ export const createApp = (version: string, options: AppOptions = {}) => {
         ...(options.platform.blockOrigin ? { blockOrigin: options.platform.blockOrigin } : {}),
         ...(options.platform.flags ? { flags: options.platform.flags } : {}),
       });
-    const access = options.platform.access ?? tenantAccess(admin);
+    const access = options.platform.access ?? tenantAccess;
+    app.use('*', requireContentReason(caller, admin));
     if (options.platform.lifecycle)
       app.use(
         '/tenants/:tenant/*',

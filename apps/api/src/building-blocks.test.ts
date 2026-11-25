@@ -269,7 +269,7 @@ const setup = async ({
     admin,
     authenticate: async (request) =>
       people[request.headers.get('authorization')?.replace(/^Bearer /, '') ?? ''],
-    access: access ?? tenantAccess(admin),
+    access: access ?? tenantAccess,
   });
   const send = (
     path: string,

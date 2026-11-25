@@ -62,7 +62,4 @@ export const diagnostics = {
   serviceName: 'Service name',
   runPlaceholder: 'opg_…',
   servicePlaceholder: 'For example rapportassistenten__default',
-  needsSession:
-    'Diagnostics reads data from {tenant}, and therefore requires support access with a reason. The session is shown in the log of {tenant}.',
-  startSession: 'Start support access',
 } satisfies Translation<typeof source>;

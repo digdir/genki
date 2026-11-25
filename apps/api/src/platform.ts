@@ -47,9 +47,11 @@ import {
   RunErasure,
 } from './http.js';
 import { originOf, serviceOrigin, type DraftOrigin } from './draft-runner.js';
+import { osloDay } from './content-reason.js';
 import { t } from './i18n/index.js';
 import { readOnlyInLockdown } from './lockdown.js';
 import { onlyTypes, toTimeline, type TaskReader } from './timeline.js';
+import { withContentReason } from './openapi/content-reason.js';
 import type { ActorNames } from './actor-names.js';
 import type { ServiceDrafts } from './service-drafts.js';
 
@@ -107,7 +109,7 @@ const optionalSchema = (schema: unknown) => {
 
 const operatorOnlyForbidden = {
   content: problemContent,
-  description: `Not allowed for this tenant, or ${operatorOnlySettingType}: a limit only an operator in a support session changes for a tenant`,
+  description: `Not allowed for this tenant, or ${operatorOnlySettingType}: a limit only an operator changes for a tenant`,
 };
 
 const conflict = {
@@ -130,7 +132,7 @@ const SettingInfo = z
     default: z.unknown(),
     settableAt: z.array(z.string()),
     operatorOnly: z.boolean().optional().openapi({
-      description: 'At the tenant layer only an operator in a support session sets it',
+      description: 'At the tenant layer only an operator sets it',
     }),
     schema: z.record(z.string(), z.unknown()).optional(),
   })
@@ -202,17 +204,14 @@ const Preview = z
 
 const Applied = z.object({ task: z.string(), value: z.unknown() }).openapi('AppliedChange');
 
-const Session = z
+const GivenContentReason = z
   .object({
-    id: z.string(),
-    operator: z.string(),
-    operatorName: z.string().optional(),
     tenant: z.string(),
     reason: z.string(),
-    openedAt: z.string(),
+    day: z.string().describe('The Oslo date the reason applies to'),
     expiresAt: z.string(),
   })
-  .openapi('SupportSession');
+  .openapi('ContentReason');
 
 const AuditEntry = z
   .object({
@@ -417,32 +416,34 @@ const routes = {
       401: problems[401],
     },
   }),
-  timeline: createRoute({
-    method: 'get',
-    path: '/tenants/{tenant}/tasks/{task}/timeline',
-    summary:
-      'A task as a timeline: status, numbers and steps, with the error details only for those who manage services',
-    request: {
-      params: z.object({
-        tenant: tenantParam,
-        task: z.string().openapi({ param: { name: 'task', in: 'path' } }),
-      }),
-      query: z.object({
-        types: z
-          .string()
-          .optional()
-          .describe(
-            'Comma-separated step types to keep, for example read,model; other steps are left out',
-          ),
-      }),
-    },
-    responses: {
-      200: json(Timeline, 'Timeline'),
-      401: problems[401],
-      403: problems[403],
-      404: problems[404],
-    },
-  }),
+  timeline: withContentReason(
+    createRoute({
+      method: 'get',
+      path: '/tenants/{tenant}/tasks/{task}/timeline',
+      summary:
+        'A task as a timeline: status, numbers and steps, with the error details only for those who manage services',
+      request: {
+        params: z.object({
+          tenant: tenantParam,
+          task: z.string().openapi({ param: { name: 'task', in: 'path' } }),
+        }),
+        query: z.object({
+          types: z
+            .string()
+            .optional()
+            .describe(
+              'Comma-separated step types to keep, for example read,model; other steps are left out',
+            ),
+        }),
+      },
+      responses: {
+        200: json(Timeline, 'Timeline'),
+        401: problems[401],
+        403: problems[403],
+        404: problems[404],
+      },
+    }),
+  ),
   settingOverrides: createRoute({
     method: 'get',
     path: '/operator/settings/overrides',
@@ -635,18 +636,20 @@ const routes = {
       404: problems[404],
     },
   }),
-  exportTenant: createRoute({
-    method: 'get',
-    path: '/tenants/{tenant}/export',
-    summary: "Export a tenant's definitions, prompt files and settings; secrets stay references",
-    request: { params: z.object({ tenant: tenantParam }) },
-    responses: {
-      200: json(z.record(z.string(), z.unknown()), 'Bundle'),
-      401: problems[401],
-      403: problems[403],
-      404: problems[404],
-    },
-  }),
+  exportTenant: withContentReason(
+    createRoute({
+      method: 'get',
+      path: '/tenants/{tenant}/export',
+      summary: "Export a tenant's definitions, prompt files and settings; secrets stay references",
+      request: { params: z.object({ tenant: tenantParam }) },
+      responses: {
+        200: json(z.record(z.string(), z.unknown()), 'Bundle'),
+        401: problems[401],
+        403: problems[403],
+        404: problems[404],
+      },
+    }),
+  ),
   importTenant: createRoute({
     method: 'post',
     path: '/tenants/{tenant}/import',
@@ -681,27 +684,26 @@ const routes = {
       404: problems[404],
     },
   }),
-  openSession: createRoute({
+  contentReason: createRoute({
     method: 'post',
-    path: '/support-sessions',
+    path: '/operator/tenants/{tenant}/content-reason',
     summary:
-      "Open a time-limited support session in a tenant (operators); it is logged in the tenant's audit",
+      "Give the reason an operator reads a tenant's content today (operators); it holds for that operator and tenant until the Oslo day ends, and the tenant's audit shows it with every content read",
     request: {
+      params: z.object({ tenant: z.string().regex(/^\d{9}$/) }),
       body: {
         required: true,
         content: {
           'application/json': {
             schema: z.object({
-              tenant: z.string().regex(/^\d{9}$/),
               reason: z.string().refine(isReasonLongEnough, reasonTooShort),
-              minutes: z.number().int().positive().default(60),
             }),
           },
         },
       },
     },
     responses: {
-      201: json(Session, 'Opened'),
+      201: json(GivenContentReason, 'Given'),
       400: problems[400],
       401: problems[401],
       403: problems[403],
@@ -746,29 +748,31 @@ const routes = {
       404: problems[404],
     },
   }),
-  auditTask: createRoute({
-    method: 'get',
-    path: '/tenants/{tenant}/audit/{task}',
-    summary: 'One administrative task with its audit events',
-    request: {
-      params: z.object({
-        tenant: tenantParam,
-        task: z.string().openapi({ param: { name: 'task', in: 'path' } }),
-      }),
-    },
-    responses: {
-      200: json(
-        z.object({
-          task: z.record(z.string(), z.unknown()),
-          events: z.array(z.record(z.string(), z.unknown())),
+  auditTask: withContentReason(
+    createRoute({
+      method: 'get',
+      path: '/tenants/{tenant}/audit/{task}',
+      summary: 'One administrative task with its audit events',
+      request: {
+        params: z.object({
+          tenant: tenantParam,
+          task: z.string().openapi({ param: { name: 'task', in: 'path' } }),
         }),
-        'Task',
-      ),
-      401: problems[401],
-      403: problems[403],
-      404: problems[404],
-    },
-  }),
+      },
+      responses: {
+        200: json(
+          z.object({
+            task: z.record(z.string(), z.unknown()),
+            events: z.array(z.record(z.string(), z.unknown())),
+          }),
+          'Task',
+        ),
+        401: problems[401],
+        403: problems[403],
+        404: problems[404],
+      },
+    }),
+  ),
 };
 
 const OperatorModel = z
@@ -1380,22 +1384,25 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     return c.json({ dryRun: false, task: result.task, plan: result.value }, 200);
   });
 
-  app.openapi(routes.openSession, async (c) => {
+  app.openapi(routes.contentReason, async (c) => {
     const principal = await auth.authenticate(c.req.raw);
     if (!principal) return problem(c, 401, 'Not authenticated');
     if (principal.kind !== 'operator')
-      return problem(c, 403, 'Only operators open support sessions');
-    const { tenant, reason, minutes } = c.req.valid('json');
-    const result = await admin.openSupportSession(
-      principal,
-      tenant,
-      reason,
-      minutes,
-      actorNameOf(c),
-    );
+      return problem(c, 403, t('problems.onlyOperatorsContentReason'));
+    const { tenant } = c.req.valid('param');
+    const { reason } = c.req.valid('json');
+    const result = await admin.giveContentReason(principal, tenant, reason.trim(), actorNameOf(c));
     c.header('genai-task', result.task);
-    if (!result.ok) return problem(c, 422, 'Invalid support session', { errors: result.errors });
-    return c.json(result.value, 201);
+    if (!result.ok) return problem(c, 422, 'Invalid request', { errors: result.errors });
+    return c.json(
+      {
+        tenant,
+        reason: result.value.reason,
+        day: osloDay(new Date(result.value.openedAt)),
+        expiresAt: result.value.expiresAt,
+      },
+      201,
+    );
   });
 
   app.openapi(routes.audit, async (c) => {

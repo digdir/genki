@@ -158,7 +158,7 @@ const setup = async () => {
     admin,
     authenticate: async (request: Request) =>
       people[request.headers.get('authorization')?.replace(/^Bearer /, '') ?? ''],
-    access: tenantAccess(admin),
+    access: tenantAccess,
   };
   blocks.mount(app, mountDeps);
   proposals.mount(app, mountDeps);
@@ -470,6 +470,5 @@ describe('assistant proposals', () => {
     expect((await send(base, 'per')).status).toBe(404);
     expect((await send(`${base}/${stored.id}`, 'per')).status).toBe(404);
     expect((await send(`${base}/${stored.id}/approve`, 'per', { reason })).status).toBe(404);
-    expect((await send(`${base}/${stored.id}/approve`, 'operator', { reason })).status).toBe(404);
   });
 });

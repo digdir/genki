@@ -40,6 +40,7 @@ import {
 import { draftOutdatedTitle, draftOutdatedType, type ServiceDrafts } from './service-drafts.js';
 import { tenantNotRegistered } from './tenant-gate.js';
 import { environmentViews, type EnvironmentPointers } from './service-environments.js';
+import { withContentReason } from './openapi/content-reason.js';
 
 export interface DefinitionsApiOptions {
   store: DefinitionStore;
@@ -246,47 +247,51 @@ const routes = {
       404: { content: problemContent, description: 'The tenant is not reachable for the caller' },
     },
   }),
-  get: createRoute({
-    method: 'get',
-    path: '/tenants/{tenant}/definitions/{kind}/{id}',
-    summary: 'Get the latest version of a definition and its history',
-    request: { params: z.object({ tenant: tenantParam, kind: kindParam, id: idParam }) },
-    responses: {
-      200: {
-        content: { 'application/json': { schema: DefinitionOverview } },
-        description: 'Found',
+  get: withContentReason(
+    createRoute({
+      method: 'get',
+      path: '/tenants/{tenant}/definitions/{kind}/{id}',
+      summary: 'Get the latest version of a definition and its history',
+      request: { params: z.object({ tenant: tenantParam, kind: kindParam, id: idParam }) },
+      responses: {
+        200: {
+          content: { 'application/json': { schema: DefinitionOverview } },
+          description: 'Found',
+        },
+        401: { content: problemContent, description: 'Not authenticated' },
+        403: { content: problemContent, description: 'Not allowed for this tenant' },
+        404: { content: problemContent, description: 'Not found' },
       },
-      401: { content: problemContent, description: 'Not authenticated' },
-      403: { content: problemContent, description: 'Not allowed for this tenant' },
-      404: { content: problemContent, description: 'Not found' },
-    },
-  }),
-  version: createRoute({
-    method: 'get',
-    path: '/tenants/{tenant}/definitions/{kind}/{id}/versions/{version}',
-    summary: 'Get one published version',
-    request: {
-      params: z.object({
-        tenant: tenantParam,
-        kind: kindParam,
-        id: idParam,
-        version: z.coerce
-          .number()
-          .int()
-          .positive()
-          .openapi({ param: { name: 'version', in: 'path' } }),
-      }),
-    },
-    responses: {
-      200: {
-        content: { 'application/json': { schema: PublishedDefinition } },
-        description: 'Found',
+    }),
+  ),
+  version: withContentReason(
+    createRoute({
+      method: 'get',
+      path: '/tenants/{tenant}/definitions/{kind}/{id}/versions/{version}',
+      summary: 'Get one published version',
+      request: {
+        params: z.object({
+          tenant: tenantParam,
+          kind: kindParam,
+          id: idParam,
+          version: z.coerce
+            .number()
+            .int()
+            .positive()
+            .openapi({ param: { name: 'version', in: 'path' } }),
+        }),
       },
-      401: { content: problemContent, description: 'Not authenticated' },
-      403: { content: problemContent, description: 'Not allowed for this tenant' },
-      404: { content: problemContent, description: 'Not found' },
-    },
-  }),
+      responses: {
+        200: {
+          content: { 'application/json': { schema: PublishedDefinition } },
+          description: 'Found',
+        },
+        401: { content: problemContent, description: 'Not authenticated' },
+        403: { content: problemContent, description: 'Not allowed for this tenant' },
+        404: { content: problemContent, description: 'Not found' },
+      },
+    }),
+  ),
   resolve: createRoute({
     method: 'get',
     path: '/services/by-name/{name}',

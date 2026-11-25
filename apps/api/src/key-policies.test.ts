@@ -218,14 +218,14 @@ describe('access policies for API keys', () => {
     expect(await res.json()).toMatchObject({ errors: [{ path: 'change-reason' }] });
   });
 
-  it('refuses a user without manage-services, another tenant and an operator without a support session', async () => {
+  it('refuses a user without manage-services and another tenant, and lets an operator list the policies', async () => {
     const { send, create, policies } = await boot();
     await create({ name: 'Intern' });
 
     expect((await send(policies, 'bruker')).status).toBe(403);
     expect((await send(policies, 'bruker', { body: { name: 'x' }, reason })).status).toBe(403);
     expect((await send(policies, 'ola')).status).toBe(404);
-    expect((await send(policies, 'drift')).status).toBe(404);
+    expect((await send(policies, 'drift')).status).toBe(200);
   });
 
   it('keeps one tenant policies out of reach of another', async () => {

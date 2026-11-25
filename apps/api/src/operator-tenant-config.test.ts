@@ -87,7 +87,6 @@ const boot = async () => {
       body?: unknown;
       ifMatch?: number;
       as?: string;
-      session?: string;
       language?: string;
     } = {},
   ) =>
@@ -98,17 +97,11 @@ const boot = async () => {
         'content-type': 'application/json',
         'change-reason': 'Hjelp fra Digdir',
         ...(init.ifMatch !== undefined ? { 'if-match': `"${init.ifMatch}"` } : {}),
-        ...(init.session ? { 'support-session': init.session } : {}),
         ...(init.language ? { 'accept-language': init.language } : {}),
       },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
     });
-  const support = async () => {
-    const opened = await admin.openSupportSession(drift, tenant, 'feilsøking', 30);
-    if (!opened.ok) throw new Error('no support session');
-    return opened.value.id;
-  };
-  return { admin, call, platform, support };
+  return { admin, call, platform };
 };
 
 const json = async <T>(res: Response) => (await res.json()) as T;
@@ -122,35 +115,18 @@ const endpoint = {
 const gate = { metric: 'judge.helpfulness', kind: 'threshold', threshold: 0.7 };
 
 describe('operator access to tenant configuration', () => {
-  it('hides tenant configuration from an operator without a support session', async () => {
-    const { call } = await boot();
-    for (const path of ['catalog', 'datasets', 'gates', 'guardrail-rules', 'knowledge/engines'])
-      expect((await call(`/tenants/${tenant}/${path}`)).status).toBe(404);
-    expect(
-      (
-        await call(`/tenants/${tenant}/catalog/knowledge-endpoint/sok`, {
-          method: 'PUT',
-          body: endpoint,
-        })
-      ).status,
-    ).toBe(404);
-  });
-
-  it("lets an operator change tenant configuration in a support session, recorded as done on the tenant's behalf", async () => {
-    const { admin, call, support } = await boot();
-    const session = await support();
+  it("lets an operator change tenant configuration directly, recorded as done on the tenant's behalf", async () => {
+    const { admin, call } = await boot();
 
     for (const path of ['catalog', 'datasets', 'gates', 'guardrail-rules', 'knowledge/engines'])
-      expect((await call(`/tenants/${tenant}/${path}`, { session })).status).toBe(200);
+      expect((await call(`/tenants/${tenant}/${path}`)).status).toBe(200);
     const write = await call(`/tenants/${tenant}/catalog/knowledge-endpoint/sok`, {
       method: 'PUT',
       body: endpoint,
-      session,
     });
     const gateWrite = await call(`/tenants/${tenant}/gates/hjelpsom`, {
       method: 'PUT',
       body: gate,
-      session,
     });
 
     expect(write.status).toBe(200);
@@ -163,22 +139,6 @@ describe('operator access to tenant configuration', () => {
       onBehalfOf: tenant,
       outcome: 'applied',
     });
-  });
-
-  it('refuses an operator change to tenant configuration without a support session', async () => {
-    const { call } = await boot();
-    const write = await call(`/tenants/${tenant}/catalog/knowledge-endpoint/sok`, {
-      method: 'PUT',
-      body: endpoint,
-    });
-    expect(write.status).toBe(404);
-  });
-
-  it('refuses a support session opened for another tenant', async () => {
-    const { admin, call } = await boot();
-    const opened = await admin.openSupportSession(drift, '889640782', 'nav', 30);
-    const session = opened.ok ? opened.value.id : '';
-    expect((await call(`/tenants/${tenant}/datasets`, { session })).status).toBe(404);
   });
 
   it('lets a person authorized for several organisations reach each of them', async () => {
@@ -265,8 +225,8 @@ describe('tenant changes to its catalog, gates and rules', () => {
     ]);
   });
 
-  it("shows an operator in a support session the shared platform entries and the tenant's own entries", async () => {
-    const { call, support } = await boot();
+  it("shows an operator the shared platform entries and the tenant's own entries", async () => {
+    const { call } = await boot();
     await call(`/tenants/${tenant}/catalog/knowledge-endpoint/sok`, {
       method: 'PUT',
       body: endpoint,
@@ -277,10 +237,9 @@ describe('tenant changes to its catalog, gates and rules', () => {
       body: { kind: 'regex', pattern: 'sak \\d+' },
       as: 'kari',
     });
-    const session = await support();
 
     const catalog = await json<{ data: { id: string; scope: string }[]; tenantKinds: string[] }>(
-      await call(`/tenants/${tenant}/catalog?kind=knowledge-endpoint`, { session }),
+      await call(`/tenants/${tenant}/catalog?kind=knowledge-endpoint`),
     );
     expect(catalog.data.map((e) => [e.id, e.scope])).toEqual(
       expect.arrayContaining([[`${tenant}/sok`, tenant]]),
@@ -289,7 +248,7 @@ describe('tenant changes to its catalog, gates and rules', () => {
     expect(catalog.tenantKinds).not.toContain('price');
 
     const rules = await json<{ data: { id: string; scope: string; editable: boolean }[] }>(
-      await call(`/tenants/${tenant}/guardrail-rules`, { session }),
+      await call(`/tenants/${tenant}/guardrail-rules`),
     );
     expect(rules.data.find((r) => r.id === 'saksnummer')).toMatchObject({
       scope: tenant,
@@ -297,7 +256,7 @@ describe('tenant changes to its catalog, gates and rules', () => {
     });
 
     const datasets = await json<{ data: { id: string; scope: string }[] }>(
-      await call(`/tenants/${tenant}/catalog?kind=dataset`, { session }),
+      await call(`/tenants/${tenant}/catalog?kind=dataset`),
     );
     expect(datasets.data).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: 'digdir/kudos', scope: 'platform' })]),
@@ -391,11 +350,9 @@ describe('allowed hosts of a model connection', () => {
   });
 
   it('refuses federated app sign-in on a tenant connection, because tenant connections take no settings', async () => {
-    const { call, support } = await boot();
-    const session = await support();
+    const { call } = await boot();
     const refused = await call(`/tenants/${tenant}/catalog/model-endpoint/eget`, {
       method: 'PUT',
-      session,
       body: {
         families: { openai: '' },
         baseURL: 'https://modeller.example.no/v1',
@@ -412,11 +369,9 @@ describe('allowed hosts of a model connection', () => {
   });
 
   it('refuses allowed hosts on a tenant connection, because only the operator sets them', async () => {
-    const { call, support } = await boot();
-    const session = await support();
+    const { call } = await boot();
     const refused = await call(`/tenants/${tenant}/catalog/model-endpoint/eget`, {
       method: 'PUT',
-      session,
       body: {
         families: { openai: '' },
         baseURL: 'https://modeller.example.no/v1',
@@ -429,11 +384,9 @@ describe('allowed hosts of a model connection', () => {
   });
 
   it('refuses the gateway mark on a tenant connection, because only the operator sets it', async () => {
-    const { call, support } = await boot();
-    const session = await support();
+    const { call } = await boot();
     const refused = await call(`/tenants/${tenant}/catalog/model-endpoint/eget`, {
       method: 'PUT',
-      session,
       body: {
         families: { openai: '' },
         baseURL: 'https://modeller.example.no/v1',
@@ -699,15 +652,13 @@ describe('settings and named keys of a model connection', () => {
   });
 
   it('refuses settings and keys on a tenant connection, because only the operator sets them', async () => {
-    const { call, support } = await boot();
-    const session = await support();
+    const { call } = await boot();
     for (const extra of [
       { settings: { keyId: 'x' } },
       { keys: { signing: `secret://tenant/${tenant}/k` } },
     ]) {
       const refused = await call(`/tenants/${tenant}/catalog/model-endpoint/eget`, {
         method: 'PUT',
-        session,
         body: {
           families: { openai: '' },
           baseURL: 'https://modeller.example.no/v1',

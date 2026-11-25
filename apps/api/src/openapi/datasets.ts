@@ -33,6 +33,7 @@ import { switchStates } from '../engine-switches.js';
 import { changeReason, Problem, problemContent } from '../http.js';
 import { pipelineSpec } from '../ingestion.js';
 import { engineCapabilities } from '../knowledge-endpoints.js';
+import { withContentReasons } from './content-reason.js';
 
 const json = <T extends z.ZodType>(schema: T, description: string) => ({
   description,
@@ -2276,7 +2277,7 @@ const documentRoutes: RouteConfig[] = [
   }),
 ];
 
-export const datasetRouteGroups: Record<string, RouteConfig[]> = {
+const routeGroups: Record<string, RouteConfig[]> = {
   config: [
     ...catalogRoutes(operatorBase),
     ...catalogRoutes(tenantBase),
@@ -2298,6 +2299,10 @@ export const datasetRouteGroups: Record<string, RouteConfig[]> = {
   'operator-catalog': operatorCatalogRoutes,
   models: publicModelRoutes,
 };
+
+export const datasetRouteGroups: Record<string, RouteConfig[]> = Object.fromEntries(
+  Object.entries(routeGroups).map(([group, routes]) => [group, withContentReasons(routes)]),
+);
 
 export const datasetDocRoutes: RouteConfig[] = Object.values(datasetRouteGroups).flat();
 

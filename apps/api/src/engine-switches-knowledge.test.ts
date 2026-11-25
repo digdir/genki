@@ -330,7 +330,7 @@ const boot = async (
   platform.mount(app, admin);
   const call = (
     path: string,
-    init: { method?: string; body?: unknown; as?: string; session?: string; reason?: string } = {},
+    init: { method?: string; body?: unknown; as?: string; reason?: string } = {},
   ) =>
     app.request(path, {
       method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
@@ -342,7 +342,6 @@ const boot = async (
           : {
               'change-reason': encodeURIComponent(init.reason ?? 'Flytter til kunnskapsdatabasen'),
             }),
-        ...(init.session ? { 'support-session': init.session } : {}),
       },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
     });
@@ -1308,24 +1307,12 @@ describe('operators switching a platform dataset into the knowledge database', (
     expect(data.find((e) => e.id === 'knowledge-pg')?.datasets).toEqual([]);
   });
 
-  it("an operator under a support session switches an agency's dataset into the knowledge database", async () => {
+  it("lets an operator switch an agency's dataset into the knowledge database directly", async () => {
     const booted = await boot({ as: 'drift' });
     const asKari: Booted['call'] = (path, init = {}) => booted.call(path, { ...init, as: 'kari' });
     await folderDataset({ ...booted, call: asKari }, 'byraets');
-    const refused = await booted.call(`${base('byraets')}/engine-switches`, {
-      body: { to: 'knowledge-pg', method: 'reingest', embedding },
-    });
-    expect(refused.status).toBe(404);
-    const opened = await booted.admin.openSupportSession(
-      principals.drift as Principal,
-      digdir,
-      'Flytter testdata til kunnskapsdatabasen',
-      30,
-    );
-    if (!opened.ok) throw new Error('no support session');
     const started = await booted.call(`${base('byraets')}/engine-switches`, {
       body: { to: 'knowledge-pg', method: 'reingest', embedding },
-      session: opened.value.id,
     });
     expect(started.status).toBe(202);
     const view = await json<EngineSwitchView>(started);

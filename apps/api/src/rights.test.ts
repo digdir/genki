@@ -16,7 +16,6 @@ import { tenantAccess } from './access.js';
 import { appendVersion, InMemoryConfigEntryStore } from './config-store.js';
 import { connectorConnectionOf, connectorMappingKind } from './connectors.js';
 import { withPdpActions } from './altinn-pdp.js';
-import type { Admin } from './admin.js';
 import { platformCaller } from './composition.js';
 import { operatorDirectory, splitOperators } from './operators.js';
 import { refusedAction, requireRight, rightsByOrg, rightsOf, type Right } from './rights.js';
@@ -128,22 +127,13 @@ describe('platform rights in the API', () => {
     });
   });
 
-  it('operators keep their access paths', async () => {
+  it('lets an operator into any tenant with every right', async () => {
     const login = await localPeople();
     const operator = await login('02027012345');
-    const admin: Pick<Admin, 'supportSession'> = {
-      supportSession: (id) => (id === 'open' ? ({} as never) : undefined),
-    };
-    const access = tenantAccess(admin);
-    const request = (session?: string) =>
-      new Request('http://api/tenants', {
-        headers: session ? { 'support-session': session } : {},
-      });
 
     expect(operator.kind).toBe('operator');
-    expect(access(operator, digdir, request())).toBeUndefined();
-    const supporting = access(operator, digdir, request('open'));
-    expect(supporting && requireRight(supporting, digdir, 'register-building-blocks')).toEqual({
+    const acting = tenantAccess(operator, digdir, new Request('http://api/tenants'));
+    expect(acting && requireRight(acting, digdir, 'register-building-blocks')).toEqual({
       ok: true,
     });
     expect(requireRight(operator, digdir, 'manage-datasets')).toEqual({ ok: true });

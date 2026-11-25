@@ -209,7 +209,7 @@ export const settings = defineNamespace({
   view: 'Visning',
   oneTenant: 'Én virksomhet',
   onlyDefaults:
-    'Plattformen viser bare plattformstandardene her ennå. Verdiene virksomhetene har satt, ser du i Diagnostikk med støttetilgang.',
+    'Plattformen viser bare plattformstandardene her ennå. Verdiene virksomhetene har satt, ser du under Virksomhet.',
   search: 'Søk i innstillinger',
   category: 'Kategori',
   categoryAll: 'Alle',

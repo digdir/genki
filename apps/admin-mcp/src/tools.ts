@@ -1349,6 +1349,36 @@ const placeOf = (hit: SearchHit) =>
     .filter(Boolean)
     .join(', ');
 
+const giveContentReason = tool({
+  name: 'give_content_reason',
+  title: "Give today's content reason for an organisation",
+  description:
+    "Operators only: give the reason for reading an organisation's content (runs, timelines, documents, test cases) today. It holds for you and that organisation until the day ends in Europe/Oslo. The reason, and every content read after it, is logged in the organisation's own log, which the organisation sees. Give it only when the person has said why they need the content, in their words; never make one up. Reads that answer content-reason-required work after this.",
+  kind: 'write',
+  args: z.strictObject({
+    tenant: z
+      .string()
+      .regex(/^\d{9}$/)
+      .optional()
+      .describe("The organisation number; the server's organisation when left out"),
+    reason: z.string().describe('Why the person needs the content, at least 10 characters'),
+  }),
+  run: async ({ client }, { tenant, reason }) => {
+    if (reason.trim().length < minimumReason)
+      return fail(`A reason of at least ${minimumReason} characters is required.`);
+    const org = tenant ?? client.tenant;
+    const given = await client.request<{ day: string; expiresAt: string }>(
+      'POST',
+      `/operator/tenants/${segment(org)}/content-reason`,
+      { body: { reason: reason.trim() } },
+    );
+    return {
+      text: `Content reason given for ${org} until ${given.expiresAt}. It is in the organisation's log.`,
+      data: { tenant: org, ...given },
+    };
+  },
+});
+
 const searchDataset = tool({
   name: 'search_dataset',
   title: 'Search a dataset',
@@ -1402,6 +1432,7 @@ export const adminTools: Tool[] = [
   getRun,
   explainRun,
   evaluateChange,
+  giveContentReason,
   ...blockTools,
 ];
 

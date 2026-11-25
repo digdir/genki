@@ -36,9 +36,9 @@ Tenant routes check two things, in order ([ADR 0027](../adr/0027-platform-rights
 1. May the caller act for this tenant at all? If not: `404`.
 2. Does the caller have the right for this action? If not: `403` with `errors: [{ "path": "right", "message": "<right>" }]`.
 
-Every tenant route follows this order, so a tenant the caller cannot reach never answers `403`. An operator without a support session cannot reach a tenant either, unless Altinn gives the operator rights in that organisation: then the operator acts there as an ordinary employee, with those rights only. A resource that does not exist (a client, a key, a pipeline, a run) answers `404`, not `400` or `403`.
+Every tenant route follows this order, so a tenant the caller cannot reach never answers `403`. An operator reaches every tenant as an operator, unless Altinn gives the operator rights in that organisation: then the operator acts there as an ordinary employee, with those rights only. A resource that does not exist (a client, a key, a pipeline, a run) answers `404`, not `400` or `403`.
 
-The five rights are `use-services`, `manage-services`, `manage-datasets`, `register-building-blocks` and `view-usage`. The summary or description of each operation names the right it needs. Operators have every right, but reach a tenant's data only inside a support session: send `support-session: <id>` (see [Operations](operations.md)). In an organisation where Altinn gives them rights, operators act as employees with exactly those rights. Rights count for the Altinn resource in `ALTINN_RESOURCE` (default `urn:altinn:resource:digdir-genai-platform`).
+The five rights are `use-services`, `manage-services`, `manage-datasets`, `register-building-blocks` and `view-usage`. The summary or description of each operation names the right it needs. Operators have every right in every tenant and change its configuration directly. A tenant's content (runs, documents, evaluations, people, and routes that make content leave, such as new keys or hooks) answers an operator `403` `urn:genai:problem:content-reason-required` with the tenant in `tenant` until the operator has given that day's reason with `POST /operator/tenants/{tenant}/content-reason` (see [Operations](operations.md) and [ADR 0072](../adr/0072-operators-own-the-platform.md)). In an organisation where Altinn gives them rights, operators act as employees with exactly those rights. Rights count for the Altinn resource in `ALTINN_RESOURCE` (default `urn:altinn:resource:digdir-genai-platform`).
 
 ## Changes: reason and audit
 
@@ -47,7 +47,7 @@ Every change is a platform task, and the audit log is the event log ([ADR 0010](
 - Every audited change requires `change-reason: <why>`, at least 10 characters. URL-encode it when it has characters outside ASCII (`æøå`). One check in front of all routes enforces it (`apps/api/src/change-reason.ts`), so no route stores a default text any more.
 - A missing or short reason answers `400` problem+json with `errors: [{ "path": "change-reason", ... }]`, before the route changes anything. A request without a valid credential still gets `401` first.
 - The header is not needed on writes that change nothing an administrator owns: runs and calls (`/v1`, `/api/mcp`, `/api/tools/call`, A2A, playground, assistant turns, test and eval runs), checks and previews, a person's own preferences and conversations, feedback, and an access application (`POST /onboarding/requests`, whose `purpose` is its reason). The list is `reasonFreeWrites` in `change-reason.ts`, and `/openapi.json` marks the header as required on every other write.
-- `POST /support-sessions` also accepts the reason as `reason` in the body, because the console sends it there and the session stores it. No other route reads a reason from the body.
+- `POST /operator/tenants/{tenant}/content-reason` and `POST /tenants/{tenant}/clients/{client}/hostnames` also accept the reason as `reason` in the body. No other route reads a reason from the body.
 - Read the log with `GET /tenants/{tenant}/audit` and one entry with `GET /tenants/{tenant}/audit/{task}`. Each entry has actor, action, target, outcome and reason. Operators see all tenants with `GET /operator/audit`.
 
 ## Errors
@@ -74,6 +74,13 @@ The public `/v1` routes are what other systems build on, so CI refuses a breakin
 To announce one, add a line to a new dated entry below that names the operation in backticks as the method and path, such as `` `POST /v1/chat/completions` ``. Only lines added in the same change count. Changes outside `/v1` are listed here too, but CI does not check them, nor path parameter schemas or `additionalProperties`.
 
 `npm run definitions:compat` checks every YAML or JSON file in the repository that is a service, step flow, skill or block definition (seeds, examples and fixtures) against the current schema, including the strategy, tool and guardrail settings. Models, datasets, rerankers, tools and blocks are not looked up, since each environment has its own. Give it the path to a tenant export (`GET /tenants/{tenant}/export`) or a folder of definitions to check those instead.
+
+### 2026-11-25: operators act without support sessions
+
+- Removed: `POST /support-sessions`, `GET /operator/support-sessions`, `POST /operator/support-sessions/{id}/end` and `POST /operator/support-sessions/{id}/extend`, and the `support-session` header on tenant routes. Operators call the tenant routes directly, with `change-reason` on writes.
+- New: `POST /operator/tenants/{tenant}/content-reason` with `{ "reason" }` answers `201` `{ tenant, reason, day, expiresAt }`. Until an operator has called it for a tenant on the current Oslo day, that tenant's content routes answer the operator `403` `urn:genai:problem:content-reason-required`. Each content read adds `platform.content.read` to the tenant's audit ([ADR 0072](../adr/0072-operators-own-the-platform.md)).
+- The audit actions `platform.support.open`, `platform.support.end` and `platform.support.extend` are no longer written; `platform.content.reason` and `platform.content.read` are new.
+- For an operator without the day's reason: `GET /tenants/{tenant}/export`, a skill's `definitions/skills/{id}` and its versions (also under `/operator/tenants/{tenant}/definitions`), copying, changing, fixing or importing a skill, `POST /tenants/{tenant}/definitions/input-fields`, and the batch and project run estimates answer `403` `content-reason-required`; another organisation's run read through `/v1`, MCP or A2A, or given feedback with `POST /tasks/{task}/feedback` or `/api/feedback`, answers not found; `GET /operator/quality/label-queue` leaves out `reason` for that organisation's items.
 
 ### 2026-11-25: usage counts what the quota counts
 
@@ -243,7 +250,7 @@ jq -n --arg data "$(base64 < brev.txt | tr -d '\n')" '{
 
 ### 2026-11-12: only operators change the limits Digdir sets
 
-- `PUT` and `DELETE /tenants/{tenant}/settings/{key}`, `PUT /tenants/{tenant}/pins/{key}` and `POST /tenants/{tenant}/import` answer 403 `urn:genai:problem:operator-only-setting` when someone other than an operator in a support session sets, removes or pins `usage.monthlyTokens`, `usage.tenantCallsPerMinute`, `assistant.dailyTokens` or `batch.approvalLimitNok` for a tenant. A dry run of `PUT /tenants/{tenant}/settings/{key}` or of the import answers the same 403. Importing a bundle that keeps a limit at its current value is fine.
+- `PUT` and `DELETE /tenants/{tenant}/settings/{key}`, `PUT /tenants/{tenant}/pins/{key}` and `POST /tenants/{tenant}/import` answer 403 `urn:genai:problem:operator-only-setting` when someone other than an operator sets, removes or pins `usage.monthlyTokens`, `usage.tenantCallsPerMinute`, `assistant.dailyTokens` or `batch.approvalLimitNok` for a tenant. A dry run of `PUT /tenants/{tenant}/settings/{key}` or of the import answers the same 403. Importing a bundle that keeps a limit at its current value is fine.
 - `GET /settings` marks these settings with `operatorOnly: true`. Reading the effective value is unchanged.
 
 ### 2026-11-11: no ingest date as a publish date
@@ -324,7 +331,7 @@ jq -n --arg data "$(base64 < brev.txt | tr -d '\n')" '{
 
 ### 2026-11-04: trusted Entra logins create organisation-wide keys
 
-- `POST /tenants/{tenant}/api-keys` answers `201` for an operator who is also one of the organisation's own people, such as a trusted Entra login in the platform organisation ([ADR 0033](../adr/0033-locked-test-environment.md)), as `POST /tenants/{tenant}/services/{service}/api-keys` already did. It used to answer `403`. An operator in a support session still gets `403`, and other operators `404`.
+- `POST /tenants/{tenant}/api-keys` answers `201` for an operator who is also one of the organisation's own people, such as a trusted Entra login in the platform organisation ([ADR 0033](../adr/0033-locked-test-environment.md)), as `POST /tenants/{tenant}/services/{service}/api-keys` already did. It used to answer `403`. An operator acting as an operator in the tenant still gets `403`.
 
 ### 2026-11-04: operators upload operation descriptors
 
@@ -417,13 +424,13 @@ Changes a client may notice. The rules behind them are in the sections above; te
 Change reason
 
 - Every audited write requires `change-reason` (at least 10 characters). These accepted none before and stored a fixed text: service drafts, batch-run start, cancel and retry, risk confirmations, skill create, save, copy, import, attachments and fixes, dataset uploads, enrichment apply and revert, connector sync and credentials, block register, adopt, approval request, withdraw and settings, engine-switch start, retry and cancel, test case candidates, plug-in contract-test reruns. Operator plug-in writes now need 10 characters, not just any text.
-- Proposal decisions, operator proposal decision and status, engine-switch activate and rollback, and operator block, skill-share and onboarding decisions read the reason from the header only. A `reason` in the body is ignored, except on `POST /support-sessions`.
+- Proposal decisions, operator proposal decision and status, engine-switch activate and rollback, and operator block, skill-share and onboarding decisions read the reason from the header only. A `reason` in the body is ignored, except on `POST /operator/tenants/{tenant}/content-reason`.
 - Review edits and approve (`/tenants/{tenant}/tasks/{task}/review/*`), `POST /operator/quality/matrix/runs`, `POST /tenants/{tenant}/clients/{id}/webhook/test` and batch-run start, cancel and retry are audited admin tasks: they need `change-reason` and answer with a `genai-task` header. Without a reason, the webhook test sends nothing.
 - `/openapi.json` marks `change-reason` as a required header on every audited write.
 
 Status codes
 
-- A tenant the caller cannot reach answers `404`, never `403`, on every tenant route. This changed for proposals, skills, skill tools, building blocks, step-flow blocks, risk confirmations, the definition template, assistant turns, connectors, private networks, tool connections, tenant secrets, definitions, timeline, settings, pins, export, import and audit. An operator without a support session gets `404` too. Building-block rights are checked on the acting principal.
+- A tenant the caller cannot reach answers `404`, never `403`, on every tenant route. This changed for proposals, skills, skill tools, building blocks, step-flow blocks, risk confirmations, the definition template, assistant turns, connectors, private networks, tool connections, tenant secrets, definitions, timeline, settings, pins, export, import and audit. At the time an operator without a support session got `404` too; since 2026-11-25 operators reach every tenant (ADR 0072). Building-block rights are checked on the acting principal.
 - `404` instead of `400` or `403`: `DELETE /tenants/{tenant}/clients/{id}` for an unknown client; revoke or rotate of an unknown key, and rotate of a revoked key; execute and delete of an unknown pipeline.
 - A concurrent review edit answers `409`, not `500`. A refused risk confirmation answers `400` or `403` problem+json, not `500`. `POST /tenants/{tenant}/eval-runs` with missing fields answers `400`, not `500`. `POST /mock/dev-login` for an unknown person answers `404`, not `500`.
 - Creating a pipeline answers `201`, like creating a dataset.

@@ -210,7 +210,7 @@ export const settings = {
   view: 'View',
   oneTenant: 'One organisation',
   onlyDefaults:
-    'The platform only shows the platform defaults here so far. The values the organisations have set can be seen in Diagnostics with support access.',
+    'The platform only shows the platform defaults here so far. The values the organisations have set can be seen under Organisation.',
   search: 'Search settings',
   category: 'Category',
   categoryAll: 'All',

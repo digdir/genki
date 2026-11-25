@@ -3,6 +3,11 @@ import type { Principal } from '@genai/contracts';
 import { bootPlatform, digdir } from '../testkit.js';
 import { mockRoutes } from './access.js';
 import { reasonFreeWrites } from '../change-reason.js';
+import {
+  contentReasonRequiredType,
+  contentRoutes,
+  skillDefinitionRoutes,
+} from '../content-reason.js';
 import { keepsOwnErrorShape } from '../problem-responses.js';
 import { apiTags, tagOf } from './tags.js';
 
@@ -51,6 +56,22 @@ describe('openapi.json', () => {
       )
       .map(({ key }) => key);
     expect(bare).toEqual([]);
+  });
+
+  it('documents the content reason refusal on every content route', async () => {
+    const documented = new Map(
+      (await operations()).map(({ key, op }) => [
+        key
+          .replace(/^(\w+) /, (_, m: string) => `${m.toUpperCase()} `)
+          .replace(/\{(\w+)\}/g, ':$1'),
+        op,
+      ]),
+    );
+    const missing = [...contentRoutes, ...skillDefinitionRoutes].filter((route) => {
+      const op = documented.get(route);
+      return op && !JSON.stringify(op.responses?.['403'] ?? {}).includes(contentReasonRequiredType);
+    });
+    expect(missing).toEqual([]);
   });
 
   it('gives every operation exactly one known tag', async () => {

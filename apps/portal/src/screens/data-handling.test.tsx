@@ -72,7 +72,7 @@ describe('Slik behandles data', () => {
     expect(screen.getByText(nb('about.dhModelsSignIn'))).toBeTruthy();
     const page = document.body.textContent ?? '';
     expect(page).toContain('Standard er 90 dager');
-    expect(page).toContain('bare gjennom en støtteøkt');
+    expect(page).toContain('bare når de har oppgitt en grunn');
     expect(page).toContain('Microsoft (Azure)');
     expect(page).not.toMatch(/example\.no|I dag kjører modellene i Azure med global behandling/);
     expectAccessible();

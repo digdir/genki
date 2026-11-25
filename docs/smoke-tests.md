@@ -46,7 +46,7 @@ The narrowest credential that does the whole test is an API key with a new `test
 
 - Only an admitted Entra login can create it, and only on a server in lockdown on the test tier. A stored grant is ignored anywhere else, so it cannot work in prod.
 - In the key's own tenant it reads what a person with every right reads (timelines with details and usage, every portal screen), and it may write only: validation and other checks, feedback, playground runs on its bound services, and publish, lifecycle and drafts of definitions whose id starts with `smoke-`.
-- Under `/operator` it reads only an allowlist, as an operator that is not admitted: `GET` on `/operator/tenants`, `operations`, `models`, `apis`, `plugins` (and `/operator/plugins/...`), `catalog` (and `/operator/catalog/...`), `tracing`, `quality` and `knowledge/engines`. Every other operator route, and every other method, answers 403 `urn:genai:problem:test-runner-scope`. It never opens support sessions, reads secrets, makes keys or registers clients.
+- Under `/operator` it reads only an allowlist, as an operator that is not admitted: `GET` on `/operator/tenants`, `operations`, `models`, `apis`, `plugins` (and `/operator/plugins/...`), `catalog` (and `/operator/catalog/...`), `tracing`, `quality` and `knowledge/engines`. Every other operator route, and every other method, answers 403 `urn:genai:problem:test-runner-scope`. It never gives content reasons, reads secrets, makes keys or registers clients.
 - Creating it requires `expiresInDays` (1 to 90) and `callsPerMinute`.
 - It still runs models only for its bound services.
 

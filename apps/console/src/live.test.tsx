@@ -622,30 +622,6 @@ describe('live mode without invented data', () => {
     expect(screen.getByRole('button', { name: 'Registrer virksomhet' })).toBeTruthy();
   });
 
-  it('names the operator of a support session instead of showing the id', async () => {
-    await openLive('#/support-access', (path) =>
-      path === '/api/operator/support-sessions'
-        ? json({
-            data: [
-              {
-                id: 's1',
-                operator: 'operator:entra:9f2c',
-                operatorName: 'Ola Drift',
-                tenant: '991825827',
-                reason: 'Feilsøking av sak DIG-1',
-                openedAt: '2026-10-08T09:00:00Z',
-                expiresAt: '2026-10-08T09:30:00Z',
-                status: 'expired',
-              },
-            ],
-          })
-        : undefined,
-    );
-
-    expect(await screen.findByText('Ola Drift', { selector: 'strong' })).toBeTruthy();
-    expect(screen.queryByText('9f2c')).toBeNull();
-  });
-
   it('turns a missing endpoint into a not-available notice rather than an error', async () => {
     await openLive('#/quality-matrix');
 

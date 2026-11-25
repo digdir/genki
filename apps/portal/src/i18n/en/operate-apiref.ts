@@ -315,9 +315,9 @@ export const apirefArea = {
     'ti-access.summary': 'Get access and API keys',
     'ti-access.desc':
       'Which Altinn resources the services require, and the API keys of the organisation. The key itself is never shown.',
-    'ti-support.summary': 'Open a support session',
-    'ti-support.desc':
-      'Gives Digdir time-limited access to the organisation in order to help. The session appears in the change log of the organisation.',
+    'ti-content-reason.summary': 'Give the reason for reading content',
+    'ti-content-reason.desc':
+      'Digdir operators work in every organisation directly. Before they read its content, such as tasks, documents and test sets, they give a reason that holds until the end of the day. The reason and every read appear in the change log of the organisation.',
     'fo-get.summary': 'Get usage',
     'fo-get.desc':
       'Tokens and cost per day, service, model and project. The projects are part of the figures per service.',

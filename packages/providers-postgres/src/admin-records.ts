@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 import { withPlatformAccess, withTenant } from './tenancy.js';
 
-export interface PostgresSupportSession {
+export interface PostgresContentReason {
   id: string;
   operator: string;
   operatorName?: string;
@@ -47,7 +47,7 @@ interface AuditRow {
   reason: string;
 }
 
-const toSession = (row: SessionRow): PostgresSupportSession => ({
+const toSession = (row: SessionRow): PostgresContentReason => ({
   id: row.id,
   operator: row.operator,
   ...(row.operator_name ? { operatorName: row.operator_name } : {}),
@@ -71,7 +71,7 @@ const toAudit = (row: AuditRow): PostgresAuditEntry => ({
 });
 
 export class PostgresAdminRecords {
-  readonly #sessions = new Map<string, PostgresSupportSession>();
+  readonly #reasons = new Map<string, PostgresContentReason>();
 
   private constructor(private readonly pool: Pool) {}
 
@@ -85,15 +85,15 @@ export class PostgresAdminRecords {
     const sessions = await withPlatformAccess(this.pool, 'support-sessions', (client) =>
       client.query<SessionRow>('select * from platform_support_sessions()'),
     );
-    this.#sessions.clear();
-    for (const row of sessions.rows) this.#sessions.set(row.id, toSession(row));
+    this.#reasons.clear();
+    for (const row of sessions.rows) this.#reasons.set(row.id, toSession(row));
   }
 
-  sessions(): PostgresSupportSession[] {
-    return [...this.#sessions.values()].map((s) => structuredClone(s));
+  contentReasons(): PostgresContentReason[] {
+    return [...this.#reasons.values()].map((s) => structuredClone(s));
   }
 
-  async saveSession(session: PostgresSupportSession): Promise<void> {
+  async saveContentReason(session: PostgresContentReason): Promise<void> {
     await withTenant(this.pool, session.tenant, (client) =>
       client.query(
         `insert into support_sessions (id, tenant, operator, reason, opened_at, expires_at, ended_at, operator_name)
@@ -111,7 +111,7 @@ export class PostgresAdminRecords {
         ],
       ),
     );
-    this.#sessions.set(session.id, structuredClone(session));
+    this.#reasons.set(session.id, structuredClone(session));
   }
 
   async audit(tenant?: string): Promise<PostgresAuditEntry[]> {

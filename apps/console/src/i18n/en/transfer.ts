@@ -19,10 +19,6 @@ export const transfer = {
   pickSomething: 'Choose at least one thing to include.',
   pickFile: 'Choose an export file from the platform.',
   pickTwo: 'Choose two different organisations.',
-  exportReason: 'Export of settings: {reason}',
-  cloneReadReason: 'Clone to {name}: {reason}',
-  cloneReason: 'Clone: {reason}',
-  importReason: 'Import: {reason}',
   readFailed: 'Could not read the configuration. Check that you have access, and try again.',
   cloned: 'The configuration has been cloned to {name}',
   imported: 'The import is done',
@@ -48,8 +44,7 @@ export const transfer = {
   includeServices: 'Services and step flows',
   includeServicesHelp:
     'The definitions with the settings applied to them. Datasets and documents are not included.',
-  reasonHelp:
-    'The configuration is read with support access. The organisation sees the reason in its own log.',
+  reasonHelp: "The reason goes with the change and shows in the organisation's log.",
   summary: '{settings} settings · {services} services',
   fileContents: 'The contents of the export file',
   dryRunTitle: 'Dry run: nothing has been changed yet',

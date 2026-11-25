@@ -117,6 +117,7 @@ import {
 import type { RegisteredAgent } from '@genai/strategy-remote';
 import { checkFlow } from '@genai/strategy-step-flow';
 import { platformActor, type Admin } from './admin.js';
+import { contentGatedKernel } from './content-reason.js';
 import {
   capabilityModes,
   configKeyAllows,
@@ -2179,7 +2180,6 @@ export const createPlatform = async (input: PlatformInput) => {
     sinks: traceSinks,
   });
   const apiKeys = input.apiKeys ?? new InMemoryTenantApiKeys();
-  let adminRef: Admin | undefined;
   const pipelineRuns = async (tenant?: string) => {
     const runs: PipelineRuns[] = [];
     for (const item of config.catalog.list({ kind: 'dataset' })) {
@@ -2251,11 +2251,6 @@ export const createPlatform = async (input: PlatformInput) => {
     labels,
     sinkLabels: sinkLabelService,
     traces: () => input.traces?.(),
-    support: {
-      list: () => adminRef?.supportSessions() ?? [],
-      end: (id, at) => adminRef?.endSupport(id, at),
-      extend: async (id, minutes, at) => adminRef?.extendSupport(id, minutes, at),
-    },
     tasks: () => taskIndex.running(),
     quality: async () =>
       Object.assign({}, ...(await Promise.all(modules.map((m) => m.qualityOverview?.() ?? {})))),
@@ -2551,7 +2546,6 @@ export const createPlatform = async (input: PlatformInput) => {
         },
       });
     if (admin) {
-      adminRef = admin;
       claimHooks.admin = admin;
       const authenticate = async (request: Request) => (await callerOf(request))?.principal;
       registerPortalRoutes(app, {
@@ -2628,7 +2622,7 @@ export const createPlatform = async (input: PlatformInput) => {
         authenticate,
         ...(input.binder ? { binder: input.binder } : {}),
       });
-      const mountDeps = { ...moduleDeps, admin, authenticate, access: tenantAccess(admin) };
+      const mountDeps = { ...moduleDeps, admin, authenticate, access: tenantAccess };
       for (const m of modules) m.mount(app, mountDeps);
       documentAccessRoutes(app);
       documentDatasetRoutes(app, ['config', 'operator-catalog', ...modules.map((m) => m.id)]);
@@ -2711,10 +2705,11 @@ export const createPlatform = async (input: PlatformInput) => {
         );
       return c.json({ data });
     });
+    const edgeKernel = contentGatedKernel(kernel, admin, consoleOperator);
     app.route(
       '/',
       createMcpApp({
-        kernel,
+        kernel: edgeKernel,
         resolver,
         auth: principalAuth,
         overridePolicy,
@@ -2725,7 +2720,7 @@ export const createPlatform = async (input: PlatformInput) => {
     app.route(
       '/',
       createOpenAiAdapter({
-        kernel,
+        kernel: edgeKernel,
         resolver,
         auth: principalAuth,
         overridePolicy,
@@ -2802,7 +2797,7 @@ export const createPlatform = async (input: PlatformInput) => {
     app.route(
       '/',
       createA2aApp({
-        kernel,
+        kernel: edgeKernel,
         resolver,
         auth: principalAuth,
         modelsOf,

@@ -192,42 +192,29 @@ describe('clients for a service', () => {
 });
 
 describe('operator access to tenant frontends', () => {
-  it('needs a support session, in which an operator may also change a client', async () => {
-    const { admin, call } = await boot();
-    const operator = principals.operator as Principal;
-    const opened = await admin.openSupportSession(operator, digdir, 'feilsøking', 30);
-    const session = opened.ok ? (opened.value as { id: string }).id : '';
-    const inSession = { 'support-session': session };
+  it("lets an operator list and change an agency's clients directly", async () => {
+    const { call } = await boot();
 
-    expect((await call(`/tenants/${digdir}/clients`, { as: 'operator' })).status).toBe(404);
-    expect(
-      (await call(`/tenants/${digdir}/clients`, { as: 'operator', headers: inSession })).status,
-    ).toBe(200);
+    expect((await call(`/tenants/${digdir}/clients`, { as: 'operator' })).status).toBe(200);
     expect(
       (
         await call(`/tenants/${digdir}/clients/klarsprak-web`, {
           method: 'PUT',
           as: 'operator',
-          headers: inSession,
           body: ka(),
         })
       ).status,
     ).toBeLessThan(300);
   });
 
-  it('never lets an operator create or rotate a service key, even in a support session', async () => {
-    const { admin, call } = await boot();
-    const operator = principals.operator as Principal;
-    const opened = await admin.openSupportSession(operator, digdir, 'feilsøking', 30);
-    const inSession = {
-      'support-session': opened.ok ? (opened.value as { id: string }).id : '',
-      'change-reason': 'Feilsøking',
-    };
+  it('never lets an operator create or rotate a service key', async () => {
+    const { call } = await boot();
+    const withReason = { 'change-reason': 'Feilsøking' };
 
     const created = await call(`/tenants/${digdir}/services/klarsprak/api-keys`, {
       method: 'POST',
       as: 'operator',
-      headers: inSession,
+      headers: withReason,
       body: { name: 'Bakdør' },
     });
     const own = await json<{ apiKey: { id: string } }>(
@@ -240,11 +227,15 @@ describe('operator access to tenant frontends', () => {
     const rotated = await call(`/tenants/${digdir}/api-keys/${own.apiKey.id}/rotate`, {
       method: 'POST',
       as: 'operator',
-      headers: inSession,
+      headers: withReason,
     });
 
     expect(created.status).toBe(403);
     expect(rotated.status).toBe(403);
+    for (const refused of [created, rotated])
+      expect(((await refused.json()) as { type?: string }).type).not.toBe(
+        'urn:genai:problem:content-reason-required',
+      );
   });
 });
 

@@ -17,7 +17,7 @@ import {
   settingsConflictMessage,
   type AdminRecordStore,
   type AuditEntry,
-  type SupportSession,
+  type ContentReason,
 } from './admin.js';
 import { createApp } from './app.js';
 import { followChanges, LocalChangeFeed } from './change-feed.js';
@@ -31,22 +31,22 @@ afterEach(async () => {
 });
 
 class CachedAdminRecords implements AdminRecordStore {
-  #sessions: SupportSession[];
+  #reasons: ContentReason[];
 
   constructor(private readonly shared: InMemoryAdminRecords) {
-    this.#sessions = shared.sessions();
+    this.#reasons = shared.contentReasons();
   }
 
   async reload() {
-    this.#sessions = this.shared.sessions();
+    this.#reasons = this.shared.contentReasons();
   }
 
-  sessions() {
-    return this.#sessions.map((s) => structuredClone(s));
+  contentReasons() {
+    return this.#reasons.map((r) => structuredClone(r));
   }
 
-  async saveSession(session: SupportSession) {
-    await this.shared.saveSession(session);
+  async saveContentReason(reason: ContentReason) {
+    await this.shared.saveContentReason(reason);
     await this.reload();
   }
 
@@ -80,24 +80,19 @@ const instance = async (shared: {
   const app = createApp('test', { platform: { store, plugins, settings, auth, admin, now } });
   followChanges(shared.feed, {
     settings,
-    supportSessions: records,
+    contentReasons: records,
     catalog: unused,
     definitions: unused,
     models: unused,
     toolConnections: unused,
   });
-  const send = (
-    path: string,
-    who: string,
-    init: { method?: string; body?: unknown; session?: string } = {},
-  ) =>
+  const send = (path: string, who: string, init: { method?: string; body?: unknown } = {}) =>
     app.request(path, {
       method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
       headers: {
         authorization: `Bearer ${who}`,
         'content-type': 'application/json',
         'change-reason': 'testendring',
-        ...(init.session ? { 'support-session': init.session } : {}),
       },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
     });
@@ -197,7 +192,7 @@ const boot = async (shared: {
   const settings = new SettingsRegistry([]);
   followChanges(shared.feed, {
     settings,
-    supportSessions: unused,
+    contentReasons: unused,
     catalog: platform.catalog,
     definitions: platform,
     models: platform.models,
@@ -299,20 +294,19 @@ describe('several API instances sharing durable stores', () => {
     expect(b.settings.tenant(digdir).values).toEqual({ 'search.topK': 20 });
   });
 
-  it('an ended support session stops granting tenant access after a support-sessions change', async () => {
+  it("a content reason given on one instance opens the organisation's content on the other after a support-sessions change", async () => {
     const { a, b, feed } = await twoInstances();
-    const opened = await a.send('/support-sessions', 'operator', {
-      body: { tenant: other, reason: 'feilsøking av sak 4711', minutes: 30 },
+    const read = () => b.send(`/tenants/${other}/tasks/no-such-task/timeline`, 'operator');
+
+    const given = await a.send(`/operator/tenants/${other}/content-reason`, 'operator', {
+      body: { reason: 'feilsøking av sak 4711' },
     });
-    const session = (await opened.json()) as { id: string };
-    await feed.emit('support-sessions');
-    const read = () => b.send(`/tenants/${other}/settings`, 'operator', { session: session.id });
-    expect((await read()).status).toBe(200);
+    expect(given.status).toBe(201);
+    expect((await read()).status).toBe(403);
 
-    await a.admin.endSupport(session.id, new Date('2026-10-06T10:05:00Z'));
     await feed.emit('support-sessions');
 
-    expect((await read()).status).toBe(404);
+    expect((await read()).status).not.toBe(403);
   });
 
   it("a catalog entry published on one registry reaches the other registry's routers after a change", async () => {

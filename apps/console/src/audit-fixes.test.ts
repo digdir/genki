@@ -12,15 +12,41 @@ const recorder = () => {
 };
 
 describe('console api', () => {
-  it('sends the held support session on tenant routes only', async () => {
-    const { api, calls } = recorder();
-    api.holdSupport('991825827', 'sess-1');
+  it('asks once for a reason when several content calls to one organisation are refused together', async () => {
+    const reasons = new Set<string>();
+    const posted: string[] = [];
+    const fetch: typeof globalThis.fetch = async (input) => {
+      const path = String(input);
+      if (path.endsWith('/content-reason')) {
+        posted.push(path);
+        reasons.add('991825827');
+        return Response.json({ tenant: '991825827' }, { status: 201 });
+      }
+      if (!reasons.has('991825827'))
+        return Response.json(
+          { type: 'urn:genai:problem:content-reason-required', tenant: '991825827', status: 403 },
+          { status: 403 },
+        );
+      return Response.json({ id: path });
+    };
+    const api = createApiClient({ baseUrl: '/api', fetch, token: () => 't' });
+    let asked = 0;
+    api.onContentReason(async (tenant) => {
+      asked += 1;
+      await api.giveContentReason(tenant, 'Feilsøker sak DIG-4420');
+    });
 
-    await api.configList('/tenants/991825827/catalog');
-    await api.configList('/operator/catalog/entries');
+    const [first, second] = await Promise.all([
+      api.timeline('991825827', 'a'),
+      api.timeline('991825827', 'b'),
+    ]);
 
-    expect(calls[0]?.headers.get('support-session')).toBe('sess-1');
-    expect(calls[1]?.headers.get('support-session')).toBeNull();
+    expect(asked).toBe(1);
+    expect(posted).toEqual(['/api/operator/tenants/991825827/content-reason']);
+    expect([first, second]).toEqual([
+      { id: '/api/tenants/991825827/tasks/a/timeline' },
+      { id: '/api/tenants/991825827/tasks/b/timeline' },
+    ]);
   });
 
   it('does not fetch usage for a plain tenant list', async () => {

@@ -249,9 +249,9 @@ describe.each([['memory'], ['postgres']])('%s admin stores', (name) => {
     await expect(settings.appendDefault({ ...version, value: 'lang' })).rejects.toThrow();
   });
 
-  it('keeps support sessions and audit entries per tenant across a reopen', async () => {
+  it('keeps content reasons and audit entries per tenant across a reopen', async () => {
     const { admin } = backend().stores();
-    const session = {
+    const given = {
       id: `s-${name}`,
       operator: 'operator:platform:ola',
       tenant: ORG_A,
@@ -259,14 +259,14 @@ describe.each([['memory'], ['postgres']])('%s admin stores', (name) => {
       openedAt: '2026-10-07T08:00:00.000Z',
       expiresAt: '2026-10-07T09:00:00.000Z',
     };
-    await admin.saveSession(session);
-    await admin.saveSession({ ...session, endedAt: '2026-10-07T08:30:00.000Z' });
+    await admin.saveContentReason(given);
+    await admin.saveContentReason({ ...given, endedAt: '2026-10-07T08:30:00.000Z' });
     await admin.appendAudit(audit(ORG_A, 'task-a'));
     await admin.appendAudit({ ...audit(ORG_B, 'task-b'), onBehalfOf: ORG_B });
 
     const reopened = (await backend().reopen()).admin;
 
-    expect(reopened.sessions()).toEqual([{ ...session, endedAt: '2026-10-07T08:30:00.000Z' }]);
+    expect(reopened.contentReasons()).toEqual([{ ...given, endedAt: '2026-10-07T08:30:00.000Z' }]);
     expect(await reopened.audit(ORG_A)).toEqual([audit(ORG_A, 'task-a')]);
     expect(await reopened.audit(ORG_B)).toEqual([{ ...audit(ORG_B, 'task-b'), onBehalfOf: ORG_B }]);
   });

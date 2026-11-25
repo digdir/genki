@@ -256,28 +256,23 @@ describe('Maskinporten clients per tenant', () => {
     );
   });
 
-  it('lets an operator in a support session remove a client but never register one', async () => {
-    const { register, send, admin } = await boot();
+  it('lets an operator remove a client but never register one, even with a content reason', async () => {
+    const { register, send } = await boot();
     await register({ clientId: 'sak-123', name: 'Saksbehandling', services: ['veileder'] });
-    const session = await admin.openSupportSession(
-      people.drift as Principal,
-      digdir,
-      'Hjelper virksomheten',
-      30,
-    );
-    const support = { 'support-session': session.ok ? session.value.id : '' };
+    const reasoned = await send(`/operator/tenants/${digdir}/content-reason`, 'drift', {
+      body: { reason: 'Hjelper virksomheten' },
+    });
 
     const created = await register(
       { clientId: 'drift-1', name: 'Drift', services: ['*'] },
       'drift',
-      support,
     );
     const removed = await send(`/tenants/${digdir}/maskinporten-clients/sak-123`, 'drift', {
       method: 'DELETE',
       reason: 'Klienten er kompromittert',
-      headers: support,
     });
 
+    expect(reasoned.status).toBe(201);
     expect(created.status).toBe(403);
     expect(removed.status).toBe(204);
   });

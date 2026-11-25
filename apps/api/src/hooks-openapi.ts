@@ -1,6 +1,7 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
 import { hookFailureModes, hookModes, hookPoints } from '@genai/hooks';
 import { problemContent } from './http.js';
+import { withContentReasons } from './openapi/content-reason.js';
 
 const tenantParam = z
   .string()
@@ -69,7 +70,7 @@ const json = <T extends z.ZodType>(schema: T, description: string) => ({
 });
 const problem = (description: string) => ({ description, content: problemContent });
 
-export const hookRoutes: RouteConfig[] = [
+export const hookRoutes: RouteConfig[] = withContentReasons([
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/hooks',
@@ -134,7 +135,7 @@ export const hookRoutes: RouteConfig[] = [
       409: problem('Hooks are turned off'),
     },
   }),
-];
+]);
 
 interface DocumentedApp {
   openAPIRegistry?: { registerPath(route: RouteConfig): void };

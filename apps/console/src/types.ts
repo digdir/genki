@@ -210,16 +210,6 @@ export interface RefreshResult {
   };
 }
 
-export interface SupportSession {
-  id: string;
-  operator: string;
-  operatorName?: string;
-  tenant: string;
-  reason: string;
-  openedAt: string;
-  expiresAt: string;
-}
-
 export interface AuditEntry {
   task: string;
   tenant: string;
@@ -612,11 +602,6 @@ export type TraceSettings = Omit<
   TraceConnection,
   'status' | 'lastDelivery' | 'sent24h' | 'queued' | 'error' | 'secretsStored'
 > & { secrets: Record<string, string> };
-
-export interface SupportSessionRow extends SupportSession {
-  endedAt?: string;
-  status: 'active' | 'expired' | 'ended';
-}
 
 export interface RunningTask {
   task: string;

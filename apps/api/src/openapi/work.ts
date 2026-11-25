@@ -21,6 +21,7 @@ import { incidentResolvedType } from '../platform-status.js';
 import { quotaRequestDecidedType, quotaRequestPendingType } from '../quota-requests.js';
 import { runFinishedType, runNotCancellableType } from '../tenant-run-cancel.js';
 import { sinkJudgeFields, staleJudgesField } from './services.js';
+import { withContentReasons } from './content-reason.js';
 
 /** A run as readers get it: its lease (owner, heartbeatAt) is never shown. */
 const shownEvalRun = evalRun.omit({ owner: true, heartbeatAt: true });
@@ -32,10 +33,6 @@ const tenant = pathParam('tenant', '991825827');
 const project = pathParam('project', 'arsrapporter-2026');
 const task = pathParam('task', '0b6f6c3e-3c55-4f0e-9a51-6c2f1f0f7a10');
 
-const supportSession = z
-  .string()
-  .optional()
-  .describe('An operator working in a tenant sends the id of an open support session');
 const reason = z
   .string()
   .describe('Why the change is made, at least 10 characters; URI-encode text outside ASCII');
@@ -45,13 +42,9 @@ const ifMatch = z
   .optional()
   .describe('The version the change is based on; a newer stored version gives 409');
 
-const readHeaders = z.object({ 'support-session': supportSession });
-const writeHeaders = z.object({ 'change-reason': reason, 'support-session': supportSession });
+const writeHeaders = z.object({ 'change-reason': reason });
 const namedWriteHeaders = writeHeaders.extend({ 'actor-name': actorName });
-const optionalReasonHeaders = z.object({
-  'change-reason': reason.optional(),
-  'support-session': supportSession,
-});
+const optionalReasonHeaders = z.object({ 'change-reason': reason.optional() });
 const operatorWriteHeaders = z.object({ 'change-reason': reason });
 
 const json = (schema: z.ZodType, description: string) => ({
@@ -82,7 +75,7 @@ const operatorOnly = {
   403: problem('Not an operator'),
 };
 
-const member = 'Any member of the tenant; an operator needs a support session';
+const member = 'Any member of the tenant, or an operator';
 const operator = 'Operators only';
 const audited = 'Audited.';
 const notAudited = 'Not in the audit log.';
@@ -539,7 +532,7 @@ const projectRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/projects/sources',
     summary: 'Datasets a project can select from, with the filter values people can pick',
     description: described(member, notAudited),
-    request: { params: z.object({ tenant }), headers: readHeaders },
+    request: { params: z.object({ tenant }) },
     responses: {
       200: json(
         z.object({
@@ -566,7 +559,7 @@ const projectRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/projects',
     summary: "The tenant's projects with counts of subscriptions, new documents and runs",
     description: described(member, notAudited),
-    request: { params: z.object({ tenant }), headers: readHeaders },
+    request: { params: z.object({ tenant }) },
     responses: {
       200: json(
         z.object({
@@ -601,7 +594,7 @@ const projectRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/projects/{project}',
     summary: 'One project with its subscriptions',
     description: described(member, notAudited),
-    request: { params: projectParams, headers: readHeaders },
+    request: { params: projectParams },
     responses: {
       200: json(Project.extend({ subscriptions: z.array(ProjectSubscription) }), 'Project'),
       ...memberRead,
@@ -631,7 +624,7 @@ const projectRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/projects/{project}/history',
     summary: 'Every saved version of the project, newest first',
     description: described(member, notAudited),
-    request: { params: projectParams, headers: readHeaders },
+    request: { params: projectParams },
     responses: { 200: json(z.object({ data: z.array(Project) }), 'Versions'), ...memberRead },
   }),
   createRoute({
@@ -640,7 +633,7 @@ const projectRoutes: RouteConfig[] = [
     summary:
       'Change log of the project: versions, subscriptions, runs, reviews and points, newest first',
     description: described(member, notAudited),
-    request: { params: projectParams, headers: readHeaders },
+    request: { params: projectParams },
     responses: { 200: json(z.object({ data: z.array(LogEntry) }), 'Log'), ...memberRead },
   }),
   createRoute({
@@ -648,7 +641,7 @@ const projectRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/projects/{project}/points',
     summary: 'Assessment points written on the project, oldest first',
     description: described(member, notAudited),
-    request: { params: projectParams, headers: readHeaders },
+    request: { params: projectParams },
     responses: { 200: json(z.object({ data: z.array(Point) }), 'Points'), ...memberRead },
   }),
   createRoute({
@@ -670,7 +663,6 @@ const projectRoutes: RouteConfig[] = [
     description: described(member, notAudited),
     request: {
       params: projectParams,
-      headers: readHeaders,
       query: z.object({
         selection: z.string().describe('The selection id'),
         limit: z.string().optional().describe('1 to 100, default 20'),
@@ -779,7 +771,7 @@ const projectRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/projects/{project}/runs',
     summary: 'Runs of the project, those waiting for approval first',
     description: described(member, notAudited),
-    request: { params: projectParams, headers: readHeaders },
+    request: { params: projectParams },
     responses: { 200: json(z.object({ data: z.array(ProjectRunListed) }), 'Runs'), ...memberRead },
   }),
   createRoute({
@@ -803,7 +795,7 @@ const projectRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/projects/{project}/subscriptions',
     summary: 'Subscriptions of the project, one per followed selection',
     description: described(member, notAudited),
-    request: { params: projectParams, headers: readHeaders },
+    request: { params: projectParams },
     responses: {
       200: json(z.object({ data: z.array(ProjectSubscription) }), 'Subscriptions'),
       ...memberRead,
@@ -866,7 +858,7 @@ const projectRoutes: RouteConfig[] = [
       audited,
       'No change reason needed.',
     ),
-    request: { params: subscriptionParams, headers: readHeaders },
+    request: { params: subscriptionParams },
     responses: {
       200: json(
         z.object({
@@ -944,7 +936,6 @@ const taskRoutes: RouteConfig[] = [
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant }),
-      headers: readHeaders,
       query: z.object({
         origin: z
           .enum(['playground'])
@@ -1007,7 +998,6 @@ const taskRoutes: RouteConfig[] = [
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant }),
-      headers: readHeaders,
       query: z.object({
         from: z
           .string()
@@ -1041,7 +1031,6 @@ const taskRoutes: RouteConfig[] = [
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant }),
-      headers: readHeaders,
       query: z.object({
         status: taskStatus.optional(),
         limit: z.string().optional().describe('1 to 200, default 50'),
@@ -1054,7 +1043,7 @@ const taskRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/tasks/{task}',
     summary: 'One service run or playground run',
     description: described(member, notAudited),
-    request: { params: z.object({ tenant, task }), headers: readHeaders },
+    request: { params: z.object({ tenant, task }) },
     responses: { 200: json(TaskRow, 'Run'), ...memberRead },
   }),
   createRoute({
@@ -1081,7 +1070,7 @@ const taskRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/tasks/{task}/review',
     summary: 'The table a run produced, with edits and approval',
     description: described('Who started the run, or manage-services', notAudited),
-    request: { params: z.object({ tenant, task }), headers: readHeaders },
+    request: { params: z.object({ tenant, task }) },
     responses: {
       200: json(ReviewView, 'Review'),
       403: problem('Missing right'),
@@ -1448,7 +1437,6 @@ const evalRoutes: RouteConfig[] = [
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant }),
-      headers: readHeaders,
       query: z.object({ service: z.string().optional() }),
     },
     responses: { 200: json(z.object({ data: z.array(TestSet) }), 'Test sets'), ...memberRead },
@@ -1471,7 +1459,6 @@ const evalRoutes: RouteConfig[] = [
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant, id: pathParam('id', 'kudos-spm') }),
-      headers: readHeaders,
       query: z.object({ version: z.string().optional() }),
     },
     responses: { 200: json(TestSet, 'Test set'), ...configRead },
@@ -1530,7 +1517,6 @@ const evalRoutes: RouteConfig[] = [
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant, setId: pathParam('setId', 'kudos-spm') }),
-      headers: readHeaders,
     },
     responses: { 200: json(z.object({ data: z.array(CaseView) }), 'Cases'), ...memberRead },
   }),
@@ -1583,7 +1569,6 @@ const evalRoutes: RouteConfig[] = [
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant }),
-      headers: readHeaders,
       query: z.object({ service: z.string().optional() }),
     },
     responses: { 200: json(z.object({ data: z.array(shownEvalRun) }), 'Runs'), ...memberRead },
@@ -1595,7 +1580,6 @@ const evalRoutes: RouteConfig[] = [
     description: described('manage-services', notAudited, 'The run is a task of its own.'),
     request: {
       params: z.object({ tenant }),
-      headers: readHeaders,
       body: body(
         z.object({
           capability: z.string(),
@@ -1631,7 +1615,6 @@ const evalRoutes: RouteConfig[] = [
     ),
     request: {
       params: z.object({ tenant, runId: pathParam('runId', '6c1d0b9e') }),
-      headers: readHeaders,
     },
     responses: {
       200: json(
@@ -1655,23 +1638,19 @@ const evalRoutes: RouteConfig[] = [
     path: '/eval-tasks/{task}',
     summary: 'Status of an evaluation started with POST /tenants/{tenant}/eval-runs',
     description: described(
-      'The tenant that started it; an operator needs a support session',
+      'The tenant that started it',
       notAudited,
       'Read from the task and the stored run, so every instance answers the same, except waiting-for-scores: only the instance running the eval knows its judges have not delivered, and the others answer running.',
     ),
-    request: { params: z.object({ task }), headers: readHeaders },
+    request: { params: z.object({ task }) },
     responses: { 200: json(RunStatus, 'Status'), ...evalProblems },
   }),
   createRoute({
     method: 'get',
     path: '/eval-runs/compare',
     summary: 'Paired bootstrap comparison of two evaluation runs, one per metric',
-    description: described(
-      'Access to the tenant of both runs; an operator needs a support session',
-      notAudited,
-    ),
+    description: described('Access to the tenant of both runs', notAudited),
     request: {
-      headers: readHeaders,
       query: z.object({
         baseline: z.string(),
         candidate: z.string(),
@@ -1710,11 +1689,8 @@ const evalRoutes: RouteConfig[] = [
     method: 'get',
     path: '/eval-runs/{id}',
     summary: 'One evaluation run with provenance and metrics',
-    description: described(
-      'Access to the tenant of the run; an operator needs a support session',
-      notAudited,
-    ),
-    request: { params: z.object({ id: pathParam('id', 'run-2026-10-12') }), headers: readHeaders },
+    description: described('Access to the tenant of the run', notAudited),
+    request: { params: z.object({ id: pathParam('id', 'run-2026-10-12') }) },
     responses: {
       200: json(
         z.object({
@@ -1736,7 +1712,6 @@ const evalRoutes: RouteConfig[] = [
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant }),
-      headers: readHeaders,
       query: z.object({ service: z.string().optional() }),
     },
     responses: { 200: json(z.object({ data: z.array(FeedbackView) }), 'Feedback'), ...memberRead },
@@ -1775,7 +1750,6 @@ const evalRoutes: RouteConfig[] = [
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant }),
-      headers: readHeaders,
       query: z.object({ service: z.string().optional() }),
     },
     responses: {
@@ -1992,7 +1966,7 @@ const scopedRoutes = (
       path: `/tenants/{tenant}/${segment}`,
       summary: `Platform ${noun}s and the tenant's own`,
       description: described(member, notAudited),
-      request: { params: z.object({ tenant }), headers: readHeaders },
+      request: { params: z.object({ tenant }) },
       responses: { 200: json(list(true), `${noun}s`), ...configRead },
     }),
     createRoute({
@@ -2024,7 +1998,7 @@ const scopedRoutes = (
       path: `/tenants/{tenant}/${segment}/{id}/versions`,
       summary: `Every stored version of one of the tenant's ${noun}s`,
       description: described(member, notAudited),
-      request: { params: z.object({ tenant, id }), headers: readHeaders },
+      request: { params: z.object({ tenant, id }) },
       responses: { 200: versions, ...configRead },
     }),
   ];
@@ -2049,7 +2023,7 @@ const Hit = z.object({
 const diagnosticsProblems = {
   400: problem('Invalid request or settings'),
   401: problem('Not signed in'),
-  404: problem('Not an operator, no support session, or not found'),
+  404: problem('Not an operator, or not found'),
 };
 
 const diagnosticsRoutes: RouteConfig[] = [
@@ -2058,10 +2032,9 @@ const diagnosticsRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/diagnostics/retrieve',
     summary:
       'Run retrieval for a service or a dataset with optional overrides and show chunks and trace',
-    description: described('Operators in a support session', notAudited),
+    description: described('Operators', notAudited),
     request: {
       params: z.object({ tenant }),
-      headers: readHeaders,
       body: body(
         z.object({
           service: z.string().optional().describe('Exactly one of service and dataset'),
@@ -2112,10 +2085,9 @@ const diagnosticsRoutes: RouteConfig[] = [
     method: 'get',
     path: '/tenants/{tenant}/diagnostics/services/{service}/resolution',
     summary: 'How a service resolves: version, strategy, model, knowledge and changed settings',
-    description: described('Operators in a support session', notAudited),
+    description: described('Operators', notAudited),
     request: {
       params: z.object({ tenant, service: pathParam('service', 'kudos') }),
-      headers: readHeaders,
     },
     responses: {
       200: json(
@@ -2148,10 +2120,9 @@ const diagnosticsRoutes: RouteConfig[] = [
     method: 'post',
     path: '/tenants/{tenant}/diagnostics/plan',
     summary: "Show the search queries the service's planner makes for a question",
-    description: described('Operators in a support session', notAudited, 'Calls the model.'),
+    description: described('Operators', notAudited, 'Calls the model.'),
     request: {
       params: z.object({ tenant }),
-      headers: readHeaders,
       body: body(z.object({ service: z.string(), query: z.string() })),
     },
     responses: {
@@ -2172,8 +2143,8 @@ const diagnosticsRoutes: RouteConfig[] = [
     method: 'get',
     path: '/tenants/{tenant}/diagnostics/tasks/{task}/attribution',
     summary: 'Which chunks a run found, showed and read, per search',
-    description: described('Operators in a support session', notAudited),
-    request: { params: z.object({ tenant, task }), headers: readHeaders },
+    description: described('Operators', notAudited),
+    request: { params: z.object({ tenant, task }) },
     responses: {
       200: json(
         z.object({
@@ -3046,7 +3017,6 @@ const operationsRoutes: RouteConfig[] = [
     description: described('view-usage', notAudited),
     request: {
       params: z.object({ tenant }),
-      headers: readHeaders,
       query: z.object({
         days: z.string().optional().describe('1 to 366, default 30'),
         project: z.string().optional().describe('Only runs in this project; leaves out ingestion'),
@@ -3127,7 +3097,7 @@ const operationsRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/quota-requests',
     summary: "The tenant's requests for a larger monthly token quota, newest first",
     description: described('view-usage', notAudited),
-    request: { params: z.object({ tenant }), headers: readHeaders },
+    request: { params: z.object({ tenant }) },
     responses: {
       200: json(z.object({ data: z.array(QuotaRequest) }), 'Requests'),
       403: problem('Missing right'),
@@ -3161,7 +3131,7 @@ const operationsRoutes: RouteConfig[] = [
     summary:
       "Platform health as the tenant sees it: shared components, the tenant's own runs, ingestion and failing schedules, and open incidents that concern it",
     description: described(member, notAudited),
-    request: { params: z.object({ tenant }), headers: readHeaders },
+    request: { params: z.object({ tenant }) },
     responses: { 200: json(OperationsOverview, 'Status'), ...memberRead },
   }),
   createRoute({
@@ -3299,7 +3269,7 @@ const operationsRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/overview',
     summary: 'Start page: services, recent runs, usage this month and what needs attention',
     description: described(member, notAudited),
-    request: { params: z.object({ tenant }), headers: readHeaders },
+    request: { params: z.object({ tenant }) },
     responses: {
       200: json(
         z.object({
@@ -3781,7 +3751,7 @@ const protocolRoutes: RouteConfig[] = [
   }),
 ];
 
-export const workRoutes: RouteConfig[] = [
+export const workRoutes: RouteConfig[] = withContentReasons([
   ...projectRoutes,
   ...taskRoutes,
   ...evalRoutes,
@@ -3791,7 +3761,7 @@ export const workRoutes: RouteConfig[] = [
   ...operationsRoutes,
   ...hookRoutes,
   ...protocolRoutes,
-];
+]);
 
 export const registerWorkRoutes = (app: unknown) => {
   const registry = (app as { openAPIRegistry?: { registerPath(route: RouteConfig): void } })

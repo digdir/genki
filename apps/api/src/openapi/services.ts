@@ -10,6 +10,7 @@ import { blockReviewRoutes } from './block-reviews.js';
 import { blockRoutes } from './blocks.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
 import { runSchema } from '../playground.js';
+import { withContentReasons } from './content-reason.js';
 
 const pathParam = (name: string, example?: string) =>
   z.string().openapi({ param: { name, in: 'path' }, ...(example ? { example } : {}) });
@@ -1418,7 +1419,7 @@ const DriftItem = z.object({
   differences: z.array(z.string()).optional(),
 });
 
-export const serviceRoutes: RouteConfig[] = [
+export const serviceRoutes: RouteConfig[] = withContentReasons([
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/services',
@@ -2627,7 +2628,7 @@ export const serviceRoutes: RouteConfig[] = [
       201: audited(SkillDetail, 'Created'),
       ...signedIn,
       404: problem('The tenant is not reachable for the caller'),
-      403: problem('Missing right, or a read-only support session'),
+      403: problem('Missing right'),
       409: problem('The id is taken'),
       422: problem('Invalid id'),
     },
@@ -2646,7 +2647,7 @@ export const serviceRoutes: RouteConfig[] = [
       400: problem('No file'),
       ...signedIn,
       404: problem('The tenant is not reachable for the caller'),
-      403: problem('Missing right, or a read-only support session'),
+      403: problem('Missing right'),
       409: problem('The id is taken'),
       422: problem('Invalid package'),
     },
@@ -2676,7 +2677,7 @@ export const serviceRoutes: RouteConfig[] = [
       200: audited(SkillDetail, 'Saved'),
       400: problem('Missing definition'),
       ...signedIn,
-      403: problem('Missing right, or a read-only support session'),
+      403: problem('Missing right'),
       404: problem('No such own skill, or the tenant is not reachable for the caller'),
       409: problem('The draft was changed by someone else'),
     },
@@ -2740,7 +2741,7 @@ export const serviceRoutes: RouteConfig[] = [
     responses: {
       200: json(SkillTestRun, 'Run'),
       ...signedIn,
-      403: problem('Missing right, or a read-only support session'),
+      403: problem('Missing right'),
       404: problem('No such own skill or draft, or the tenant is not reachable for the caller'),
       422: problem('The test set cannot run'),
     },
@@ -2756,7 +2757,7 @@ export const serviceRoutes: RouteConfig[] = [
     responses: {
       200: audited(SkillDetail, 'Removed'),
       ...signedIn,
-      403: problem('Missing right, or a read-only support session'),
+      403: problem('Missing right'),
       404: problem(
         'No such skill, draft or test case, or the tenant is not reachable for the caller',
       ),
@@ -2772,7 +2773,7 @@ export const serviceRoutes: RouteConfig[] = [
     responses: {
       201: audited(SkillFix, 'Proposed fix'),
       ...signedIn,
-      403: problem('Missing right, or a read-only support session'),
+      403: problem('Missing right'),
       404: problem('No such skill or draft, or the tenant is not reachable for the caller'),
       409: problem('No failed cases, the optimiser is not published, or no model is available'),
       422: problem('The assistant did not answer or proposed no change'),
@@ -2789,7 +2790,7 @@ export const serviceRoutes: RouteConfig[] = [
     responses: {
       200: audited(SkillDetail, 'Applied'),
       ...signedIn,
-      403: problem('Missing right, or a read-only support session'),
+      403: problem('Missing right'),
       404: problem('No such skill, draft or fix, or the tenant is not reachable for the caller'),
       409: problem('The draft changed since the fix was proposed'),
     },
@@ -2831,7 +2832,7 @@ export const serviceRoutes: RouteConfig[] = [
       ),
       400: problem('Missing or short reason'),
       ...signedIn,
-      403: problem('Missing right, or a read-only support session'),
+      403: problem('Missing right'),
       404: problem('No such skill or draft, or the tenant is not reachable for the caller'),
       409: problem('No changes to publish'),
       422: {
@@ -2866,7 +2867,7 @@ export const serviceRoutes: RouteConfig[] = [
       202: audited(SkillShare, 'Requested'),
       400: problem('Missing or short reason'),
       ...signedIn,
-      403: problem('Missing right, or a read-only support session'),
+      403: problem('Missing right'),
       404: problem('No such own skill, or the tenant is not reachable for the caller'),
       409: problem('Already pending or shared'),
       422: problem('Not confirmed, or no published version'),
@@ -2883,7 +2884,7 @@ export const serviceRoutes: RouteConfig[] = [
     responses: {
       200: audited(SkillShare, 'Withdrawn'),
       ...signedIn,
-      403: problem('Missing right, or a read-only support session'),
+      403: problem('Missing right'),
       404: problem(
         'No such skill or nothing shared, or the tenant is not reachable for the caller',
       ),
@@ -2913,7 +2914,7 @@ export const serviceRoutes: RouteConfig[] = [
     responses: {
       201: audited(SkillDetail, 'Copied'),
       ...signedIn,
-      403: problem('Missing right, or a read-only support session'),
+      403: problem('Missing right'),
       404: problem('No such skill or version, or the tenant is not reachable for the caller'),
       409: problem('The id is taken'),
       422: problem('Invalid id'),
@@ -2960,7 +2961,7 @@ export const serviceRoutes: RouteConfig[] = [
       ),
       400: problem('No file'),
       ...signedIn,
-      403: problem('Missing right, or a read-only support session'),
+      403: problem('Missing right'),
       404: problem('No such own skill, or the tenant is not reachable for the caller'),
       422: problem('No name, too large, or refused by the store'),
     },
@@ -3251,7 +3252,7 @@ export const serviceRoutes: RouteConfig[] = [
       ...operatorErrors,
     },
   }),
-];
+]);
 
 type DocumentedApp = { openAPIRegistry?: { registerPath(route: RouteConfig): void } };
 

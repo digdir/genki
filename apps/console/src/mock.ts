@@ -44,8 +44,6 @@ import type {
   SettingInfo,
   SharedService,
   OnboardingRequest,
-  SupportSession,
-  SupportSessionRow,
   Residency,
   Tenant,
   TraceConnection,
@@ -246,18 +244,6 @@ export const exampleQuality: QualityOverview = {
   history: exampleHistory,
 };
 
-export const exampleSupport: SupportSessionRow[] = [
-  {
-    id: 's2',
-    operator: 'Jon Øien',
-    tenant: '983888999',
-    reason: 'Feil i datasett meldt av kunden, sak DIG-4409',
-    openedAt: '2026-10-07T09:12:00+02:00',
-    expiresAt: '2026-10-07T09:42:00+02:00',
-    status: 'expired',
-  },
-];
-
 export const exampleRunning: RunningTask[] = [
   {
     task: 't-101',
@@ -333,12 +319,11 @@ export const mockFetch = (
   refresh: RefreshResult = { discovered: 3, failed: [] },
   audit: AuditEntry[] = exampleOperatorAudit,
 ): typeof fetch => {
-  const sessions = new Map<string, SupportSession>();
+  const contentReasons = new Map<string, string>();
   const flagRoutes = flagsMock(json);
   let shared = structuredClone(exampleShared);
   let queue = structuredClone(exampleLabelQueue);
   const sinkLabels = structuredClone(exampleSinkLabels);
-  let support = structuredClone(exampleSupport);
   let running = structuredClone(exampleRunning);
   let current = structuredClone(models);
   let blocks = structuredClone(exampleBlocks);
@@ -943,9 +928,36 @@ export const mockFetch = (
     const given = raw === null ? null : decodeURIComponent(raw);
     const reason = given === null || reasonTooShort(given) ? null : given;
     const body = () => JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
-    const session = (tenant: string | undefined) => {
-      const s = sessions.get(headers.get('support-session') ?? '');
-      return s && s.tenant === tenant ? s : undefined;
+    const contentRead = (tenant: string, target: string) => {
+      const given = contentReasons.get(tenant);
+      if (given === undefined)
+        return json(
+          {
+            type: 'urn:genai:problem:content-reason-required',
+            title: 'Give a reason to see this content',
+            status: 403,
+            tenant,
+          },
+          403,
+        );
+      log = [
+        {
+          task: `a-${log.length + 100}`,
+          tenant,
+          onBehalfOf: tenant,
+          tenantName: tenantName(tenant),
+          action: 'platform.content.read',
+          actor: `operator:${operatorName}`,
+          actorName: operatorName,
+          actorOrg: 'Digdir',
+          at: new Date().toISOString(),
+          outcome: 'applied',
+          target: `content:${target}`,
+          reason: given,
+        },
+        ...log,
+      ];
+      return undefined;
     };
     const flagged = flagRoutes(path, method, reason, body);
     if (flagged) return flagged;
@@ -1135,8 +1147,6 @@ export const mockFetch = (
     }
     const transfer = /^\/tenants\/([^/]+)\/(export|import)$/.exec(path);
     if (transfer) {
-      if (!session(transfer[1]))
-        return json({ title: 'Not allowed for this tenant', status: 403 }, 403);
       if (transfer[2] === 'export')
         return json({
           format: 'genai-tenant-export/v1',
@@ -1180,7 +1190,6 @@ export const mockFetch = (
     const tenantSetting = /^\/tenants\/([^/]+)\/settings\/([^/]+)$/.exec(path);
     if (tenantSetting && tenantSetting[2] !== 'effective' && method === 'PUT') {
       const org = tenantSetting[1] ?? '';
-      if (!session(org)) return json({ title: 'Not allowed for this tenant', status: 403 }, 403);
       if (!reason) return needReason();
       const key = decodeURIComponent(tenantSetting[2] ?? '');
       const value = body().value;
@@ -1190,14 +1199,11 @@ export const mockFetch = (
     }
     const keysPath = /^\/tenants\/([^/]+)\/access$/.exec(path);
     if (keysPath && method === 'GET') {
-      if (!session(keysPath[1]))
-        return json({ title: 'Not allowed for this tenant', status: 403 }, 403);
       return json({ services: [], keys: tenantKeys.get(keysPath[1] ?? '') ?? [] });
     }
     const revokeKey = /^\/tenants\/([^/]+)\/api-keys\/([^/]+)\/revoke$/.exec(path);
     if (revokeKey && method === 'POST') {
       const org = revokeKey[1] ?? '';
-      if (!session(org)) return json({ title: 'Not allowed for this tenant', status: 403 }, 403);
       if (!reason) return needReason();
       const list = tenantKeys.get(org) ?? [];
       const found = list.find((k) => k.id === revokeKey[2] && !k.revokedAt);
@@ -1212,8 +1218,6 @@ export const mockFetch = (
     }
     const effective = /^\/tenants\/([^/]+)\/settings\/effective$/.exec(path);
     if (effective) {
-      if (!session(effective[1]))
-        return json({ title: 'Not allowed for this tenant', status: 403 }, 403);
       const service = url.searchParams.get('service') ?? '';
       if (!service)
         return json(
@@ -1243,8 +1247,8 @@ export const mockFetch = (
     }
     const timeline = /^\/tenants\/([^/]+)\/tasks\/([^/]+)\/timeline$/.exec(path);
     if (timeline) {
-      if (!session(timeline[1]))
-        return json({ title: 'Not allowed for this tenant', status: 403 }, 403);
+      const refused = contentRead(timeline[1] ?? '', `task/${timeline[2] ?? ''}/timeline`);
+      if (refused) return refused;
       return timeline[1] === '999888777' && timeline[2] === exampleTimeline.id
         ? json(exampleTimeline)
         : notFound();
@@ -1308,32 +1312,34 @@ export const mockFetch = (
       recordAction('platform.models.classify', `model:${id}`, reason);
       return json(updated);
     }
-    if (path === '/support-sessions' && method === 'POST') {
-      const b = body() as { tenant: string; reason: string; minutes?: number };
-      const minutes = b.minutes ?? 30;
-      const opened: SupportSession = {
-        id: `s-${sessions.size + 10}`,
-        operator: operatorName,
-        operatorName,
-        tenant: b.tenant,
-        reason: b.reason,
-        openedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + minutes * 60000).toISOString(),
-      };
-      sessions.set(opened.id, opened);
-      support = [{ ...opened, status: 'active' }, ...support];
-      record(
-        b.tenant,
-        `Støttetilgang startet (${minutes} min)`,
-        'Hele portalen, endringer logges',
-        b.reason,
-      );
-      return json(opened, 201);
+    const contentReason = /^\/operator\/tenants\/(\d{9})\/content-reason$/.exec(path);
+    if (contentReason && method === 'POST') {
+      const org = contentReason[1] ?? '';
+      const given = String(body().reason ?? '').trim();
+      if (reasonTooShort(given)) return needReason();
+      contentReasons.set(org, given);
+      log = [
+        {
+          task: `a-${log.length + 100}`,
+          tenant: org,
+          onBehalfOf: org,
+          tenantName: tenantName(org),
+          action: 'platform.content.reason',
+          actor: `operator:${operatorName}`,
+          actorName: operatorName,
+          actorOrg: 'Digdir',
+          at: new Date().toISOString(),
+          outcome: 'applied',
+          target: `tenant:${org}`,
+          reason: given,
+        },
+        ...log,
+      ];
+      const day = new Date().toISOString().slice(0, 10);
+      return json({ tenant: org, reason: given, day, expiresAt: `${day}T22:59:59.999Z` }, 201);
     }
     const auditPath = /^\/tenants\/([^/]+)\/audit$/.exec(path);
     if (auditPath && method === 'GET') {
-      if (!session(auditPath[1]))
-        return json({ title: 'Not allowed for this tenant', status: 403 }, 403);
       return json(log.filter((a) => a.tenant === auditPath[1]));
     }
     if (path === '/operator/audit' && method === 'GET') return json({ data: log });
@@ -1647,34 +1653,6 @@ export const mockFetch = (
       tracing.connections = { ...tracing.connections, [tool]: next };
       record('alle', existing ? 'Endret sporing' : 'Koblet til sporing', tool, reason);
       return json(next);
-    }
-    if (path === '/operator/support-sessions') return json({ data: support });
-    const extendSession = /^\/operator\/support-sessions\/([^/]+)\/extend$/.exec(path);
-    if (extendSession && method === 'POST') {
-      if (!reason) return needReason();
-      const found = sessions.get(extendSession[1] ?? '');
-      if (!found) return notFound();
-      const minutes = Number(body().minutes ?? 15);
-      const next = {
-        ...found,
-        expiresAt: new Date(new Date(found.expiresAt).getTime() + minutes * 60000).toISOString(),
-      };
-      sessions.set(found.id, next);
-      support = support.map((x) => (x.id === found.id ? { ...x, expiresAt: next.expiresAt } : x));
-      record(found.tenant, `Støttetilgang forlenget (${minutes} min)`, 'Hele portalen', reason);
-      return json(next);
-    }
-    const endSession = /^\/operator\/support-sessions\/([^/]+)\/end$/.exec(path);
-    if (endSession && method === 'POST') {
-      if (!reason) return needReason();
-      const found = support.find((x) => x.id === endSession[1] && x.status === 'active');
-      if (!found) return notFound();
-      support = support.map((x) =>
-        x === found ? { ...x, status: 'ended', endedAt: new Date().toISOString() } : x,
-      );
-      sessions.delete(found.id);
-      record(found.tenant, 'Støttetilgang avsluttet', 'Hele portalen', reason);
-      return json({ ...found, status: 'ended' });
     }
     if (path === '/operator/running-tasks') {
       const tenant = url.searchParams.get('tenant');

@@ -62,7 +62,4 @@ export const diagnostics = defineNamespace({
   serviceName: 'Navn på tjenesten',
   runPlaceholder: 'opg_…',
   servicePlaceholder: 'For eksempel rapportassistenten__default',
-  needsSession:
-    'Diagnostikk leser data fra {tenant}, og krever derfor en støttetilgang med begrunnelse. Økten vises i loggen til {tenant}.',
-  startSession: 'Start støttetilgang',
 });

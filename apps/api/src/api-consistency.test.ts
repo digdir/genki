@@ -133,11 +133,8 @@ describe('one consistent API', () => {
     const wrong: string[] = [];
     for (const { route, method, template } of routesOf(app)) {
       if (!template.startsWith('/tenants/:tenant')) continue;
-      for (const who of ['per', 'drift']) {
-        const res = await send(app, method, concrete(template), who, { reason });
-        if (res.status !== 404 && res.status !== 400)
-          wrong.push(`${route} as ${who} -> ${res.status}`);
-      }
+      const res = await send(app, method, concrete(template), 'per', { reason });
+      if (res.status !== 404 && res.status !== 400) wrong.push(`${route} -> ${res.status}`);
     }
     expect(wrong).toEqual([]);
   }, 120_000);

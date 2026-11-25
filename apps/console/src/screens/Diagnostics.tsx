@@ -21,11 +21,10 @@ import { useFormat } from '@genai/i18n/react';
 import { useState, type FormEvent } from 'react';
 import type { ApiClient } from '../api';
 import { useT, type PlainKey, type T } from '../i18n';
-import { navigate, useAsync } from '../hooks';
+import { useAsync } from '../hooks';
 import { ErrorState, Loading } from '../states';
 import { settingLabels } from '../setting-labels';
 import { optionLabel } from '../settings-model';
-import { useSupport } from '../support';
 import type { EffectiveSetting, EffectiveSettings, TaskTimeline, Tenant } from '../types';
 import { formatWhen, isMissing, PageHeader, pseudonym, TableRegion, VisuallyHidden } from '../ui';
 
@@ -306,7 +305,6 @@ export const Diagnostics = ({
 }) => {
   const t = useT();
   const [tenants, retry] = useAsync((signal) => api.listTenants(signal), [api]);
-  const support = useSupport();
   const [kind, setKind] = useState<Kind>(initialKind);
   const [tenant, setTenant] = useState(initialTenant ?? '');
   const [query, setQuery] = useState('');
@@ -316,7 +314,6 @@ export const Diagnostics = ({
     | { kind: 'run'; run: TaskTimeline }
     | { kind: 'service'; settings: EffectiveSettings; service: string }
     | { kind: 'none'; reason: 'run' | 'service' | 'failed'; query: string }
-    | { kind: 'session' }
     | undefined
   >();
 
@@ -327,21 +324,16 @@ export const Diagnostics = ({
 
   const look = async (lookKind: Kind, q: string) => {
     if (!selected) return;
-    const session = support.sessionFor(selected.orgNumber);
-    if (!session) {
-      setResult({ kind: 'session' });
-      return;
-    }
     setBusy(true);
     try {
       if (lookKind === 'run') {
-        setResult({ kind: 'run', run: await api.timeline(selected.orgNumber, q, session.id) });
+        setResult({ kind: 'run', run: await api.timeline(selected.orgNumber, q) });
       } else {
         const service = q.replace(/__.*$/, '');
         setResult({
           kind: 'service',
           service: q,
-          settings: await api.effective(selected.orgNumber, service, session.id),
+          settings: await api.effective(selected.orgNumber, service),
         });
       }
     } catch (error) {
@@ -428,18 +420,6 @@ export const Diagnostics = ({
           {t('diagnostics.lookup')}
         </Button>
       </form>
-      {result?.kind === 'session' && selected ? (
-        <Alert data-color="info">
-          <Paragraph>{t('diagnostics.needsSession', { tenant: selected.name })}</Paragraph>
-          <Button
-            data-size="sm"
-            variant="secondary"
-            onClick={() => navigate('/support-access', { tenant: selected.orgNumber })}
-          >
-            {t('diagnostics.startSession')}
-          </Button>
-        </Alert>
-      ) : null}
       {result?.kind === 'none' ? (
         <Alert data-color="info">
           <Paragraph>

@@ -334,16 +334,7 @@ const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = 
   const settled = async () => {
     while (background.length > 0) await Promise.all(background.splice(0));
   };
-  const supportSession = async () => {
-    const opened = await admin.openSupportSession(
-      people.operator as Principal,
-      tenant,
-      'feilsøking',
-      30,
-    );
-    return { 'support-session': opened.ok ? (opened.value as { id: string }).id : '' };
-  };
-  return { platform, admin, send, settled, optimiserPrompts, judgePrompts, supportSession };
+  return { platform, admin, send, settled, optimiserPrompts, judgePrompts };
 };
 
 const services = `/tenants/${tenant}/services/svar`;
@@ -4296,18 +4287,15 @@ describe('improvements', () => {
     expect(await send('GET', `${services}/draft`)).toMatchObject({ status: 200, body: null });
   });
 
-  it('a person without manage-services cannot approve, and a support session can read the proposals', async () => {
-    const { send, id, supportSession } = await ready();
-    const inSession = await supportSession();
+  it('a person without manage-services cannot approve, and an operator can read the proposals', async () => {
+    const { send, id } = await ready();
 
     const erik = await send('POST', `${services}/improvements/${id}/decision`, 'erik', {
       approve: true,
     });
 
     expect(erik.status).toBe(403);
-    expect(
-      (await send('GET', `${services}/improvements`, 'operator', undefined, inSession)).status,
-    ).toBe(200);
+    expect((await send('GET', `${services}/improvements`, 'operator')).status).toBe(200);
     expect(await send('GET', `${services}/draft`)).toMatchObject({ status: 200, body: null });
   });
 

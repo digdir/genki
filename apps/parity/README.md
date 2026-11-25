@@ -22,16 +22,16 @@ npm run parity -w @genai/parity -- agent-budget-benchmark --repeats 3
 
 Settings come from `.env.parity` in the repo root, which programs read and nobody prints:
 
-| Variable                                                                       | Used by                                                                                     |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| `PARITY_OLD_URL`, `PARITY_OLD_API_KEY`                                         | every command against headless-rag                                                          |
-| `PARITY_NEW_URL`, `PARITY_NEW_API_KEY`                                         | every command against the new platform                                                      |
-| `PARITY_LLM_UPSTREAM_URL`, `PARITY_LLM_UPSTREAM_KEY`                           | `playback --mode record`                                                                    |
-| `PARITY_LLM_UPSTREAM_AUTH`                                                     | `bearer`, or `api-key` (default, Azure style)                                               |
-| `PARITY_JUDGE_URL`, `PARITY_JUDGE_KEY`, `PARITY_JUDGE_MODEL`                   | `sweep`; OpenAI-compatible, ideally another model family                                    |
-| `PARITY_NEW_OPERATOR_TOKEN`, `PARITY_NEW_SUPPORT_SESSION`, `PARITY_NEW_TENANT` | operator diagnostics: stage attribution and fixed-query retrieval on the platform           |
-| `PARITY_OLD_DEBUG_KEY`                                                         | headless-rag's `/api/debug/typesense-retrieve` (needs `RAG_TS_RETRIEVE_ENABLED=true` there) |
-| `PARITY_OLD_SERVED_MODEL`, `PARITY_NEW_SERVED_MODEL`                           | quality report, only when a system does not report its model; marked as declared            |
+| Variable                                                                      | Used by                                                                                                                                                  |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PARITY_OLD_URL`, `PARITY_OLD_API_KEY`                                        | every command against headless-rag                                                                                                                       |
+| `PARITY_NEW_URL`, `PARITY_NEW_API_KEY`                                        | every command against the new platform                                                                                                                   |
+| `PARITY_LLM_UPSTREAM_URL`, `PARITY_LLM_UPSTREAM_KEY`                          | `playback --mode record`                                                                                                                                 |
+| `PARITY_LLM_UPSTREAM_AUTH`                                                    | `bearer`, or `api-key` (default, Azure style)                                                                                                            |
+| `PARITY_JUDGE_URL`, `PARITY_JUDGE_KEY`, `PARITY_JUDGE_MODEL`                  | `sweep`; OpenAI-compatible, ideally another model family                                                                                                 |
+| `PARITY_NEW_OPERATOR_TOKEN`, `PARITY_NEW_CONTENT_REASON`, `PARITY_NEW_TENANT` | operator diagnostics: stage attribution and fixed-query retrieval on the platform; the content reason is given once for the tenant before the first read |
+| `PARITY_OLD_DEBUG_KEY`                                                        | headless-rag's `/api/debug/typesense-retrieve` (needs `RAG_TS_RETRIEVE_ENABLED=true` there)                                                              |
+| `PARITY_OLD_SERVED_MODEL`, `PARITY_NEW_SERVED_MODEL`                          | quality report, only when a system does not report its model; marked as declared                                                                         |
 
 ## Playback stub
 

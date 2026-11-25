@@ -6,10 +6,6 @@ export const config = defineNamespace({
   scopePlatform: 'Plattformen',
   scopeOneTenant: 'Én virksomhet',
   tenant: 'Virksomhet',
-  supportNeededTitle: 'Virksomhetens data krever støttetilgang',
-  supportNeededText:
-    'Dette er {name} sine egne oppføringer, og de vises bare under en aktiv støttetilgang som virksomheten ser i loggen sin.',
-  supportNeededAction: 'Start støttetilgang',
   chooseTenant: 'Velg virksomhet',
   editingFor:
     'Du endrer oppføringer for {name}. Endringen logges hos virksomheten som endring fra Digdir.',
