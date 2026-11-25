@@ -156,3 +156,67 @@ describe('citing excerpts, not documents', () => {
     ]);
   });
 });
+
+describe('the sources published under an answer', () => {
+  const oneDocument = new Map(
+    [1, 2, 3, 4, 5].map((n) => [
+      `c${n}`,
+      chunk(n, {
+        document: 'd1',
+        position: n - 1,
+        title: 'Rapport 1',
+        url: 'https://kudos.dfo.no/d1',
+        content: `Avsnitt ${n} i rapporten.`,
+      }),
+    ]),
+  );
+
+  const readFive = (synth: string, config: AgentLoopRuntimeConfig) =>
+    run({
+      retrieval: retrieval({}, oneDocument).impl,
+      config,
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['rapport'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c2', 'c3', 'c4', 'c5'] })]),
+          ],
+          synth: [() => synth],
+        },
+      },
+    });
+
+  it('publishes only the cited excerpts, in footnote order, when citing excerpts', async () => {
+    const out = await readFive('Avsnitt fire [4]. Avsnitt to [2].', byExcerpt);
+
+    expect(out.text).toBe('Avsnitt fire [4]. Avsnitt to [2].');
+    expect(out.meta?.citations).toEqual([
+      { index: 2, chunkId: 'c2', document: 'd1' },
+      { index: 4, chunkId: 'c4', document: 'd1' },
+    ]);
+    expect(out.sources.map((s) => s.chunkId)).toEqual(['c2', 'c4']);
+  });
+
+  it('publishes every chunk read from a cited document when citing documents', async () => {
+    const out = await readFive('Avsnitt fire og to [1].', baseConfig);
+
+    expect(out.meta?.citations).toEqual([{ index: 1, chunkId: 'c1' }]);
+    expect(out.sources.map((s) => s.chunkId).sort()).toEqual(['c1', 'c2', 'c3', 'c4', 'c5']);
+  });
+
+  it('publishes everything read when an answer citing excerpts cites nothing', async () => {
+    const out = await readFive('Rapporten har fem avsnitt.', byExcerpt);
+
+    expect(out.meta?.citations ?? []).toEqual([]);
+    expect(out.sources.map((s) => s.chunkId).sort()).toEqual(['c1', 'c2', 'c3', 'c4', 'c5']);
+  });
+
+  it('publishes everything read when the service asks for every source read', async () => {
+    const out = await readFive('Avsnitt to [2].', {
+      ...byExcerpt,
+      strategy: { ...byExcerpt.strategy, sources: 'read' as const },
+    });
+
+    expect(out.sources.map((s) => s.chunkId).sort()).toEqual(['c1', 'c2', 'c3', 'c4', 'c5']);
+  });
+});

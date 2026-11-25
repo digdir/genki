@@ -448,6 +448,20 @@ export const citedOnly = (chunks: Chunk[], workspace: Workspace): Chunk[] => {
   return chunks.filter((c) => cited.has(documentKey(c)));
 };
 
+// Each footnote points to one passage, so only the cited passages are sources, in footnote order.
+export const citedExcerpts = (chunks: Chunk[], workspace: Workspace): Chunk[] => {
+  if (workspace.citations.length === 0) return chunks;
+  const byId = new Map(chunks.map((c) => [c.chunkId, c]));
+  const ids = [...workspace.citations]
+    .sort((a, b) => a.index - b.index)
+    .map((c) => c.chunkId)
+    .filter((id, i, all) => all.indexOf(id) === i);
+  return ids.flatMap((id) => {
+    const chunk = byId.get(id) ?? workspace.chunks.get(id);
+    return chunk ? [chunk] : [];
+  });
+};
+
 interface ExtraTool {
   spec: ToolSpec;
   port: ToolPort;
@@ -1299,7 +1313,11 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       }
     }
     const publishedChunks =
-      settings.sources === 'read' ? outputChunks() : citedOnly(outputChunks(), workspace);
+      settings.sources === 'read'
+        ? outputChunks()
+        : citeBy === 'excerpt'
+          ? citedExcerpts(outputChunks(), workspace)
+          : citedOnly(outputChunks(), workspace);
     if (!clarification && citeBy !== 'excerpt' && answer && workspace.citations.length) {
       const numbered = numberByPublished(answer, workspace.citations, publishedChunks, (id) =>
         workspace.chunks.get(id),
