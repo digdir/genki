@@ -37,8 +37,14 @@ resource verifications 'Microsoft.Network/dnsZones/TXT@2018-05-01' = [for record
 param hostedLabels array = []
 param hostedTarget string = ''
 param hostedVerificationId string = ''
+@description('Puts the hosted names in a zone of their own, apps.<zoneName>, delegated from this one, which the hostname binder may write.')
+param appsZone bool = false
 
-resource hostedCnames 'Microsoft.Network/dnsZones/CNAME@2018-05-01' = [for label in hostedLabels: {
+var appsSuffix = '.apps'
+var parentLabels = appsZone ? [] : hostedLabels
+var childLabels = appsZone ? map(hostedLabels, label => substring(label, 0, length(label) - length(appsSuffix))) : []
+
+resource hostedCnames 'Microsoft.Network/dnsZones/CNAME@2018-05-01' = [for label in parentLabels: {
   parent: zone
   name: label
   properties: {
@@ -47,7 +53,7 @@ resource hostedCnames 'Microsoft.Network/dnsZones/CNAME@2018-05-01' = [for label
   }
 }]
 
-resource hostedVerifications 'Microsoft.Network/dnsZones/TXT@2018-05-01' = [for label in hostedLabels: {
+resource hostedVerifications 'Microsoft.Network/dnsZones/TXT@2018-05-01' = [for label in parentLabels: {
   parent: zone
   name: 'asuid.${label}'
   properties: {
@@ -56,4 +62,39 @@ resource hostedVerifications 'Microsoft.Network/dnsZones/TXT@2018-05-01' = [for 
   }
 }]
 
+resource apps 'Microsoft.Network/dnsZones@2018-05-01' = if (appsZone) {
+  name: 'apps.${zoneName}'
+  location: 'global'
+  tags: tags
+}
+
+resource appsCnames 'Microsoft.Network/dnsZones/CNAME@2018-05-01' = [for label in childLabels: {
+  parent: apps
+  name: label
+  properties: {
+    TTL: 300
+    CNAMERecord: { cname: hostedTarget }
+  }
+}]
+
+resource appsVerifications 'Microsoft.Network/dnsZones/TXT@2018-05-01' = [for label in childLabels: {
+  parent: apps
+  name: 'asuid.${label}'
+  properties: {
+    TTL: 300
+    TXTRecords: [{ value: [hostedVerificationId] }]
+  }
+}]
+
+resource appsDelegation 'Microsoft.Network/dnsZones/NS@2018-05-01' = if (appsZone) {
+  parent: zone
+  name: 'apps'
+  dependsOn: [appsCnames, appsVerifications]
+  properties: {
+    TTL: 3600
+    NSRecords: map(appsZone ? apps!.properties.nameServers : [], ns => { nsdname: ns })
+  }
+}
+
 output nameServers array = zone.properties.nameServers
+output appsZoneName string = appsZone ? apps.name : ''
