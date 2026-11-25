@@ -72,6 +72,20 @@ const wishField = () =>
   }) as HTMLTextAreaElement;
 
 describe('Oppsett of a new service', () => {
+  it('says what the builder assistant is for before the first message, over a field two rows high', async () => {
+    await openNew();
+
+    const side = screen.getByRole('region', { name: 'Byggeassistent og prøving' });
+    expect(
+      within(side).getByText(
+        'La meg hjelpe deg med å fylle ut skjemaet til høyre, så lager vi tjenesten sammen. Skriv fritt, eller bruk spørsmålene i skjemaet.',
+      ),
+    ).toBeTruthy();
+    expect(
+      within(side).getByRole('textbox', { name: 'Skriv til assistenten' }).getAttribute('rows'),
+    ).toBe('2');
+  });
+
   it('lists what an area lacks only after the person presses Publiser', async () => {
     const calls = await openNew([{ path: 'spec.purpose', message: 'Formålet må fylles ut.' }]);
 

@@ -62,6 +62,12 @@
   background: var(--ds-color-neutral-surface-tinted);
 }
 
+/* Before the first message: what the assistant is for, quietly. */
+.setup-form-chat .assistant-welcome {
+  margin: 0;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
 .setup-form-chat .assistant-compose {
   border: 0;
   padding: 0;

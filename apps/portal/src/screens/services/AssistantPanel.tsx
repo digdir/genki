@@ -1,5 +1,5 @@
 import { ArrowUpIcon, CodeIcon, PaperplaneIcon, SparklesIcon } from '@navikt/aksel-icons';
-import { Button, Chip, Field, Label, Tag, Textarea } from '@digdir/designsystemet-react';
+import { Button, Chip, Field, Label, Paragraph, Tag, Textarea } from '@digdir/designsystemet-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { AssistantProposal, AssistantTurn, ProposalDecision } from '../../api/assistant';
 import { Icon } from '../../components/Icon';
@@ -214,6 +214,11 @@ export const AssistantPanel = ({
             </div>
           </div>
         ) : null}
+        {chat && messages.length === 0 && !pending ? (
+          <Paragraph data-size="sm" className="assistant-welcome">
+            {t('assistant.chatWelcome')}
+          </Paragraph>
+        ) : null}
         {messages.map((m, i) => {
           const user = m.role === 'user';
           const entry = m.turn ? entries[m.turn] : undefined;
@@ -341,7 +346,7 @@ export const AssistantPanel = ({
             </Label>
             <Textarea
               id="til-assistenten"
-              rows={side ? 1 : 2}
+              rows={side && !chat ? 1 : 2}
               {...(side ? { placeholder: t('assistant.sidePlaceholder') } : {})}
               value={composer}
               disabled={off}
