@@ -23,6 +23,7 @@ import type { Context } from 'hono';
 import { enterTenant } from './access.js';
 import { actorNames } from './actor-names.js';
 import { actorOf, AdminRefused, blockPublisherProblems, refusedBy } from './admin.js';
+import { isBlockArchived } from './block-archive.js';
 import { blockFrameUrl } from './block-origin.js';
 import { latestReview } from './block-reviews.js';
 import { VersionConflict } from './config-store.js';
@@ -153,10 +154,18 @@ export const blockCatalogueModule: PlatformModuleFactory = (deps) => {
   const mayShow = (studio: boolean, version: PublishedVersion) =>
     studio || blockSpecOf(version).tier !== 'code';
 
-  const visibleEditions = async (tenant: string, publisher: string, id: string, studio: boolean) =>
-    (await store.versions('Block', publisher, id)).filter(
-      (v) => mayUseEdition(tenant, publisher, v) && mayShow(studio, v),
-    );
+  const visibleEditions = async (
+    tenant: string,
+    publisher: string,
+    id: string,
+    studio: boolean,
+  ) => {
+    const versions = await store.versions('Block', publisher, id);
+    const latest = versions.at(-1);
+    if (latest && (await isBlockArchived(deps.configEntries, publisher, id, latest.version)))
+      return [];
+    return versions.filter((v) => mayUseEdition(tenant, publisher, v) && mayShow(studio, v));
+  };
 
   const visibleBlocks = async (tenant: string, studio: boolean): Promise<Visible[]> => {
     const found: Visible[] = [];
@@ -490,7 +499,8 @@ export const blockCatalogueModule: PlatformModuleFactory = (deps) => {
         if (
           !edition ||
           !mayUseEdition(guard.tenant, publisher, edition) ||
-          !mayShow(await studioFor(guard), edition)
+          !mayShow(await studioFor(guard), edition) ||
+          (await visibleEditions(guard.tenant, publisher, blockId, true)).length === 0
         )
           return notFound(c);
         const spec = blockSpecOf(edition);

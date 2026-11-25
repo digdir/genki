@@ -87,7 +87,8 @@ else
 fi
 
 docker run -d --name "$name-console" --network "$name" -p 127.0.0.1::8080 \
-  -e APP=console -e API_UPSTREAM=http://echo:9000 "$apps_image" >/dev/null
+  -e APP=console -e API_UPSTREAM=http://echo:9000 -e GENAI_REDIRECT_HOSTS=old.example.test=new.example.test \
+  "$apps_image" >/dev/null
 console="http://$(docker port "$name-console" 8080 | head -n 1)"
 tries=0
 until curl -fsS "$console/healthz" >/dev/null 2>&1; do
@@ -104,6 +105,15 @@ if headers /system-atlas.html | grep -qi "^x-frame-options: SAMEORIGIN" &&
   echo "ok: the console frames its System Atlas from its own origin only, without inline script"
 else
   echo "FAILED: System Atlas headers or script file in the console" >&2
+  failed=1
+fi
+
+moved() { curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -H "Host: $1" "$console$2"; }
+if [ "$(moved old.example.test '/auth/login?return=/x')" = '301 https://new.example.test/auth/login?return=/x' ] &&
+  [ "$(moved other.example.test /)" = '200 ' ]; then
+  echo "ok: an old hostname answers 301 to its new one with path and query, and no other name does"
+else
+  echo "FAILED: redirect of an old hostname" >&2
   failed=1
 fi
 

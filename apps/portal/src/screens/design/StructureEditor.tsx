@@ -10,18 +10,14 @@ import {
 } from '@digdir/designsystemet-react';
 import { blockZones, type BlockZone } from '@genai/contracts/blocks';
 import { useEffect, useId, useMemo, useState } from 'react';
-import type { ApiClient } from '../../api';
 import type { FieldProblem } from '../../api/design';
 import { useT } from '../../i18n';
 import { parseYaml, toYaml } from '../../yaml';
 import { templateEvents, templateStates, templateTextKeys, type BlockDraft } from './definitions';
 import { zoneKey } from './naming';
 import { FieldErrors } from './Problems';
-import { SaveBar } from './SaveBar';
 
 type Texts = { nb: Record<string, string>; en: Record<string, string> };
-
-const checkDelayMs = 600;
 
 const filled = (texts: Record<string, string>) =>
   Object.fromEntries(Object.entries(texts).filter(([, value]) => value.trim() !== ''));
@@ -56,19 +52,15 @@ export const editedDeclarative = (
   };
 };
 
-/** «Innhold» of a designelement without code: names, zones, the template as YAML and its texts. */
+/** «Struktur» of an own block without code: names, zones, the template as YAML and its texts. */
 export const StructureEditor = ({
-  api,
-  tenant,
   base,
-  readOnly,
-  onSave,
+  errors,
+  onChange,
 }: {
-  api: ApiClient;
-  tenant: string;
   base: BlockDraft;
-  readOnly: boolean;
-  onSave: (definition: BlockDraft, reason: string) => Promise<void>;
+  errors: FieldProblem[];
+  onChange: (edited: BlockDraft | 'not-yaml') => void;
 }) => {
   const t = useT();
   const templateId = useId();
@@ -80,7 +72,7 @@ export const StructureEditor = ({
     nb: { ...base.spec.texts?.nb },
     en: { ...base.spec.texts?.en },
   });
-  const [errors, setErrors] = useState<FieldProblem[]>([]);
+  const [touched, setTouched] = useState(false);
   const edited = useMemo(
     () => editedDeclarative(base, { nb, en, zones, yaml, texts }),
     [base, nb, en, zones, yaml, texts],
@@ -91,22 +83,19 @@ export const StructureEditor = ({
   }, [edited, texts]);
 
   useEffect(() => {
-    if (readOnly || edited === 'not-yaml') return;
-    let live = true;
-    const timer = setTimeout(() => {
-      api.design
-        .preview(tenant, edited as unknown as Record<string, unknown>)
-        .then((result) => live && setErrors(result.valid ? [] : (result.errors ?? [])))
-        .catch(() => undefined);
-    }, checkDelayMs);
-    return () => {
-      live = false;
-      clearTimeout(timer);
-    };
-  }, [api, tenant, edited, readOnly]);
+    if (touched) onChange(edited);
+  }, [edited, touched, onChange]);
 
-  const setText = (language: keyof Texts, key: string, value: string) =>
+  const touch =
+    <V,>(set: (value: V) => void) =>
+    (value: V) => {
+      setTouched(true);
+      set(value);
+    };
+  const setText = (language: keyof Texts, key: string, value: string) => {
+    setTouched(true);
     setTexts((current) => ({ ...current, [language]: { ...current[language], [key]: value } }));
+  };
 
   return (
     <div className="stack design-content">
@@ -114,14 +103,12 @@ export const StructureEditor = ({
         <Textfield
           label={t('design.nameNb')}
           value={nb}
-          readOnly={readOnly}
-          onChange={(e) => setNb(e.target.value)}
+          onChange={(e) => touch(setNb)(e.target.value)}
         />
         <Textfield
           label={t('design.nameEn')}
           value={en}
-          readOnly={readOnly}
-          onChange={(e) => setEn(e.target.value)}
+          onChange={(e) => touch(setEn)(e.target.value)}
         />
       </div>
       <Fieldset>
@@ -132,10 +119,9 @@ export const StructureEditor = ({
               key={zone}
               label={t(zoneKey[zone])}
               checked={zones.includes(zone)}
-              readOnly={readOnly}
               onChange={() =>
-                setZones((current) =>
-                  current.includes(zone) ? current.filter((z) => z !== zone) : [...current, zone],
+                touch(setZones)(
+                  zones.includes(zone) ? zones.filter((z) => z !== zone) : [...zones, zone],
                 )
               }
             />
@@ -150,8 +136,7 @@ export const StructureEditor = ({
           className="design-code"
           spellCheck={false}
           value={yaml}
-          readOnly={readOnly}
-          onChange={(e) => setYaml(e.target.value)}
+          onChange={(e) => touch(setYaml)(e.target.value)}
         />
         {edited === 'not-yaml' ? (
           <Paragraph data-size="sm" className="design-missing">
@@ -183,7 +168,6 @@ export const StructureEditor = ({
                         language: t(language === 'nb' ? 'design.colNb' : 'design.colEn'),
                       })}
                       value={texts[language][key] ?? ''}
-                      readOnly={readOnly}
                       onChange={(e) => setText(language, key, e.target.value)}
                     />
                   </Table.Cell>
@@ -193,12 +177,6 @@ export const StructureEditor = ({
           </Table.Body>
         </Table>
       </div>
-      {readOnly ? null : (
-        <SaveBar
-          disabled={edited === 'not-yaml'}
-          onSave={(reason) => (edited === 'not-yaml' ? Promise.resolve() : onSave(edited, reason))}
-        />
-      )}
     </div>
   );
 };

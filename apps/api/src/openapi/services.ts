@@ -1493,6 +1493,9 @@ export const serviceRoutes: RouteConfig[] = withContentReasons([
       400: problem('Missing definition or invalid baseVersion'),
       ...tenantErrors,
       409: problem('The draft was changed by someone else'),
+      422: problem(
+        'An internal service from someone who is not an operator, or a new ref to an archived block',
+      ),
     },
   }),
   createRoute({

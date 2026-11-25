@@ -81,6 +81,9 @@ param existingCertificates object = {}
 param createDnsZone bool = false
 param dnsZoneName string = ''
 
+@description('The zone the names were under before dnsZoneName. Its names stay bound with their certificates, and each answers 301 to its new name once that has a certificate, the API excepted (infra/README.md, "Moving to a new zone").')
+param previousDnsZoneName string = ''
+
 @description('Key Vault secret names the api reads. Each becomes an env var and resolves as secret://env/<name>.')
 param keyVaultSecretNames array = []
 param keyVaultPublicNetworkAccess string = 'Enabled'
@@ -265,11 +268,49 @@ var assistantNames = empty(hostnames.?assistant ?? '') || empty(platformTenant)
 var servedNames = concat(hostedNames, assistantNames)
 var platformLoginOn = assistantHostEnabled && assistantBffEnabled && !empty(platformLoginClientId) && !empty(dnsZoneName)
 var platformLoginHostname = platformLoginOn ? 'login.apps.${dnsZoneName}' : ''
+var zoneSuffix = '.${dnsZoneName}'
+var previousOn = !empty(previousDnsZoneName) && !empty(dnsZoneName) && previousDnsZoneName != dnsZoneName
+var previousHostnames = toObject(
+  filter(items(hostnames), h => previousOn && endsWith(toLower(h.value), zoneSuffix)),
+  h => h.key,
+  h => '${substring(toLower(h.value), 0, length(h.value) - length(zoneSuffix))}.${toLower(previousDnsZoneName)}'
+)
+var liveHostnames = toObject(
+  items(hostnames),
+  h => h.key,
+  h => contains(previousHostnames, h.key) && (h.key == 'assistant' ? assistantHostnameStage : customDomainsStage) != 'certificates'
+    ? previousHostnames[h.key]
+    : toLower(h.value)
+)
+var previousLogin = previousOn && platformLoginOn ? 'login.apps.${toLower(previousDnsZoneName)}' : ''
+var liveLoginHostname = !empty(previousLogin) && platformLoginStage != 'certificates' ? previousLogin : platformLoginHostname
 var appOrigins = filter(
-  map(['portal', 'workspace', 'console'], app => empty(hostnames[?app] ?? '') ? '' : '${app}=https://${toLower(hostnames[app])}'),
+  map(['portal', 'workspace', 'console'], app => empty(liveHostnames[?app] ?? '') ? '' : '${app}=https://${liveHostnames[app]}'),
   entry => !empty(entry)
 )
 var loginNames = platformLoginOn ? [{ hostname: platformLoginHostname, tenant: '', stage: platformLoginStage }] : []
+var previousServed = previousOn
+  ? concat(
+      map(assignedNames, h => {
+        hostname: toLower('${h.subdomain}.apps.${previousDnsZoneName}')
+        tenant: h.tenant
+        next: toLower('${h.subdomain}.apps.${dnsZoneName}')
+        nextStage: h.stage
+      }),
+      empty(assistantNames) || !contains(previousHostnames, 'assistant')
+        ? []
+        : [{ hostname: previousHostnames.assistant, tenant: platformTenant, next: toLower(hostnames.assistant), nextStage: assistantHostnameStage }]
+    )
+  : []
+var previousLoginNames = empty(previousLogin)
+  ? []
+  : [{ hostname: previousLogin, tenant: '', next: platformLoginHostname, nextStage: platformLoginStage }]
+var previousHosted = map(concat(previousServed, previousLoginNames), h => { hostname: h.hostname, tenant: h.tenant, stage: 'certificates' })
+var hostRedirects = join(
+  map(filter(concat(previousServed, previousLoginNames), h => h.nextStage == 'certificates'), h => '${h.hostname}=${h.next}'),
+  ','
+)
+var allServedNames = concat(servedNames, map(previousServed, h => { hostname: h.hostname, tenant: h.tenant }))
 var binderOn = assistantHostEnabled && hostnameBinderEnabled
 var keptOn = assistantHostEnabled && keepBoundDomains
 var binderJobOn = binderOn && !empty(hostnameBinderAudience)
@@ -593,10 +634,10 @@ module apps 'modules/containerapps.bicep' = {
       ALTINN_PEOPLE_MASKINPORTEN_SCOPE: altinnPeopleMaskinportenScope
       OPERATOR_SUBJECTS: operatorSubjects
       PLATFORM_TENANT: platformTenant
-      GENAI_HOSTED_HOSTNAMES: join(map(servedNames, h => '${h.hostname}=${h.tenant}'), ',')
-      GENAI_ASSISTANT_HOSTNAME: assistantHostEnabled ? (hostnames.?assistant ?? '') : ''
+      GENAI_HOSTED_HOSTNAMES: join(map(allServedNames, h => '${h.hostname}=${h.tenant}'), ',')
+      GENAI_ASSISTANT_HOSTNAME: assistantHostEnabled ? (liveHostnames.?assistant ?? '') : ''
       PLATFORM_LOGIN_CLIENT_ID: platformLoginOn ? platformLoginClientId : ''
-      PLATFORM_LOGIN_HOSTNAME: platformLoginHostname
+      PLATFORM_LOGIN_HOSTNAME: liveLoginHostname
       PLATFORM_APP_ORIGINS: platformLoginOn ? join(appOrigins, ',') : ''
       GENAI_HOSTNAME_BINDER_PRINCIPAL_ID: binderOn ? binderIdentity!.properties.principalId : ''
       GENAI_HOSTNAME_BINDER_AUDIENCE: binderOn ? hostnameBinderAudience : ''
@@ -616,6 +657,7 @@ module apps 'modules/containerapps.bicep' = {
     storageAccountName: storageName
     storageShareName: infra ? storage!.outputs.shareName : 'data'
     hostnames: hostnames
+    previousHostnames: previousHostnames
     customDomainsStage: customDomainsStage
     existingCertificates: existingCertificates
     postgresHost: infra ? postgres!.outputs.fqdn : existingPostgres.properties.fullyQualifiedDomainName
@@ -688,7 +730,8 @@ module assistantHost 'modules/assistant-host.bicep' = if (assistantHostEnabled) 
     apiUpstream: 'https://${apps.outputs.fqdn}'
     ansattportenIssuer: ansattportenIssuer
     bffProxyKey: assistantBffEnabled
-    hostedHostnames: concat(servedNames, loginNames)
+    hostedHostnames: concat(servedNames, loginNames, previousHosted)
+    redirectHosts: hostRedirects
     keptDomains: keptOn ? existingHost.properties.configuration.ingress.?customDomains ?? [] : []
   }
 }
@@ -708,7 +751,7 @@ module hostnameBinder 'modules/hostname-binder.bicep' = if (binderJobOn) {
     apiUrl: 'https://${apps.outputs.fqdn}'
     audience: hostnameBinderAudience
     dnsZoneName: createDnsZone ? dnsZoneName : ''
-    reservedHostnames: map(concat(servedNames, loginNames), h => h.hostname)
+    reservedHostnames: map(concat(servedNames, loginNames, previousHosted), h => h.hostname)
     actionGroupId: alertsEnabled && infra ? alerts!.outputs.actionGroupId : ''
     mailWrites: 2 <= alertMailMaxSeverity
   }
@@ -727,7 +770,7 @@ module alerts 'modules/alerts.bicep' = if (alertsEnabled && infra) {
     workerAppName: apps.outputs.workerName
     doclingAppName: apps.outputs.doclingName
     doclingMemoryGiB: apps.outputs.doclingMemoryGiB
-    healthUrl: 'https://${customDomainsStage == 'certificates' && !empty(hostnames.api) ? hostnames.api : apps.outputs.fqdn}/health'
+    healthUrl: 'https://${!empty(liveHostnames.?api ?? '') && (customDomainsStage == 'certificates' || contains(previousHostnames, 'api')) ? liveHostnames.api : apps.outputs.fqdn}/health'
     emails: alertEmails
     healthCheckFrequencySeconds: healthCheckFrequencySeconds
     thresholds: alertThresholds
@@ -803,7 +846,6 @@ resource platformBackupLock 'Microsoft.Authorization/locks@2020-05-01' = if (loc
   dependsOn: [platformBackup]
 }
 
-var zoneSuffix = '.${dnsZoneName}'
 var zoneApps = filter(['api', 'portal', 'workspace', 'console'], app => !empty(hostnames[app]) && endsWith(hostnames[app], zoneSuffix))
 var assistantInZone = assistantHostEnabled && endsWith(hostnames.?assistant ?? '', zoneSuffix)
 var assistantRecords = assistantInZone

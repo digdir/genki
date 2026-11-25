@@ -79,7 +79,7 @@ export const main = async () => {
     toolbox,
     bundle.prs.map((p) => p.number),
   );
-  const api = (env.SMOKE_API_URL || 'https://api.genki-test.digdir.cloud').replace(/\/$/, '');
+  const api = (env.SMOKE_API_URL || 'https://api.genki.digdir.cloud').replace(/\/$/, '');
   const key = env.SMOKE_API_KEY || undefined;
   const redact = (text: string) => (key ? text.split(key).join('[key]') : text);
   const client = createClient(api, key, plan);
@@ -109,16 +109,13 @@ export const main = async () => {
   if (accepted.some((a) => a.proposal.action === 'screen'))
     try {
       const { openBrowser } = await import('./browser.ts');
-      const portal = (env.SMOKE_PORTAL_URL || 'https://portal.genki-test.digdir.cloud').replace(
+      const portal = (env.SMOKE_PORTAL_URL || 'https://portal.genki.digdir.cloud').replace(
         /\/$/,
         '',
       );
       browser = await openBrowser({
         portal,
-        console: (env.SMOKE_CONSOLE_URL || 'https://console.genki-test.digdir.cloud').replace(
-          /\/$/,
-          '',
-        ),
+        console: (env.SMOKE_CONSOLE_URL || 'https://console.genki.digdir.cloud').replace(/\/$/, ''),
         tenant: plan.tenant,
         key,
         out: join(out, 'extra'),

@@ -102,11 +102,18 @@ export const designApi = ({ get, request, tenantPath }: ApiContext) => {
         { version },
         why(reason),
       ),
+    archive: (tenant: string, id: string, reason: string) =>
+      request<{ id: string; archived: true; version: number }>(
+        'DELETE',
+        `${blocks(tenant)}/${encodeURIComponent(id)}`,
+        undefined,
+        why(reason),
+      ),
     pin: (
       tenant: string,
       service: string,
       target: { publisher: string; id: string },
-      body: { version: number; zone?: BlockZone },
+      body: { version: number; zone?: BlockZone; settings?: Record<string, boolean | string> },
       reason: string,
     ) =>
       request<PinnedDraft>(

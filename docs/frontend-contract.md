@@ -458,9 +458,9 @@ curl -sN https://platform.example.no/v1/chat/completions \
 
 genki-test is locked (ADR 0033), so a server key reaches a model there only when a trusted Entra login created it.
 
-1. Log in to the portal at `https://portal.genki-test.digdir.cloud` with Entra ID, not TestID.
+1. Log in to the portal at `https://portal.genki.digdir.cloud` with Entra ID, not TestID.
 2. Open the service `kunnskapsassistenten`, go to "API-nøkler for tjenesten" and create a key. Copy it now; it is shown once.
-3. Give the key to KA test's backend as a secret, with the base URL `https://api.genki-test.digdir.cloud`, and call `POST /v1/chat/completions` with `"model": "kunnskapsassistenten"`.
+3. Give the key to KA test's backend as a secret, with the base URL `https://api.genki.digdir.cloud`, and call `POST /v1/chat/completions` with `"model": "kunnskapsassistenten"`.
 
 A key created before this rule, or rotated by someone without an Entra login, is refused with `urn:genai:problem:locked-environment`; create a new one.
 

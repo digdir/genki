@@ -75,6 +75,10 @@ To announce one, add a line to a new dated entry below that names the operation 
 
 `npm run definitions:compat` checks every YAML or JSON file in the repository that is a service, step flow, skill or block definition (seeds, examples and fixtures) against the current schema, including the strategy, tool and guardrail settings. Models, datasets, rerankers, tools and blocks are not looked up, since each environment has its own. Give it the path to a tenant export (`GET /tenants/{tenant}/export`) or a folder of definitions to check those instead.
 
+### 2026-11-25: archiving a block
+
+- New `DELETE /tenants/{tenant}/blocks/{id}` (manage-services, `change-reason`, audited as `platform.block.archive`, only while `blockStudio` is on for the caller) archives one of the organisation's own blocks: the block list stops listing it, its detail and the pin route answer `404`, and no review to share it is sent or approved; its editions stay, and saving a new edition lists it again. genki's built-in blocks and other organisations' blocks answer `404`. It answers `409` with `urn:genai:problem:block-in-use` while the draft, the latest version or an environment-pinned version of any service, including a service that only has a draft, that is not archived pins it, in any organisation, so a block shared with everyone is never taken from a service that uses it. `usedBy` names the caller's own services it may see; `otherServices` counts the rest, in other organisations or internal. A new `ref` to it is refused with `422` on `PUT .../draft` and on every publish (`POST /definitions`, a draft's publish, an import); a ref the service's latest version or draft already had may stay.
+
 ### 2026-11-25: operators act without support sessions
 
 - Removed: `POST /support-sessions`, `GET /operator/support-sessions`, `POST /operator/support-sessions/{id}/end` and `POST /operator/support-sessions/{id}/extend`, and the `support-session` header on tenant routes. Operators call the tenant routes directly, with `change-reason` on writes.

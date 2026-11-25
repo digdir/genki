@@ -136,12 +136,9 @@ export const main = async () => {
   const out = env.SMOKE_OUT || 'smoke-out';
   for (const dir of ['answers', 'timelines', 'changes', 'screens'])
     mkdirSync(join(out, dir), { recursive: true });
-  const api = (env.SMOKE_API_URL || 'https://api.genki-test.digdir.cloud').replace(/\/$/, '');
-  const portal = (env.SMOKE_PORTAL_URL || 'https://portal.genki-test.digdir.cloud').replace(
-    /\/$/,
-    '',
-  );
-  const consoleUrl = (env.SMOKE_CONSOLE_URL || 'https://console.genki-test.digdir.cloud').replace(
+  const api = (env.SMOKE_API_URL || 'https://api.genki.digdir.cloud').replace(/\/$/, '');
+  const portal = (env.SMOKE_PORTAL_URL || 'https://portal.genki.digdir.cloud').replace(/\/$/, '');
+  const consoleUrl = (env.SMOKE_CONSOLE_URL || 'https://console.genki.digdir.cloud').replace(
     /\/$/,
     '',
   );

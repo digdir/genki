@@ -102,7 +102,7 @@ describe('Fra Utforming in the service’s Utforming tab', () => {
     const pin = writes.find((w) => w.url.includes('/draft/blocks/999888777/kildeliste-kompakt'));
     expect(pin).toMatchObject({ method: 'PUT', body: { version: 2, zone: 'main' } });
     expect(await waitFor(() => rowOf(group, 'Kildeliste kompakt').textContent)).toContain(
-      'Utgave 17. nov. · Midten',
+      'v2 · Innhold',
     );
   });
 
@@ -132,7 +132,7 @@ describe('Fra Utforming in the service’s Utforming tab', () => {
     const group = await openInterface(chatOnly);
     const row = within(await waitFor(() => rowOf(group, 'Kudos-dokumentkort')));
     const zones = within(row.getByRole('combobox', { name: 'Felt' })).getAllByRole('option');
-    expect(zones.map((o) => o.textContent)).toEqual(['Høyre']);
+    expect(zones.map((o) => o.textContent)).toEqual(['Høyre panel']);
     expect(row.getByText('Digdir')).toBeTruthy();
   });
 
@@ -140,10 +140,10 @@ describe('Fra Utforming in the service’s Utforming tab', () => {
     const group = await openInterface(pinnedAt('999888777/kildeliste-kompakt@2'));
     const row = await waitFor(() => {
       const found = rowOf(group, 'Kildeliste kompakt');
-      expect(found.textContent).toContain('Nyere utgave: 21. nov.');
+      expect(found.textContent).toContain('Nyere: v3');
       return within(found);
     });
-    expect(row.getByText('Utgave 17. nov. · Midten')).toBeTruthy();
+    expect(row.getByText('v2 · Innhold')).toBeTruthy();
     expect(row.getByRole('button', { name: 'Bruk den, Kildeliste kompakt' })).toBeTruthy();
     expect(writes).toEqual([]);
     fireEvent.click(row.getByRole('button', { name: 'Bruk den, Kildeliste kompakt' }));

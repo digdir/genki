@@ -47,7 +47,7 @@ resource hostFence 'Microsoft.Authorization/policyDefinitions@2023-04-01' = {
   name: '${baseName}-assistant-host-fence'
   properties: {
     displayName: 'genki assistant host fence (${baseName})'
-    description: 'Refuses a write to the assistant host app that changes its image, containers, env, secrets, registries, identity type, Dapr, volumes or ingress basics (ADR 0062).'
+    description: 'Refuses a write to the assistant host app that changes its image, containers, env (redirects included), secrets, registries, identity type, Dapr, volumes or ingress basics (ADR 0062).'
     policyType: 'Custom'
     mode: 'All'
     parameters: {
@@ -58,6 +58,7 @@ resource hostFence 'Microsoft.Authorization/policyDefinitions@2023-04-01' = {
       proxyKeyUrl: { type: 'String' }
       apiUpstream: { type: 'String' }
       issuer: { type: 'String' }
+      redirects: { type: 'String', defaultValue: '' }
     }
     policyRule: {
       if: {
@@ -92,7 +93,7 @@ resource hostFence 'Microsoft.Authorization/policyDefinitions@2023-04-01' = {
                   field: env
                   where: {
                     anyOf: [
-                      { field: '${env}.name', notIn: ['APP', 'API_UPSTREAM', 'ANSATTPORTEN_ISSUER', 'GENAI_PROXY_KEY'] }
+                      { field: '${env}.name', notIn: ['APP', 'API_UPSTREAM', 'ANSATTPORTEN_ISSUER', 'GENAI_PROXY_KEY', 'GENAI_REDIRECT_HOSTS'] }
                       { allOf: [{ field: '${env}.name', equals: 'APP' }, { field: '${env}.value', notEquals: 'assistant' }] }
                       {
                         allOf: [
@@ -104,6 +105,12 @@ resource hostFence 'Microsoft.Authorization/policyDefinitions@2023-04-01' = {
                         allOf: [
                           { field: '${env}.name', equals: 'ANSATTPORTEN_ISSUER' }
                           { field: '${env}.value', notEquals: '[parameters(\'issuer\')]' }
+                        ]
+                      }
+                      {
+                        allOf: [
+                          { field: '${env}.name', equals: 'GENAI_REDIRECT_HOSTS' }
+                          { field: '${env}.value', notEquals: '[parameters(\'redirects\')]' }
                         ]
                       }
                       {

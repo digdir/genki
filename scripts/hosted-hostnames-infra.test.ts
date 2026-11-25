@@ -203,13 +203,13 @@ describe.skipIf(!hasAz && !process.env.CI)('hosted hostnames in the template', (
       string
     >;
     expect(env.GENAI_HOSTED_HOSTNAMES).toBe(
-      "[join(map(variables('servedNames'), lambda('h', format('{0}={1}', lambdaVariables('h').hostname, lambdaVariables('h').tenant))), ',')]",
+      "[join(map(variables('allServedNames'), lambda('h', format('{0}={1}', lambdaVariables('h').hostname, lambdaVariables('h').tenant))), ',')]",
     );
   });
 
   it('binds hosted hostnames to the assistant host only, and keeps the four app hostnames on their apps', () => {
     expect(module('assistant-host').properties.parameters?.hostedHostnames?.value).toBe(
-      "[concat(variables('servedNames'), variables('loginNames'))]",
+      "[concat(variables('servedNames'), variables('loginNames'), variables('previousHosted'))]",
     );
     const apps = module('containerapps').properties.parameters ?? {};
     expect(apps).not.toHaveProperty('hostedHostnames');
@@ -244,7 +244,7 @@ describe.skipIf(!hasAz && !process.env.CI)('hosted hostnames in the template', (
     const apps = module('containerapps').properties.parameters ?? {};
     expect(apps.platformLoginSecret?.value).toBe("[variables('platformLoginOn')]");
     const env = apps.identityEnv?.value as Record<string, string>;
-    expect(env.PLATFORM_LOGIN_HOSTNAME).toBe("[variables('platformLoginHostname')]");
+    expect(env.PLATFORM_LOGIN_HOSTNAME).toBe("[variables('liveLoginHostname')]");
     expect(String(module('dns').properties.parameters?.hostedLabels)).toContain(
       "createArray('login.apps')",
     );

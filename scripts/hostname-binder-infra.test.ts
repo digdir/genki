@@ -269,7 +269,16 @@ describe.skipIf(!hasAz && !process.env.CI)('the hostname binder in the template'
                 [
                   [
                     envField('name'),
-                    ['notIn', ['APP', 'API_UPSTREAM', 'ANSATTPORTEN_ISSUER', 'GENAI_PROXY_KEY']],
+                    [
+                      'notIn',
+                      [
+                        'APP',
+                        'API_UPSTREAM',
+                        'ANSATTPORTEN_ISSUER',
+                        'GENAI_PROXY_KEY',
+                        'GENAI_REDIRECT_HOSTS',
+                      ],
+                    ],
                   ],
                   envWhere('APP', [envField('value'), ['notEquals', 'assistant']]),
                   envWhere('API_UPSTREAM', [
@@ -279,6 +288,10 @@ describe.skipIf(!hasAz && !process.env.CI)('the hostname binder in the template'
                   envWhere('ANSATTPORTEN_ISSUER', [
                     envField('value'),
                     ['notEquals', "[[parameters('issuer')]"],
+                  ]),
+                  envWhere('GENAI_REDIRECT_HOSTS', [
+                    envField('value'),
+                    ['notEquals', "[[parameters('redirects')]"],
                   ]),
                   envWhere('GENAI_PROXY_KEY', [
                     envField('secretRef'),
@@ -531,7 +544,7 @@ describe.skipIf(!hasAz && !process.env.CI)('the hostname binder in the template'
   it('tells the binder every name the template binds', () => {
     expect(binder().properties.parameters?.reservedHostnames).toEqual({
       value:
-        "[map(concat(variables('servedNames'), variables('loginNames')), lambda('h', lambdaVariables('h').hostname))]",
+        "[map(concat(variables('servedNames'), variables('loginNames'), variables('previousHosted')), lambda('h', lambdaVariables('h').hostname))]",
     });
   });
 

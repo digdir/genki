@@ -102,27 +102,30 @@ param altinnPeopleMaskinportenScope = readEnvironmentVariable('ALTINN_PEOPLE_MAS
 param operatorSubjects = readEnvironmentVariable('OPERATOR_SUBJECTS', '')
 param platformTenant = readEnvironmentVariable('PLATFORM_TENANT', '')
 
+// The names moved to genki.digdir.cloud; those under genki-test.digdir.cloud stay bound and redirect (infra/README.md, "Moving to a new zone").
+var stage = readEnvironmentVariable('HOSTNAMES_STAGE', '')
+var hostnamesStage = empty(stage) ? 'none' : stage
 param hostnames = {
-  api: 'api.genki-test.digdir.cloud'
-  portal: 'portal.genki-test.digdir.cloud'
-  workspace: 'workspace.genki-test.digdir.cloud'
-  console: 'console.genki-test.digdir.cloud'
-  assistant: 'assistant.genki-test.digdir.cloud'
+  api: 'api.genki.digdir.cloud'
+  portal: 'portal.genki.digdir.cloud'
+  workspace: 'workspace.genki.digdir.cloud'
+  console: 'console.genki.digdir.cloud'
+  assistant: 'assistant.genki.digdir.cloud'
 }
-param customDomainsStage = readEnvironmentVariable('CUSTOM_DOMAINS_STAGE', 'none')
+param customDomainsStage = hostnamesStage
 param existingCertificates = {}
 param createDnsZone = true
-param dnsZoneName = 'genki-test.digdir.cloud'
-// Each hostname moves none, hostnames, certificates, one deploy at a time (infra/README.md, "Hosted hostnames").
+param dnsZoneName = 'genki.digdir.cloud'
+param previousDnsZoneName = 'genki-test.digdir.cloud'
 param assistantHostEnabled = true
 param assistantBffEnabled = true
-param assistantHostnameStage = 'certificates'
+param assistantHostnameStage = hostnamesStage
 param hostedHostnames = [
-  { subdomain: 'kunnskap', tenant: '312521172', stage: 'certificates' }
+  { subdomain: 'kunnskap', tenant: '312521172', stage: hostnamesStage }
 ]
 // genki's platform login client for hosted Clients without oidc (infra/README.md, "Platform login").
 param platformLoginClientId = 'dde98722-c952-4172-a5d6-10bdf721680f'
-param platformLoginStage = 'certificates'
+param platformLoginStage = hostnamesStage
 param hostnameBinderEnabled = readEnvironmentVariable('HOSTNAME_BINDER_ENABLED', 'true') != 'false'
 param hostnameBinderAudience = readEnvironmentVariable('HOSTNAME_BINDER_AUDIENCE', '')
 
