@@ -34,6 +34,8 @@ param backupJobName string = ''
 @description('Service Health for the services genki uses in its regions. The rule is scoped to the subscription.')
 param serviceHealthAlert bool = false
 
+param mailMaxSeverity int = 4
+
 resource insights 'Microsoft.Insights/components@2020-02-02' existing = {
   name: insightsName
 }
@@ -93,7 +95,7 @@ resource apiDown 'Microsoft.Insights/metricAlerts@2018-03-01' = {
       componentId: insights.id
       failedLocationCount: 2
     }
-    actions: [{ actionGroupId: group.id }]
+    actions: 1 <= mailMaxSeverity ? [{ actionGroupId: group.id }] : []
   }
 }
 
@@ -123,7 +125,7 @@ resource dbDown 'Microsoft.Insights/metricAlerts@2018-03-01' = {
       ]
     }
     autoMitigate: true
-    actions: [{ actionGroupId: group.id }]
+    actions: 1 <= mailMaxSeverity ? [{ actionGroupId: group.id }] : []
   }
 }
 
@@ -153,44 +155,7 @@ resource postgresConnections 'Microsoft.Insights/metricAlerts@2018-03-01' = {
       ]
     }
     autoMitigate: true
-    actions: [{ actionGroupId: group.id }]
-  }
-}
-
-resource docling 'Microsoft.App/containerApps@2025-02-02-preview' existing = {
-  name: doclingAppName
-}
-
-// The 1-minute peak of any replica above 85 % of its memory: in test on 2026-11-21 the killed replica passed it about
-// six minutes before the kill (issue 922).
-resource doclingMemory 'Microsoft.Insights/metricAlerts@2018-03-01' = {
-  name: '${name}-docling-memory'
-  location: 'global'
-  tags: tags
-  properties: {
-    description: 'A Docling replica used more than 85 % of its ${doclingMemoryGiB} GiB; see docs/runbook.md, "Docling out of memory".'
-    severity: 2
-    enabled: true
-    scopes: [docling.id]
-    evaluationFrequency: 'PT1M'
-    windowSize: 'PT1M'
-    criteria: {
-      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
-      allOf: [
-        {
-          criterionType: 'StaticThresholdCriterion'
-          name: 'working-set'
-          metricNamespace: 'Microsoft.App/containerApps'
-          metricName: 'WorkingSetBytes'
-          dimensions: [{ name: 'podName', operator: 'Include', values: ['*'] }]
-          operator: 'GreaterThan'
-          threshold: doclingMemoryGiB * 1073741824 * 85 / 100
-          timeAggregation: 'Maximum'
-        }
-      ]
-    }
-    autoMitigate: true
-    actions: [{ actionGroupId: group.id }]
+    actions: 2 <= mailMaxSeverity ? [{ actionGroupId: group.id }] : []
   }
 }
 
@@ -212,27 +177,30 @@ var slowByDesignPaths = [
 ]
 var slowByDesignList = join(map(slowByDesignPaths, path => '\'${path}\''), ', ')
 
+var bulkQueues = ['knowledge.convert']
+var bulkQueueList = join(map(bulkQueues, queue => '\'${queue}\''), ', ')
+
 var appLogAlerts = [
   {
     key: 'docling-out-of-memory'
     title: 'Docling replica out of memory'
-    description: 'A Docling replica was killed with exit code 137, which usually means it ran out of its ${doclingMemoryGiB} GiB; the conversions it held are submitted again. See docs/runbook.md, "Docling out of memory" (issue 922).'
-    severity: 2
+    description: 'At least ${thresholds.doclingKills} Docling replicas were killed with exit code 137 in 15 minutes, which usually means they ran out of their ${doclingMemoryGiB} GiB; the worker submits a lost conversion again. See docs/runbook.md, "Docling out of memory" (issue 922).'
+    severity: 3
     frequency: 'PT5M'
-    window: 'PT5M'
+    window: 'PT15M'
     query: 'ContainerAppSystemLogs | where ContainerAppName == \'${doclingAppName}\' and Reason == \'ContainerTerminated\' and Log has "exit code \'137\'" | project TimeGenerated, ReplicaName, Log'
     measure: ''
     aggregation: 'Count'
-    threshold: 1
+    threshold: thresholds.doclingKills
   }
   {
     key: 'api-errors'
     title: 'API error rate'
-    description: 'At least ${thresholds.errorRatePercent} % of API responses were 5xx over 15 minutes, with at least ${thresholds.errorRateMinRequests} requests.'
+    description: 'At least ${thresholds.errorRatePercent} % of API responses were 5xx over 30 minutes, with at least ${thresholds.errorRateMinRequests} requests and ${thresholds.errorMinFailures} failures.'
     severity: 2
     frequency: 'PT5M'
-    window: 'PT15M'
-    query: 'ContainerAppHTTPLogs | where ContainerAppName == \'${apiAppName}\' and StatusCode > 0 | summarize total = count(), failed = countif(StatusCode >= 500) | where total >= ${thresholds.errorRateMinRequests} | extend percent = 100.0 * failed / total'
+    window: 'PT30M'
+    query: 'ContainerAppHTTPLogs | where ContainerAppName == \'${apiAppName}\' and StatusCode > 0 | summarize total = count(), failed = countif(StatusCode >= 500) | where total >= ${thresholds.errorRateMinRequests} and failed >= ${thresholds.errorMinFailures} | extend percent = 100.0 * failed / total'
     measure: 'percent'
     aggregation: 'Maximum'
     threshold: thresholds.errorRatePercent
@@ -252,11 +220,11 @@ var appLogAlerts = [
   {
     key: 'worker-jobs'
     title: 'Worker jobs failing or waiting'
-    description: 'At least ${thresholds.workerFailures} ingestion runs failed, knowledge jobs were refused or knowledge server calls failed in the last hour, or the state register is stale (ADR 0058), or a queued job waited more than ${thresholds.queueWaitMinutes} minutes.'
+    description: 'At least ${thresholds.workerFailures} ingestion runs failed, knowledge jobs were refused or knowledge server calls failed in the last hour, or the state register is stale (ADR 0058), or a queued job outside the bulk queues (${bulkQueueList}) waited more than ${thresholds.queueWaitMinutes} minutes.'
     severity: 3
     frequency: 'PT15M'
     window: 'PT1H'
-    query: '${consoleLogs} | where Log has_any (\'ingestion run failed\', \'knowledge job refused\', \'knowledge server unreachable\', \'knowledge reconciler failed\', \'state register stale\', \'queue stats\') | extend entry = parse_json(Log) | extend msg = tostring(entry.msg) | summarize failures = countif(msg in (\'ingestion run failed\', \'knowledge job refused\', \'knowledge server unreachable\', \'knowledge reconciler failed\')), stale = countif(msg == \'state register stale\'), waiting = countif(msg == \'queue stats\' and toint(entry.oldestQueuedSeconds) > ${thresholds.queueWaitMinutes * 60}) | extend problems = iff(failures >= ${thresholds.workerFailures} or stale > 0 or waiting > 0, 1, 0)'
+    query: 'let lines = ${consoleLogs} | where Log has_any (\'ingestion run failed\', \'knowledge job refused\', \'knowledge server unreachable\', \'knowledge reconciler failed\', \'state register stale\', \'queue stats\') | extend entry = parse_json(Log) | extend msg = tostring(entry.msg); let waiting = toscalar(lines | where msg == \'queue stats\' | mv-expand q = entry.queues | where tostring(q.queue) !in (${bulkQueueList}) and toint(q.oldestQueuedSeconds) > ${thresholds.queueWaitMinutes * 60} | count); lines | summarize failures = countif(msg in (\'ingestion run failed\', \'knowledge job refused\', \'knowledge server unreachable\', \'knowledge reconciler failed\')), stale = countif(msg == \'state register stale\') | extend problems = iff(failures >= ${thresholds.workerFailures} or stale > 0 or waiting > 0, 1, 0)'
     measure: 'problems'
     aggregation: 'Maximum'
     threshold: 1
@@ -265,7 +233,7 @@ var appLogAlerts = [
     key: 'catalog-skipped'
     title: 'Catalog entry skipped'
     description: 'The API or the worker left a stored catalog entry out when it rebuilt the catalog, so a dataset, model or endpoint runs on its seed or is missing; see docs/runbook.md, "Catalog entry skipped".'
-    severity: 2
+    severity: 3
     frequency: 'PT5M'
     window: 'PT15M'
     query: '${consoleLogs} | where Log has \'catalog entry skipped\' | extend entry = parse_json(Log) | project TimeGenerated, ContainerAppName, entryKind = tostring(entry.kind), entryId = tostring(entry.id), reason = tostring(entry.reason)'
@@ -276,11 +244,12 @@ var appLogAlerts = [
   {
     key: 'api-latency'
     title: 'API slow'
-    description: 'The API\'s 95th percentile response time was over ${thresholds.latencySeconds} s over 15 minutes, with at least ${thresholds.latencyMinRequests} requests; health checks, uploads and routes that wait for a model answer (playground, service calls, assistant, A2A, MCP) are left out.'
-    severity: 2
+    description: 'The API\'s 95th percentile response time was over ${thresholds.latencySeconds} s in 2 of the last 3 half hours, each with at least ${thresholds.latencyMinRequests} requests; health checks, uploads and routes that wait for a model answer (playground, service calls, assistant, A2A, MCP) are left out.'
+    severity: 3
     frequency: 'PT5M'
-    window: 'PT15M'
-    query: 'ContainerAppHTTPLogs | where ContainerAppName == \'${apiAppName}\' and StatusCode > 0 and Path != \'/health\' and not(Path has_any (${slowByDesignList})) | summarize total = count(), p95 = percentile(todouble(RequestDuration), 95) | where total >= ${thresholds.latencyMinRequests} | extend seconds = p95 / 1000.0'
+    window: 'PT30M'
+    periods: { numberOfEvaluationPeriods: 3, minFailingPeriodsToAlert: 2 }
+    query: 'ContainerAppHTTPLogs | where ContainerAppName == \'${apiAppName}\' and StatusCode > 0 and Path != \'/health\' and not(Path has_any (${slowByDesignList})) | summarize total = count(), p95 = percentile(todouble(RequestDuration), 95) by TimeGenerated = bin_at(TimeGenerated, 30m, now()) | where total >= ${thresholds.latencyMinRequests} | extend seconds = p95 / 1000.0'
     measure: 'seconds'
     aggregation: 'Maximum'
     threshold: thresholds.latencySeconds
@@ -355,13 +324,13 @@ resource rules 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = [for rule i
             timeAggregation: rule.aggregation
             operator: rule.?operator ?? 'GreaterThanOrEqual'
             threshold: rule.threshold
-            failingPeriods: { numberOfEvaluationPeriods: 1, minFailingPeriodsToAlert: 1 }
+            failingPeriods: rule.?periods ?? { numberOfEvaluationPeriods: 1, minFailingPeriodsToAlert: 1 }
           },
           empty(rule.measure) ? {} : { metricMeasureColumn: rule.measure }
         )
       ]
     }
-    actions: { actionGroups: [group.id] }
+    actions: { actionGroups: rule.severity <= mailMaxSeverity ? [group.id] : [] }
   }
 }]
 

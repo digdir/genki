@@ -38,7 +38,6 @@ const list = (resources: Template['resources']) =>
   Array.isArray(resources) ? resources : Object.values(resources);
 const text = (value: unknown) => JSON.stringify(value);
 
-// Docling replicas run out of memory (exit 137) when work piles up on one (issue 922): two alerts say so.
 describe.skipIf(!hasAz && !process.env.CI)('the Docling alerts', () => {
   let alerts: Template;
   let apps: Template;
@@ -49,58 +48,34 @@ describe.skipIf(!hasAz && !process.env.CI)('the Docling alerts', () => {
     main = bicep('infra/main.bicep');
   }, 240_000);
 
-  const group =
-    "[resourceId('Microsoft.Insights/actionGroups', format('{0}-alerts', parameters('name')))]";
-
-  it('alerts the action group when a Docling container ends with exit code 137', () => {
-    const rules = list(alerts.resources).find(
-      (r) => r.type === 'Microsoft.Insights/scheduledQueryRules',
-    );
+  it('raises a Sev3 alert when at least 3 Docling containers end with exit code 137 within 15 minutes', () => {
     const rule = (
-      alerts.variables.appLogAlerts as { key: string; query: string; threshold: unknown }[]
+      alerts.variables.appLogAlerts as {
+        key: string;
+        query: string;
+        severity: number;
+        window: string;
+        threshold: unknown;
+      }[]
     ).find((r) => r.key === 'docling-out-of-memory');
 
-    // ARM writes a quote inside format() twice.
     const query = (rule?.query ?? '').replaceAll("''", "'");
     expect(query).toContain('ContainerAppSystemLogs');
     expect(query).toContain("parameters('doclingAppName')");
     expect(query).toContain("Reason == 'ContainerTerminated'");
     expect(query).toContain("exit code '137'");
-    expect(rule?.threshold).toBe(1);
-    expect(text(rules?.properties.actions)).toContain(group);
+    expect(rule).toMatchObject({ severity: 3, window: 'PT15M' });
+    expect(rule?.threshold).toBe("[parameters('thresholds').doclingKills]");
+    expect(text(main.parameters.alertThresholds?.defaultValue)).toContain('"doclingKills":3');
   });
 
-  it("alerts the action group when a Docling replica's 1-minute memory passes 85 % of its limit", () => {
-    const alert = list(alerts.resources).find(
-      (r) =>
-        r.type === 'Microsoft.Insights/metricAlerts' && text(r.name).includes('docling-memory'),
-    );
-    const props = alert?.properties as {
-      scopes: string[];
-      evaluationFrequency: string;
-      windowSize: string;
-      criteria: { allOf: Record<string, unknown>[] };
-      actions: { actionGroupId: string }[];
-    };
-
-    expect(text(props.scopes)).toContain("parameters('doclingAppName')");
-    expect(props.evaluationFrequency).toBe('PT1M');
-    expect(props.windowSize).toBe('PT1M');
-    const criterion = props.criteria.allOf[0] as Record<string, unknown>;
-    expect(criterion).toMatchObject({
-      metricNamespace: 'Microsoft.App/containerApps',
-      metricName: 'WorkingSetBytes',
-      operator: 'GreaterThan',
-      timeAggregation: 'Maximum',
-      dimensions: [{ name: 'podName', operator: 'Include', values: ['*'] }],
-    });
-    expect(criterion.threshold).toBe(
-      "[div(mul(mul(parameters('doclingMemoryGiB'), 1073741824), 85), 100)]",
-    );
-    expect(props.actions[0]?.actionGroupId).toBe(group);
+  it('has no per-replica memory alert, whose podName dimension kept alerts open after pods were gone', () => {
+    const names = text(list(alerts.resources).map((r) => r.name));
+    expect(names).not.toContain('docling-memory');
+    expect(text(alerts.resources)).not.toContain('WorkingSetBytes');
   });
 
-  it("sets the memory threshold from the replica's memory setting", () => {
+  it("passes the replica's memory setting to the idle restart and the alerts", () => {
     const docling = list(apps.resources).find(
       (r) => r.type === 'Microsoft.App/containerApps' && text(r.name).includes('-docling'),
     );
