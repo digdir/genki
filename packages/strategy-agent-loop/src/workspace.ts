@@ -193,6 +193,8 @@ export interface ReadEntry {
   chunkIds?: string[];
   document?: string;
   chunkRange?: ChunkRange;
+  /** The range the agent asked for, before the read cap or budget cut it. */
+  requestedRange?: ChunkRange;
   defaultRange?: boolean;
   returnedCount: number;
   returnedChunkIds: string[];
@@ -205,6 +207,7 @@ export interface ReadSource {
   chunkIds?: string[];
   document?: string;
   chunkRange?: ChunkRange;
+  requestedRange?: ChunkRange;
   defaultRange?: boolean;
   maxContentLength?: number;
   autoRead?: boolean;
@@ -378,6 +381,7 @@ export class Workspace {
         ? {
             document: source.document as string,
             chunkRange: source.chunkRange as ChunkRange,
+            ...(source.requestedRange ? { requestedRange: source.requestedRange } : {}),
             defaultRange: Boolean(source.defaultRange),
           }
         : {}),
@@ -638,6 +642,50 @@ const repeatedGapStagnation = (workspace: Workspace) => {
   return undefined;
 };
 
+/**
+ * The left-out part of the last read, when the read cap or budget cut a range read and a
+ * search hit in that part scored at least as well as the weakest hit the read returned.
+ * Undefined when no read or no character is left to read it.
+ */
+export const cutReadLeftOutBetterHit = (
+  workspace: Workspace,
+): { document: string; chunkRange: ChunkRange } | undefined => {
+  const last = workspace.reads.at(-1);
+  if (last?.mode !== 'doc-range' || !last.requestedRange || last.document === undefined)
+    return undefined;
+  const budget = workspace.budget();
+  if (budget.readsRemaining <= 0 || budget.readCharsRemaining <= 0) return undefined;
+  const document = last.document;
+  const requested = last.requestedRange;
+  const read = readPositions(workspace, document);
+  const returned = new Set(last.returnedChunkIds);
+  const best = new Map<string, { index: number; score: number[] }>();
+  for (const search of workspace.searches)
+    for (const s of search.summaries) {
+      const index = s['chunk-index'];
+      if (s['doc-num'] !== document || index === null) continue;
+      const score = hitScore(s);
+      const known = best.get(s['chunk-id']);
+      if (!known || higher(score, known.score)) best.set(s['chunk-id'], { index, score });
+    }
+  let weakestReturned: number[] | undefined;
+  let bestLeftOut: { index: number; score: number[] } | undefined;
+  for (const [id, h] of best) {
+    if (returned.has(id)) {
+      if (!weakestReturned || higher(weakestReturned, h.score)) weakestReturned = h.score;
+    } else if (h.index >= requested.from && h.index <= requested.to && !read.has(h.index)) {
+      if (!bestLeftOut || higher(h.score, bestLeftOut.score)) bestLeftOut = h;
+    }
+  }
+  if (!bestLeftOut || (weakestReturned && higher(weakestReturned, bestLeftOut.score)))
+    return undefined;
+  const leftOut: number[] = [];
+  for (let i = requested.from; i <= requested.to; i++) if (!read.has(i)) leftOut.push(i);
+  const index = bestLeftOut.index;
+  const [from, to] = spans(leftOut).find(([a, b]) => a <= index && index <= b) ?? [index, index];
+  return { document, chunkRange: { from, to } };
+};
+
 export const aggregateReadSignals = (workspace: Workspace): ShadowDecision => {
   const critical = (workspace.evidencePlan?.requiredClaims ?? []).filter((c) => c.critical);
   const missing = critical
@@ -652,18 +700,23 @@ export const aggregateReadSignals = (workspace: Workspace): ShadowDecision => {
     degraded || last?.status === 'unclear' || scope === 'ambiguous' || scope === 'wrong-scope';
   const unreadCount = nextReadSuggestions(workspace).unreadCount;
   const gapReported = last?.status === 'gap-remaining' || last?.status === 'conflicting';
-  const covered = missing.length === 0 && !gapReported;
+  const readCovered = missing.length === 0 && !gapReported;
+  // A cut read that left out a hit as good as the ones it returned is not the whole story.
+  const cutLeftOut = readCovered ? cutReadLeftOutBetterHit(workspace) : undefined;
+  const covered = readCovered && !cutLeftOut;
   const suggestedStrategy = contradictions.length
     ? 'finalize'
     : ambiguous
       ? (last?.nextActionHint ?? 're-search')
       : covered
         ? 'finalize'
-        : stagnation
-          ? 're-search'
-          : unreadCount > 0
-            ? 'read-more'
-            : 're-search';
+        : cutLeftOut
+          ? 'read-more'
+          : stagnation
+            ? 're-search'
+            : unreadCount > 0
+              ? 'read-more'
+              : 're-search';
   return {
     source: 'read-signals',
     status: contradictions.length
@@ -685,11 +738,13 @@ export const aggregateReadSignals = (workspace: Workspace): ShadowDecision => {
               ? 'unclear-read-signal'
               : covered
                 ? 'all-critical-claims-covered'
-                : stagnation
-                  ? 'repeated-critical-gaps'
-                  : missing.length === 0
-                    ? 'read-reported-gap'
-                    : 'critical-gaps-remaining',
+                : cutLeftOut
+                  ? 'cut-read-left-out-better-hit'
+                  : stagnation
+                    ? 'repeated-critical-gaps'
+                    : missing.length === 0
+                      ? 'read-reported-gap'
+                      : 'critical-gaps-remaining',
     suggestedStrategy,
     missingClaims: missing,
     contradictions,

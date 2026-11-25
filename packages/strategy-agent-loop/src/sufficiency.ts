@@ -2,7 +2,12 @@ import { untrustedData } from '@genai/port-model';
 import { questionWords } from './intent.js';
 import { sameLanguageRule } from './prompts.js';
 import { json, resolveAliasOrNormalize, structuredEvaluate, type Evaluator } from './structured.js';
-import type { Chunk, ChunkRange, Workspace } from './workspace.js';
+import {
+  cutReadLeftOutBetterHit,
+  type Chunk,
+  type ChunkRange,
+  type Workspace,
+} from './workspace.js';
 
 export const maxSufficiencyRejections = 5;
 
@@ -642,6 +647,7 @@ export const buildEvidenceSummary = (w: Workspace, query: string): EvidenceSumma
   const readIds = new Set(w.reads.flatMap((r) => r.returnedChunkIds));
   const latestSummaries = latest?.summaries ?? [];
   const unread = latestSummaries.filter((s) => !readIds.has(s['chunk-id']));
+  const cutLeftOut = cutReadLeftOutBetterHit(w);
   const rangeAnchor = unread.find(
     (s) =>
       s['doc-num'] !== null &&
@@ -694,21 +700,23 @@ export const buildEvidenceSummary = (w: Workspace, query: string): EvidenceSumma
     'latest-search-queries': latest?.queries ?? [],
     'latest-search-summaries': latestSummaries.map(pick),
     'unread-chunk-ids': unread.slice(0, 3).map((s) => s['chunk-id']),
-    'unread-range': rangeAnchor
-      ? {
-          'doc-num': rangeAnchor['doc-num'] as string,
-          'chunk-range': {
-            from: Math.max(0, (rangeAnchor['chunk-index'] as number) - 1),
-            to:
-              rangeAnchor['total-chunks'] === null
-                ? (rangeAnchor['chunk-index'] as number) + 1
-                : Math.min(
-                    rangeAnchor['total-chunks'] - 1,
-                    (rangeAnchor['chunk-index'] as number) + 1,
-                  ),
-          },
-        }
-      : null,
+    'unread-range': cutLeftOut
+      ? { 'doc-num': cutLeftOut.document, 'chunk-range': cutLeftOut.chunkRange }
+      : rangeAnchor
+        ? {
+            'doc-num': rangeAnchor['doc-num'] as string,
+            'chunk-range': {
+              from: Math.max(0, (rangeAnchor['chunk-index'] as number) - 1),
+              to:
+                rangeAnchor['total-chunks'] === null
+                  ? (rangeAnchor['chunk-index'] as number) + 1
+                  : Math.min(
+                      rangeAnchor['total-chunks'] - 1,
+                      (rangeAnchor['chunk-index'] as number) + 1,
+                    ),
+            },
+          }
+        : null,
   };
 };
 
