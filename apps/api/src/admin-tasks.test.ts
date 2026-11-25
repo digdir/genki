@@ -17,6 +17,7 @@ const notAdminChanges = reasonFreeWrites;
 
 const throughAdminTasks = [
   'POST /tenants/:tenant/blocks/:id/share-requests',
+  'DELETE /tenants/:tenant/blocks/:id',
   'POST /operator/block-share-requests/:rid/approve',
   'POST /operator/block-share-requests/:rid/decline',
   'DELETE /operator/catalog/:kind/:id',

@@ -1,3 +1,4 @@
+import { archivedRefProblems } from './block-archive.js';
 import { randomBytes } from 'node:crypto';
 import { draftServiceOf, originOf, trialOrigins } from './draft-runner.js';
 import { isInternalService } from '@genai/definitions';
@@ -434,6 +435,11 @@ export const createQualityModule =
               : {},
             ...(typeof baseVersion === 'number' ? { baseVersion } : {}),
           };
+          const archived = await archivedRefProblems(deps, draft.definition, [
+            (await deps.definitions.get('Service', guard.tenant, service))?.definition,
+            (await evals.draftOf(guard.tenant, service))?.spec.definition,
+          ]);
+          if (archived.length > 0) return problem(c, 422, 'Ugyldig forespørsel', archived);
           const reason = reasonOf(c);
           try {
             const saved = await inTask(

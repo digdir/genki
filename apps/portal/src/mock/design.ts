@@ -146,6 +146,7 @@ const builtIn = (
   zones: BlockZone[],
   at: string,
   used: number,
+  props?: NonNullable<BlockDraft['spec']['props']>,
 ): MockBlock => ({
   publisher: genki,
   id,
@@ -159,7 +160,14 @@ const builtIn = (
         apiVersion: 'genai/v1',
         kind: 'Block',
         metadata: { tenant: genki, id, name: nb },
-        spec: { tier: 'built-in', builtIn: id, title: { nb, en }, zones, sharing: 'everyone' },
+        spec: {
+          tier: 'built-in',
+          builtIn: id,
+          title: { nb, en },
+          zones,
+          sharing: 'everyone',
+          ...(props ? { props } : {}),
+        },
       },
       {},
       'genki',
@@ -255,7 +263,17 @@ export const exampleDesignBlocks = (): MockBlock[] => [
   ),
   builtIn('filter', 'Filter', 'Filter', ['primary', 'secondary'], '2026-11-12T08:00:00Z', 2),
   builtIn('sources', 'Kilder', 'Sources', ['main', 'secondary'], '2026-11-17T08:00:00Z', 3),
-  builtIn('approach', 'Fremgangsmåte', 'Approach', ['main'], '2026-11-17T08:00:00Z', 3),
+  builtIn('approach', 'Fremgangsmåte', 'Approach', ['main'], '2026-11-17T08:00:00Z', 3, {
+    type: 'object',
+    properties: {
+      level: {
+        type: 'string',
+        enum: ['standard', 'detailed'],
+        default: 'standard',
+        'x-label': 'builder.approachLevel',
+      },
+    },
+  } as NonNullable<BlockDraft['spec']['props']>),
   builtIn(
     'document-view',
     'Dokumentvisning',
@@ -523,6 +541,29 @@ export const designMock = (options: DesignMockOptions = {}): MockHandler => {
       const at = new Date().toISOString();
       block.review = { status: 'pending', version, at };
       return req.json({ id: `rid-${block.id}`, status: 'pending', version, at }, 201);
+    }
+    if (method === 'DELETE' && rest.length === 1) {
+      if (!req.reason) return req.reasonMissing();
+      const at = blocks.findIndex((b) => b.publisher === tenant && b.id === rest[0] && !b.builtIn);
+      const block = blocks[at];
+      if (!block) return req.notFound();
+      if (block.usedIn?.length)
+        return req.json(
+          {
+            type: 'urn:genai:problem:block-in-use',
+            title: 'Klossen er i bruk',
+            status: 409,
+            errors: block.usedIn.map((u) => ({
+              path: 'id',
+              message: `Tjenesten ${u.name} bruker den.`,
+            })),
+            usedBy: block.usedIn.map((u) => u.service),
+            otherServices: 0,
+          },
+          409,
+        );
+      blocks.splice(at, 1);
+      return req.json({ id: block.id, archived: true, version: block.editions.length + 1 });
     }
     if (method === 'GET' && rest.length === 2) {
       const block = find(rest[0] ?? '', rest[1] ?? '');

@@ -28,6 +28,7 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.block.decide': 'changes.blockDecide',
   'platform.block.request': 'changes.blockRequest',
   'platform.block.settings': 'changes.blockSettings',
+  'platform.block.archive': 'changes.blockArchive',
   'platform.block-share.request': 'changes.blockShareRequest',
   'platform.block-share.approve': 'changes.blockShareApprove',
   'platform.block-share.decline': 'changes.blockShareDecline',

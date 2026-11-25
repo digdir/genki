@@ -10,19 +10,12 @@ import {
 import type { AssistantLayout } from '@genai/ui-blocks/builder';
 import type { BlockSummary, BlockZone, RefBlockPayload } from '@genai/contracts/blocks';
 import { useLocale } from '@genai/i18n/react';
-import { useId, useMemo, useState } from 'react';
+import { useId, useState } from 'react';
 import type { ApiClient } from '../../../api';
 import type { PinnedDraft } from '../../../api/design';
 import { useAsync } from '../../../hooks';
 import { useT } from '../../../i18n';
-import {
-  designPath,
-  editionDates,
-  tierColor,
-  tierKey,
-  titleOf,
-  zoneKey,
-} from '../../design/naming';
+import { designPath, titleOf, versionName, zoneKey } from '../../design/naming';
 import { Problems } from '../../design/Problems';
 import type { PinnedRef } from './layoutStore';
 
@@ -142,7 +135,6 @@ const RefBlockRow = ({
     [api, tenant, block.publisher, block.id, block.latest.version],
   );
   const editions = detail.status === 'ready' ? detail.data.editions : [block.latest];
-  const dates = useMemo(() => editionDates(editions, locale, t), [editions, locale, t]);
   const [version, setVersion] = useState(block.latest.version);
   const [zone, setZone] = useState<BlockZone>(block.zones[0] ?? 'main');
   const [busy, setBusy] = useState(false);
@@ -172,7 +164,7 @@ const RefBlockRow = ({
           service,
           target,
           { version: v, ...(z ? { zone: z } : {}) },
-          t('design.pinReason', { name }),
+          t('design.pinReason', { name, version: versionName(t, v) }),
         ),
       true,
     );
@@ -186,8 +178,14 @@ const RefBlockRow = ({
     <div className="ref-block-row">
       <div className="ref-block-name">
         <a href={`#${designPath(block.publisher, block.id)}`}>{name}</a>
-        <Tag data-size="sm" data-color={tierColor[block.tier]}>
-          {t(tierKey[block.tier])}
+        <Tag data-size="sm" data-color="neutral">
+          {t(
+            block.tier === 'code'
+              ? 'design.withCode'
+              : block.tier === 'declarative'
+                ? 'design.withoutCode'
+                : 'design.fromGenki',
+          )}
         </Tag>
         {block.origin === 'shared' ? (
           <span className="ref-block-publisher">{block.publisherName}</span>
@@ -197,14 +195,14 @@ const RefBlockRow = ({
         <div className="ref-block-actions">
           <span>
             {t('design.pinnedAt', {
-              date: dates.get(pinnedVersion) ?? '',
+              version: versionName(t, pinnedVersion),
               zone: t(zoneKey[pin.zone]),
             })}
           </span>
           {pinnedVersion < newest ? (
             <>
               <span className="ref-block-newer">
-                {t('design.newer', { date: dates.get(newest) ?? '' })}
+                {t('design.newer', { version: versionName(t, newest) })}
               </span>
               <Button
                 variant="secondary"
@@ -239,7 +237,7 @@ const RefBlockRow = ({
             >
               {[...editions].reverse().map((e) => (
                 <Select.Option key={e.version} value={String(e.version)}>
-                  {dates.get(e.version)}
+                  {versionName(t, e.version)}
                 </Select.Option>
               ))}
             </Select>
