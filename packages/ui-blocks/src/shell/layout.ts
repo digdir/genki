@@ -166,7 +166,7 @@ export const initialState = (
 /**
  * A panel's width within its floor and ceiling as they are now. The host may change a panel's size
  * while the reader is on the page, as the next look's primary panel does between the threads with
- * their filter (660) and the settings menu (220): the width asked for before still stands, but is
+ * their filter (660) and the settings menu (252): the width asked for before still stands, but is
  * drawn within the new size.
  */
 const heldWidth = (geometry: ShellGeometry, state: ShellState, side: ShellSide) => {

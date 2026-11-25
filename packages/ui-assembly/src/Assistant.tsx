@@ -118,8 +118,10 @@ const oneColumnTicks = {
   inlineSize: '100%',
 } as CSSProperties;
 
-// The next look's threads: 220 wide, at most 400 (kunnskapsassistenten#263, #264).
-const threadsWidth = { width: 220, minWidth: 220, maxWidth: 400 };
+// The next look's threads and its settings menu: 252 wide, the board's 220 and a size-8 more so
+// a title and a page's line fit; the threads at most 400 (kunnskapsassistenten#263, #264).
+const sideWidth = 252;
+const threadsWidth = { width: sideWidth, minWidth: sideWidth, maxWidth: 400 };
 const filterWidth = 280;
 
 // The next look's footnote marks at 16 px (dev-kilder-hoyre), and the question a lighter grey.
@@ -908,7 +910,7 @@ export const AssistantView = ({
       />
     ) : undefined;
 
-  // The next look's sizes, the dev-navbar board's at 1720: threads 220, tools 380.
+  // The next look's sizes, the dev-navbar board's at 1720: threads 252 (the board's 220 + 32), tools 380.
   const nextPrimary: Partial<ShellPanel> = next
     ? { size: threadsWidth, ...profileFoot }
     : profileFoot;
@@ -1040,8 +1042,8 @@ export const AssistantView = ({
       ),
       foot,
       ...nextPrimary,
-      // The menu alone is 220 wide; the threads' card keeps its dragged width for the way back.
-      size: { width: 220, minWidth: 220, maxWidth: 220 },
+      // The menu alone is as wide as the threads start; their card keeps its dragged width for the way back.
+      size: { width: sideWidth, minWidth: sideWidth, maxWidth: sideWidth },
     };
 
   // ── The secondary panel's tools, in the catalogue's order ──
