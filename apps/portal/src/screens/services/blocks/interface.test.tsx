@@ -52,10 +52,16 @@ const openInterface = async (fetch = recording()) => {
   return fetch;
 };
 
-const switchIn = (group: string, name: string) =>
-  within(screen.getByRole('group', { name: group })).getByRole('switch', {
+/** A block's switch under «Designelementer», which the tab opens to after «Maler». */
+const switchIn = (group: string, name: string) => {
+  const blocks = screen.queryByRole('radio', {
+    name: 'Designelementer',
+  }) as HTMLInputElement | null;
+  if (blocks && !blocks.checked) fireEvent.click(blocks);
+  return within(screen.getByRole('group', { name: group })).getByRole('switch', {
     name,
   }) as HTMLInputElement;
+};
 
 const next = fromTemplate('knowledge-assistant-next').layout;
 
@@ -89,6 +95,14 @@ describe('the Utforming tab', () => {
     fireEvent.click(navLink('Utforming'));
     expect(await screen.findByRole('group', { name: 'Designelementer og maler' })).toBeTruthy();
     expectAccessible();
+  });
+
+  it('opens on «Maler», the quickest way to a whole look, with «Designelementer» beside it', async () => {
+    await openInterface();
+    expect((screen.getByRole('radio', { name: 'Maler' }) as HTMLInputElement).checked).toBe(true);
+    expect(
+      (screen.getByRole('radio', { name: 'Designelementer' }) as HTMLInputElement).checked,
+    ).toBe(false);
   });
 
   it('has «Tekster» beside «Maler» and «Designelementer», and keeps the words with the layout', async () => {

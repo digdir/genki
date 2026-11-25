@@ -68,7 +68,8 @@ export const useBlocksState = (
     });
   }, [keep, state.layout, state.held, template]);
   const [mode, setMode] = useState<PreviewMode>('try');
-  const [tab, setTab] = useState<LeftTab>('blocks');
+  // Maler first: a template is the quickest way to a whole look, the blocks after.
+  const [tab, setTab] = useState<LeftTab>('templates');
   const [width, setWidth] = useState(380);
   const [height, setHeight] = useState(720);
   const offered = (id: (typeof blockIds)[number]) => offerOf(id, facts).offered;
