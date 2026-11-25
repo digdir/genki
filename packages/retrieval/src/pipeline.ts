@@ -1,6 +1,7 @@
 import {
   capabilitiesOf,
   kindsOf,
+  knowledgeProfiles,
   type FacetValue,
   type FilterClause,
   type FilterValue,
@@ -178,6 +179,16 @@ const inBatches = async (
   }
   return results;
 };
+
+const timedOut = /statement timeout|timed out|took longer than/i;
+
+/** The organisations and years detected in `query`, as words: a narrower metadata search than the query itself. */
+const detectedWords = (query: string, detections: Detection[]) =>
+  [
+    ...new Set(
+      detections.flatMap((d) => (d.kind !== 'rule' && d.queries.includes(query) ? d.values : [])),
+    ),
+  ].join(' ');
 
 const rerankText = (
   chunk: Chunk,
@@ -362,6 +373,7 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
     queries: string[],
     filters: Record<string, FilterValue> | undefined,
     note: Note,
+    detections: Detection[],
   ) => {
     const base = (query: string, profile: string): SearchRequest => ({
       query,
@@ -381,6 +393,28 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
       config.batchSize,
       note,
     );
+    // A metadata search of many words can time out under load (issue 982): try it once with only the detected organisation and year.
+    const retries = plan.flatMap(({ request }, i) => {
+      const warning = results[i]?.warning;
+      if (request.profile !== knowledgeProfiles.metadata || !warning || !timedOut.test(warning))
+        return [];
+      const query = detectedWords(request.query, detections);
+      return query && query !== request.query ? [{ i, request: { ...request, query } }] : [];
+    });
+    if (retries.length > 0) {
+      // An engine throws when every search in a batch fails; the first try's hits and warnings then stand.
+      const again = await inBatches(
+        knowledge,
+        retries.map((r) => r.request),
+        config.batchSize,
+        note,
+      ).catch((): SearchResult[] => []);
+      retries.forEach(({ i }, j) => {
+        const result = again[j];
+        if (result && !result.warning) results[i] = result;
+      });
+      note('retried a timed-out metadata leg once with the detected organisation and year');
+    }
     const strategyOf = (i: number) => plan[i]?.group ?? 'doc-title';
     const warnings = results.flatMap((r, i) =>
       r.warning ? [`${strategyOf(i)} search: ${r.warning}`] : [],
@@ -625,7 +659,7 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
     const effective = toInput(mergeTyped(explicit, detected.filter ?? {}));
     const strategies = async (filters: Record<string, FilterValue> | undefined) => {
       try {
-        return await runStrategies(queries, filters, note);
+        return await runStrategies(queries, filters, note, detected.detections);
       } catch (error) {
         throw withDetections(error, detected.detections);
       }
