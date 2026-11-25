@@ -31,6 +31,26 @@ const readInto = (w: Workspace, ...ns: number[]) => {
 
 const decline = 'Kildene i Kudos dekker ikke dette. Vil du at jeg søker etter noe annet?';
 
+const brunostDecline =
+  'Kildene i Kudos har ingen oppskrift på tradisjonell brunost. Dokumentene her er offentlige rapporter.';
+const brunostExtra =
+  'Rapporten «Gjennomgang av geiteholdet i Norge» forteller hva brunost lages av:\n\n- **Råvarer:** Brunost lages av myse, melk og fløte.';
+const brunostOffer = 'Jeg kan søke i Kudos etter mer om seterkultur.';
+const fullAnswer = [
+  '**Kort svar:** DFØ konkluderer med at konsulentbruken i staten har flatet ut.',
+  '**Slik har jeg tolket spørsmålet:** Jeg fant ingen DFØ-evaluering med et eget kapittel som heter «Konklusjoner». Det nærmeste er DFØ-notat 2024:1.',
+  '## Hva DFØ konkluderer med\nFunnene peker i samme retning, men DFØ har ikke nok data til å si hvor stor effekten er.',
+].join('\n\n');
+const supportedDraft = [
+  'Jeg fant ikke tall for 2024.',
+  'For 2023 viser rapporten at kostnaden var 40 millioner kroner.',
+  'Vil du at jeg søker etter tallene for 2024?',
+].join('\n\n');
+const nothingSupports = (w: Workspace) => {
+  for (const id of w.readChunkIds()) w.nonSupporting.add(id);
+};
+const brunostDraft = `${brunostDecline}\n\n${brunostExtra}\n\n${brunostOffer}`;
+
 const judged = (w: Workspace, status: string) =>
   w.sufficiencyDecisions.push({
     status,
@@ -451,6 +471,200 @@ describe('a decline after the gate judged the evidence', () => {
     });
   });
 
+  it('cuts a decline with an extra section to the decline and its offer, with no citations', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['brunost oppskrift'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result(brunostDraft),
+          ],
+          read: [() => readSignal('gap-remaining')],
+          synth: [() => brunostDraft.replace('fløte.', 'fløte [1].')],
+        },
+      },
+    });
+
+    expect(out.text).toBe(`${brunostDecline}\n\n${brunostOffer}`);
+    expect(out.meta).toEqual({ citations: [], noAnswer: true });
+    expect(out.notices).toContainEqual({ stage: 'citations', action: 'decline' });
+    expect(out.notices).toContainEqual({ stage: 'answer-discarded', reason: 'beyond-decline' });
+  });
+
+  it('adds footnotes to a full answer that mentions finding nothing, after the read check found a gap', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['DFØ konsulentbruk konklusjoner'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result(fullAnswer),
+          ],
+          read: [
+            () =>
+              readSignal('gap-remaining', {
+                supported_claims: [
+                  { claim_id: 'topic-match', support: 'explicit', chunk_ids: ['c1'] },
+                ],
+              }),
+          ],
+          synth: [() => fullAnswer.replace('har flatet ut.', 'har flatet ut [1].')],
+        },
+      },
+    });
+
+    expect(out.text).toContain('har flatet ut [1].');
+    expect(out.notices).toContainEqual({ stage: 'citations', action: 'backfill', adopted: true });
+  });
+
+  it('keeps a short decline after the read check found a gap', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['brunost oppskrift'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result(brunostDecline),
+          ],
+          read: [() => readSignal('gap-remaining')],
+          synth: [() => `${brunostDecline} [1]`],
+        },
+      },
+    });
+
+    expect(out.text).toBe(brunostDecline);
+    expect(out.notices).toContainEqual({
+      stage: 'citations',
+      action: 'keep',
+      reason: 'declined-after-insufficient',
+    });
+  });
+
+  it('does not cut a decline whose first paragraph leads into what follows', () => {
+    const answer =
+      'Jeg fant ikke billettprisene for 2026, men rapporten oppgir disse for 2025:\n\n- Bergen-Kirkenes: 12 000 kroner';
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'insufficient');
+    });
+
+    expect(settleCitations(answer, w)).toEqual({ action: 'backfill', readFirst: [] });
+  });
+
+  it('keeps an offer that opens with «Hvis du vil» after the cut', () => {
+    const offer = 'Hvis du vil, kan jeg søke etter seterkultur.';
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'insufficient');
+      nothingSupports(w);
+    });
+
+    expect(settleCitations(`${brunostDecline}\n\n${brunostExtra}\n\n${offer}`, w)).toEqual({
+      action: 'decline',
+      text: `${brunostDecline}\n\n${offer}`,
+    });
+  });
+
+  it('keeps a supported paragraph after an opening decline and cites it', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['kostnad 2024'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result(supportedDraft),
+          ],
+          read: [
+            () =>
+              readSignal('gap-remaining', {
+                supported_claims: [
+                  { claim_id: 'topic-match', support: 'explicit', chunk_ids: ['c1'] },
+                ],
+              }),
+          ],
+          synth: [() => supportedDraft.replace('40 millioner kroner.', '40 millioner kroner [1].')],
+        },
+      },
+    });
+
+    expect(out.text).toContain(
+      'For 2023 viser rapporten at kostnaden var 40 millioner kroner [1].',
+    );
+    expect(out.notices).toContainEqual({ stage: 'citations', action: 'backfill', adopted: true });
+  });
+
+  it('cuts to the decline when nothing read supports it', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      readCheck(w, 'insufficient');
+      nothingSupports(w);
+    });
+
+    expect(settleCitations(supportedDraft, w)).toEqual({
+      action: 'decline',
+      text: 'Jeg fant ikke tall for 2024.\n\nVil du at jeg søker etter tallene for 2024?',
+    });
+  });
+
+  it('cites an opening decline with an extra section when what was read supports it', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      readCheck(w, 'insufficient');
+    });
+
+    expect(settleCitations(supportedDraft, w)).toEqual({ action: 'backfill', readFirst: [] });
+  });
+
+  it('cuts a decline with an extra section and no offer to its first paragraph', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'insufficient');
+      nothingSupports(w);
+    });
+
+    expect(settleCitations(`${brunostDecline}\n\n${brunostExtra}`, w)).toEqual({
+      action: 'decline',
+      text: brunostDecline,
+    });
+  });
+
+  it('cites a judged answer whose decline is not its first paragraph', () => {
+    const answer =
+      'Rapporten beskriver ordningen for kystruten.\n\nJeg fant ikke tallene for 2024.';
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'insufficient');
+    });
+
+    expect(settleCitations(answer, w)).toEqual({ action: 'backfill', readFirst: [] });
+  });
+
+  it('still rewrites a decline with an extra section when the gate judged the evidence sufficient', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      judged(w, 'sufficient');
+    });
+
+    expect(settleCitations(brunostDraft, w)).toEqual({
+      action: 'backfill',
+      readFirst: [],
+      refusal: true,
+    });
+  });
+
+  it('leaves a cited answer that opens with «har ingen … men» as it is', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1);
+      judged(w, 'insufficient');
+      w.citationIndex = buildCitationIndex(['c1']);
+    });
+
+    expect(
+      settleCitations('Rapporten har ingen anbefalinger om X, men peker på Y [1].', w),
+    ).toEqual({ action: 'keep', reason: 'cited' });
+  });
+
   it('still rewrites a decline when the gate found the evidence conflicting', () => {
     const w = workspaceWith((w) => {
       readInto(w, 1, 2);
@@ -472,6 +686,12 @@ describe('recognising a refusal', () => {
     'Basert på den gitte konteksten, er det ingen eksplisitt informasjon om dette.',
     'Jeg har dessverre ikke klart å finne spesifikk informasjon om dette.',
     'Rapporten foreligger ikke i kunnskapsbasen.',
+    'Kildene i Kudos har ingen oppskrift på tradisjonell brunost.',
+    'Dokumentene har ikke noe om billettpriser.',
+    'Kjeldene har ikkje noko om dette.',
+    'Materialet har ingen tall for 2028.',
+    'The sources have no figures for 2028.',
+    'Kildene har ingen tall for 2028.',
   ])('treats "%s" as a refusal', (text) => {
     expect(soundsLikeRefusal(text)).toBe(true);
   });
@@ -479,6 +699,12 @@ describe('recognising a refusal', () => {
   it.each([
     'Kommunene dekker reiseutgiftene når elever deltar på Statpeds elevkurs.',
     'NHH fikk en samlet realnedgang på 40 millioner kroner over to år.',
+    'Rapporten har ingen anbefalinger om X, men peker på Y.',
+    'Elevkurset har ingen egenandel.',
+    'Nei, kommunen har ikke plikt til å dekke reisen.',
+    'Norge har ikke ratifisert konvensjonen.',
+    'Kildene har ingen anbefalinger om X, men peker på Y.',
+    'Statpeds elevkurs for 2025 har ingen egenandel. Kommunene dekker reisen.',
   ])('treats "%s" as an answer', (text) => {
     expect(soundsLikeRefusal(text)).toBe(false);
   });

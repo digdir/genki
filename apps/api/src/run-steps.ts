@@ -323,6 +323,7 @@ const nextMoves: Record<string, ApiKey> = {
 const citationActions: Record<string, ApiKey> = {
   keep: 'steps.citationsKeep',
   'carry-through': 'steps.citationsCarry',
+  decline: 'steps.citationsDecline',
 };
 
 const hitsOf = (value: unknown): HitView[] =>
@@ -1308,8 +1309,12 @@ export class RunMapper {
       this.out.push({ kind: 'retract', reason: 'discarded' });
       return;
     }
-    const uncited = data.reason === 'uncited';
-    const text = uncited ? t('steps.discardedUncited') : t('steps.discardedGate');
+    const text =
+      data.reason === 'uncited'
+        ? t('steps.discardedUncited')
+        : data.reason === 'beyond-decline'
+          ? t('steps.discardedBeyondDecline')
+          : t('steps.discardedGate');
     this.warn(text);
     this.out.push({ kind: 'retract', reason: 'discarded' });
     this.add({

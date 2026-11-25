@@ -40,19 +40,56 @@ const refusalPatterns = [
   /\b(could not|couldn't|did not|didn't) find\b/,
 ];
 
+// «Kildene har ingen …» declines; «Elevkurset har ingen egenandel» and «…, men …» answer.
+const hasNoOpening =
+  /^(kildene|kilden|kjeldene|kjelda|dokumentene|dokumentet|dokumenta|materialet|the sources|the source|the documents|the document|the material)( (i|in) [^ ]+)? (har (ingen|ikke|ikkje)|have no|has no)(?![\p{L}\p{N}])/u;
+const butWord = /(?<![\p{L}\p{N}])men(?![\p{L}\p{N}])/u;
+
+const opensWithHasNo = (normalized: string) => {
+  const end = normalized.search(/[.!?]/);
+  const first = end === -1 ? normalized : normalized.slice(0, end);
+  return hasNoOpening.test(first) && !butWord.test(first);
+};
+
 export const soundsLikeRefusal = (text: string): boolean => {
   const normalized = text.toLowerCase().replace(/\s+/g, ' ').trim();
   if (normalized === '') return true;
   if (isFallbackText(text)) return true;
   return (
     detectInsufficientContext(normalized).insufficient ||
+    opensWithHasNo(normalized) ||
     refusalPatterns.some((p) => p.test(normalized))
   );
+};
+
+const offerOpening =
+  /^(jeg kan|eg kan|vil du|ønsker du|ønskjer du|skal jeg|skal eg|hvis du vil|om du vil|viss du vil|would you like|i can|shall i)(?![\p{L}\p{N}])/u;
+
+const paragraphsOf = (text: string) =>
+  text
+    .split(/\n[^\S\n]*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+/** A decline's first paragraph and its closing offer, without what the model added between them. */
+export const declineOnly = (text: string): string => {
+  const [first = '', ...rest] = paragraphsOf(text);
+  const last = rest.at(-1);
+  return last && offerOpening.test(last.toLowerCase()) ? `${first}\n\n${last}` : first;
+};
+
+const shortDeclineChars = 300;
+
+// A short first paragraph that declines, not one that leads into a list («… for 2025:»).
+const opensWithDecline = (answer: string) => {
+  const first = paragraphsOf(answer)[0] ?? '';
+  return first.length <= shortDeclineChars && !first.endsWith(':') && soundsLikeRefusal(first);
 };
 
 export type CitationSettlement =
   | { action: 'keep'; reason: string }
   | { action: 'carry-through' }
+  | { action: 'decline'; text: string }
   | { action: 'backfill'; readFirst: string[]; refusal?: true };
 
 const readPool = (workspace: Workspace): Chunk[] => {
@@ -90,6 +127,15 @@ const declineJudged = (workspace: Workspace) => {
   return d.status === 'insufficient' || d.status === 'off-topic';
 };
 
+// Off-topic, outside the scope, or every chunk read found to support nothing.
+const nothingReadSupports = (workspace: Workspace) => {
+  const d = workspace.latestDecision();
+  if (d?.status === 'off-topic' || (d && 'reasonCode' in d && d.reasonCode === 'wrong-scope'))
+    return true;
+  const read = [...workspace.readChunkIds()];
+  return read.length > 0 && read.every((id) => workspace.nonSupporting.has(id));
+};
+
 export const settleCitations = (answer: string, workspace: Workspace): CitationSettlement => {
   if (validateCitations(answer, workspace.citationIndex).grounded)
     return { action: 'keep', reason: 'cited' };
@@ -104,10 +150,18 @@ export const settleCitations = (answer: string, workspace: Workspace): CitationS
     return { action: 'carry-through' };
   if (refusal) {
     if (workspace.citationIndex.size > 0) return { action: 'keep', reason: 'generated-uncited' };
-    if (declineJudged(workspace)) return { action: 'keep', reason: 'declined-after-insufficient' };
-    return refusalBackfillCandidates(workspace).length
-      ? { action: 'backfill', readFirst: [], refusal: true }
-      : { action: 'keep', reason: 'no-answer-text' };
+    if (!declineJudged(workspace))
+      return refusalBackfillCandidates(workspace).length
+        ? { action: 'backfill', readFirst: [], refusal: true }
+        : { action: 'keep', reason: 'no-answer-text' };
+    // A section after an opening decline adds only what is beside the question.
+    if (opensWithDecline(answer)) {
+      const decline = declineOnly(answer);
+      if (decline === answer.trim())
+        return { action: 'keep', reason: 'declined-after-insufficient' };
+      if (nothingReadSupports(workspace)) return { action: 'decline', text: decline };
+    }
+    // Only mentions finding nothing: cite it as the answer it is.
   }
   if (backfillCandidates(workspace).length) return { action: 'backfill', readFirst: [] };
   if (workspace.readChunkIds().size > 0) return { action: 'keep', reason: 'no-supporting-chunks' };

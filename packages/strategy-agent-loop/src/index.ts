@@ -1189,6 +1189,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       const settlement = settleCitations(answer, workspace);
       let settled: string | undefined;
       if (settlement.action === 'carry-through') settled = workspace.lastGeneratedResponse;
+      else if (settlement.action === 'decline') settled = settlement.text;
       else if (settlement.action === 'backfill') {
         try {
           settled = await backfillCitations(
@@ -1215,7 +1216,8 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       };
       let resent = false;
       if (settled !== undefined && settled !== answer) {
-        yield { type: 'kernel.notice', data: { stage: 'answer-discarded', reason: 'uncited' } };
+        const reason = settlement.action === 'decline' ? 'beyond-decline' : 'uncited';
+        yield { type: 'kernel.notice', data: { stage: 'answer-discarded', reason } };
         yield { type: 'kernel.part.delta', data: { text: settled } };
         answer = settled;
         resent = true;
