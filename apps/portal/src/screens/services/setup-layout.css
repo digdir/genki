@@ -22,6 +22,8 @@
   .setup-nav {
     grid-column: 1;
     grid-row: 1;
+    position: static;
+    max-height: none;
   }
 
   .setup-nav .setup-nav-list {
@@ -230,7 +232,7 @@
   min-height: 560px;
   min-width: 0;
   position: sticky;
-  top: 16px;
+  top: var(--rail-top);
 }
 
 .setup-side .assistant {

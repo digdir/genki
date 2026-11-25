@@ -39,6 +39,13 @@
   font-size: 15px;
 }
 
+@container page (max-width: 823px) {
+  .mc-filters {
+    position: static;
+    max-height: none;
+  }
+}
+
 .mc-filters-head {
   display: flex;
   justify-content: space-between;

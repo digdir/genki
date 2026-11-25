@@ -251,7 +251,7 @@ export const ModelCatalog = ({ api, tenant }: ScreenProps) => {
       <div className="stack">
         <Header text={text} />
         <div className="mc-layout">
-          <aside aria-labelledby="mc-filters-h" className="mc-filters">
+          <aside aria-labelledby="mc-filters-h" className="mc-filters sticky-rail">
             <div className="mc-filters-head">
               <Heading level={2} data-size="xs" id="mc-filters-h">
                 {t('modelCatalog.filters')}
@@ -350,7 +350,7 @@ export const ModelCatalog = ({ api, tenant }: ScreenProps) => {
     <div className="stack">
       <Header text={text} />
       <div className="mc-layout">
-        <aside aria-labelledby="mc-filters-h" className="mc-filters">
+        <aside aria-labelledby="mc-filters-h" className="mc-filters sticky-rail">
           <div className="mc-filters-head">
             <Heading level={2} data-size="xs" id="mc-filters-h">
               {t('modelCatalog.filters')}

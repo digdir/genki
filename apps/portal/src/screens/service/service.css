@@ -315,6 +315,8 @@
     flex-wrap: wrap;
     border-right: 0;
     padding-right: 0;
+    position: static;
+    max-height: none;
   }
 }
 

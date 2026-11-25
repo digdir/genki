@@ -119,7 +119,7 @@ export const SetupLayout = ({
   return (
     <div className="setup-layout">
       <div className="setup-grid">
-        <nav aria-label={t('setupList.navLabel')} className="setup-nav">
+        <nav aria-label={t('setupList.navLabel')} className="setup-nav sticky-rail">
           <span className="setup-nav-group">{t('setupList.groupBasic')}</span>
           <ul className="setup-nav-list">{basicAreas.map(item)}</ul>
           <button
