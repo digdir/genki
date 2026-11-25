@@ -55,7 +55,12 @@ models:
     chat: { input-token: 0.0000111248, output-token: 0.0000556242 }
   foundry-openai/gpt-image-2:
     edit-image:
-      { input-token: 0.00004635, image-input-token: 0.00007416, image-output-token: 0.0002781 }
+      {
+        input-token: 0.00004635,
+        cached-input-token: 0.0000115875,
+        image-input-token: 0.00007416,
+        image-output-token: 0.0002781,
+      }
   foundry-openai/gpt-oss-120b:
     chat: { input-token: 0.0000014, output-token: 0.0000057 }
   foundry-openai/o1-mini-2m-tps:

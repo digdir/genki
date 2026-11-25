@@ -51,7 +51,7 @@ const notPriced: Record<string, string> = {
 };
 
 describe('model prices', () => {
-  it('every model the platform offers has a price or is listed as not priced with a reason', () => {
+  it('every known deployment in the offered list has a price or is listed as not priced with a reason', () => {
     const missing = offered.filter((id) => !prices[id] && !notPriced[id]);
     expect(missing).toEqual([]);
   });
@@ -81,6 +81,13 @@ describe('model prices', () => {
       edit,
     );
     const usd = 1000 * 5e-6 + 2000 * 8e-6 + 4000 * 30e-6;
+    expect(run.costMicroNok).toBe(Math.round(usd * 9.27 * 1_000_000));
+  });
+
+  it('a run on gpt-image-2 prices cached text input below fresh text input', () => {
+    const edit = unitPricesFor(prices['foundry-openai/gpt-image-2'], 'edit-image');
+    const run = pricedUsage({ inputTokens: 1000, cachedInputTokens: 400, requests: 1 }, edit);
+    const usd = 600 * 5e-6 + 400 * 1.25e-6;
     expect(run.costMicroNok).toBe(Math.round(usd * 9.27 * 1_000_000));
   });
 });

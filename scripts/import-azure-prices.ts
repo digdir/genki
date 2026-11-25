@@ -353,7 +353,8 @@ const flow = (value: unknown): string =>
 
 export const renderPrices = (prices: Record<string, Price | UnitPriced>, date: string) =>
   [
-    `# Azure Retail Prices API (prices.azure.com), NOK per 1,000 tokens, GlobalStandard, Sweden Central, ${date}`,
+    `# Azure Retail Prices API (prices.azure.com), Sweden Central, in kroner per unit (ADR 0048), ${date}`,
+    '# Hand-entered entries (Claude via Azure Marketplace at Anthropic list prices, 9.27 kr/USD) are kept as entered',
     'models:',
     ...Object.keys(prices)
       .sort()
