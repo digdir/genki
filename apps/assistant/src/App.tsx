@@ -26,7 +26,7 @@ import {
   type HostView,
   type Page,
 } from './host';
-import { bffSignIn, type HostSession, type HostSignIn } from './bff';
+import { bffSignIn, type HostSession, type HostSignIn, type SignedIn } from './bff';
 import type { HostLogin, Login } from './login';
 import { useT } from './i18n';
 
@@ -46,6 +46,12 @@ interface Session {
   /** What every call to genki carries: the bearer token, or the BFF's CSRF header. */
   headers: Record<string, string>;
 }
+
+/** The chosen organisation by its name where the login gave one, else its number. */
+const organisationOf = (who: SignedIn) =>
+  who.organisations.find((o) => o.orgNumber === who.organisation)?.name ??
+  who.organisation ??
+  undefined;
 
 const withToken = (session: { name: string; token: string }): Session => ({
   name: session.name,
@@ -147,8 +153,8 @@ const PageView = ({ fetcher, host, id }: { fetcher: typeof fetch; host: HostView
   );
 };
 
-const drawsReader = (layout: AssistantLayout, session: Session) =>
-  lookOf(layout) === 'next' && session.name !== '';
+// Signed in is enough: a login with no name still gets the reader, named by its organisation.
+const drawsReader = (layout: AssistantLayout) => lookOf(layout) === 'next';
 
 const profileMenu = (host: HostView, locale: Locale): AssistantProfile['menu'] => ({
   extra: host.menu.map((item) =>
@@ -209,13 +215,13 @@ const AssistantPane = ({
   );
   const profile = useMemo<AssistantProfile>(
     () => ({
-      ...(session.name ? { signedInAs: session.name } : {}),
-      ...(session.organisation ? { organisation: session.organisation } : {}),
+      signedInAs: session.name || session.organisation || t('host.signedIn'),
+      ...(session.name && session.organisation ? { organisation: session.organisation } : {}),
       menu: profileMenu(host, locale),
       signOut,
       ...(files && api ? { documentFile: api.documentFile } : {}),
     }),
-    [session, host, locale, signOut, files, api],
+    [session, host, locale, signOut, files, api, t],
   );
   const [say, notice] = useNotice();
   const storage = useMemo(() => browserStorage(`assistant.${host.service}.`), [host.service]);
@@ -232,7 +238,7 @@ const AssistantPane = ({
   if (!shown || !api) return alone(<Paragraph>{t('host.noLayout')}</Paragraph>);
   return (
     <>
-      {drawsReader(shown, session) ? null : header}
+      {drawsReader(shown) ? null : header}
       <div className="ah-assistant">
         <Assistant
           api={api}
@@ -314,7 +320,7 @@ export const App = ({
       hostSession.kind === 'ok' && hostSession.value.kind === 'signed-in'
         ? {
             name: hostSession.value.who.name ?? '',
-            organisation: hostSession.value.who.organisation ?? undefined,
+            organisation: organisationOf(hostSession.value.who),
             headers: bff.headers(),
           }
         : undefined,

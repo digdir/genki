@@ -10,6 +10,8 @@ import { defaultReservedDomains } from '../hosts.js';
 import {
   createBff,
   loginCookie,
+  organisationsOf,
+  personName,
   safeReturn,
   sessionCookie,
   type BffDeps,
@@ -50,13 +52,14 @@ const hosted = (tenant: string, id: string, hostname: string, also: string[] = [
     },
   });
 
-const setup = async (options: { secretHosts?: string[] } = {}) => {
+const setup = async (options: { secretHosts?: string[]; personName?: string } = {}) => {
   let clock = start;
+  const logged: { message: string; fields: Record<string, unknown> }[] = [];
   const now = () => clock;
   const mock = createMockAnsattporten({
     issuer: ISSUER,
     key,
-    testData: { persons: [{ pid: PID, name: 'Kari Nordmann' }] },
+    testData: { persons: [{ pid: PID, name: options.personName ?? 'Kari Nordmann' }] },
     tokenLifetimeSeconds: 300,
     now,
   });
@@ -133,6 +136,7 @@ const setup = async (options: { secretHosts?: string[] } = {}) => {
     organisations: async () => [{ orgNumber: ORG_A }, { orgNumber: '310000001' }],
     fetch: fetcher,
     now,
+    log: (message, fields) => void logged.push({ message, fields }),
   });
   const bff = createBff(deps());
   const via = (
@@ -182,6 +186,7 @@ const setup = async (options: { secretHosts?: string[] } = {}) => {
   return {
     bff,
     deps,
+    logged,
     mock,
     via,
     api,
@@ -522,5 +527,53 @@ describe('a return address after login', () => {
     const started = performance.now();
     safeReturn(`/${'/a'.repeat(1000)}${'\\'.repeat(1000)}`);
     expect(performance.now() - started).toBeLessThan(50);
+  });
+});
+
+describe('who a login names', () => {
+  it('reads the person’s name from the given and family names when the ID token has no name', () => {
+    expect(personName({ given_name: 'Kari', family_name: 'Nordmann' })).toBe('Kari Nordmann');
+  });
+
+  it('takes the ID token’s name over the given and family names', () => {
+    expect(personName({ name: 'Kari N.', given_name: 'Kari', family_name: 'Nordmann' })).toBe(
+      'Kari N.',
+    );
+  });
+
+  it('counts a name of only spaces as none', () => {
+    expect(personName({ name: ' ', family_name: 'Nordmann' })).toBe('Nordmann');
+  });
+
+  it('signs in a login whose ID token names no one, and logs which claims came, never their values', async () => {
+    const s = await setup({ personName: ' ' });
+    const { id } = await s.signIn();
+    const me = await s.bff.handle(s.via('/bff/auth/me', { cookie: session(id) }), s.api);
+    expect(((await me.json()) as { name: unknown }).name).toBeNull();
+    const without = s.logged.filter((l) => l.message === 'bff login without a name');
+    expect(without).toHaveLength(1);
+    expect(without[0]?.fields.claims).toContain('sub');
+    expect(JSON.stringify(s.logged)).not.toContain(PID);
+  });
+
+  it('logs nothing of the name when the ID token names the person', async () => {
+    const s = await setup();
+    const { id } = await s.signIn();
+    const me = await s.bff.handle(s.via('/bff/auth/me', { cookie: session(id) }), s.api);
+    expect(((await me.json()) as { name: unknown }).name).toBe('Kari Nordmann');
+    expect(s.logged.map((l) => l.message)).not.toContain('bff login without a name');
+  });
+
+  it('reads no name from claims that hold none', () => {
+    expect(personName({ pid: PID, sub: 'x' })).toBeUndefined();
+  });
+
+  it('names each organisation once, by the name Altinn gave where it gave one', () => {
+    expect(
+      organisationsOf({
+        authorizedFor: [{ org: ORG_A }, { org: ORG_A }, { org: ORG_B }],
+        orgNames: { [ORG_A]: 'Digitaliseringsdirektoratet' },
+      }),
+    ).toEqual([{ orgNumber: ORG_A, name: 'Digitaliseringsdirektoratet' }, { orgNumber: ORG_B }]);
   });
 });

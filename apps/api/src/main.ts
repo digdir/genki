@@ -1,4 +1,4 @@
-import { actingClient, createBff, InMemoryBffSessions } from './bff/index.js';
+import { actingClient, createBff, InMemoryBffSessions, organisationsOf } from './bff/index.js';
 import { remoteFileOriginsFrom } from '@genai/adapter-rest';
 import { platformLoginFrom } from './platform-login.js';
 import {
@@ -907,9 +907,7 @@ const bff = createBff({
   },
   organisations: async (accessToken) => {
     const verified = await verifier.verify(accessToken);
-    return [...new Set((verified.principal.authorizedFor ?? []).map((a) => a.org))].map(
-      (orgNumber) => ({ orgNumber }),
-    );
+    return organisationsOf(verified.principal);
   },
   log,
 });
