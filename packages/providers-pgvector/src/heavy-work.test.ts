@@ -14,6 +14,7 @@ import {
   heavyApplication,
   lockHolder,
   migrateKnowledgeServer,
+  terminateBackend,
   openKnowledgePools,
   partitionOf,
   prepareGeneration,
@@ -446,12 +447,15 @@ describe('a VACUUM that outlives its worker (issue 948)', () => {
     let lost: pg.PoolClient | undefined;
     const losing = Object.create(owner) as pg.Pool;
     losing.connect = (async () => {
-      lost = await owner.connect();
-      return lost;
+      const client = await owner.connect();
+      // Only the VACUUM's own session: the takeover's look-up connects through the pool too.
+      lost ??= client;
+      return client;
     }) as typeof owner.connect;
     let first: number | undefined;
     const firstTry = vacuumGeneration(losing, generation, {
       throttled: false,
+      job: 'job-1',
       onBackend: (pid) => {
         first = pid;
       },
@@ -463,7 +467,7 @@ describe('a VACUUM that outlives its worker (issue 948)', () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
     expect(await lockHolder(owner, generation)).toMatchObject({
       pid: first,
-      application: heavyApplication,
+      application: `${heavyApplication} job-1`,
     });
     (
       lost as unknown as { connection: { stream: { destroy(): void } } }
@@ -475,6 +479,7 @@ describe('a VACUUM that outlives its worker (issue 948)', () => {
     const retry = vacuumGeneration(owner, generation, {
       throttled: false,
       lockTimeoutMs: 5_000,
+      takeOver: true,
       onTakeover: (pid) => tookOver.push(pid),
     });
     for (let i = 0; i < 50 && (await lockHolder(owner, generation))?.pid === first; i += 1)
@@ -485,6 +490,86 @@ describe('a VACUUM that outlives its worker (issue 948)', () => {
     expect(tookOver).toEqual([first]);
     expect((await lastVacuum(generation))?.last_vacuum).not.toBeNull();
   }, 60_000);
+
+  /** A `genki-heavy` session left holding the generation's lock, and its partition when `table`. */
+  const leftover = async (
+    generation: string,
+    table = false,
+    name = `${heavyApplication} job-0`,
+  ) => {
+    const session = await owner.connect();
+    await session.query(`select set_config('application_name', $1, false)`, [name]);
+    await session.query(`select pg_advisory_lock($1::int, hashtext($2))`, [
+      generationLockSpace,
+      generation,
+    ]);
+    if (table) {
+      await session.query('begin');
+      await session.query(
+        `lock table ${partitionOf('kn_chunks', generation)} in share update exclusive mode`,
+      );
+    }
+    const { rows } = await session.query<{ pid: number }>(`select pg_backend_pid() as pid`);
+    return { session, pid: rows[0]?.pid as number };
+  };
+
+  it("ends a leftover that holds the generation's partition before the retry's ANALYZE waits on it", async () => {
+    const { generation } = await loaded(2);
+    const left = await leftover(generation, true);
+    left.session.on('error', () => undefined);
+    const tookOver: number[] = [];
+    await vacuumGeneration(owner, generation, {
+      analyze: true,
+      throttled: false,
+      lockTimeoutMs: 5_000,
+      takeOver: true,
+      onTakeover: (pid) => tookOver.push(pid),
+    });
+    expect(tookOver).toEqual([left.pid]);
+    left.session.release(true);
+  }, 30_000);
+
+  it('ends no other session unless the VACUUM is asked to take over', async () => {
+    const { generation } = await loaded(1);
+    const left = await leftover(generation);
+    try {
+      await expect(
+        vacuumGeneration(owner, generation, { throttled: false, lockTimeoutMs: 300 }),
+      ).rejects.toMatchObject({ code: '55P03' });
+      expect((await lockHolder(owner, generation))?.pid).toBe(left.pid);
+    } finally {
+      left.session.release(true);
+    }
+  });
+
+  it("never ends a heavy session that runs for no build job, such as the reconciler's VACUUM", async () => {
+    const { generation } = await loaded(1);
+    const left = await leftover(generation, false, heavyApplication);
+    try {
+      await expect(
+        vacuumGeneration(owner, generation, {
+          throttled: false,
+          lockTimeoutMs: 300,
+          takeOver: true,
+        }),
+      ).rejects.toMatchObject({ code: '55P03' });
+      expect((await lockHolder(owner, generation))?.pid).toBe(left.pid);
+    } finally {
+      left.session.release(true);
+    }
+  });
+
+  it('ends an idle heavy session when the worker stops, which a cancel would not', async () => {
+    const { generation } = await loaded(1);
+    const left = await leftover(generation);
+    left.session.on('error', () => undefined);
+    await terminateBackend(owner, left.pid);
+    await expect(left.session.query('select 1')).rejects.toThrow();
+    left.session.release(true);
+    for (let i = 0; i < 50 && (await lockHolder(owner, generation)); i += 1)
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(await lockHolder(owner, generation)).toBeUndefined();
+  });
 
   it("names the session that holds a generation's lock, and nothing when it is free", async () => {
     const { generation } = await loaded(1);

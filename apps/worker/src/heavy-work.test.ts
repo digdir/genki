@@ -51,6 +51,8 @@ const server = (overrides: Partial<HeavyServer> = {}): HeavyServer => ({
   toFreeze: vi.fn(async () => []),
   progress: vi.fn(async () => ({ phase: 'building index', blocks: '10/40' })),
   cancel: vi.fn(async () => undefined),
+  terminate: vi.fn(async () => undefined),
+  analyze: vi.fn(async () => undefined),
   recall: vi.fn(async () => ({ recall: 0.995, queries: 200, cut: false })),
   baseline: vi.fn(async (_g: string, measured: number) => measured),
   datasetOf: vi.fn(async () => dataset.id),
@@ -452,12 +454,34 @@ describe("a run's closing VACUUM keeps search fast (#983)", () => {
       'g-docs-1',
       expect.objectContaining({ throttled: true }),
     );
+    const freeze = closing(night);
+    await buildWork(freeze.deps).handler(
+      job(knowledgeBuildQueue, { tenant: '991825827', generation: 'g-docs-1', kind: 'freeze' }),
+    );
+    expect(freeze.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ freeze: true, throttled: true }),
+    );
     const window = closing(night, { window: () => '01:00-06:00' });
     await buildWork(window.deps).handler(vacuumJob);
     expect(window.deps.server.vacuum).toHaveBeenCalledWith(
       'g-docs-1',
       expect.objectContaining({ throttled: false }),
     );
+  });
+
+  it('keeps a finished VACUUM when its report cannot be written', async () => {
+    const log = vi.fn();
+    const t = closing(day, {
+      log,
+      report: async () => Promise.reject(new Error('connection terminated')),
+    });
+    await buildWork(t.deps).handler(vacuumJob);
+    expect(log).toHaveBeenCalledWith(
+      'knowledge run report failed',
+      expect.objectContaining({ run: 'run-1' }),
+    );
+    expect(t.deps.server.prewarm).toHaveBeenCalled();
   });
 
   it('rebuilds with half the vCores outside a real night window', async () => {
@@ -514,6 +538,47 @@ describe("a run's closing VACUUM keeps search fast (#983)", () => {
     }
   });
 
+  it('vacuums a generation it just built without rebuilding the index it built', async () => {
+    const t = closing(night, { window: () => '01:00-06:00' });
+    await buildWork(t.deps).handler(
+      job(knowledgeBuildQueue, {
+        tenant: '991825827',
+        generation: 'g-docs-2',
+        kind: 'index',
+        run: 'run-1',
+      }),
+    );
+    expect(t.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-2',
+      expect.not.objectContaining({ rebuildAbove: expect.anything() }),
+    );
+    const small = closing(night, {
+      server: server({ state: vi.fn(async () => 'standalone' as const) }),
+    });
+    await finishRun(
+      small.deps,
+      async () => undefined,
+    )({
+      id: 'run-1',
+      dataset: dataset.id,
+      generation: 'g-docs-3',
+    } as Parameters<ReturnType<typeof finishRun>>[0]);
+    expect(small.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-3',
+      expect.not.objectContaining({ rebuildAbove: expect.anything() }),
+    );
+  });
+
+  it("analyzes a heavy run's generation at once, while its VACUUM waits for the window", async () => {
+    const t = closing(day, {
+      window: () => '01:00-06:00',
+      server: server({ chunks: vi.fn(async () => 500) }),
+    });
+    expect(await runVacuum(t.deps, { id: 'run-1', dataset: dataset.id }, 'g-docs-1')).toBe('sent');
+    expect(t.deps.server.analyze).toHaveBeenCalledWith('g-docs-1', { throttled: true });
+    expect(t.deps.server.vacuum).not.toHaveBeenCalled();
+  });
+
   it("records the closing VACUUM's duration in the run's report", async () => {
     let at = day.getTime();
     const t = closing(day, {
@@ -531,7 +596,7 @@ describe("a run's closing VACUUM keeps search fast (#983)", () => {
 });
 
 describe('a VACUUM that outlives its worker (issue 948)', () => {
-  it('cancels its heavy backends when the worker stops, and sends the job again without spending its retry', async () => {
+  it('ends its heavy backends when the worker stops, and sends the job again without spending its retry', async () => {
     let fail: (error: Error) => void = () => undefined;
     const slow = server({
       vacuum: vi.fn(
@@ -541,7 +606,9 @@ describe('a VACUUM that outlives its worker (issue 948)', () => {
             fail = reject;
           }),
       ),
-      cancel: vi.fn(async () => fail(new Error('canceling statement due to user request'))),
+      terminate: vi.fn(async () =>
+        fail(new Error('terminating connection due to administrator command')),
+      ),
     });
     const t = deps({ server: slow, running: heavyRunning() }, night);
     const data = {
@@ -554,9 +621,14 @@ describe('a VACUUM that outlives its worker (issue 948)', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     await cancelHeavyWork(t.deps);
     await running;
-    expect(slow.cancel).toHaveBeenCalledWith(4242);
+    // Ended, not cancelled: a cancel is lost on a session between two statements.
+    expect(slow.terminate).toHaveBeenCalledWith(4242);
+    expect(slow.cancel).not.toHaveBeenCalled();
     expect(t.deps.running?.backends.size).toBe(0);
-    expect(t.sent).toEqual([{ queue: 'knowledge.build', data, startAfter: night }]);
+    // A minute on, so this stopping worker's own poller does not take it again.
+    expect(t.sent).toEqual([
+      { queue: 'knowledge.build', data, startAfter: new Date(night.getTime() + 60_000) },
+    ]);
     expect(slow.prewarm).not.toHaveBeenCalled();
   });
 
@@ -586,6 +658,70 @@ describe('a VACUUM that outlives its worker (issue 948)', () => {
     expect(
       log.mock.calls.filter(([event]) => event === 'knowledge writers giving way'),
     ).toHaveLength(2);
+  });
+  it('a job taken while the worker stops is sent again for the next worker, and runs nothing', async () => {
+    const running = heavyRunning();
+    running.stopping = true;
+    const t = deps({ running }, night);
+    const data = {
+      tenant: '991825827',
+      generation: 'g-docs-1',
+      kind: 'vacuum',
+      run: 'run-1',
+    } as const;
+    await buildWork(t.deps).handler(job(knowledgeBuildQueue, data));
+    expect(t.deps.server.vacuum).not.toHaveBeenCalled();
+    expect(t.sent).toEqual([
+      { queue: 'knowledge.build', data, startAfter: new Date(night.getTime() + 60_000) },
+    ]);
+  });
+
+  it('forgets every backend of a job once it ends', async () => {
+    const t = deps(
+      {
+        running: heavyRunning(),
+        server: server({
+          build: vi.fn(async (_d, _g, options: { onBackend?: (pid: number) => void }) => {
+            options.onBackend?.(1);
+          }),
+          vacuum: vi.fn(async (_g, options: { onBackend?: (pid: number) => void }) => {
+            options.onBackend?.(2);
+            return undefined;
+          }),
+        }),
+      },
+      night,
+    );
+    await buildWork(t.deps).handler(
+      job(knowledgeBuildQueue, {
+        tenant: '991825827',
+        generation: 'g-docs-2',
+        kind: 'index',
+        run: 'run-1',
+      }),
+    );
+    expect([...(t.deps.running?.backends ?? [])]).toEqual([]);
+  });
+
+  it('only a build job takes over a leftover session, and names itself by its job', async () => {
+    const t = deps({}, night);
+    const vacuum = job(knowledgeBuildQueue, {
+      tenant: '991825827',
+      generation: 'g-docs-1',
+      kind: 'vacuum',
+      run: 'run-1',
+    });
+    await buildWork(t.deps).handler(vacuum);
+    expect(t.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ takeOver: true, job: vacuum.id }),
+    );
+    const inline = deps();
+    await runVacuum(inline.deps, { id: 'run-1', dataset: dataset.id }, 'g-docs-1');
+    expect(inline.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.not.objectContaining({ takeOver: true }),
+    );
   });
 });
 

@@ -72,10 +72,16 @@ export interface MaintenanceOptions {
   maintenanceWorkers?: number;
   /** Called with the session's backend pid, so a build can be watched and cancelled. */
   onBackend?: (pid: number) => void;
+  /** The job the work runs for, which names its session (`genki-heavy <job>`). */
+  job?: string;
 }
 
 const prepareSession = async (client: PoolClient, options: MaintenanceOptions) => {
-  await setSession(client, 'application_name', heavyApplication);
+  await setSession(
+    client,
+    'application_name',
+    options.job ? `${heavyApplication} ${options.job}` : heavyApplication,
+  );
   if (options.maintenanceWorkers !== undefined)
     await setSession(
       client,
@@ -100,7 +106,12 @@ export interface VacuumOptions extends MaintenanceOptions {
    * HNSW indexes from the live rows before the VACUUM, which then has nothing to repair (#983).
    */
   rebuildAbove?: number;
-  /** Called with each leftover heavy session that held the lock and was ended (issue 948). */
+  /**
+   * End every other heavy session that holds the generation's lock first: only a
+   * `knowledge.build` job asks, since those run one at a time per server (issue 948).
+   */
+  takeOver?: boolean;
+  /** Called with each leftover heavy session that held the lock and was ended. */
   onTakeover?: (pid: number) => void;
 }
 
@@ -117,9 +128,10 @@ const lockRows = `l.locktype = 'advisory' and l.objsubid = 2 and l.classid::bigi
   and l.objid::bigint = (hashtext($2)::bigint + 4294967296) % 4294967296`;
 
 /**
- * Ends every other heavy session that holds the generation's lock exclusively, or waits for it: a
- * `knowledge.build` job runs one at a time per server, so such a session is one whose worker has
- * stopped (issue 948). Writers take the lock shared and are never ended.
+ * Ends every other session of a `knowledge.build` job (`genki-heavy <job>`) that holds the
+ * generation's lock exclusively, or waits for it: those jobs run one at a time per server, so such
+ * a session is one whose worker has stopped (issue 948). The reconciler's own VACUUM names no job,
+ * and writers take the lock shared; neither is ever ended.
  */
 const endLeftovers = async (owner: Pool, generation: string, own: number) => {
   const ended: number[] = [];
@@ -128,7 +140,7 @@ const endLeftovers = async (owner: Pool, generation: string, own: number) => {
       `select l.pid, pg_terminate_backend(l.pid) as ended
          from pg_locks l join pg_stat_activity a on a.pid = l.pid
         where ${lockRows} and l.mode = 'ExclusiveLock' and l.pid <> $3
-          and a.application_name = $4`,
+          and a.application_name like $4 || ' %'`,
       [generationLockSpace, generation, own, heavyApplication],
     );
     ended.push(...rows.filter((row) => row.ended).map((row) => row.pid));
@@ -171,11 +183,14 @@ export const vacuumGeneration = (owner: Pool, generation: string, options: Vacuu
     await setSession(client, 'vacuum_cost_delay', options.throttled ? throttledVacuumDelay : '0');
     await prepareSession(client, options);
     const partitions = partitionsOf(generation).join(', ');
+    // A leftover VACUUM also holds its partitions, which the ANALYZE would wait on, so it goes first.
+    if (options.takeOver) {
+      const { rows: own } = await client.query<{ pid: number }>(`select pg_backend_pid() as pid`);
+      for (const pid of await endLeftovers(owner, generation, own[0]?.pid ?? 0))
+        options.onTakeover?.(pid);
+    }
     // ANALYZE leaves the HNSW indexes alone, so it needs no lock and runs beside writes.
     if (options.analyze) await client.query(`analyze ${partitions}`);
-    const { rows: own } = await client.query<{ pid: number }>(`select pg_backend_pid() as pid`);
-    for (const pid of await endLeftovers(owner, generation, own[0]?.pid ?? 0))
-      options.onTakeover?.(pid);
     await setSession(client, 'lock_timeout', `${options.lockTimeoutMs ?? vacuumLockTimeoutMs}ms`);
     await client.query(`select pg_advisory_lock($1::int, hashtext($2))`, [
       generationLockSpace,
@@ -200,6 +215,23 @@ export const vacuumGeneration = (owner: Pool, generation: string, options: Vacuu
     }
     await client.query(`vacuum ${options.freeze ? '(freeze) ' : ''}${partitions}`);
     return result;
+  });
+
+/** How long a stand-alone ANALYZE waits for its partitions' lock. */
+export const analyzeLockTimeoutMs = 30_000;
+
+/** `ANALYZE` of a generation's partitions alone, for a heavy run whose VACUUM waits for the window. */
+export const analyzeGeneration = (
+  owner: Pool,
+  generation: string,
+  options: { throttled: boolean },
+) =>
+  onSession(owner, async (client) => {
+    await setSession(client, 'vacuum_cost_delay', options.throttled ? throttledVacuumDelay : '0');
+    // The reconciler waits for it, so it gives up rather than wait long for a VACUUM's table lock.
+    await setSession(client, 'lock_timeout', `${analyzeLockTimeoutMs}ms`);
+    await prepareSession(client, {});
+    await client.query(`analyze ${partitionsOf(generation).join(', ')}`);
   });
 
 /** Builds a loaded generation's indexes and attaches it (#137's steps), with the given workers. */
@@ -345,6 +377,10 @@ export const lockHolder = async (owner: Pool, generation: string) => {
 export const cancelBackend = (owner: Pool, pid: number) =>
   asLogin(owner, (client) => client.query(`select pg_cancel_backend($1)`, [pid]));
 
+/** Ends a backend's session: a stopping worker's heavy work, which a cancel misses between statements. */
+export const terminateBackend = (owner: Pool, pid: number) =>
+  asLogin(owner, (client) => client.query(`select pg_terminate_backend($1)`, [pid]));
+
 export interface RecallSample {
   recall: number;
   /** The exact searches that ran. */
@@ -466,6 +502,9 @@ export const knowledgeHeavyWork = (owner: Pool) => ({
   progress: (pid: number) => buildProgress(owner, pid),
   lockHolder: (generation: string) => lockHolder(owner, generation),
   cancel: (pid: number) => cancelBackend(owner, pid),
+  terminate: (pid: number) => terminateBackend(owner, pid),
+  analyze: (generation: string, options: { throttled: boolean }) =>
+    analyzeGeneration(owner, generation, options),
   recall: (
     generation: string,
     options: { sample: number; stop: () => boolean; signal: AbortSignal },
