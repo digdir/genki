@@ -237,6 +237,8 @@ export const adminActionRights: Readonly<
   'platform.eval-run.cancel': (input) => (input.own === true ? 'use-services' : 'manage-services'),
   'platform.quota.request': 'manage-services',
   'platform.quota.decide': 'operator',
+  'platform.flag.person': { anyOf: PLATFORM_RIGHTS },
+  'platform.flag.tenant': 'manage-services',
   'platform.incident.save': 'operator',
   'platform.incident.resolve': 'operator',
   'platform.clients.webhook-test': 'manage-services',

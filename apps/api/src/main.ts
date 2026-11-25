@@ -75,6 +75,7 @@ import {
   modelDiscoveryFromEnv,
   scheduleModelRelist,
   tenantSampleRate,
+  envFlagsIn,
 } from '@genai/composition';
 import { buildTimeOf, createApp } from './app.js';
 import { defaultSlowRequestMs } from './request-timing.js';
@@ -497,6 +498,7 @@ const hosting = {
   assistantHostname: assistantHostnameFrom(process.env),
 };
 const platform = await createPlatform({
+  envFlags: envFlagsIn(process.env),
   platformTenant,
   federatedTokens: federatedAppTokens({
     assertion: managedIdentityTokenSource(process.env.AZURE_CLIENT_ID),

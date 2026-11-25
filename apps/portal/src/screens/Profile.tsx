@@ -8,6 +8,7 @@ import { useT, type PlainKey } from '../i18n';
 import { rightLabel, useRights, useUserName } from '../Shell';
 import { saveTheme, storedTheme, type Theme } from '../theme';
 import type { PortalRight } from '../types';
+import { NewFeatures } from './NewFeatures';
 import './profile.css';
 
 const rightLines: Record<PortalRight, PlainKey> = {
@@ -39,7 +40,7 @@ export const Profile = ({
   tenant,
   tenantName,
 }: {
-  api: Pick<ApiClient, 'me'>;
+  api: Pick<ApiClient, 'me' | 'flags'>;
   tenant: string;
   tenantName: string;
 }) => {
@@ -99,6 +100,7 @@ export const Profile = ({
           </p>
         )}
       </section>
+      <NewFeatures api={api} tenant={tenant} tenantName={tenantName} />
       <section aria-labelledby="language-h" className="stack-sm">
         <Heading level={2} data-size="xs" id="language-h">
           {t('profile.language')}

@@ -12,6 +12,7 @@
     "@digdir/designsystemet-css": "^1.23.0",
     "@digdir/designsystemet-react": "^1.23.0",
     "@digdir/designsystemet-theme": "^1.11.0",
+    "@genai/contracts": "0.0.0",
     "@genai/i18n": "0.0.0",
     "@genai/schema-forms": "0.0.0",
     "react": "^19.3.0",

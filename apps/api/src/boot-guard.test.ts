@@ -36,6 +36,22 @@ describe('booting the API', () => {
     expect(bootProblems({ ...dev, ...real, GENAI_MOCK_RIGHTS: 'true' })).toEqual([]);
   });
 
+  it('refuses GENAI_FLAGS outside dev mode, so no flag is on for everyone in a shared environment', () => {
+    expect(bootProblems({ ...real, GENAI_FLAGS: 'blockStudio' })).toEqual([
+      expect.stringContaining('GENAI_FLAGS'),
+    ]);
+    expect(bootProblems({ ...real, GENAI_ENV: 'test', GENAI_FLAGS: 'blockStudio' })).toEqual([
+      expect.stringContaining('GENAI_FLAGS'),
+    ]);
+    expect(bootProblems({ ...dev, ...real, GENAI_FLAGS: 'blockStudio' })).toEqual([]);
+  });
+
+  it('refuses a GENAI_FLAGS key that is not registered, also in dev mode', () => {
+    expect(bootProblems({ ...dev, ...real, GENAI_FLAGS: 'blockStudio,blokkStudio' })).toEqual([
+      expect.stringContaining('blokkStudio'),
+    ]);
+  });
+
   it('refuses to start without a database unless dev mode is on', () => {
     const rest = {
       ANSATTPORTEN_ISSUER: real.ANSATTPORTEN_ISSUER,

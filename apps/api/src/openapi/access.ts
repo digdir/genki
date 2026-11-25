@@ -15,6 +15,7 @@ import { blockKinds, blockStatuses, registrationTypes } from '../building-blocks
 import { changeReason, Problem, problemContent } from '../http.js';
 import { rights } from '../rights.js';
 import { accessPeopleRoutes } from './access-people.js';
+import { flagRoutes } from './flags.js';
 
 const json = <T extends z.ZodType>(schema: T, description: string) => ({
   description,
@@ -942,6 +943,7 @@ const tracingRoutes: RouteConfig[] = [
 export const accessRoutes: RouteConfig[] = [
   ...tracingRoutes,
   ...accessPeopleRoutes,
+  ...flagRoutes,
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/access',
