@@ -17,6 +17,7 @@ import {
 import { useFormat } from '@genai/i18n/react';
 import { useRef, useState } from 'react';
 import type { ApiClient } from '../api';
+import { definitionKindParams, type DefinitionKind } from '../definition-kinds';
 import { navigate, useAsync } from '../hooks';
 import { useT, type PlainKey, type T } from '../i18n';
 import { ErrorState, Loading } from '../states';
@@ -99,6 +100,7 @@ export const actionKey: Record<string, PlainKey> = {
   'platform.hook.feedback': 'audit.actionHookFeedback',
   'platform.private-networks.save': 'audit.actionPrivateNetworksSave',
   'platform.service.lifecycle': 'audit.actionServiceLifecycle',
+  'platform.service.delete': 'audit.actionServiceDelete',
   'platform.service.environments.add': 'audit.actionServiceEnvironmentAdd',
   'platform.service.environments.remove': 'audit.actionServiceEnvironmentRemove',
   'platform.service.environments.promote': 'audit.actionServiceEnvironmentPromote',
@@ -161,10 +163,10 @@ const targetOf = (e: AuditEntry) => {
 };
 
 const definitionTarget = (e: AuditEntry) => {
-  const found = /^(Service|StepFlow):(.+)@(\d+)$/.exec(e.target);
+  const found = /^(Service|StepFlow|Skill|Block):(.+)@(\d+)$/.exec(e.target);
   return found && found[2] && found[3]
     ? {
-        kind: found[1] === 'StepFlow' ? 'step-flow' : 'service',
+        kind: definitionKindParams[found[1] as DefinitionKind],
         id: found[2],
         version: found[3],
       }

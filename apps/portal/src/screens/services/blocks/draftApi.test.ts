@@ -177,6 +177,50 @@ describe('the draft API for the try view', () => {
     ]);
   });
 
+  it('pairs each footnote with the excerpt the run says it cites, also in the kept thread', async () => {
+    const cited = result('Ja [1], og nei [2].');
+    if (cited.event !== 'result') throw new Error('expected a result');
+    cited.result.citations = [
+      { index: 2, chunkId: 'c1' },
+      { index: 1, chunkId: 'c2' },
+    ];
+    cited.result.markers = [
+      { marker: '1', chunk_id: 'c2', document: 'pbl' },
+      { marker: '2', chunk_id: 'c1', document: 'pbl' },
+    ];
+    const { draftApi } = draft({ definition }, () => [cited]);
+    const done = (await ask(draftApi, 'Trenger jeg søknad?')).at(-1);
+    const markers = [
+      { marker: '1', chunkId: 'c2', documentId: 'pbl' },
+      { marker: '2', chunkId: 'c1', documentId: 'pbl' },
+    ];
+    expect(done?.type === 'done' && done.answer.markers).toEqual(markers);
+    expect((await draftApi.loadThread('draft-1')).turns[0]?.answer?.markers).toEqual(markers);
+  });
+
+  it('keeps the words a footnote rests on, also in the kept thread', async () => {
+    const cited = result('Ja [1].');
+    if (cited.event !== 'result') throw new Error('expected a result');
+    const quote = { type: 'TextQuoteSelector' as const, exact: 'Råd.', prefix: '', suffix: '' };
+    cited.result.citations = [{ index: 1, chunkId: 'c2' }];
+    cited.result.markers = [{ marker: '1', chunk_id: 'c2', document: 'pbl', quote }];
+    const { draftApi } = draft({ definition }, () => [cited]);
+    const done = (await ask(draftApi, 'Trenger jeg søknad?')).at(-1);
+    const markers = [{ marker: '1', chunkId: 'c2', documentId: 'pbl', quote }];
+    expect(done?.type === 'done' && done.answer.markers).toEqual(markers);
+    expect((await draftApi.loadThread('draft-1')).turns[0]?.answer?.markers).toEqual(markers);
+  });
+
+  it('pairs no footnote with an excerpt when the run gives no markers, since [N] then names a document', async () => {
+    const cited = result('Ja [1].');
+    if (cited.event !== 'result') throw new Error('expected a result');
+    cited.result.citations = [{ index: 1, chunkId: 'c2' }];
+    const { draftApi } = draft({ definition }, () => [cited]);
+    const done = (await ask(draftApi, 'Trenger jeg søknad?')).at(-1);
+    expect(done?.type === 'done' && done.answer).not.toHaveProperty('markers');
+    expect((await draftApi.loadThread('draft-1')).turns[0]?.answer).not.toHaveProperty('markers');
+  });
+
   it('answers with the clarifying question when the run asks one, and says when it found no answer', async () => {
     const asking = result('');
     if (asking.event === 'result')
@@ -556,7 +600,7 @@ describe('the draft API for the try view', () => {
       { id: 'kommune', label: 'kommune' },
       { id: 'aar', label: 'aar', integer: true },
     ];
-    await draftApi.loadFacets({ kommune: ['Oslo'], aar: ['2026'] }, 'byggeregler', fields);
+    await draftApi.loadFacets({ kommune: ['Oslo'], aar: ['2026'] }, { key: 'byggeregler' }, fields);
     const queries = paths
       .filter((path) => path.startsWith('/api/facets'))
       .map((path) => new URLSearchParams(path.split('?')[1]));
@@ -571,6 +615,19 @@ describe('the draft API for the try view', () => {
     });
   });
 
+  it('counts facets of a dataset the draft does not name under the tenant it is handed', async () => {
+    const { draftApi, paths } = draft({ definition });
+    await draftApi.loadFacets({}, { key: 'delt', tenant: 'andre' }, [
+      { id: 'kommune', label: 'kommune' },
+    ]);
+    const queries = paths
+      .filter((path) => path.startsWith('/api/facets'))
+      .map((path) => new URLSearchParams(path.split('?')[1]));
+    expect(queries.map((q) => [q.get('tenant'), q.get('dataset-config-key')])).toEqual([
+      ['andre', 'delt'],
+    ]);
+  });
+
   it('asks for the same facet counts once while they are fresh, however often the assistant loads them', async () => {
     const { draftApi, paths } = draft({ definition });
     const fields = [
@@ -578,10 +635,10 @@ describe('the draft API for the try view', () => {
       { id: 'aar', label: 'aar', integer: true },
     ];
     await Promise.all([
-      draftApi.loadFacets({}, 'byggeregler', fields),
-      draftApi.loadFacets({}, 'byggeregler', fields),
+      draftApi.loadFacets({}, { key: 'byggeregler' }, fields),
+      draftApi.loadFacets({}, { key: 'byggeregler' }, fields),
     ]);
-    await draftApi.loadFacets({}, 'byggeregler', fields);
+    await draftApi.loadFacets({}, { key: 'byggeregler' }, fields);
     expect(paths.filter((path) => path.startsWith('/api/facets'))).toHaveLength(2);
   });
 

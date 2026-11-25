@@ -37,4 +37,5 @@ You need none of these to build a frontend; they live in the platform repository
 - Typed client without runtime dependencies: `@genai/client` (`packages/client`).
 - Shared form renderer for the schemas: `@genai/schema-forms`.
 - Working example: `examples/frontend-minimal`.
+- A frontend your team runs itself, with Ansattporten login: [Run your own frontend](run-your-own-frontend.md) and `examples/team-frontend`.
 - Why schemas drive screens: [ADR 0030](adr/0030-frontends-from-schemas.md).

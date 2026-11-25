@@ -111,7 +111,7 @@ export const PublishSummary = ({
         text:
           currentVersion === 0
             ? t('publish.publishedFirst', { next: nextVersion })
-            : t('publish.publishedNext', { next: nextVersion, current: currentVersion }),
+            : t('publish.publishedNext', { next: nextVersion }),
         color: 'success',
       });
     } catch {
@@ -240,6 +240,7 @@ export const PublishSummary = ({
               name: failed[0].name.toLowerCase(),
               tenant: tenantName,
             })}
+            {onPublishToTest ? ` ${t('publish.gatesNotMetTest')}` : null}
           </Paragraph>
         </Alert>
       ) : null}

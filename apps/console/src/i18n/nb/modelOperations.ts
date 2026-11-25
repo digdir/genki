@@ -24,6 +24,13 @@ export const modelOperations = defineNamespace({
   promote: 'Flytt til produksjon',
   demote: 'Flytt tilbake til test',
   promoteFor: 'Flytt {kind} til produksjon',
+  deleteKind: 'Slett',
+  deleteKindFor: 'Slett {kind}',
+  deleteKindTitle: 'Slette typen {kind}?',
+  deleteKindText:
+    'Ingen API-er beskriver typen, og den er ikke innebygd. Den forsvinner fra listen i dette miljøet. Kommer det et API for typen senere, starter den i test.',
+  deleteKindFailed: 'Vi fikk ikke slettet typen.',
+  kindDeleted: 'Typen {kind} er slettet.',
   demoteFor: 'Flytt {kind} tilbake til test',
   promoteTitle: 'Flytt {kind} til produksjon',
   demoteTitle: 'Flytt {kind} tilbake til test',

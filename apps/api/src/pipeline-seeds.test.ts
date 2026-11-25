@@ -6,6 +6,7 @@ import { serviceDefinition } from '@genai/definitions';
 import { envSecrets } from '@genai/kernel';
 import { IndexWriterRouter, KnowledgeRouter } from '@genai/port-knowledge';
 import { memoryEngine } from '@genai/port-knowledge/testing';
+import { pgvectorEndpointOptions } from '@genai/providers-pgvector';
 import { loadCatalog } from './catalogs.js';
 import { InMemoryConfigEntryStore, platformScope } from './config-store.js';
 import { indexIngestionBackend } from './index-ingestion.js';
@@ -121,28 +122,46 @@ describe('pipeline seeds', () => {
 });
 
 describe('the GenKI docs', () => {
-  it('are a pgvector dataset that embeds with a configured embedding model', () => {
+  const shipped = () => {
     const env = { FOUNDRY_OPENAI_BASE_URL: 'https://foundry.example' };
     const catalog = loadCatalog(local, 'knowledge.yaml', 'datasets', env).catalog as {
-      endpoints: Record<string, { engine: string }>;
+      endpoints: Record<
+        string,
+        { engine: string; options?: unknown; sharing?: { tenants: string[] | '*' } }
+      >;
       datasets: {
         id: string;
         endpoint: string;
+        generation?: string;
         embedding?: { model: string; dimensions: number };
       }[];
     };
-    const docs = catalog.datasets.find((d) => d.id === 'digdir/genki-docs');
     const models = (
       loadCatalog(local, 'models.yaml', 'models', env).catalog as {
         models: { id: string; embed?: { dimensions: number } }[];
       }
     ).models;
+    return { catalog, models, docs: catalog.datasets.find((d) => d.id === 'digdir/genki-docs') };
+  };
 
-    expect(docs).toMatchObject({ name: 'GenKI-dokumentasjon', endpoint: 'platform-pg' });
-    expect(catalog.endpoints[docs?.endpoint ?? '']?.engine).toBe('pgvector');
+  it('the seeded digdir/genki-docs dataset reads from the knowledge endpoint', () => {
+    const { catalog, models, docs } = shipped();
+    const endpoint = catalog.endpoints[docs?.endpoint ?? ''];
+
+    expect(docs).toMatchObject({ name: 'GenKI-dokumentasjon', endpoint: 'kunnskapsserveren' });
+    expect(docs?.generation).toMatch(/^g-\d{8}-[0-9a-f]{6}$/);
+    expect(endpoint?.engine).toBe('pgvector');
+    expect(pgvectorEndpointOptions.parse(endpoint?.options ?? {})).toEqual({
+      connection: 'knowledge',
+    });
+    expect(Object.keys(catalog.endpoints)).not.toContain('platform-pg');
     expect(models.find((m) => m.id === docs?.embedding?.model)?.embed?.dimensions).toBe(
       docs?.embedding?.dimensions,
     );
+  });
+
+  it('the seeded kunnskapsserveren endpoint is shared with every organisation', () => {
+    expect(shipped().catalog.endpoints.kunnskapsserveren?.sharing).toEqual({ tenants: '*' });
   });
 
   it('answer through the GenKI guide in chat and the OpenAI API, with sources, from that dataset only', () => {

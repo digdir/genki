@@ -225,4 +225,14 @@ describe('the tinted switcher, the dev boards’', () => {
     expect(screen.getByRole('button', { name: 'Notater, velg verktøy' })).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Notater' }).closest('[hidden]')).toBeNull();
   });
+
+  it('says its menu is open on the button while it is, so the open state is drawn (dev-verktoy-3)', () => {
+    render(<ShellTools tools={[approach, sources, notes].map(withIcon)} variant="tinted" />);
+    const trigger = screen.getByRole('button', { name: 'Fremgangsmåte, velg verktøy' });
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
 });

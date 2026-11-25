@@ -12,6 +12,8 @@ export class ApiError extends Error {
   }
 }
 
+const problemTypePrefix = 'urn:genai:problem:';
+
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
@@ -45,6 +47,8 @@ export const apiErrorFrom = async (response: Response): Promise<ApiError> => {
       ? nested.code
       : typeof body.code === 'string'
         ? body.code
-        : undefined;
+        : typeof body.type === 'string' && body.type.startsWith(problemTypePrefix)
+          ? body.type.slice(problemTypePrefix.length)
+          : undefined;
   return new ApiError(response.status, message, code, fieldErrorsOf(body));
 };

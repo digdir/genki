@@ -1,5 +1,10 @@
 import { syncFailureCodes } from '../sync-errors.js';
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
+import {
+  maxTenantSecretBytes,
+  maxTenantSecrets,
+  tenantSecretNamePattern,
+} from '@genai/composition';
 import { writtenStandards } from '@genai/guardrails';
 import { locales } from '@genai/i18n';
 import { clientChannels, clientDefinition } from '@genai/identity';
@@ -111,7 +116,7 @@ const ApiKey = z
     testRunner: z
       .boolean()
       .describe(
-        'The key has the test-runner grant (ADR 0033); it only takes effect in a locked test environment.',
+        'The key has the test-runner grant (ADR 0033); it only takes effect where GENAI_TEST_RUNNER_KEYS=true.',
       ),
   })
   .openapi('TenantApiKey');
@@ -250,7 +255,12 @@ const AllowedHosts = z
   );
 const SecretValue = z
   .object({
-    value: z.string().min(1).describe('The secret. It is stored and never shown again.'),
+    value: z
+      .string()
+      .min(1)
+      .describe(
+        `The secret, at most ${maxTenantSecretBytes} bytes in UTF-8. It is stored and never shown again.`,
+      ),
     allowedHosts: AllowedHosts.optional().describe(
       'The origins the secret may be sent to. Required for a new secret; left out, an existing secret keeps its hosts. Other hosts than the stored ones need manage-services.',
     ),
@@ -767,7 +777,7 @@ const blockIdParam = z.string().openapi({
 });
 
 const definitionKind = z
-  .enum(['services', 'step-flows', 'skills'])
+  .enum(['services', 'step-flows', 'skills', 'blocks'])
   .openapi({ param: { name: 'kind', in: 'path' }, example: 'services' });
 
 const TraceConnection = z
@@ -979,7 +989,7 @@ export const accessRoutes: RouteConfig[] = [
             .boolean()
             .optional()
             .describe(
-              'Give the key the test-runner grant (ADR 0033). Only in a locked test environment and only by a trusted Entra ID login (an operator acting in its own organisation).',
+              'Give the key the test-runner grant (ADR 0033). Only where GENAI_TEST_RUNNER_KEYS=true, and only by an operator acting in the platform organisation (in lockdown, a trusted Entra ID login).',
             ),
         }),
       ),
@@ -1177,6 +1187,88 @@ export const accessRoutes: RouteConfig[] = [
       401: unauthorized,
       403: forbidden,
       404: problem('No such client, or not a member of this tenant'),
+    },
+  }),
+  createRoute({
+    method: 'put',
+    path: '/tenants/{tenant}/clients/{id}/hosted',
+    summary:
+      "Mark a client hosted by genki's assistant host, or not (platform operator in a support session, audited)",
+    request: {
+      params: z.object({ tenant, id: pathParam('id', 'kunnskapsassistenten-web') }),
+      headers: reason,
+      body: body(
+        z.object({
+          hosted: z.boolean(),
+          hostnames: z
+            .array(z.object({ hostname: z.string(), environment: z.string().optional() }))
+            .optional(),
+        }),
+      ),
+    },
+    responses: {
+      200: json(Client, 'Saved'),
+      400: invalid,
+      401: unauthorized,
+      403: problem('Not a platform operator'),
+      404: problem('No such client, or no support session for this tenant'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/v1/hosts/{hostname}',
+    summary:
+      "What genki's assistant host draws on a hostname before anyone logs in (public, cached 60 seconds)",
+    request: { params: z.object({ hostname: pathParam('hostname', 'kunnskap.digdir.cloud') }) },
+    responses: {
+      200: json(
+        z.object({
+          hostname: z.string(),
+          tenant: z.string(),
+          service: z.string(),
+          environment: z.string(),
+          name: z.unknown(),
+          login: z.object({
+            issuer: z.string().nullable(),
+            clientId: z.string(),
+            audience: z.string(),
+            altinnResource: z.string().nullable(),
+          }),
+          languages: z
+            .array(z.enum(['nb', 'en']))
+            .describe(
+              "The service's languages the host's own words come in, in the service's order; bokmål when none do",
+            ),
+          theme: z
+            .null()
+            .describe("Designsystemet's default (Digdir) theme, until a service's own is built"),
+          icon: z
+            .string()
+            .nullable()
+            .describe("The service's icon for the browser tab, a base64 PNG or SVG data: address"),
+          menu: z.array(z.record(z.string(), z.unknown())),
+          pages: z.array(z.object({ id: z.string(), title: z.unknown() })),
+        }),
+        'The hosted service',
+      ),
+      404: problem('urn:genai:problem:host-not-found: the hostname is not active'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/v1/hosts/{hostname}/pages/{id}',
+    summary: "One page of a hosted service's menu, in Markdown (public, cached 60 seconds)",
+    request: {
+      params: z.object({
+        hostname: pathParam('hostname', 'kunnskap.digdir.cloud'),
+        id: pathParam('id', 'om'),
+      }),
+    },
+    responses: {
+      200: json(z.object({ id: z.string(), title: z.unknown(), body: z.unknown() }), 'The page'),
+      404: problem(
+        'urn:genai:problem:host-not-found: the hostname is not active or has no such page',
+      ),
     },
   }),
   createRoute({
@@ -1559,17 +1651,48 @@ export const accessRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/secrets/{name}',
     summary:
       'Store a tenant secret and the hosts it is for; the value is never returned (manage-services or register-building-blocks, audited without the value)',
+    description: `A new name has lowercase letters, digits and hyphens, starts with a letter or digit and is at most 63 characters; an existing secret keeps its name. The value is at most ${maxTenantSecretBytes} bytes. An organisation has at most ${maxTenantSecrets} secrets.`,
     request: {
-      params: z.object({ tenant, name: pathParam('name', 'lovdata') }),
+      params: z.object({
+        tenant,
+        name: z
+          .string()
+          .regex(tenantSecretNamePattern)
+          .openapi({ param: { name: 'name', in: 'path' }, example: 'lovdata' }),
+      }),
       headers: reason,
       body: body(SecretValue),
     },
     responses: {
       200: json(SecretRef, 'The reference to use in connections'),
-      400: problem('Missing value, hosts or reason, or an invalid name or host'),
+      400: problem(
+        `Missing value, hosts or reason, an invalid name or host, or a value over ${maxTenantSecretBytes} bytes`,
+      ),
       401: unauthorized,
       403: problem('Missing right, or other hosts without manage-services'),
       404: notMember,
+      409: problem(`The organisation already has ${maxTenantSecrets} secrets`),
+      413: problem('The request is too large'),
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/tenants/{tenant}/secrets/{name}',
+    summary:
+      'Delete a tenant secret that nothing uses (manage-services or register-building-blocks, audited)',
+    description:
+      'A secret that does not exist answers 204 as well. A secret still named by a hook, tool connection, catalog entry, connector, configuration entry or service definition answers 409 with each use in `usedBy`.',
+    request: {
+      params: z.object({ tenant, name: pathParam('name', 'lovdata') }),
+      headers: reason,
+    },
+    responses: {
+      204: { description: 'Removed, or there was no such secret' },
+      400: problem('Missing reason'),
+      401: unauthorized,
+      403: problem('Missing right'),
+      404: notMember,
+      409: problem('The secret is still in use; `usedBy` lists each use'),
     },
   }),
   createRoute({
@@ -1604,10 +1727,32 @@ export const accessRoutes: RouteConfig[] = [
         z.object({ ref: z.string().openapi({ example: 'secret://platform/enhetsregisteret' }) }),
         'The reference',
       ),
-      400: problem('Missing or too long value, missing reason, or an invalid name'),
+      400: problem(
+        `Missing value or one over ${maxTenantSecretBytes} bytes, missing reason, or an invalid name`,
+      ),
       401: unauthorized,
       403: operatorOnly,
       413: problem('The request is too large'),
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/operator/secrets/{name}',
+    summary: 'Delete a platform secret that nothing uses (operators, audited without the value)',
+    description:
+      'A secret still named by a catalog entry, a configuration entry such as an operator hook, or the latest version of a definition in any organisation, internal services included, answers 409 with `urn:genai:problem:platform-secret-in-use` and each use in `usedBy`.',
+    request: {
+      params: z.object({ name: pathParam('name', 'enhetsregisteret') }),
+      headers: reason,
+    },
+    responses: {
+      204: { description: 'Removed' },
+      400: problem('Missing reason'),
+      401: unauthorized,
+      403: operatorOnly,
+      404: problem('No such platform secret is stored'),
+      409: problem('The secret is still in use; `usedBy` lists each use'),
+      503: problem('The platform cannot check what uses the secret, so nothing is deleted'),
     },
   }),
   createRoute({
@@ -2415,7 +2560,7 @@ export const accessRoutes: RouteConfig[] = [
     responses: {
       200: json(
         z.object({
-          kind: z.enum(['Service', 'StepFlow', 'Skill']),
+          kind: z.enum(['Service', 'StepFlow', 'Skill', 'Block']),
           tenant: z.string(),
           id: z.string(),
           latest: DefinitionVersion,

@@ -10,8 +10,8 @@ const stable = (value: unknown): string =>
           .join(',')}}`
       : JSON.stringify(value);
 
-/** What a run's result does not depend on: publish stamps the risk confirmation with its time. */
-const untested = new Set(['riskConfirmation']);
+/** What a run's result does not depend on: publish stamps the risk confirmation; runs never read the interface. */
+const untested = new Set(['riskConfirmation', 'interface']);
 
 /** What a publishing gate looks a service's eval runs up by: the spec they tested. */
 export const definitionSubject = (spec: unknown) => {

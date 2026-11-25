@@ -3,6 +3,7 @@ import { dataFrames } from './sse.js';
 import type {
   Answer,
   AnswerMarker,
+  TextQuote,
   AskHandlers,
   AskRequest,
   CancelledRun,
@@ -129,14 +130,25 @@ const sourceOf = (raw: unknown): Source[] => {
 
 const sourcesOf = (raw: unknown): Source[] => (Array.isArray(raw) ? raw.flatMap(sourceOf) : []);
 
+const quoteOf = (raw: unknown): TextQuote | undefined => {
+  if (!isRecord(raw) || raw.type !== 'TextQuoteSelector') return undefined;
+  const exact = str(raw.exact);
+  const prefix = typeof raw.prefix === 'string' ? raw.prefix : undefined;
+  const suffix = typeof raw.suffix === 'string' ? raw.suffix : undefined;
+  return exact && prefix !== undefined && suffix !== undefined
+    ? { type: 'TextQuoteSelector', exact, prefix, suffix }
+    : undefined;
+};
+
 const markerOf = (raw: unknown): AnswerMarker[] => {
   if (!isRecord(raw)) return [];
   const marker = str(raw.marker);
   const chunkId = str(raw.chunk_id);
   const documentId = str(raw.document);
+  const quote = quoteOf(raw.quote);
   return marker === undefined || chunkId === undefined || documentId === undefined
     ? []
-    : [{ marker, chunkId, documentId }];
+    : [{ marker, chunkId, documentId, ...(quote ? { quote } : {}) }];
 };
 
 // A list with no marker that names its excerpt counts as none, so `[N]` falls back to `index`.

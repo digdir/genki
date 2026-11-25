@@ -9,10 +9,12 @@ import {
   readEvaluatorSystemPrompt,
   smallTalkCheck,
   SOURCES_MIME,
+  type AgentLoopOptions,
   type AgentLoopRuntimeConfig,
   type AgentRetrieval,
   type Chunk,
   type SourceRecord,
+  serviceCardText,
 } from './index.js';
 
 export const kari: Principal = {
@@ -37,7 +39,7 @@ export const call = (name: string, args: unknown): ToolCall => ({
   arguments: JSON.stringify(args),
 });
 
-const section = (prompt: string, title: string) => {
+export const section = (prompt: string, title: string) => {
   const start = prompt.indexOf(`${title}\n`);
   if (start < 0) return undefined;
   const rest = prompt.slice(start + title.length + 1);
@@ -94,11 +96,11 @@ type Step = (request: ChatRequest, signal: AbortSignal) => ChatResult | Promise<
 
 export interface Script {
   loop: Step[];
-  synth?: ((request: ChatRequest) => string)[];
+  synth?: ((request: ChatRequest) => string | ChatResult)[];
   read?: ((prompt: string) => string)[];
   sufficiency?: ((prompt: string) => string)[];
   smallTalk?: (message: string) => string;
-  final?: string;
+  final?: string | ChatResult;
   deltas?: string[];
   failFirst?: Error;
 }
@@ -151,11 +153,13 @@ export const models = (scripts: Record<string, Script>, stream = false) => {
         }
         if (request.messages.at(-1)?.content === exhaustionNudge) {
           seen.push({ model: ref.id, kind: 'final', request });
-          return result(script.final ?? 'Beste svar ut fra det jeg fant.');
+          const final = script.final ?? 'Beste svar ut fra det jeg fant.';
+          return typeof final === 'string' ? result(final) : final;
         }
         seen.push({ model: ref.id, kind: 'synth', request });
         const synth = pick(script.synth, 'synth');
-        return result(synth ? synth(request) : 'Svar [1].');
+        const written = synth ? synth(request) : 'Svar [1].';
+        return typeof written === 'string' ? result(written) : written;
       };
       return {
         info: () => ({
@@ -229,6 +233,7 @@ export const retrieval = (
       calls.push({ op: 'rerank', args: query });
       return [...chunks].reverse();
     },
+    reranks: true,
     filterFields: async () => [{ field: 'orgs_short', type: 'string[]', valueType: 'string' }],
     facets: async (fields) =>
       Object.fromEntries(fields.map((f) => [f, [{ value: 'DIGDIR', count: 12 }]])),
@@ -243,7 +248,7 @@ export const capability = (config: AgentLoopRuntimeConfig, tools: string[] = [])
     version: '1',
     tenant: '991825827',
     title: 'KA',
-    description: 'KA',
+    description: 'Svarer på spørsmål om offentlig økonomi.',
     input: {},
     interaction: ['unary', 'stream'],
     accepts: [],
@@ -259,6 +264,22 @@ export const capability = (config: AgentLoopRuntimeConfig, tools: string[] = [])
     ...tools.map((t) => ({ port: 'tools', ref: { kind: 'tool', id: t, tenant: '991825827' } })),
   ],
 });
+
+export const harnessCard = (searchable = true, forAnswer = false) =>
+  serviceCardText(
+    {
+      name: 'KA',
+      purpose: 'Svarer på spørsmål om offentlig økonomi.',
+      searchable,
+      sources: [],
+      filterFields: searchable ? ['orgs_short'] : [],
+      complete: true,
+      languages: [],
+      filtered: false,
+      today: new Date('2026-10-06T10:00:00Z'),
+    },
+    forAnswer,
+  );
 
 export const baseConfig: AgentLoopRuntimeConfig = {
   strategy: { budget: { searches: 4, reads: 6, readChars: 12000 } },
@@ -277,32 +298,42 @@ export const run = async (opts: {
   history?: { role: 'user' | 'assistant'; text: string }[];
   overrides?: Record<string, unknown>;
   parts?: Part[];
+  now?: () => Date;
+  loopOptions?: AgentLoopOptions;
+  environment?: string;
 }) => {
   const r = opts.retrieval ?? retrieval().impl;
   const requests: unknown[] = [];
   const { provider, seen } = models(opts.scripts, opts.stream);
   const kernel = createKernel({
     strategies: [
-      createAgentLoop({
-        retrieval: (_ctx, _config, request) => {
-          requests.push(request);
-          return opts.withoutDataset ? undefined : r;
+      createAgentLoop(
+        opts.loopOptions ?? {
+          retrieval: (_ctx, _config, request) => {
+            requests.push(request);
+            return opts.withoutDataset ? undefined : r;
+          },
+          now: opts.now ?? (() => new Date('2026-10-06T10:00:00Z')),
         },
-        now: () => new Date('2026-10-06T10:00:00Z'),
-      }),
+      ),
     ],
     capabilities: [capability(opts.config ?? baseConfig, opts.tools)],
     ports: { model: provider, tools: opts.registry ?? new ToolRegistry() },
     policy: { decide: async () => ({ allow: true }) },
   });
-  const started = await kernel.invoke(kari, 'ka', {
-    data: {
-      query: opts.question ?? 'Hva sier tildelingsbrevet til Digdir for 2025?',
-      history: opts.history ?? [],
-      ...(opts.overrides ? { overrides: opts.overrides } : {}),
+  const started = await kernel.invoke(
+    kari,
+    'ka',
+    {
+      data: {
+        query: opts.question ?? 'Hva sier tildelingsbrevet til Digdir for 2025?',
+        history: opts.history ?? [],
+        ...(opts.overrides ? { overrides: opts.overrides } : {}),
+      },
+      ...(opts.parts ? { parts: opts.parts } : {}),
     },
-    ...(opts.parts ? { parts: opts.parts } : {}),
-  });
+    opts.environment ? { environment: opts.environment } : {},
+  );
   const events: Event[] = [];
   for await (const e of started.events) events.push(e);
   const audit: Event[] = [];
@@ -327,6 +358,7 @@ export const run = async (opts: {
   const loops = seen.filter((s) => s.kind === 'loop').map((s) => s.request);
   return {
     events,
+    parts: parts ?? [],
     audit,
     requests,
     task,
@@ -345,8 +377,11 @@ export const run = async (opts: {
   };
 };
 
-export const toolMessages = (request: ChatRequest | undefined) =>
+export const rawToolMessages = (request: ChatRequest | undefined) =>
   (request?.messages ?? []).flatMap((m) => (m.role === 'tool' ? [m.content] : []));
+
+export const toolMessages = (request: ChatRequest | undefined) =>
+  rawToolMessages(request).map((m) => m.replace(/\n\nRemaining budget: [^\n]*$/, ''));
 
 export const systemMessages = (request: ChatRequest | undefined) =>
   (request?.messages ?? []).slice(1).flatMap((m) => (m.role === 'system' ? [m.content] : []));

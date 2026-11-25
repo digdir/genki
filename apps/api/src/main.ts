@@ -1,10 +1,20 @@
+import { actingClient, createBff, InMemoryBffSessions } from './bff/index.js';
+import { remoteFileOriginsFrom } from '@genai/adapter-rest';
+import { platformLoginFrom } from './platform-login.js';
+import {
+  assistantHostnameFrom,
+  hostedHostnamesFrom,
+  hostView,
+  reservedDomainsFrom,
+} from './hosts.js';
 import type { Server } from 'node:http';
 import { attachSessionUpgrade } from './session-upgrade.js';
+import { mockClientSync } from './mock-clients.js';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { InMemoryDefinitionStore, platformSettings, SettingsRegistry } from '@genai/definitions';
-import { residencies, type Residency } from '@genai/port-model';
+import { residencies, type DiscoveryListing, type Residency } from '@genai/port-model';
 import {
   altinnPolicy,
   apiKeyDigest,
@@ -12,7 +22,6 @@ import {
   createTokenVerifier,
   InMemoryClients,
   InMemoryIdentities,
-  oidcAudienceOf,
   serviceAccessPolicy,
   type IdentityTestDataInput,
 } from '@genai/identity';
@@ -32,6 +41,7 @@ import {
   LocalKeyWrapper,
   managedIdentityTokenSource,
   PostgresDefinitionStore,
+  PostgresDiscoveredModels,
   PostgresJobRuns,
   postgresSourceFromEnv,
 } from '@genai/providers-postgres';
@@ -47,7 +57,7 @@ import { createAdmin, platformActor } from './admin.js';
 import { createAccessPeopleModule, peopleSourceFrom, selectedPeople } from './access-people.js';
 import { draftServices } from './access-draft-services.js';
 import { InMemoryTenantApiKeys, type TenantApiKeys } from './routes/portal-routes.js';
-import type { PriceSpec } from '@genai/contracts';
+import type { PriceSpec, Principal } from '@genai/contracts';
 import { postgresKeyPolicies, postgresTenantKeys } from './tenant-keys.js';
 import { clientRegistry, notifyingClients, type ClientListener } from './frontends.js';
 import { actorNames } from './actor-names.js';
@@ -62,6 +72,8 @@ import {
   ownedByPlatformTenant,
   platformTenantFrom,
   keepRunningOnRejection,
+  modelDiscoveryFromEnv,
+  scheduleModelRelist,
   tenantSampleRate,
 } from '@genai/composition';
 import { buildTimeOf, createApp } from './app.js';
@@ -89,6 +101,7 @@ import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets
 import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
 import { readDemoSeeds, seedDemos } from './demos.js';
 import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
+import { testRunnerKeysAllowed } from './test-runner.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
 import { federatedAppTokens, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
 import {
@@ -99,6 +112,7 @@ import {
   tracesContent,
 } from './boot-guard.js';
 import { loginIssuers } from './login-issuers.js';
+import { environmentsOf } from './service-environments.js';
 import { documentMockRoutes } from './openapi/access.js';
 import { unknownTestPerson } from './dev-login.js';
 import { asPlatformResource } from './platform-resource.js';
@@ -193,16 +207,12 @@ if (altinnPdp.kind === 'altinn')
 
 const databaseSource = postgresSourceFromEnv(process.env);
 const db = databaseSource
-  ? await createPostgresStores(
-      databaseSource,
-      LocalKeyWrapper.fromBase64(process.env.CONTENT_MASTER_KEY),
-      {
-        onError: (error) => log('postgres connection error', { error: String(error) }),
-        ...(process.env.DATABASE_RUNTIME_URL
-          ? { runtime: { connectionString: process.env.DATABASE_RUNTIME_URL } }
-          : {}),
-      },
-    )
+  ? await createPostgresStores(databaseSource, LocalKeyWrapper.fromEnv(process.env), {
+      onError: (error) => log('postgres connection error', { error: String(error) }),
+      ...(process.env.DATABASE_RUNTIME_URL
+        ? { runtime: { connectionString: process.env.DATABASE_RUNTIME_URL } }
+        : {}),
+    })
   : undefined;
 log('storage', { kind: db ? 'postgres' : 'memory' });
 
@@ -211,7 +221,17 @@ const clients = notifyingClients(db?.clients ?? new InMemoryClients(), {
   saved: (client, before) => mockRegistration.saved?.(client, before),
   removed: (client) => mockRegistration.removed?.(client),
 });
-const registeredClients = clientRegistry(clients);
+const platformLogin = platformLoginFrom(process.env, audience);
+if (platformLogin)
+  log('platform login for hosted assistants', {
+    hostname: platformLogin.hostname,
+    secret: platformLogin.secret !== undefined,
+    subjectsKept: platformLogin.subjectKeyKept,
+  });
+const registeredClients = clientRegistry(
+  clients,
+  platformLogin && { ...platformLogin, current: actingClient },
+);
 
 const trustedEntra = trustedEntraFrom(process.env, platformTenant, resource);
 if (trustedEntra)
@@ -229,29 +249,23 @@ const { trusted, mock, mockIssuer } = await loginIssuers({
   audience,
   testData,
   registeredClients,
+  platformLoginClients: platformLogin ? [platformLogin.clientId] : [],
+  ...(platformLogin ? { platformLoginKey: platformLogin.subjectKey } : {}),
   ...(trustedEntra ? { trustedEntra } : {}),
   onKeysNotFetched: (fields) => log('login keys not fetched', fields),
 });
-if (mock)
-  mockRegistration = {
-    saved: (client, before) => {
-      const oidc = client.spec.oidc;
-      if (before?.spec.oidc && before.spec.oidc.clientId !== oidc?.clientId)
-        mock.clients.remove(before.spec.oidc.clientId);
-      if (!oidc) return;
-      mock.clients.register({
-        clientId: oidc.clientId,
-        redirectUris: oidc.redirectUris,
-        postLogoutRedirectUris: oidc.postLogoutRedirectUris,
-        audience: oidcAudienceOf(client) ?? oidc.clientId,
-        audiences: [audience],
-        tokenEndpointAuthMethod: 'none',
-      });
-    },
-    removed: (client) => {
-      if (client.spec.oidc) mock.clients.remove(client.spec.oidc.clientId);
-    },
-  };
+let clientSecretOf: (tenant: string, name: string) => Promise<string | undefined> = async () =>
+  undefined;
+if (mock) mockRegistration = mockClientSync(mock.clients, audience, (t, n) => clientSecretOf(t, n));
+if (mock && platformLogin?.secret)
+  mock.clients.register({
+    clientId: platformLogin.clientId,
+    redirectUris: [`https://${platformLogin.hostname}/auth/callback`],
+    postLogoutRedirectUris: [`https://${platformLogin.hostname}/auth/logged-out`],
+    audience,
+    tokenEndpointAuthMethod: 'client_secret_basic',
+    clientSecret: platformLogin.secret,
+  });
 const operatorSubjects = operatorSubjectsFrom(process.env);
 const operators = operatorDirectory({
   pids: identityFile.operatorPids,
@@ -272,6 +286,7 @@ const reservedClientIds = [
   ...(testData.clients ?? []).map((c) => c.clientId),
   ...operatorClientIds(process.env),
   ...employeeClientIds(process.env),
+  ...(platformLogin ? [platformLogin.clientId] : []),
 ];
 const verifier = operators.watch(
   asPlatformResource(
@@ -468,8 +483,19 @@ const environmentTier = environmentTierOf(process.env);
 if (environmentTier === 'test')
   log('GENAI_ENV=test: operators may try descriptors in review on synthetic data');
 
+const testRunnerKeys = testRunnerKeysAllowed(process.env);
+if (testRunnerKeys)
+  log('GENAI_TEST_RUNNER_KEYS=true: operators may give test-runner keys for the smoke test');
+
 const processorRecords = processorRecordCheckOf(process.env);
 
+const hostedHostnames = hostedHostnamesFrom(process.env);
+if (platformLogin) hostedHostnames.delete(platformLogin.hostname);
+const hosting = {
+  hostnames: hostedHostnames,
+  reservedDomains: reservedDomainsFrom(process.env),
+  assistantHostname: assistantHostnameFrom(process.env),
+};
 const platform = await createPlatform({
   platformTenant,
   federatedTokens: federatedAppTokens({
@@ -486,6 +512,8 @@ const platform = await createPlatform({
   },
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
   environmentTier,
+  testRunnerKeys,
+  isOperator: operators.isOperator,
   processorRecords,
   modules: [
     ...platformModules,
@@ -496,6 +524,11 @@ const platform = await createPlatform({
   verifyPluginsOnBoot: true,
   clients,
   reservedClientIds,
+  hosting,
+  documentFileOrigins: remoteFileOriginsFrom(process.env.GENAI_DOCUMENT_FILE_ORIGINS),
+  ...(platformLogin
+    ? { platformLogin: { clientId: platformLogin.clientId, audience: platformLogin.audience } }
+    : {}),
   ...(db ? { webhookDeliveries: db.webhookDeliveries } : {}),
   ...(db ? { traceDeliveries: db.traceDeliveries } : {}),
   ...(db ? { triggerRuns: db.triggerRuns } : {}),
@@ -535,7 +568,7 @@ const platform = await createPlatform({
     rerank: catalogs.rerank.catalog,
     embeddings: catalogs.embeddings.catalog,
   },
-  ...(db ? { knowledgePool: db.pool, changes: db.changes } : {}),
+  ...(db ? { changes: db.changes } : {}),
   ...(knowledgeServer ? { knowledgeServer: knowledgeServer.pools } : {}),
   ...(db
     ? {
@@ -548,7 +581,6 @@ const platform = await createPlatform({
     : {}),
   ...(db ? { databasePing: () => db.pool.query('select 1') } : {}),
   ...(enhetsregisteret ? { organizationRegistry: { url: enhetsregisteret } } : {}),
-  searchOnlyClusters: [process.env.TYPESENSE_URL],
   ...(process.env.INGEST_FOLDER_ROOT ? { ingestFolderRoot: process.env.INGEST_FOLDER_ROOT } : {}),
   ...(process.env.INGEST_WORKING_DIRECTORY
     ? { ingestWorkingDirectory: process.env.INGEST_WORKING_DIRECTORY }
@@ -593,6 +625,7 @@ const platform = await createPlatform({
         conversations: db.conversations,
         threadErasure: db.threadErasure,
         modelClassifications: db.modelClassifications,
+        discoveredModels: new PostgresDiscoveredModels<DiscoveryListing>(db.runtimePool),
         providerObjects: db.providerObjects,
         tenantSecrets: db.tenantSecrets,
         connections: db.connections,
@@ -624,10 +657,24 @@ const platform = await createPlatform({
   logger: log,
   logFailureMessages: process.env.LOG_FAILURE_MESSAGES === 'true',
   evalSlots: evalSlotLimitsFromEnv(process.env),
+  modelDiscovery: modelDiscoveryFromEnv(process.env),
   ...(documentConverter ? { documentConverter } : {}),
   ...(phraseArchive ? { phraseArchive } : {}),
 });
 
+const learnAndAnnounce = async (actor?: Principal) => {
+  const result = await platform.learnModelCapabilities(actor);
+  if (result.checked.length > 0)
+    await db?.changes.announce('model-classifications').catch((error: unknown) =>
+      log('learned model capabilities not announced to other replicas', {
+        error: String(error),
+      }),
+    );
+  return result;
+};
+void learnAndAnnounce().catch((error: unknown) =>
+  log('checking what discovered models can do failed', { error: String(error) }),
+);
 const admin = createAdmin({
   platformTenant,
   store: platform.definitions,
@@ -640,6 +687,7 @@ const admin = createAdmin({
       refreshEverywhere(platform.modelDiscovery, db?.changes, (error) =>
         log('model refresh not announced to other replicas', { error: String(error) }),
       ),
+    learnCapabilities: learnAndAnnounce,
     classify: platform.models.classify.bind(platform.models),
   },
   extensions: platform.extensions,
@@ -647,11 +695,18 @@ const admin = createAdmin({
   names: actorNames(configEntries),
   ...(db ? { records: db.adminRecords } : {}),
 });
+const relist = scheduleModelRelist({
+  relistIfDue: platform.modelDiscovery.relistIfDue,
+  everyMs: platform.modelDiscovery.relistMs,
+  onError: (error) => log('scheduled model listing failed', { error: String(error) }),
+});
 const builtAt = buildTimeOf(process.env.APP_BUILT_AT);
 const app = createApp(version, {
   ...(builtAt ? { builtAt } : {}),
   ...(process.env.GENAI_ENV ? { environment: process.env.GENAI_ENV } : {}),
   modelDiscovery: platform.modelDiscovery.state,
+  discoveryConnections: platform.modelDiscovery.connections,
+  catalogSkipped: () => platform.catalog.skipped(),
   requestTiming: {
     write: (entry) => log('request', { ...entry }),
     slowMs: Number(process.env.SLOW_REQUEST_MS) || defaultSlowRequestMs,
@@ -678,6 +733,7 @@ const app = createApp(version, {
     caller: platform.caller,
     lifecycle: platform.lifecycle,
     drafts: platform.serviceDrafts,
+    environments: (tenant, service) => environmentsOf(configEntries, tenant, service),
     unmaskedInput: platform.unmaskedInput,
     names: actorNames(configEntries),
     lockdown,
@@ -685,6 +741,7 @@ const app = createApp(version, {
       const checked = await authenticator.check(request);
       return checked.ok ? undefined : checked.code;
     },
+    platformClientIds: [...operatorClientIds(process.env), ...employeeClientIds(process.env)],
   },
 });
 platform.mount(app, admin);
@@ -813,9 +870,56 @@ if (mock) {
   });
 }
 
-const server = serve({ fetch: app.fetch, port }, (info) => {
-  log('api listening', { port: info.port, version, mockLogin: Boolean(mock) });
+clientSecretOf = (tenant, name) =>
+  platform.vault
+    .resolver({
+      resolve: () => Promise.reject(new Error('the client secret is not set')),
+    })
+    .resolve(`secret://tenant/${tenant}/${name}`)
+    .catch(() => undefined);
+const proxyKey = process.env.GENAI_PROXY_KEY;
+if (proxyKey !== undefined && proxyKey.length < 32)
+  log('GENAI_PROXY_KEY is shorter than 32 characters; the BFF trusts no host', {});
+const ansattportenIssuer = trusted.find((t) => t.kind === 'ansattporten')?.issuer;
+const bff = createBff({
+  proxyKey: proxyKey && proxyKey.length >= 32 ? proxyKey : undefined,
+  sessions: db?.bffSessions ?? new InMemoryBffSessions(),
+  clients,
+  rules: hosting,
+  hostActive: async (hostname) =>
+    (await hostView(
+      {
+        clients,
+        definitions: platform.definitions,
+        configEntries: platform.configEntries,
+        rules: hosting,
+        issuer: ansattportenIssuer,
+        platformLogin,
+      },
+      hostname,
+    )) !== undefined,
+  issuer: ansattportenIssuer,
+  platformLogin,
+  altinnResource: resource,
+  secrets: {
+    value: clientSecretOf,
+    hosts: (tenant, name) => platform.vault.hosts(tenant, name),
+  },
+  organisations: async (accessToken) => {
+    const verified = await verifier.verify(accessToken);
+    return [...new Set((verified.principal.authorizedFor ?? []).map((a) => a.org))].map(
+      (orgNumber) => ({ orgNumber }),
+    );
+  },
+  log,
 });
+
+const server = serve(
+  { fetch: (request, env) => bff.handle(request, (r) => app.fetch(r, env)), port },
+  (info) => {
+    log('api listening', { port: info.port, version, mockLogin: Boolean(mock) });
+  },
+);
 attachSessionUpgrade(server as unknown as Server, app, platform.liveSessions);
 
 // A deploy stops this instance: start no new test-set case, let the ones running finish, then go.
@@ -824,6 +928,7 @@ let stopping = false;
 const stop = (signal: string) => {
   if (stopping) process.exit(1);
   stopping = true;
+  relist.stop();
   log('api stopping', {
     signal,
     casesInFlight: platform.evalSlots.inFlight(),

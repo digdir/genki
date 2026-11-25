@@ -2,7 +2,13 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Principal, Task } from '@genai/contracts';
 import { isInternalService, type DefinitionStore, type ValidationError } from '@genai/definitions';
 import type { TestSet, TestSetStore } from '@genai/eval';
-import { ALL_GRANT, boundService, SERVICE_GRANT, seesInternalServices } from '@genai/identity';
+import {
+  ALL_GRANT,
+  boundService,
+  isTestRunnerKey,
+  SERVICE_GRANT,
+  seesInternalServices,
+} from '@genai/identity';
 import type { MiddlewareHandler } from 'hono';
 import { routeOf } from './change-reason.js';
 import { originOf, serviceOrigin } from './draft-runner.js';
@@ -18,21 +24,40 @@ const viewer = new AsyncLocalStorage<Viewer>();
 
 export const hidesInternalServices = () => viewer.getStore()?.hides ?? false;
 
-export const hidingInternalServicesFrom = <T>(principal: Principal | undefined, work: () => T): T =>
+const surfaceHeader = 'genki-surface';
+
+const portalSurface = 'portal';
+
+const sees = (principal: Principal, surface: string | undefined) =>
+  surface === portalSurface ? isTestRunnerKey(principal) : seesInternalServices(principal);
+
+export const hidingInternalServicesFrom = <T>(
+  principal: Principal | undefined,
+  work: () => T,
+  surface?: string,
+): T =>
   viewer.run(
     {
-      hides: !(principal && seesInternalServices(principal)),
+      hides: !(principal && sees(principal, surface)),
       signedIn: principal !== undefined,
       internal: new Map(),
     },
     work,
   );
 
+export const seeingInternalServices = <T>(work: () => T): T =>
+  viewer.run({ hides: false, signedIn: true, internal: new Map() }, work);
+
 export const internalServiceViewer =
   (caller: (request: Request) => Promise<Principal | undefined>): MiddlewareHandler =>
   async (c, next) => {
     const principal = await caller(c.req.raw);
-    await hidingInternalServicesFrom(principal, next);
+    const reads = c.req.method === 'GET' || c.req.method === 'HEAD';
+    await hidingInternalServicesFrom(
+      principal,
+      next,
+      reads ? c.req.header(surfaceHeader) : undefined,
+    );
   };
 
 export type DraftDefinition = (tenant: string, id: string) => Promise<unknown>;
@@ -53,12 +78,22 @@ const remembered = (key: string, check: () => Promise<boolean>) => {
 export const isHiddenService = async (store: DefinitionStore, tenant: string, id: string) =>
   hidesInternalServices() && ((await internalChecks.get(store)?.(tenant, id)) ?? false);
 
+export const deletedInternalServiceKind = 'deleted-internal-service';
+
+const deletedInternalChecks = new WeakMap<
+  DefinitionStore,
+  (tenant: string, id: string) => Promise<string[]>
+>();
+
 export const isHiddenTask = async (store: DefinitionStore, task: Task) => {
   if (!hidesInternalServices()) return false;
   const capability = task.service.capability.id;
   if (originOf(capability) !== serviceOrigin) return false;
   const [tenant, id] = capability.split('/');
-  return tenant !== undefined && id !== undefined && isHiddenService(store, tenant, id);
+  if (tenant === undefined || id === undefined) return false;
+  if (await isHiddenService(store, tenant, id)) return true;
+  const deletions = (await deletedInternalChecks.get(store)?.(tenant, id)) ?? [];
+  return deletions.some((at) => Date.parse(task.createdAt) <= Date.parse(at));
 };
 
 export const hidingInternalTasks =
@@ -156,7 +191,10 @@ const wrapped = new WeakSet<DefinitionStore>();
 
 export const hidingInternalServices = (
   store: DefinitionStore,
-  options: { draftDefinition?: DraftDefinition } = {},
+  options: {
+    draftDefinition?: DraftDefinition;
+    deletedInternal?: (tenant: string, id: string) => Promise<string[]>;
+  } = {},
 ): DefinitionStore => {
   if (wrapped.has(store)) return store;
   const internal = (tenant: string, id: string) =>
@@ -199,6 +237,8 @@ export const hidingInternalServices = (
       const all = await store.capabilities(onInvalid);
       return hidesInternalServices() ? all.filter((c) => !c.internal) : all;
     },
+    remove: (tenant, definitions) => store.remove(tenant, definitions),
+    ...(store.listAcross ? { listAcross: store.listAcross.bind(store) } : {}),
     publish: async (input, actor, reason, files) => {
       const refused = await publishRefusals(view, input);
       if (refused.length > 0) return { ok: false, errors: refused };
@@ -210,6 +250,7 @@ export const hidingInternalServices = (
   };
   wrapped.add(view);
   internalChecks.set(view, internal);
+  if (options.deletedInternal) deletedInternalChecks.set(view, options.deletedInternal);
   return view;
 };
 

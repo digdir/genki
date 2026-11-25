@@ -16,7 +16,7 @@ export const tableOutput = {
   columns: 'Columns',
   kindsHelp:
     '"From the document" is a quote from the source. "Assessment" is an AI assessment and is always labelled. Every cell gets a source.',
-  empty: 'No columns here. The table gets its columns from the table step in the step flow.',
+  empty: 'No columns here. The table gets its columns from the table step in the workflow.',
   columnN: 'column {n}',
   moveUpLabel: 'Move {name} up',
   moveUp: 'Move up',

@@ -115,7 +115,7 @@ describe('Oversikt', () => {
       ),
     );
 
-    expect(await screen.findByText(/Vi fikk ikke sjekket datasettene/)).toBeTruthy();
+    expect(await screen.findByText(/Vi fikk ikke sjekket dokumentsamlingene/)).toBeTruthy();
     expect(screen.queryByText(/Ingenting trenger deg nå/)).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Prøv igjen' }).length).toBeGreaterThan(0);
   });
@@ -312,6 +312,15 @@ describe('Oversikt', () => {
     expect(screen.queryByText(/operation-try/)).toBeNull();
   });
 
+  it('never names a service Hjem does not list, such as an archived one, among the failed runs', async () => {
+    onFixedDay();
+    const { fetch } = withFailedRuns([failedRun('r1', 'smoke-throwaway', 'Røyktest', today)]);
+    await renderAt('#/overview', fetch);
+
+    expect(await screen.findByText(/Ingenting trenger deg nå/)).toBeTruthy();
+    expect(screen.queryByText(/Røyktest/)).toBeNull();
+  });
+
   it('counts the failed runs of the last 7 days per service in Mest brukt', async () => {
     onFixedDay();
     const weekAgo = threeDaysAgo;
@@ -429,19 +438,111 @@ describe('Oversikt', () => {
     expectAccessible();
   });
 
-  it('marks the Datasett menu item with the number of ingestions to follow up', async () => {
+  it('marks the Dokumentsamlinger menu item with the number of document collections to follow up', async () => {
     await renderAt('#/overview', withUsage(normalUsage));
 
     const menu = await screen.findByRole('navigation', { name: 'Hovedmeny' });
-    expect(await within(menu).findByLabelText('1 innlesing trenger oppfølging')).toBeTruthy();
+    expect(
+      await within(menu).findByLabelText('2 dokumentsamlinger trenger oppfølging'),
+    ).toBeTruthy();
   });
 
-  it('shows no Datasett badge for a tenant without datasets', async () => {
+  it('lists a dataset without a source as needing you, as the Dokumentsamlinger filter counts it', async () => {
+    const withoutSource = {
+      features: {
+        datasets: {
+          datasets: [
+            {
+              id: 'arkiv',
+              fullId: '999888777/arkiv',
+              name: 'Arkivet',
+              description: '',
+              scope: '999888777',
+              editable: true,
+              residency: 'norway',
+              effectiveResidency: 'norway',
+              index: { endpoint: 'kunnskapsserveren' },
+              facets: [],
+              searchScope: 'tenant',
+              source: 'none',
+              documents: 0,
+              chunks: 0,
+              usedBy: [],
+              lastExecution: null,
+              nextRunAt: null,
+              skipped: [],
+            },
+          ],
+        },
+      },
+    } as Parameters<typeof mockFetch>[4];
+    await renderAt('#/overview', withUsage(normalUsage, withoutSource));
+
+    const attention = await screen.findByRole('region', { name: 'Trenger deg nå' });
+    expect(await within(attention).findByText('Ingen kilde')).toBeTruthy();
+    expect(
+      within(attention)
+        .getByRole('link', { name: 'Se dokumentsamlingen: Arkivet' })
+        .getAttribute('href'),
+    ).toBe('#/datasets/999888777%2Farkiv');
+    const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
+    expect(await within(menu).findByLabelText('1 dokumentsamling trenger oppfølging')).toBeTruthy();
+  });
+
+  it('lists a Digdir dataset that needs follow-up, since the Dokumentsamlinger badge counts it', async () => {
+    const sharedDegraded = {
+      features: {
+        datasets: {
+          datasets: [
+            {
+              id: 'kudos',
+              fullId: 'digdir/kudos',
+              name: 'Kudos',
+              description: '',
+              scope: 'platform',
+              editable: false,
+              residency: 'norway',
+              effectiveResidency: 'norway',
+              index: { endpoint: 'kunnskapsserveren' },
+              facets: [],
+              searchScope: 'tenant',
+              source: 'kudos',
+              documents: 10,
+              chunks: 10,
+              usedBy: [],
+              lastExecution: {
+                status: 'cancelled',
+                startedAt: '2026-10-01T01:00:00Z',
+                endedAt: '2026-10-01T01:10:00Z',
+                stored: 0,
+                skipped: 0,
+              },
+              nextRunAt: null,
+              skipped: [],
+            },
+          ],
+        },
+      },
+    } as Parameters<typeof mockFetch>[4];
+    await renderAt('#/overview', withUsage(normalUsage, sharedDegraded));
+
+    const menu = await screen.findByRole('navigation', { name: 'Hovedmeny' });
+    expect(await within(menu).findByLabelText('1 dokumentsamling trenger oppfølging')).toBeTruthy();
+    const attention = screen.getByRole('region', { name: 'Trenger deg nå' });
+    expect(
+      within(attention).getByRole('link', { name: 'Se dokumentsamlingen: Kudos' }),
+    ).toBeTruthy();
+    expect(within(attention).queryByText(/Ingenting trenger deg nå/)).toBeNull();
+  });
+
+  it('shows no Dokumentsamlinger badge for a tenant without document collections', async () => {
     await renderAt('#/overview', withUsage(normalUsage, noFailedDatasets));
 
     await screen.findByRole('heading', { name: 'Trenger deg nå' });
     const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
-    expect(within(menu).getByRole('link', { name: 'Datasett' }).textContent).toBe('Datasett');
+    expect(within(menu).getByRole('link', { name: 'Dokumentsamlinger' }).textContent).toBe(
+      'Dokumentsamlinger',
+    );
   });
 });
 

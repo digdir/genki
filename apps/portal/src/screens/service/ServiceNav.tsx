@@ -1,30 +1,47 @@
 import { useFormat } from '@genai/i18n/react';
+import { CpuIcon, PaletteIcon, PencilBoardIcon } from '@navikt/aksel-icons';
 import { useEffect } from 'react';
 import type { ApiClient } from '../../api';
 import { isActiveBatch } from '../../api/batch-runs';
+import type { IconComponent } from '../../components/Icon';
 import { LinkTabs } from '../../components/LinkTabs';
 import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import {
+  editionPath,
+  servicePath,
+  historyHasOwnTab,
   sectionLabels,
   serviceTabs,
-  servicePath,
   subSections,
   tabLabels,
   tabOf,
+  type Edition,
   type ServiceSection,
+  type ServiceTab,
 } from './sections';
+
+const tabIcons: Partial<Record<ServiceTab, IconComponent>> = {
+  setup: PencilBoardIcon,
+  interface: PaletteIcon,
+  advanced: CpuIcon,
+};
 
 export const ServiceNav = ({
   id,
   name,
   sections,
   current,
+  edition = 'test',
+  icons = false,
 }: {
   id: string;
   name?: string | undefined;
   sections: ServiceSection[];
   current: ServiceSection;
+  edition?: Edition;
+  /** The tabs of the new Oppsett carry icons; the other tabs have none to match. */
+  icons?: boolean;
 }) => {
   const t = useT();
   const tab = tabOf(current);
@@ -41,7 +58,8 @@ export const ServiceNav = ({
       tabs={serviceTabs(sections).map(({ tab: each, target }) => ({
         key: each,
         label: t(tabLabels[each]),
-        href: `#${servicePath(id, target)}`,
+        href: `#${editionPath(id, target, edition)}`,
+        icon: icons ? tabIcons[each] : undefined,
       }))}
     />
   );
@@ -64,7 +82,7 @@ const useDeveloperCounts = (
       const today = new Date(now());
       today.setHours(0, 0, 0, 0);
       const [definition, runs, keys, environments, batches] = await Promise.allSettled([
-        api.getDefinition(tenant, 'Service', id, signal),
+        historyHasOwnTab ? undefined : api.getDefinition(tenant, 'Service', id, signal),
         api.tasks(tenant, { service: id, from: today.toISOString(), limit: 1 }, signal),
         api.listServiceKeys(tenant, id, signal),
         api.environments.list(tenant, id, signal),

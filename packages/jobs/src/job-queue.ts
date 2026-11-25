@@ -36,6 +36,11 @@ export interface Job<T extends JobData = JobData> {
   data: T;
   retryCount: number;
   signal: AbortSignal;
+  /**
+   * The key the job was sent with, kept through its retries, its dead letter and a redrive: a
+   * convert job ends the waits its key names, not a key rebuilt from today's settings (issue 945).
+   */
+  key?: string;
 }
 
 export type JobHandler<T extends JobData = JobData> = (job: Job<T>) => Promise<void>;
@@ -63,6 +68,13 @@ export interface QueueCounts {
   active: number;
   failed: number;
   deadLetters: number;
+}
+
+export interface QueueBacklog {
+  queue: string;
+  queued: number;
+  /** How long the oldest job that may start now has waited; deferred jobs do not count. */
+  oldestQueuedSeconds: number;
 }
 
 export interface ScheduleOptions {
@@ -124,6 +136,8 @@ export interface JobQueue extends JobReads {
   ): Promise<number>;
   cancel(queue: QueueDefinition, id: string): Promise<void>;
   redrive(queue: QueueDefinition, ids: string[]): Promise<number>;
+  /** Every queue on the server with jobs waiting, dead letters left out. */
+  backlog?(now?: Date): Promise<QueueBacklog[]>;
   stop(): Promise<void>;
 }
 
@@ -556,6 +570,7 @@ export class InMemoryJobQueue implements JobQueue {
         data,
         retryCount: job.retryCount,
         signal: abort.signal,
+        ...(job.key === undefined ? {} : { key: job.key }),
       });
       if (current()) job.state = 'completed';
     } catch (error) {

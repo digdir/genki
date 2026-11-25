@@ -208,7 +208,7 @@ const main = async () => {
 
   console.log(`
 Next:
-  npm run dev:all     API :8080, portal :5173, console :5174, workspace :5176 (see docs/development.md for other ports)
+  npm run dev:all     API :8080, worker :8081, portal :5173, console :5174, workspace :5176 (see docs/development.md for other ports)
   npm run check       format, lint, types, boundaries and tests (needs Docker)
 
 Log in as a test person from apps/api/config/local/identity.yaml (Kari Testansatt has every right).

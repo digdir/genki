@@ -29,7 +29,7 @@ import {
   type PiiCategory,
 } from '@genai/guardrails';
 import { withHooks } from '@genai/hooks';
-import { batchCapabilityFor, batchStrategy } from '@genai/jobs';
+import { batchCapabilityFor, batchStrategy, serviceLifecycleKind } from '@genai/jobs';
 import {
   CapabilityRegistry,
   checkCapability,
@@ -83,19 +83,22 @@ import {
   apiRegistry,
   ModelError,
   ModelRouter,
+  type LearnResult,
   type BuiltInApi,
   type OperationPort,
   type ProcessorRecordCheck,
   parseCatalog,
   type Capability,
   type ModelClassificationStore,
+  type DiscoveredModelStore,
+  defaultDiscoveryGraceMs,
+  inMemoryDiscoveredModels,
   type ModelClassification,
 } from '@genai/port-model';
-import { parseRerankCatalog, RerankRouter } from '@genai/port-rerank';
+import { parseRerankCatalog, type RerankAdapter, RerankRouter } from '@genai/port-rerank';
 import { parseToolRef, textOf, ToolRegistry } from '@genai/port-tools';
 import { A2aToolSource } from '@genai/providers-a2a-client';
 import { anthropicMessages } from '@genai/providers-anthropic';
-import { colbert } from '@genai/providers-colbert';
 import {
   ConnectionToolSources,
   EgressGuard,
@@ -111,12 +114,7 @@ import {
   openAiModels,
 } from '@genai/providers-openai';
 import { OpenApiToolSource } from '@genai/providers-openapi-tools';
-import {
-  pgvectorEngine,
-  pgvectorEngineName,
-  type KnowledgePools,
-  type PgvectorEngineOptions,
-} from '@genai/providers-pgvector';
+import { pgvectorEngine, type KnowledgePools } from '@genai/providers-pgvector';
 import { typesense } from '@genai/providers-typesense';
 import { typesenseIndexWriter } from '@genai/providers-typesense-writer';
 import {
@@ -125,7 +123,12 @@ import {
   retrievalConfig,
   sourceFacts,
 } from '@genai/retrieval';
-import { agentLoopConfig, createAgentLoop, sourceFactsToolRef } from '@genai/strategy-agent-loop';
+import {
+  agentLoopConfig,
+  createAgentLoop,
+  serviceFactsToolRef,
+  sourceFactsToolRef,
+} from '@genai/strategy-agent-loop';
 import { createRagSingleShot, ragConfig } from '@genai/strategy-rag';
 import {
   createRemoteAgent,
@@ -148,6 +151,7 @@ import {
   type ConfigEntryStore,
 } from './config-store.js';
 import { withDocumentScope } from './document-scope.js';
+import { mayUseModels, withModelAdmission } from './lockdown.js';
 import { outsideRun } from './outside-run.js';
 import { operationGovernance } from './operation-governance.js';
 import {
@@ -177,7 +181,6 @@ import {
   portContexts,
   routerCatalog,
   knowledgeServerEndpoints,
-  withoutEngines,
   withoutKnowledgeServer,
 } from './knowledge-context.js';
 import { sharedRecipeFinder } from './recipe-shares.js';
@@ -187,6 +190,7 @@ import {
   usingRetrievalPorts,
   type RuntimeConfig,
 } from './retrieval-ports.js';
+import { serviceFactsLookup, type ServiceFactsDeps } from './service-facts.js';
 import { stateOrganisationTool, stateOrganisationToolRef } from './state-organisation-tool.js';
 import { createGuardrailRuleRegistry, resolveRules } from './scoped-registry.js';
 import {
@@ -226,10 +230,22 @@ export const inMemoryClassifications = (): ModelClassificationStore => {
   };
 };
 
+export interface ModelDiscoverySettings {
+  graceMs?: number;
+  relistMs?: number;
+}
+
+export const defaultModelDiscovery = {
+  graceMs: defaultDiscoveryGraceMs,
+  relistMs: 30 * 60 * 1000,
+} satisfies Required<ModelDiscoverySettings>;
+
+const relistClaim = 'model-relist';
+
 export interface Catalogs {
   models: unknown;
   knowledge: unknown;
-  /** Rerankers on engines without an API; colbert rerankers here move into the model catalogue. */
+  /** Rerankers on engines without an API; a reranker whose engine has an API moves into the model catalogue. */
   rerank: unknown;
   /** An embedding catalogue from before ADR 0048; its embedders move into the model catalogue. */
   embeddings?: unknown;
@@ -320,12 +336,16 @@ export interface RuntimeInput {
   mediaOutput?: MediaOutputConfig;
   connections?: ConnectionRegistry;
   modelClassifications?: ModelClassificationStore;
-  knowledgePool?: PgvectorEngineOptions['pool'];
+  discoveredModels?: DiscoveredModelStore;
+  modelDiscovery?: ModelDiscoverySettings;
   knowledgeServer?: KnowledgePools;
   knowledgeGuard?: () => void;
+  /** Search engines beside the built-in ones, such as a test's in-memory engine. */
+  knowledgeEngines?: { adapter: KnowledgeAdapter; writer: IndexWriterAdapter }[];
   embeddingAdapters?: EmbeddingAdapter[];
+  /** Rerank engines for rerankers without an API; none is built in (ADR 0048). */
+  rerankAdapters?: RerankAdapter[];
   processorRecords?: ProcessorRecordCheck;
-  searchOnlyClusters?: (string | undefined)[];
   catalogPolicy?: CatalogPolicy;
   prices?: Record<string, unknown>;
   ruleSeed?: { id: string; spec: unknown; mandatory?: boolean }[];
@@ -344,6 +364,8 @@ export interface RuntimeInput {
   derivedCatalog?: (entries: ConfigEntry<unknown>[]) => ConfigEntry<unknown>[];
   sharedTools?: (connection: string) => string | undefined;
   lastImport?: (dataset: string) => Promise<string | undefined>;
+  /** The owner organisation's name for the service-facts@1 tool (ADR 0068). */
+  organisationName?: ServiceFactsDeps['organisationName'];
   endpointFetch?: (endpoint: string) => typeof fetch | undefined;
   foreignFetch?: (hosts: string[]) => typeof fetch;
   providerObjects?: ProviderObjectStore;
@@ -384,6 +406,22 @@ export const referencesOf = (configs: unknown[]): CatalogReferences => {
     }
   }
   return found;
+};
+
+export const liveServiceReferences = async (
+  capabilities: CompiledCapability[],
+  entries: Pick<ConfigEntryStore, 'latest'>,
+): Promise<CatalogReferences> => {
+  const archived = new Set(
+    (await entries.latest({ kind: serviceLifecycleKind }))
+      .filter((e) => !e.deleted && (e.spec as { state?: string } | null)?.state === 'archived')
+      .map((e) => `${e.scope}/${e.id}`),
+  );
+  return referencesOf(
+    capabilities
+      .filter((c) => !archived.has(`${c.service.tenant}/${c.service.id}`))
+      .map((c) => c.capability.config),
+  );
 };
 
 export const createRuntime = async (input: RuntimeInput) => {
@@ -445,7 +483,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   const modelAdapters = [openAiChat, anthropicMessages];
   const discoverySources = [azureDeployments, openAiModels];
   const embeddingAdapters = [openAiEmbeddings, ...(input.embeddingAdapters ?? [])];
-  const rerankAdapters = [colbert];
+  const rerankAdapters = input.rerankAdapters ?? [];
   const portApis: BuiltInApi[] = [
     ...embeddingAdapters.map((a) => ({
       id: a.api.id,
@@ -548,38 +586,32 @@ export const createRuntime = async (input: RuntimeInput) => {
       return (await port.embed(texts)).vectors;
     },
   });
-  const pgvector = input.knowledgePool
-    ? pgvectorEngine({
-        pool: input.knowledgePool,
-        ...(input.knowledgeServer ? { knowledge: input.knowledgeServer } : {}),
-        ...(input.knowledgeGuard ? { knowledgeGuard: input.knowledgeGuard } : {}),
-        ...(embeddingModels.size > 0 ? { embedder: queryEmbedder } : {}),
-        onVacuumError: (error) =>
-          input.logger?.('knowledge vacuum failed', {
-            error: error instanceof Error ? error.message : String(error),
-          }),
-      })
-    : undefined;
+  const pgvector = pgvectorEngine({
+    ...(input.knowledgeServer ? { knowledge: input.knowledgeServer } : {}),
+    ...(input.knowledgeGuard ? { knowledgeGuard: input.knowledgeGuard } : {}),
+    ...(embeddingModels.size > 0 ? { embedder: queryEmbedder } : {}),
+    onServerMigrated: (ms) => input.logger?.('knowledge server migrated', { ms }),
+  });
   const knowledgeAdapters: KnowledgeAdapter[] = [
     typesense as KnowledgeAdapter,
-    ...(pgvector ? [pgvector.adapter as KnowledgeAdapter] : []),
+    pgvector.adapter as KnowledgeAdapter,
     ...searchAdapters,
+    ...(input.knowledgeEngines ?? []).map((e) => e.adapter),
   ];
   const writerAdapters: IndexWriterAdapter[] = [
-    typesenseIndexWriter({
-      sharedClusterUrls: [process.env.TYPESENSE_URL, ...(input.searchOnlyClusters ?? [])],
-    }) as IndexWriterAdapter,
-    ...(pgvector ? [pgvector.writer as IndexWriterAdapter] : []),
+    typesenseIndexWriter() as IndexWriterAdapter,
+    pgvector.writer as IndexWriterAdapter,
+    ...(input.knowledgeEngines ?? []).map((e) => e.writer),
   ];
-  const knowledgeSeed = withoutEngines(
-    input.knowledgeServer
-      ? input.catalogs.knowledge
-      : withoutKnowledgeServer(input.catalogs.knowledge, input.onWarning),
-    pgvector ? [] : [pgvectorEngineName],
-    input.onWarning,
-  );
+  const knowledgeSeed = input.knowledgeServer
+    ? input.catalogs.knowledge
+    : withoutKnowledgeServer(input.catalogs.knowledge, input.onWarning);
   const providerObjects = input.providerObjects ?? new InMemoryProviderObjects(input.now);
+  let followDiscovered = () => {};
+  const discoveredModels = input.discoveredModels ?? inMemoryDiscoveredModels();
+  const discoverySettings = { ...defaultModelDiscovery, ...input.modelDiscovery };
   const models = new ModelRouter({
+    onChange: () => followDiscovered(),
     gate,
     descriptors,
     governance,
@@ -596,7 +628,10 @@ export const createRuntime = async (input: RuntimeInput) => {
         processorRecords: typedCalls,
       }),
     sources: discoverySources,
+    ...(input.now ? { now: input.now } : {}),
     classifications: input.modelClassifications ?? inMemoryClassifications(),
+    discovered: discoveredModels,
+    discoveryGraceMs: discoverySettings.graceMs,
     priceOf: (id) => unitPrices[id] as PriceSpec | undefined,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
@@ -621,6 +656,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
   const rerank = new RerankRouter({
     gate,
+    descriptors,
     catalog: rerankSeed,
     models: modelSeed,
     adapters: rerankAdapters,
@@ -638,10 +674,37 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
   if (Object.values(migrated).some((n) => n > 0))
     input.logger?.('model connections moved to the shape of ADR 0048', { ...migrated });
-  const modelDiscovery = await discoverWithRetry({
-    refresh: () => models.refresh(),
-    ...(input.onWarning ? { onWarning: input.onWarning } : {}),
-  });
+  const learnModelCapabilities = async (actor?: Principal): Promise<LearnResult> => {
+    const system: Principal = {
+      kind: 'agency-system',
+      issuer: 'platform',
+      subject: 'capability-check',
+      tenant: platformTenant,
+      ...(actor ? { actor } : {}),
+    };
+    const result = await models
+      .learn({
+        tenant: platformTenant,
+        principal: mayUseModels(actor) ? withModelAdmission(system) : system,
+        task: 'capability-check',
+        signal: new AbortController().signal,
+        meter: async () => undefined,
+      })
+      .catch((error: unknown) => {
+        input.logger?.('checking what discovered models can do failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return { checked: [], calls: 0, deferred: 0, usage: {} } satisfies LearnResult;
+      });
+    if (result.calls > 0)
+      input.logger?.('checked what discovered models can do', {
+        calls: result.calls,
+        deferred: result.deferred,
+        checked: result.checked.map((c) => `${c.model} ${c.capability} ${c.has ? 'yes' : 'no'}`),
+        usage: result.usage,
+      });
+    return result;
+  };
   const tools = new ToolRegistry();
   tools.register(
     stateOrganisationTool({
@@ -695,6 +758,11 @@ export const createRuntime = async (input: RuntimeInput) => {
     });
   const agentLoop = usingRetrievalPorts(
     createAgentLoop({
+      serviceFacts: serviceFactsLookup({
+        definitions: () => late.store,
+        models: () => models.describe(),
+        organisationName: input.organisationName,
+      }),
       retrieval: async (ctx, config, request) => {
         if (!hasDataset(config as RuntimeConfig)) return undefined;
         const ports = await openRetrievalPorts(ctx, config as RuntimeConfig, request);
@@ -801,6 +869,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     ]),
     tools: new Map<string, z.ZodType>([
       [sourceFactsToolRef, zod.strictObject({})],
+      [serviceFactsToolRef, zod.strictObject({})],
       [stateOrganisationToolRef, zod.strictObject({})],
     ]),
     guardrails: guardrailSchemas,
@@ -919,7 +988,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   let knowledgeCatalog: EffectiveCatalogs['knowledge'] | undefined;
   /** Brings the knowledge server's filter indexes in line with the current catalog. */
   const followKnowledge = () => {
-    if (!pgvector || !knowledgeCatalog) return;
+    if (!knowledgeCatalog) return;
     const onKnowledgeServer = new Set(knowledgeServerEndpoints(knowledgeCatalog));
     pgvector
       .followCatalog(
@@ -932,14 +1001,29 @@ export const createRuntime = async (input: RuntimeInput) => {
         input.onWarning?.(`knowledge filter indexes not updated: ${String(error)}`),
       );
   };
-  const apply = (catalogs: EffectiveCatalogs) => {
-    models.reload(catalogs.models);
-    embedders.reload(catalogs.models);
-    rerank.reloadModels(catalogs.models);
+  let modelCatalog: unknown = modelSeed;
+  /** Serves discovered embedders and rerankers on their ports, next to the catalogue's own. */
+  followDiscovered = () => {
+    const merged = withDiscoveredModels(modelCatalog, models.discoveredForOtherPorts());
+    try {
+      embedders.reload(merged);
+      rerank.reloadModels(merged);
+    } catch (error) {
+      input.onWarning?.(
+        `discovered embedders and rerankers not served: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      embedders.reload(modelCatalog);
+      rerank.reloadModels(modelCatalog);
+    }
     replaceSet(
       embeddingModels,
       embedders.describe().map((e) => e.id),
     );
+    replaceSet(plugins.rerankers, rerank.rerankers());
+  };
+  const apply = (catalogs: EffectiveCatalogs) => {
+    modelCatalog = catalogs.models;
+    models.reload(catalogs.models);
     knowledge.reload(catalogs.knowledge);
     writers.reload(catalogs.knowledge);
     knowledgeCatalog = catalogs.knowledge;
@@ -975,11 +1059,11 @@ export const createRuntime = async (input: RuntimeInput) => {
     },
     apply,
     ...(input.catalogPolicy ? { policy: input.catalogPolicy } : {}),
-    references: async () =>
-      referencesOf((await store.capabilities()).map((c) => c.capability.config)),
+    references: async () => liveServiceReferences(await store.capabilities(), configEntries),
     localEngines: () =>
       new Set(knowledgeAdapters.filter((a) => a.requiresBaseURL === false).map((a) => a.engine)),
     ...(input.derivedCatalog ? { derive: input.derivedCatalog } : {}),
+    ...(input.logger ? { logger: input.logger } : {}),
     priceKinds: kindsOf,
     priceUnits: (id, kind) => {
       const api = models.describe().find((m) => m.id === id)?.apis[kind];
@@ -989,6 +1073,30 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
   await catalog.initialize();
   released.catalog = catalog;
+  const relistDue = () =>
+    discoveredModels
+      .claim(relistClaim, input.now?.() ?? new Date(), discoverySettings.relistMs)
+      .catch(() => true);
+  await models
+    .loadDiscovered()
+    .catch((error: unknown) =>
+      input.onWarning?.(
+        `stored model listings not loaded: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    );
+  const retrying = await discoverWithRetry({
+    refresh: () => models.refresh(),
+    first: async () =>
+      (await relistDue()) ? models.refresh() : { discovered: models.describe().length, failed: [] },
+    ...(input.onWarning ? { onWarning: input.onWarning } : {}),
+  });
+  const modelDiscovery = {
+    ...retrying,
+    loadDiscovered: () => models.loadDiscovered(),
+    connections: () => models.discoveryStatus(),
+    relistIfDue: async () => ((await relistDue()) ? retrying.refresh() : undefined),
+    relistMs: discoverySettings.relistMs,
+  };
   const pricesMoved = await migratePrices({
     store: configEntries,
     kindsOf,
@@ -1112,6 +1220,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     kernel,
     gate,
     modelDiscovery,
+    learnModelCapabilities,
     registry,
     ports,
     strategies,
@@ -1171,6 +1280,17 @@ export const createRuntime = async (input: RuntimeInput) => {
 };
 
 export type Runtime = Awaited<ReturnType<typeof createRuntime>>;
+
+const withDiscoveredModels = (catalog: unknown, discovered: readonly unknown[]): unknown => {
+  const base =
+    typeof catalog === 'object' && catalog !== null ? (catalog as Record<string, unknown>) : {};
+  const own = Array.isArray(base.models) ? (base.models as unknown[]) : [];
+  const ids = new Set(own.map((m) => (m as { id?: unknown }).id));
+  return {
+    ...base,
+    models: [...own, ...discovered.filter((m) => !ids.has((m as { id?: unknown }).id))],
+  };
+};
 
 const replaceSet = (target: Set<string> | undefined, values: Iterable<string>) => {
   if (!target) return;

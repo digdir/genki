@@ -2,6 +2,9 @@ import {
   authenticatedFetch,
   authHeaders,
   errorFromStatus,
+  discoveredKind,
+  listedCapabilities,
+  ListingError,
   ModelError,
   rejectedParameter,
   type ChatChunk,
@@ -10,6 +13,7 @@ import {
   type ChatResult,
   type DeploymentConfig,
   type BuiltInApi,
+  type DiscoveredDeployment,
   type DiscoverySource,
   type EndpointConfig,
   type FinishReason,
@@ -420,25 +424,84 @@ const azureRoot = (baseURL: string) =>
     .replace(/\/openai(\/v1)?$/, '')
     .replace(/\/anthropic$/, '');
 
+const listed = (deployment: string, model?: string, entry?: unknown): DiscoveredDeployment => {
+  const { kind, from, endpoints } = discoveredKind(entry, model ?? deployment);
+  return {
+    deployment,
+    ...(model ? { model } : {}),
+    kind,
+    kindFrom: from,
+    ...(endpoints ? { endpoints } : {}),
+  };
+};
+
+const maxListingPages = 100;
+
+interface ListingPage {
+  data?: unknown;
+  has_more?: unknown;
+  last_id?: unknown;
+  next?: unknown;
+  nextLink?: unknown;
+}
+
+/** Every entry of a list answer, following `has_more` and `last_id`, or a `next` or `nextLink` on the same origin. */
+const listedEntries = async (
+  first: string,
+  init: () => Promise<RequestInit>,
+  what: string,
+): Promise<unknown[]> => {
+  const origin = new URL(first).origin;
+  const entries: unknown[] = [];
+  const visited = new Set<string>();
+  let url: string | undefined = first;
+  while (url) {
+    if (visited.size >= maxListingPages)
+      throw new ListingError(`listing ${what} gave more than ${maxListingPages} pages`);
+    visited.add(url);
+    const response = await fetch(url, { ...(await init()), redirect: 'error' });
+    if (!response.ok)
+      throw new ListingError(
+        `listing ${what} failed with HTTP ${response.status}`,
+        response.status,
+      );
+    const page = (await response.json()) as ListingPage;
+    const data = Array.isArray(page.data) ? (page.data as unknown[]) : [];
+    entries.push(...data);
+    const link = typeof page.next === 'string' ? page.next : page.nextLink;
+    let next: URL | undefined;
+    if (typeof link === 'string' && link) {
+      if (!URL.canParse(link, url))
+        throw new ListingError(`listing ${what} gave a next page that is not a URL`);
+      next = new URL(link, url);
+    } else if (page.has_more === true) {
+      const lastEntry = data.at(-1) as { id?: unknown } | undefined;
+      const last = typeof page.last_id === 'string' ? page.last_id : lastEntry?.id;
+      if (typeof last !== 'string' || !last)
+        throw new ListingError(`listing ${what} has more pages but names no last id`);
+      next = new URL(url);
+      next.searchParams.set('after', last);
+    }
+    if (next && next.origin !== origin)
+      throw new ListingError(`listing ${what} pointed its next page at another host`);
+    url = next?.href;
+    if (url && visited.has(url)) throw new ListingError(`listing ${what} repeats a page`);
+  }
+  return entries;
+};
+
 export const azureDeployments: DiscoverySource = {
   kind: 'azure-deployments',
   list: async (endpoint) => {
-    const response = await fetch(
+    const data = (await listedEntries(
       `${azureRoot(endpoint.baseURL)}/openai/deployments?api-version=2022-12-01`,
-      {
+      async () => ({
         headers: await authHeaders(endpoint.credential, 'api-key'),
         signal: AbortSignal.timeout(endpoint.timeoutMs),
-      },
-    );
-    if (!response.ok) throw new Error(`listing deployments failed with HTTP ${response.status}`);
-    const body = (await response.json()) as {
-      data?: { id?: string; model?: string; status?: string }[];
-    };
-    return (body.data ?? []).flatMap((d) =>
-      d.id && d.status === 'succeeded'
-        ? [{ deployment: d.id, ...(d.model ? { model: d.model } : {}) }]
-        : [],
-    );
+      }),
+      'deployments',
+    )) as { id?: string; model?: string; status?: string }[];
+    return data.flatMap((d) => (d?.id && d.status === 'succeeded' ? [listed(d.id, d.model)] : []));
   },
 };
 
@@ -446,15 +509,21 @@ export const openAiModels: DiscoverySource = {
   kind: 'openai-models',
   family: 'openai',
   list: async (endpoint) => {
-    const response = await fetch(`${withoutTrailingSlashes(endpoint.baseURL)}/models`, {
-      headers: await authHeaders(endpoint.credential, 'authorization'),
-      signal: AbortSignal.timeout(endpoint.timeoutMs),
+    const data = (await listedEntries(
+      `${withoutTrailingSlashes(endpoint.baseURL)}/models`,
+      async () => ({
+        headers: await authHeaders(endpoint.credential, 'authorization'),
+        signal: AbortSignal.timeout(endpoint.timeoutMs),
+      }),
+      'models',
+    )) as { id?: unknown }[];
+    return data.flatMap((m) => {
+      if (typeof m?.id !== 'string' || !m.id) return [];
+      const found = listedCapabilities(m);
+      return [
+        { ...listed(m.id, undefined, m), ...(found.length > 0 ? { capabilities: found } : {}) },
+      ];
     });
-    if (!response.ok) throw new Error(`listing models failed with HTTP ${response.status}`);
-    const body = (await response.json()) as { data?: unknown };
-    return (Array.isArray(body.data) ? (body.data as { id?: unknown }[]) : []).flatMap((m) =>
-      typeof m?.id === 'string' && m.id ? [{ deployment: m.id }] : [],
-    );
   },
 };
 

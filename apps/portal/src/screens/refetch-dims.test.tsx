@@ -95,7 +95,7 @@ describe('a refetch keeps the rows on screen, dimmed, until the new ones arrive'
     expect(screen.getByRole('link', { name: 'Lovdata' })).toBe(row);
   });
 
-  it('Brukerflater keeps the frontends dimmed while the list is fetched again', async () => {
+  it('Egne løsninger keeps the frontends dimmed while the list is fetched again', async () => {
     const api = switchable(mockFetch());
     await open('#/developer/frontends', api.fetch, true);
     const row = await screen.findByRole('button', { name: /^Intranettet/ });
@@ -104,7 +104,7 @@ describe('a refetch keeps the rows on screen, dimmed, until the new ones arrive'
     fireEvent.change(screen.getByLabelText('Begrunnelse'), { target: { value: reason } });
 
     api.hold(/clients/);
-    fireEvent.click(screen.getByRole('button', { name: 'Fjern brukerflaten' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fjern den egne løsningen' }));
 
     await waitFor(() => expect(busyAround(row)).not.toBeNull());
     expect(screen.getByRole('button', { name: /^Intranettet/ })).toBe(row);

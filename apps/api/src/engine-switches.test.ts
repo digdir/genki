@@ -11,6 +11,7 @@ import { onePage } from '@genai/ingest';
 import { envSecrets } from '@genai/kernel';
 import { fakeEmbeddingAdapter, testContext } from '@genai/port-embedding/testing';
 import type { IndexDocument, KnowledgeAdapter } from '@genai/port-knowledge';
+import { memoryEngine } from '@genai/port-knowledge/testing';
 import { typesense } from '@genai/providers-typesense';
 import { createPool } from '@genai/providers-postgres';
 import { PLATFORM_RIGHTS, trustedEntraScope } from '@genai/identity';
@@ -173,6 +174,9 @@ afterAll(async () => {
   await new Promise((resolve) => typesenseServer?.close(resolve));
 });
 
+/** The engine datasets switch to, kept across boots as a database would be. */
+const localEngine = memoryEngine();
+
 const embeddingModel = (id: string) => ({
   id,
   endpoint: 'fake',
@@ -198,9 +202,11 @@ const boot = async (
             auth: { kind: 'api-key', secret: 'secret://env/ts-key' },
             sharing: { tenants: '*' },
           },
-          'platform-pg': {
+          // The engine datasets switch to and from: an in-memory one, as platform-pg went with issue 151.
+          lokal: { engine: 'memory', sharing: { tenants: '*' } },
+          'knowledge-pg': {
             engine: 'pgvector',
-            options: { connection: 'platform' },
+            options: { connection: 'knowledge' },
             sharing: { tenants: '*' },
           },
         },
@@ -225,9 +231,9 @@ const boot = async (
       const principal = principals[request.headers.get('authorization')?.slice(7) ?? ''];
       return principal ? { principal } : undefined;
     },
-    knowledgePool: pool,
+    knowledgeEngines: [localEngine],
+    knowledgeServer: { reader: pool },
     embeddingAdapters: [fakeEmbeddingAdapter()],
-    searchOnlyClusters: [typesenseUrl],
     documentConverter: {
       convert: async () =>
         onePage('# Tildelingsbrev\n\nDepartementet tildeler midler til skyplattformen.'),
@@ -335,7 +341,7 @@ const settled = async ({ call }: Booted, dataset: string, sid: string) => {
 const switchTo = async (booted: Booted, dataset: string) => {
   const started = await booted.call(`${base(dataset)}/engine-switches`, {
     body: {
-      to: 'platform-pg',
+      to: 'lokal',
       method: 'copy',
       embedding: { model: 'fake/embed', dimensions: 8 },
       reason: 'Flytter til plattformens database',
@@ -343,7 +349,7 @@ const switchTo = async (booted: Booted, dataset: string) => {
   });
   expect(started.status).toBe(202);
   const view = await json<EngineSwitchView>(started);
-  expect(view).toMatchObject({ state: 'running', from: 'ka-typesense', to: 'platform-pg' });
+  expect(view).toMatchObject({ state: 'running', from: 'ka-typesense', to: 'lokal' });
   return settled(booted, dataset, view.sid);
 };
 
@@ -361,7 +367,7 @@ const sweeper = (platform: Booted['platform']) =>
   platform.modules.find((m) => m.id === 'engine-switches') as unknown as EngineSwitchesModule;
 
 const pgRoute = (platform: Booted['platform'], dataset: string) =>
-  platform.writers.openAt(`${digdir}/${dataset}`, 'platform-pg', {
+  platform.writers.openAt(`${digdir}/${dataset}`, 'lokal', {
     signal: new AbortController().signal,
   });
 
@@ -375,7 +381,7 @@ const placeSwitch = async (
   const spec: EngineSwitchSpec = {
     dataset: `${digdir}/${dataset}`,
     from: 'ka-typesense',
-    to: 'platform-pg',
+    to: 'lokal',
     method: 'copy',
     state: 'running',
     embedding: { model: 'fake/embed', dimensions: 8 },
@@ -418,7 +424,7 @@ describe('switching the search engine of a dataset', () => {
         'change-reason': encodeURIComponent('Flytter til plattformens database'),
       },
       body: JSON.stringify({
-        to: 'platform-pg',
+        to: 'lokal',
         method: 'copy',
         embedding: { model: 'fake/embed', dimensions: 8 },
         reason: 'Teksten i kroppen brukes ikke',
@@ -449,7 +455,7 @@ describe('switching the search engine of a dataset', () => {
       const started = await booted.call(`${base(dataset)}/engine-switches`, {
         as: who,
         body: {
-          to: 'platform-pg',
+          to: 'lokal',
           method: 'copy',
           embedding: { model: 'fake/embed', dimensions: 8 },
         },
@@ -468,7 +474,7 @@ describe('switching the search engine of a dataset', () => {
     await createDataset(booted, 'ka-kopi');
 
     const estimate = await json<SwitchEstimate>(
-      await call(`${base('ka-kopi')}/engine-switches/estimate?to=platform-pg&method=copy`),
+      await call(`${base('ka-kopi')}/engine-switches/estimate?to=lokal&method=copy`),
     );
     expect(estimate).toMatchObject({
       estimate: true,
@@ -508,7 +514,7 @@ describe('switching the search engine of a dataset', () => {
       previousKeptUntil: '2026-10-21T10:00:00.000Z',
       decision: { action: 'activate', reason: 'Bedre treff i testsettet' },
     });
-    expect(engineOf(platform, 'ka-kopi')).toBe('pgvector');
+    expect(engineOf(platform, 'ka-kopi')).toBe('memory');
     const { ctx } = testContext();
     const hits = await platform.knowledge
       .open(
@@ -519,8 +525,8 @@ describe('switching the search engine of a dataset', () => {
     expect(hits.hits[0]?.document).toBe('tilskudd');
     const after = await json<DatasetEngineView>(await call(`${base('ka-kopi')}/engine`));
     expect(after).toMatchObject({
-      endpoint: 'platform-pg',
-      engine: 'pgvector',
+      endpoint: 'lokal',
+      engine: 'memory',
       runsAt: 'platform',
       embedding: { model: 'fake/embed', dimensions: 8 },
       retentionDays: 14,
@@ -577,7 +583,7 @@ describe('switching the search engine of a dataset', () => {
       },
     );
     expect(refused.status).toBe(409);
-    expect(engineOf(booted.platform, 'ka-oppbevaring')).toBe('pgvector');
+    expect(engineOf(booted.platform, 'ka-oppbevaring')).toBe('memory');
     expect(await sweeper(booted.platform).sweep()).toMatchObject({ ran: true, expired: 1 });
   });
 
@@ -616,7 +622,7 @@ describe('switching the search engine of a dataset', () => {
     const cancelled = await call(`${base('ka-revisjon')}/engine-switches/1/cancel`, { body: {} });
     const started = await call(`${base('ka-revisjon')}/engine-switches`, {
       body: {
-        to: 'platform-pg',
+        to: 'lokal',
         method: 'copy',
         embedding: { model: 'fake/embed', dimensions: 8 },
         reason: 'Flytter til plattformens database',
@@ -662,14 +668,14 @@ describe('switching the search engine of a dataset', () => {
     await route.writer.promote(route.dataset, 'g-gammel');
     const item = booted.platform.catalog.get('dataset', `${digdir}/ka-gammel`);
     await placeSwitch(booted, 'ka-gammel', {
-      from: 'platform-pg',
+      from: 'lokal',
       to: 'ka-typesense',
       state: 'active',
       previous: {
-        endpoint: 'platform-pg',
+        endpoint: 'lokal',
         keptUntil: '2026-10-06T10:00:00.000Z',
         catalogVersion: 1,
-        spec: { ...item?.spec, endpoint: 'platform-pg', options: {} },
+        spec: { ...item?.spec, endpoint: 'lokal', options: {} },
       },
     });
 
@@ -683,7 +689,7 @@ describe('switching the search engine of a dataset', () => {
       scope: digdir,
     });
     expect((entry?.spec as EngineSwitchSpec).cleanup).toEqual([
-      { endpoint: 'platform-pg', generation: 'g-gammel', dropped: expect.any(String) },
+      { endpoint: 'lokal', generation: 'g-gammel', dropped: expect.any(String) },
     ]);
     expect(await sweeper(booted.platform).sweep()).toMatchObject({ dropped: 0, expired: 0 });
   });
@@ -712,13 +718,13 @@ describe('switching the search engine of a dataset', () => {
       embedding: { model: 'fake/embed', dimensions: 8 },
     });
     const estimate = await json<SwitchEstimate>(
-      await booted.call(`${base('ka-vektor')}/engine-switches/estimate?to=platform-pg`),
+      await booted.call(`${base('ka-vektor')}/engine-switches/estimate?to=lokal`),
     );
     expect(estimate.copy.available).toBe(true);
 
     const refused = await booted.call(`${base('ka-vektor')}/engine-switches`, {
       body: {
-        to: 'platform-pg',
+        to: 'lokal',
         method: 'copy',
         embedding: { model: 'fake/other', dimensions: 8 },
       },
@@ -747,7 +753,7 @@ describe('switching the search engine of a dataset', () => {
     await createDataset(booted, 'ka-rett');
     const refused = await booted.call(`${base('ka-rett')}/engine-switches`, {
       as: 'ingrid',
-      body: { to: 'platform-pg', method: 'copy' },
+      body: { to: 'lokal', method: 'copy' },
     });
     expect(refused.status).toBe(403);
     expect((await booted.call(`${base('ka-rett')}/engine`, { as: 'ingrid' })).status).toBe(200);
@@ -766,7 +772,7 @@ describe('switching the search engine of a dataset', () => {
       supportSessions: unused,
       catalog: b.platform.catalog,
       definitions: unused,
-      models: { refresh: async () => undefined },
+      models: { loadDiscovered: async () => undefined },
       toolConnections: unused,
     });
     const ready = await switchTo(a, 'ka-delt');
@@ -777,10 +783,10 @@ describe('switching the search engine of a dataset', () => {
 
     await feed.emit('config-entries');
 
-    expect(engineOf(b.platform, 'ka-delt')).toBe('pgvector');
+    expect(engineOf(b.platform, 'ka-delt')).toBe('memory');
     expect(
       (await json<DatasetEngineView>(await b.call(`${base('ka-delt')}/engine`))).endpoint,
-    ).toBe('platform-pg');
+    ).toBe('lokal');
   });
 });
 
@@ -816,7 +822,7 @@ describe('operators switching the engine of a platform dataset', () => {
       .info().engine;
   };
 
-  it('copies a platform dataset from the shared Typesense to platform-pg, activates and rolls back', async () => {
+  it('copies a platform dataset from the shared Typesense to another engine, activates and rolls back', async () => {
     const booted = await boot();
     const { call, platform } = booted;
     await createPlatformDataset(booted, 'digdir/kudos-kopi');
@@ -826,7 +832,7 @@ describe('operators switching the engine of a platform dataset', () => {
     expect(
       (
         await call(`/tenants/${digdir}/datasets/${encodeURIComponent(id)}/engine-switches`, {
-          body: { to: 'platform-pg', method: 'copy' },
+          body: { to: 'lokal', method: 'copy' },
         })
       ).status,
     ).toBe(404);
@@ -834,7 +840,7 @@ describe('operators switching the engine of a platform dataset', () => {
     const started = await call(`${operatorBase(id)}/engine-switches`, {
       as: 'drift',
       body: {
-        to: 'platform-pg',
+        to: 'lokal',
         method: 'copy',
         embedding: { model: 'fake/embed', dimensions: 8 },
         reason: 'Flytter Kudos til plattformens database',
@@ -851,9 +857,9 @@ describe('operators switching the engine of a platform dataset', () => {
       body: { reason: 'Kudos skal ligge i Norge' },
     });
     expect(activated.status).toBe(200);
-    expect(platformEngineOf(platform, id)).toBe('pgvector');
+    expect(platformEngineOf(platform, id)).toBe('memory');
     expect(await json(await call(`${operatorBase(id)}/engine`, { as: 'drift' }))).toMatchObject({
-      endpoint: 'platform-pg',
+      endpoint: 'lokal',
       canSwitch: true,
     });
 
@@ -864,6 +870,44 @@ describe('operators switching the engine of a platform dataset', () => {
     expect(back.status).toBe(200);
     expect(platformEngineOf(platform, id)).toBe('typesense');
     expect(writes).toEqual([]);
+  });
+
+  it("compares a platform dataset's switch with the platform organisation's test sets", async () => {
+    const booted = await boot();
+    const id = 'digdir/kudos-sammenlign';
+    await createPlatformDataset(booted, id);
+    await booted.platform.evalStores.testSets.put(
+      testSet.parse({
+        apiVersion: 'genai/v1',
+        kind: 'TestSet',
+        metadata: { tenant: digdir, id: 'kudos-sporsmal', name: 'Spørsmål', version: 1 },
+        spec: {
+          corpus: id,
+          cases: [
+            {
+              id: 'tilskudd',
+              split: 'validation',
+              input: 'Hvem gir tilskudd til foreninger?',
+              expected: { sources: [{ document: 'tilskudd' }] },
+            },
+          ],
+        },
+      }),
+    );
+
+    const started = await booted.call(`${operatorBase(id)}/engine-switches`, {
+      as: 'drift',
+      body: {
+        to: 'lokal',
+        method: 'copy',
+        embedding: { model: 'fake/embed', dimensions: 8 },
+        reason: 'Sammenligner før Kudos flytter',
+      },
+    });
+    expect(started.status).toBe(202);
+    const ready = await settledAt(booted, id, (await json<EngineSwitchView>(started)).sid);
+
+    expect(ready.comparison).toMatchObject({ cases: 1, testSets: ['kudos-sporsmal'] });
   });
 
   it('tells the portal the default embedding model for new pgvector datasets', async () => {
@@ -880,7 +924,7 @@ describe('operators switching the engine of a platform dataset', () => {
     const created = await call(`/tenants/${digdir}/datasets`, {
       body: {
         name: 'Nye filer',
-        endpoint: 'platform-pg',
+        endpoint: 'knowledge-pg',
         residency: 'eu',
         embedding: endpoints.defaultEmbedding,
       },
@@ -888,12 +932,65 @@ describe('operators switching the engine of a platform dataset', () => {
     expect(created.status).toBe(201);
     expect(await json(created)).toMatchObject({
       id: 'nye-filer',
-      index: { endpoint: 'platform-pg' },
+      index: { endpoint: 'knowledge-pg' },
       embedding: { model: 'fake/embed', dimensions: 8 },
     });
   });
 
-  it('re-ingests Kudos into platform-pg through the converter', async () => {
+  it('a switch to an engine other than the knowledge database cannot re-ingest or copy a parts pipeline', async () => {
+    const entries = new InMemoryConfigEntryStore();
+    const booted = await boot({ entries });
+    const { call } = booted;
+    const id = 'digdir/kudos-deler';
+    await createPlatformDataset(booted, id);
+    const saved = await call(`${operatorBase(id)}/pipelines`, {
+      as: 'drift',
+      body: {
+        id: 'kudos',
+        name: 'Kudos',
+        source: { kind: 'kudos', types: ['Tildelingsbrev'] },
+        chunking: { minimumLength: 1 },
+      },
+    });
+    expect(saved.status).toBe(201);
+    // A pipeline saved with a parts chunking before the refusal, or written past the API.
+    const [entry] = (await entries.latest({ kind: 'ingestion-pipeline' })).filter((e) =>
+      e.id.startsWith(`${id}#`),
+    );
+    if (!entry) throw new Error('no pipeline entry');
+    const spec = entry.spec as { chunking: Record<string, unknown> };
+    await appendVersion(entries, {
+      ...entry,
+      spec: {
+        ...spec,
+        chunking: { ...spec.chunking, strategy: { kind: 'parts-unit', splitMaxLength: 4000 } },
+      },
+      by: 'drift',
+      reason: 'test',
+      at: new Date().toISOString(),
+    });
+
+    const estimate = await json<SwitchEstimate>(
+      await call(`${operatorBase(id)}/engine-switches/estimate?to=lokal&method=reingest`, {
+        as: 'drift',
+      }),
+    );
+
+    // A copy would leave a pipeline whose every document fails to chunk.
+    expect(estimate.copy).toMatchObject({
+      available: false,
+      reason:
+        'Innlesingen kudos deler opp etter konverteringens deler, som bare finnes i kunnskapsdatabasen.',
+    });
+
+    expect(estimate.reingest).toMatchObject({
+      available: false,
+      reason:
+        'Innlesingen kudos deler opp etter konverteringens deler, som bare finnes i kunnskapsdatabasen.',
+    });
+  });
+
+  it('re-ingests Kudos into another engine through the converter', async () => {
     const booted = await boot();
     const { call, platform } = booted;
     const id = 'digdir/kudos-ny';
@@ -915,7 +1012,7 @@ describe('operators switching the engine of a platform dataset', () => {
     const started = await call(`${operatorBase(id)}/engine-switches`, {
       as: 'drift',
       body: {
-        to: 'platform-pg',
+        to: 'lokal',
         method: 'reingest',
         embedding: { model: 'fake/embed', dimensions: 8 },
       },
@@ -926,7 +1023,7 @@ describe('operators switching the engine of a platform dataset', () => {
 
     const route = platform.writers.openAt(
       id,
-      'platform-pg',
+      'lokal',
       {
         signal: new AbortController().signal,
       },

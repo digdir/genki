@@ -1,4 +1,12 @@
-import { inputFieldId, inputFieldKinds } from '@genai/contracts';
+import {
+  blockEvents,
+  blockSharings,
+  blockStates,
+  blockTiers,
+  blockZones,
+  inputFieldId,
+  inputFieldKinds,
+} from '@genai/contracts';
 
 const validPattern = (pattern: string) => {
   try {
@@ -9,7 +17,10 @@ const validPattern = (pattern: string) => {
   }
 };
 import { z } from 'zod';
+import { blockCode } from './block-code.js';
+import { blockTemplate } from './block-template.js';
 import { flowSettingsSchema } from './flow-settings.js';
+import { serviceInterface } from './service-interface.js';
 
 export const orgNumber = z.string().regex(/^\d{9}$/, 'must be a nine-digit organisation number');
 const slug = z
@@ -269,6 +280,7 @@ export const serviceSpec = z.strictObject({
   improve: z
     .strictObject({ allow: z.array(z.enum(improvable)).default([]) })
     .default({ allow: [] }),
+  interface: serviceInterface.optional(),
 });
 
 const metadata = z.strictObject({
@@ -401,12 +413,107 @@ export const skillDefinition = z.strictObject({
   spec: skillSpec,
 });
 
-export const definitionKinds = ['Service', 'StepFlow', 'Skill'] as const;
+export { blockEvents, blockSharings, blockStates, blockTiers, blockZones };
+
+export const BLOCK_PROPS_MAX_BYTES = 32 * 1024;
+export const BLOCK_TEXTS_MAX_BYTES = 64 * 1024;
+
+export const blockLimits = { title: 80, summary: 500, text: 1_000, props: 32, texts: 200 } as const;
+
+const jsonBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
+
+const unique = <T>(list: T[]) => new Set(list).size === list.length;
+
+const languageMap = (max: number) =>
+  z
+    .partialRecord(z.enum(answerLanguages), z.string().trim().min(1).max(max))
+    .refine((texts) => texts.nb !== undefined, 'needs a text in bokmål (nb)');
+
+const blockKey = z
+  .string()
+  .regex(/^[a-zA-Z][a-zA-Z0-9-]{0,63}$/, 'must be letters, digits and dashes');
+
+const textKey = z
+  .string()
+  .regex(/^[a-zA-Z][a-zA-Z0-9.-]{0,63}$/, 'must be letters, digits, dots and dashes');
+
+const blockProps = z
+  .strictObject({
+    type: z.literal('object'),
+    properties: z
+      .record(blockKey, z.record(z.string(), z.unknown()))
+      .refine(
+        (properties) => Object.keys(properties).length <= blockLimits.props,
+        `at most ${blockLimits.props} props`,
+      ),
+    required: z.array(blockKey).optional(),
+  })
+  .refine(
+    (props) => (props.required ?? []).every((key) => Object.hasOwn(props.properties, key)),
+    'a required prop must be one of the properties',
+  )
+  .refine(
+    (props) => jsonBytes(props) <= BLOCK_PROPS_MAX_BYTES,
+    `at most ${BLOCK_PROPS_MAX_BYTES} bytes as JSON`,
+  );
+
+const blockTexts = z
+  .partialRecord(
+    z.enum(answerLanguages),
+    z
+      .record(textKey, z.string().max(blockLimits.text))
+      .refine(
+        (texts) => Object.keys(texts).length <= blockLimits.texts,
+        `at most ${blockLimits.texts} texts per language`,
+      ),
+  )
+  .refine(
+    (texts) => jsonBytes(texts) <= BLOCK_TEXTS_MAX_BYTES,
+    `at most ${BLOCK_TEXTS_MAX_BYTES} bytes as JSON`,
+  );
+
+export const blockSpec = z
+  .strictObject({
+    tier: z.enum(blockTiers),
+    builtIn: slug.optional(),
+    title: languageMap(blockLimits.title),
+    summary: languageMap(blockLimits.summary).optional(),
+    zones: z.array(z.enum(blockZones)).min(1).refine(unique, 'zones must differ'),
+    sharing: z.enum(blockSharings).default('private'),
+    props: blockProps.optional(),
+    events: z.array(z.enum(blockEvents)).default([]).refine(unique, 'events must differ'),
+    states: z.array(z.enum(blockStates)).default([]).refine(unique, 'states must differ'),
+    texts: blockTexts.optional(),
+    template: blockTemplate.optional(),
+    code: blockCode.optional(),
+  })
+  .refine((spec) => (spec.tier === 'built-in') === (spec.builtIn !== undefined), {
+    message: 'builtIn names the host block of a built-in block, and only a built-in block',
+    path: ['builtIn'],
+  })
+  .refine((spec) => (spec.tier === 'declarative') === (spec.template !== undefined), {
+    message: 'a declarative block has a template, and only a declarative block',
+    path: ['template'],
+  })
+  .refine((spec) => (spec.tier === 'code') === (spec.code !== undefined), {
+    message: 'a code block has code, and only a code block',
+    path: ['code'],
+  });
+
+export const blockDefinition = z.strictObject({
+  apiVersion: z.literal('genai/v1'),
+  kind: z.literal('Block'),
+  metadata,
+  spec: blockSpec,
+});
+
+export const definitionKinds = ['Service', 'StepFlow', 'Skill', 'Block'] as const;
 
 export type ServiceDefinition = z.output<typeof serviceDefinition>;
 export type StepFlowDefinition = z.output<typeof stepFlowDefinition>;
 export type SkillDefinition = z.output<typeof skillDefinition>;
-export type Definition = ServiceDefinition | StepFlowDefinition | SkillDefinition;
+export type BlockDefinition = z.output<typeof blockDefinition>;
+export type Definition = ServiceDefinition | StepFlowDefinition | SkillDefinition | BlockDefinition;
 export type Variant = ServiceDefinition['spec']['variants'][number];
 export type Tool = ServiceDefinition['spec']['tools'][number];
 

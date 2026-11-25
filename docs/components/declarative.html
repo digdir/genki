@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Declarative blocks · Components</title>
+    <meta
+      name="description"
+      content="A service owner's own block, written as a template of data: 17 elements drawn with Designsystemet, bound to the fields genki gives a block."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> / <span aria-current="page">Declarative blocks</span>
+        </p>
+      </nav>
+
+      <article
+        class="component"
+        id="declarative"
+        data-component="declarative"
+        data-phase="building"
+        data-optional="true"
+        aria-labelledby="declarative-title"
+      >
+        <div class="component-head">
+          <div>
+            <h1 id="declarative-title">Declarative blocks</h1>
+            <div class="badges">
+              <span class="badge phase">Building</span><span class="badge">Optional</span
+              ><span class="badge">Not a block</span>
+            </div>
+            <p class="summary">
+              A service owner's own block, «Uten kode», written as a template of data. The host
+              draws it with Designsystemet components, so the theme and accessibility come from the
+              host. No expressions, no code, no HTML, no CSS.
+            </p>
+            <dl class="facts">
+              <dt>UI name</dt>
+              <dd>«Uten kode», a kind of «designelement»</dd>
+              <dt>Code</dt>
+              <dd>
+                <code>Render</code> in <code>packages/ui-blocks/src/declarative</code>, checked by
+                <code>checkBlockTemplate</code> in <code>packages/definitions</code>
+              </dd>
+              <dt>Decision</dt>
+              <dd>
+                <a href="../adr/0067-interface-blocks-are-block-definitions.md">ADR 0067</a>
+              </dd>
+            </dl>
+          </div>
+        </div>
+        <div class="component-body">
+          <div>
+            <h2>Use it when</h2>
+            <ul>
+              <li>
+                A service wants a card, list or table of its own under each answer or in a panel,
+                made from the fields genki gives a block.
+              </li>
+            </ul>
+            <h2>Render's props</h2>
+            <ul>
+              <li><code>template</code>: the edition's template</li>
+              <li><code>data</code>: only the fields the template reads</li>
+              <li><code>texts</code>: the block's texts by language</li>
+              <li><code>locale</code>: <code>nb</code>, <code>nn</code> or <code>en</code></li>
+              <li><code>props</code>: the placed block's settings</li>
+              <li><code>state</code>: the state the host sets</li>
+              <li><code>onEvent</code>: what the person did, for the host to act on</li>
+            </ul>
+          </div>
+          <div>
+            <h2>Limits</h2>
+            <ul>
+              <li>32 KiB as JSON, 200 nodes, 12 deep, 200 paths</li>
+              <li>
+                <code>each</code> and <code>table</code> 2 deep, 10 items unless
+                <code>max</code> says up to 50
+              </li>
+              <li>8 columns, 8 text parts, 20 key and value pairs, conditions 3 deep</li>
+              <li>
+                At most 2000 elements once each list repeats its part as often as its
+                <code>max</code> allows; past that, <code>Render</code> draws nothing
+              </li>
+              <li>
+                Checked in linear time: a pre-pass with an explicit stack refuses an input over the
+                limits before the schema reads it
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Elements</h2>
+            <ul>
+              <li><code>stack</code>, <code>row</code>: a vertical or horizontal group</li>
+              <li><code>card</code>, <code>details</code>: Card, Details</li>
+              <li>
+                <code>heading</code> (levels 2 to 4), <code>paragraph</code>: Heading, Paragraph
+              </li>
+              <li>
+                <code>list</code>: List; an <code>each</code> in it gives one item per element
+              </li>
+              <li>
+                <code>link</code>: Link, to an https address, a page of the service or a field of
+                type url; checked again when drawn
+              </li>
+              <li>
+                <code>button</code>: Button, sending one of the block's declared events:
+                <code>ask</code>, <code>open-document</code>, <code>set-filter</code>,
+                <code>open-page</code> or <code>notify</code>
+              </li>
+              <li>
+                <code>tag</code>, <code>alert</code>, <code>divider</code>: Tag, Alert, Divider
+              </li>
+              <li>
+                <code>icon</code>: an Aksel icon from a fixed list, hidden from screen readers
+                without a label
+              </li>
+              <li><code>table</code>: Table, one row per element of a list</li>
+              <li><code>keyValue</code>: a description list</li>
+              <li><code>each</code>, <code>if</code>: repeat over a list, or draw one branch</li>
+            </ul>
+            <h2>Texts and data</h2>
+            <ul>
+              <li>
+                Every word is a key in the block's texts, with bokmål required. A literal is at most
+                8 characters with no letters, such as <code>", "</code>.
+              </li>
+              <li>
+                A binding reads a field of genki's field list, such as
+                <code>sources.title</code> through an <code>each</code>, a declared prop, or
+                nothing. The host gives the block only the fields its template reads.
+              </li>
+              <li>Data is always written as text, never as HTML.</li>
+            </ul>
+            <h2>Styling</h2>
+            <ul>
+              <li>
+                <code>--genai-declarative-font-family</code>,
+                <code>--genai-declarative-gap-sm</code>, <code>--genai-declarative-gap-md</code>,
+                <code>--genai-declarative-gap-lg</code>,
+                <code>--genai-declarative-subtle-color</code>,
+                <code>--genai-declarative-key-weight</code> and
+                <code>--genai-declarative-icon-size</code>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="prev" href="ui-assembly.html" rel="prev"><small>Previous</small>UI assembly</a>
+      </nav>
+    </main>
+  </body>
+</html>

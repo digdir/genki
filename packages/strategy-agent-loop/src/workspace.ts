@@ -1,4 +1,4 @@
-import type { Citation, CitationIndex, CitationValidation } from './citations.js';
+import type { Citation, CitationIndex, CitationQuotes, CitationValidation } from './citations.js';
 import type { QueryIntent } from './intent.js';
 import type { EvidencePlan, ReadSignal } from './read-signals.js';
 import type { SufficiencyDecision } from './sufficiency.js';
@@ -6,6 +6,21 @@ import type { RuntimeSkill } from './skills.js';
 import type { SourceFactsQuery, SourceFactsReport } from './source-facts.js';
 
 export type SearchType = 'phrase' | 'metadata' | 'content';
+
+// Stamped on push, so the latest decision is known across the decision lists.
+let decisionClock = 0;
+const decidedAt = new WeakMap<object, number>();
+
+class DecisionList<T extends object> extends Array<T> {
+  static override get [Symbol.species]() {
+    return Array;
+  }
+
+  override push(...items: T[]) {
+    for (const item of items) decidedAt.set(item, ++decisionClock);
+    return super.push(...items);
+  }
+}
 
 export interface ChunkSummary {
   chunkId: string;
@@ -26,7 +41,7 @@ export interface ChunkSummary {
   publishedAt?: string;
   publisher?: string;
   hitCount?: number;
-  searchTypes?: SearchType[];
+  searchTypes?: string[];
   matchedQuestions?: string[];
   snippet?: string;
 }
@@ -93,6 +108,8 @@ export interface AgentRetrieval {
     signal: AbortSignal,
   ): Promise<{ queries: string[]; userIntent?: string }>;
   rerank(query: string, chunks: Chunk[], signal: AbortSignal): Promise<Chunk[]>;
+  /** False when the service has no reranker, so rerank keeps the search order. */
+  reranks: boolean;
   filterFields(
     signal: AbortSignal,
   ): Promise<{ field: string; type: string; valueType: 'string' | 'integer' }[]>;
@@ -108,6 +125,8 @@ export interface BudgetLimits {
   searches: number;
   reads: number;
   readChars: number;
+  /** The most chunks one range read returns. */
+  chunksPerRead?: number;
 }
 
 export interface BudgetState {
@@ -120,6 +139,7 @@ export interface BudgetState {
   readCharsUsed: number;
   maxReadChars: number;
   readCharsRemaining: number;
+  chunksPerRead: number;
   searchExhausted: boolean;
   readsExhausted: boolean;
   readCharsExhausted: boolean;
@@ -136,7 +156,7 @@ export interface SearchSummary {
   title: string | null;
   publisher?: string;
   headers: string | null;
-  'search-types': SearchType[] | null;
+  'search-types': string[] | null;
   'rerank-score': number | null;
   'retrieval-prior': number | null;
   'hit-count': number | null;
@@ -153,6 +173,14 @@ export interface SearchEntry {
   fallback: boolean;
   filters?: FilterField[];
   attribution?: SearchAttribution;
+}
+
+export interface SearchWindow {
+  key: string;
+  chunks: (ChunkSummary & { titleOverlapBonus?: number })[];
+  attribution?: SearchAttribution;
+  filters?: FilterField[];
+  lead: string;
 }
 
 export interface ChunkRange {
@@ -209,9 +237,8 @@ export interface ClaimCoverage {
 export const shortDocThreshold = 6;
 export const defaultSearchDisplayLimit = 20;
 const fallbackEstimatedChunkLength = 1500;
-const defaultMaxRangeWidth = 3;
+export const defaultChunksPerRead = 10;
 const lowBudgetMaxRangeWidth = 2;
-const broadRangeThreshold = 5;
 const repeatedGapWindow = 2;
 
 export const chunkContentLength = (
@@ -240,18 +267,32 @@ export class Workspace {
   contradictions: ReadSignal['contradictions'] = [];
   nonSupporting = new Set<string>();
   refunded = new Set<string>();
-  shadowDecisions: ShadowDecision[] = [];
-  sufficiencyDecisions: SufficiencyDecision[] = [];
+  shadowDecisions: ShadowDecision[] = new DecisionList<ShadowDecision>();
+  sufficiencyDecisions: SufficiencyDecision[] = new DecisionList<SufficiencyDecision>();
+  /** Every verdict of the model gate, also those the loop does not act on; never counted. */
+  gateVerdicts: SufficiencyDecision[] = new DecisionList<SufficiencyDecision>();
   responseValidations: SufficiencyDecision[] = [];
   lastGeneratedResponse: string | undefined;
   lastGenerateInsufficient = false;
   citations: Citation[] = [];
   citationIndex: CitationIndex = new Map();
+  /** The cited sentences of each excerpt marker, when the model cited them by id (#971). */
+  citationQuotes: CitationQuotes = new Map();
+  /** Sentence ids in the adopted answer: found in their excerpt, or not. */
+  sentenceIds = { located: 0, missed: 0 };
+  /** The resolved answer `citationQuotes` belong to; another answer keeps none of them. */
+  quotedText: string | undefined;
+  /** The resolved answer differs from what the stream showed, so it is sent again. */
+  restream = false;
   attached: Chunk[] = [];
   sourceOrder: Chunk[] = [];
   citationValidation: CitationValidation | undefined;
   noToolCallRetries = 0;
   sourceFactsRead = false;
+  serviceFactsRead = false;
+  lastSearchWindow: SearchWindow | undefined;
+  /** How many chunks each document has, as searches reported it. */
+  readonly documentLengths = new Map<string, number>();
 
   constructor(readonly limits: BudgetLimits) {}
 
@@ -269,6 +310,7 @@ export class Workspace {
       readCharsUsed: this.readCharsUsed,
       maxReadChars: this.limits.readChars,
       readCharsRemaining,
+      chunksPerRead: this.limits.chunksPerRead ?? defaultChunksPerRead,
       searchExhausted: searchesRemaining === 0,
       readsExhausted: readsRemaining === 0,
       readCharsExhausted: readCharsRemaining === 0,
@@ -309,7 +351,15 @@ export class Workspace {
       ...(extra.filters?.length ? { filters: extra.filters } : {}),
       ...(extra.attribution ? { attribution: extra.attribution } : {}),
     });
-    for (const c of found) this.seen.add(c.chunkId);
+    for (const c of found) {
+      this.seen.add(c.chunkId);
+      if (
+        c.document !== undefined &&
+        c.totalChunks !== undefined &&
+        Number.isInteger(c.totalChunks)
+      )
+        this.documentLengths.set(c.document, c.totalChunks);
+    }
     this.queries = [...new Set([...this.queries, ...queries])];
     return fresh;
   }
@@ -446,6 +496,19 @@ export class Workspace {
     return this.searches.at(-1)?.queries ?? [];
   }
 
+  /** The last decision pushed, by the read check or by the gate. */
+  latestDecision(): ShadowDecision | SufficiencyDecision | undefined {
+    const last: (ShadowDecision | SufficiencyDecision | undefined)[] = [
+      this.shadowDecisions.at(-1),
+      this.sufficiencyDecisions.at(-1),
+      this.gateVerdicts.at(-1),
+    ];
+    let latest: ShadowDecision | SufficiencyDecision | undefined;
+    for (const d of last)
+      if (d && (!latest || (decidedAt.get(d) ?? 0) > (decidedAt.get(latest) ?? 0))) latest = d;
+    return latest;
+  }
+
   countSufficiencyRejections(): number {
     return [...this.sufficiencyDecisions, ...this.responseValidations].filter(
       (d) => d.status !== 'sufficient',
@@ -471,6 +534,9 @@ export const computeBudgetRefund = (
     ),
   };
 };
+
+const explicitlyCovered = (workspace: Workspace, claimId: string) =>
+  workspace.claimCoverage.get(claimId)?.supportLevel === 'explicit';
 
 export const recordReadEvaluation = (
   workspace: Workspace,
@@ -503,7 +569,7 @@ export const recordReadEvaluation = (
   workspace.contradictions = [...workspace.contradictions, ...signal.contradictions];
   const gapById = new Map(signal.remainingGaps.map((g) => [g.claimId, g]));
   workspace.openGaps = (workspace.evidencePlan?.requiredClaims ?? [])
-    .filter((c) => !workspace.claimCoverage.has(c.claimId))
+    .filter((c) => !explicitlyCovered(workspace, c.claimId))
     .map((c) => {
       const gap = gapById.get(c.claimId);
       return {
@@ -575,7 +641,7 @@ const repeatedGapStagnation = (workspace: Workspace) => {
 export const aggregateReadSignals = (workspace: Workspace): ShadowDecision => {
   const critical = (workspace.evidencePlan?.requiredClaims ?? []).filter((c) => c.critical);
   const missing = critical
-    .filter((c) => !workspace.claimCoverage.has(c.claimId))
+    .filter((c) => !explicitlyCovered(workspace, c.claimId))
     .map((c) => c.claimId);
   const contradictions = workspace.contradictions;
   const last = workspace.lastReadSignal;
@@ -585,11 +651,13 @@ export const aggregateReadSignals = (workspace: Workspace): ShadowDecision => {
   const ambiguous =
     degraded || last?.status === 'unclear' || scope === 'ambiguous' || scope === 'wrong-scope';
   const unreadCount = nextReadSuggestions(workspace).unreadCount;
+  const gapReported = last?.status === 'gap-remaining' || last?.status === 'conflicting';
+  const covered = missing.length === 0 && !gapReported;
   const suggestedStrategy = contradictions.length
     ? 'finalize'
     : ambiguous
       ? (last?.nextActionHint ?? 're-search')
-      : missing.length === 0
+      : covered
         ? 'finalize'
         : stagnation
           ? 're-search'
@@ -602,7 +670,7 @@ export const aggregateReadSignals = (workspace: Workspace): ShadowDecision => {
       ? 'conflicting'
       : ambiguous
         ? 'ambiguous'
-        : missing.length === 0
+        : covered
           ? 'sufficient'
           : 'insufficient',
     reasonCode: contradictions.length
@@ -615,11 +683,13 @@ export const aggregateReadSignals = (workspace: Workspace): ShadowDecision => {
             ? 'wrong-scope'
             : last?.status === 'unclear'
               ? 'unclear-read-signal'
-              : missing.length === 0
+              : covered
                 ? 'all-critical-claims-covered'
                 : stagnation
                   ? 'repeated-critical-gaps'
-                  : 'critical-gaps-remaining',
+                  : missing.length === 0
+                    ? 'read-reported-gap'
+                    : 'critical-gaps-remaining',
     suggestedStrategy,
     missingClaims: missing,
     contradictions,
@@ -706,18 +776,43 @@ const clampRangeAroundAnchor = (anchor: number, r: ChunkRange, maxWidth: number)
   return { from: Math.max(r.from, tentativeTo - (width - 1)), to: tentativeTo };
 };
 
+const hitScore = (s: SearchSummary) => [
+  s['rerank-score'] ?? Number.NEGATIVE_INFINITY,
+  s['retrieval-prior'] ?? Number.NEGATIVE_INFINITY,
+];
+
+const higher = (a: number[], b: number[]) => {
+  for (let i = 0; i < a.length; i++)
+    if ((a[i] as number) !== (b[i] as number)) return (a[i] as number) > (b[i] as number);
+  return false;
+};
+
+// The best-scoring unread hit in the range, from every search so far, not the first one listed.
 const preferredRangeAnchor = (workspace: Workspace, document: string, r: ChunkRange) => {
   const readIds = workspace.readChunkIds();
-  return (
-    (workspace.searches.at(-1)?.summaries ?? []).find(
-      (s) =>
-        s['doc-num'] === document &&
-        s['chunk-index'] !== null &&
-        s['chunk-index'] >= r.from &&
-        s['chunk-index'] <= r.to &&
-        !readIds.has(s['chunk-id']),
-    )?.['chunk-index'] ?? undefined
-  );
+  let best: { index: number; score: number[] } | undefined;
+  for (const search of workspace.searches)
+    for (const s of search.summaries) {
+      const index = s['chunk-index'];
+      if (s['doc-num'] !== document || index === null || index < r.from || index > r.to) continue;
+      if (readIds.has(s['chunk-id'])) continue;
+      const score = hitScore(s);
+      if (!best || higher(score, best.score)) best = { index, score };
+    }
+  return best?.index;
+};
+
+const knownTotalChunks = (workspace: Workspace, document: string) =>
+  [...workspace.chunks.values()].find(
+    (c) =>
+      c.document === document && c.totalChunks !== undefined && Number.isInteger(c.totalChunks),
+  )?.totalChunks ?? workspace.documentLengths.get(document);
+
+// A range past the document's last chunk is cut to it, when the length is known.
+const withinDocument = (workspace: Workspace, document: string, r: ChunkRange): ChunkRange => {
+  const total = knownTotalChunks(workspace, document);
+  if (total === undefined || total < 1 || r.from > total - 1) return r;
+  return { from: r.from, to: Math.min(r.to, total - 1) };
 };
 
 const mean = (xs: number[]) => Math.ceil(xs.reduce((a, b) => a + b, 0) / xs.length);
@@ -763,8 +858,9 @@ const candidateReadRange = (
   requested: ChunkRange,
   budget: BudgetState,
 ) => {
-  const r = normalizeChunkRange(requested);
-  const base = budget.lowReadBudget ? lowBudgetMaxRangeWidth : defaultMaxRangeWidth;
+  const r = withinDocument(workspace, document, normalizeChunkRange(requested));
+  const cap = Math.max(1, budget.chunksPerRead);
+  const base = budget.lowReadBudget ? Math.min(cap, lowBudgetMaxRangeWidth) : cap;
   const remaining = budget.readCharsRemaining;
   const maxWidth =
     remaining > 0
@@ -776,7 +872,7 @@ const candidateReadRange = (
           ),
         )
       : 1;
-  if (rangeWidth(r) <= broadRangeThreshold) return r;
+  if (rangeWidth(r) <= maxWidth) return r;
   return clampRangeAroundAnchor(
     preferredRangeAnchor(workspace, document, r) ?? r.from,
     r,
@@ -820,10 +916,15 @@ export const planRangeRead = (
   requested: { from?: number | undefined; to?: number | undefined },
   budget: BudgetState,
 ) => {
-  const r = normalizeChunkRange(requested);
+  const r = withinDocument(workspace, document, normalizeChunkRange(requested));
   const candidate = candidateReadRange(workspace, document, r, budget);
   const selected = effectiveReadRange(workspace, document, r, budget);
   return {
+    requested: r,
+    cappedByCount:
+      selected !== undefined &&
+      rangeWidth(selected) === Math.max(1, budget.chunksPerRead) &&
+      rangeWidth(selected) < rangeWidth(r),
     selected,
     prefetchSkippedCount: rangeWidth(candidate) - (selected ? rangeWidth(selected) : 0),
   };
@@ -906,6 +1007,78 @@ export const readBudgetNote = (o: {
     (o.postfetchTrimmed > 0
       ? ` Trimmed ${o.postfetchTrimmed} after fetch because actual chunk sizes exceeded estimates.`
       : '')
+  );
+};
+
+const spans = (positions: number[]) => {
+  const out: [number, number][] = [];
+  for (const p of [...new Set(positions)].sort((a, b) => a - b)) {
+    const last = out.at(-1);
+    if (last && p === last[1] + 1) last[1] = p;
+    else out.push([p, p]);
+  }
+  return out;
+};
+
+const plural = (n: number, word: string) => (n === 1 ? word : `${word}s`);
+
+const spanText = (xs: [number, number][]) =>
+  xs.map(([a, b]) => (a === b ? `${a}` : `${a}–${b}`)).join(', ');
+
+/**
+ * When a range read returns less than was asked, names the positions it returned and
+ * those it left out, so the agent can ask for the rest instead of taking it for the whole.
+ */
+export const rangeCutNote = (o: {
+  document: string;
+  requested: ChunkRange;
+  returned: Chunk[];
+  /** Positions of this document the agent had read before this call. */
+  alreadyRead: Set<number>;
+  cappedByCount: boolean;
+  chunksPerRead: number;
+  /** The plan narrowed the range, or chunks were trimmed after the fetch. */
+  narrowed: boolean;
+  /** The budget left after this read. */
+  remaining: number;
+  readsRemaining: number;
+}): string | undefined => {
+  // Nothing came back: the document or range is missing, which is not a cut.
+  if (o.returned.length === 0 || !o.narrowed) return undefined;
+  const total = o.returned.find((c) => c.totalChunks !== undefined)?.totalChunks;
+  const to = total === undefined ? o.requested.to : Math.min(o.requested.to, total - 1);
+  const returned = new Set(
+    o.returned.flatMap((c) => (c.position === undefined ? [] : [c.position])),
+  );
+  const leftOut: number[] = [];
+  for (let i = o.requested.from; i <= to; i++)
+    if (!returned.has(i) && !o.alreadyRead.has(i)) leftOut.push(i);
+  const missing = spans(leftOut);
+  if (missing.length === 0) return undefined;
+  return (
+    (o.cappedByCount
+      ? `This read was cut to the read cap of ${o.chunksPerRead} ${plural(o.chunksPerRead, 'chunk')}.`
+      : `This read was cut to fit the read budget. Left: ${o.remaining} ${plural(o.remaining, 'character')} and ${o.readsRemaining} ${plural(o.readsRemaining, 'read')}.`) +
+    ` Returned chunk_index ${spanText(spans([...returned]))} of doc_num="${o.document}".` +
+    ` Left out chunk_index ${spanText(missing)}.` +
+    (o.readsRemaining > 0 && o.remaining > 0
+      ? ` To read them, call read_chunks with ${missing
+          .map(
+            ([from, to]) =>
+              `{"doc_num": "${o.document}", "chunk_range": {"from": ${from}, "to": ${to}}}`,
+          )
+          .join(' and with ')}.`
+      : ' No reads are left to read them.')
+  );
+};
+
+/** Positions of a document already in the workspace from earlier reads. */
+export const readPositions = (workspace: Workspace, document: string) => {
+  const read = workspace.readChunkIds();
+  return new Set(
+    [...workspace.chunks.values()]
+      .filter((c) => c.document === document && read.has(c.chunkId) && c.position !== undefined)
+      .map((c) => c.position as number),
   );
 };
 

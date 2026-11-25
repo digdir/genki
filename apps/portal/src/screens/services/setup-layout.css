@@ -1,25 +1,62 @@
 .setup-layout {
+  container: setup / inline-size;
+}
+
+.setup-grid {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr) minmax(320px, 28%);
   gap: 32px;
   align-items: start;
 }
 
-@media (max-width: 1100px) {
-  .setup-layout {
-    grid-template-columns: 220px minmax(0, 1fr);
+.setup-side-jump {
+  display: none;
+}
+
+@container setup (max-width: 1179px) {
+  .setup-grid {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 24px 28px;
+  }
+
+  .setup-nav {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .setup-nav .setup-nav-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  }
+
+  .setup-area {
+    grid-column: 1;
+    grid-row: 2;
   }
 
   .setup-side {
-    grid-column: 1 / -1;
+    grid-column: 2;
+    grid-row: 1 / span 2;
   }
 }
 
-@media (max-width: 720px) {
-  .setup-layout {
+@container setup (max-width: 759px) {
+  .setup-grid {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     gap: 24px;
+  }
+
+  .setup-side-jump {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .setup-side {
+    scroll-margin-top: 16px;
   }
 }
 
@@ -288,6 +325,7 @@
 .draft-bar {
   position: sticky;
   top: 0;
+  margin-top: 16px;
   z-index: 2;
   display: flex;
   flex-wrap: wrap;
@@ -297,16 +335,6 @@
   background: var(--ds-color-accent-surface-tinted);
   border-radius: 8px;
   padding: 10px 16px;
-}
-
-.draft-bar.clean {
-  border-color: var(--ds-color-neutral-border-subtle);
-  background: var(--ds-color-neutral-background-default);
-}
-
-.draft-bar.unsaved {
-  border-color: var(--ds-color-warning-border-subtle);
-  background: var(--ds-color-warning-surface-tinted);
 }
 
 .draft-bar.failed {
@@ -320,14 +348,6 @@
   height: 10px;
   border-radius: 50%;
   background: var(--ds-color-accent-base-default);
-}
-
-.draft-bar.clean .draft-bar-dot {
-  background: var(--ds-color-success-base-default);
-}
-
-.draft-bar.unsaved .draft-bar-dot {
-  background: var(--ds-color-warning-base-default);
 }
 
 .draft-bar.failed .draft-bar-dot {
@@ -350,6 +370,23 @@
 .draft-bar-text > span {
   font-size: 0.9375rem;
   color: var(--ds-color-neutral-text-subtle);
+}
+
+@media (max-width: 1100px) {
+  .draft-bar {
+    padding: 8px 12px;
+    gap: 4px 16px;
+  }
+
+  .draft-bar-more {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .draft-bar {
+    position: static;
+  }
 }
 
 .draft-bar-actions {
@@ -442,6 +479,7 @@
 
 .diff-table-wrap {
   overflow-x: auto;
+  position: relative;
 }
 
 .diff-table {
@@ -520,24 +558,7 @@
 }
 
 .ask-chip {
-  font: inherit;
-  font-size: 0.9375rem;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
   align-self: flex-start;
-  min-height: 44px;
-  padding: 8px 14px;
-  border: 1px solid var(--ds-color-accent-border-subtle);
-  border-radius: 999px;
-  background: var(--ds-color-accent-surface-tinted);
-  color: var(--ds-color-accent-text-default);
-  cursor: pointer;
-}
-
-.ask-chip:hover {
-  background: var(--ds-color-accent-surface-hover);
 }
 
 .area-label {
@@ -696,6 +717,7 @@
   overflow-x: auto;
   border: 1px solid var(--ds-color-neutral-border-subtle);
   border-radius: 8px;
+  position: relative;
 }
 
 .area-table {
@@ -879,4 +901,53 @@
 .area-add {
   align-self: flex-start;
   min-height: 44px;
+}
+
+.not-yet-saved-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.not-yet-saved-head > .area-label {
+  padding: 0;
+}
+
+.diff-warning > span {
+  flex: 1 1 360px;
+  color: var(--ds-color-warning-text-default);
+}
+
+.diff-warning.publish-quality {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.diff-warning.publish-quality > span {
+  flex: none;
+}
+
+.publish-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.publish-table th,
+.publish-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 12px 12px 12px 0;
+  border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.publish-table thead th {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.publish-table tbody th {
+  width: 140px;
+  font-weight: 500;
 }

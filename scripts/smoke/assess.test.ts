@@ -3,7 +3,9 @@ import { playgroundRun, publishedVersionOf } from './browser.ts';
 import {
   assessCompletion,
   assessFacets,
+  assessCatalog,
   assessHealth,
+  assessInternal,
   assessKeyAdmission,
   assessModels,
   assessOpenapi,
@@ -74,6 +76,53 @@ const check = (over: Partial<CheckResult>): CheckResult => ({
   ...over,
 });
 
+describe('catalog', () => {
+  it('fails when the operator catalog lists a skipped entry, and names it', () => {
+    const v = assessCatalog(http(200, { data: [], skipped: ['dataset digdir/kudos'] }), 'entries');
+    expect(v.ok).toBe(false);
+    expect(v.detail).toContain('dataset digdir/kudos');
+  });
+
+  it('names a skipped entry that carries its problems by its kind and id', () => {
+    const v = assessCatalog(
+      http(200, {
+        skipped: [
+          { kind: 'dataset', id: 'digdir/kudos', problems: [{ path: 'datasets', message: 'x' }] },
+        ],
+      }),
+      'entries',
+    );
+    expect(v.detail).toContain('1 catalog entries skipped: dataset digdir/kudos');
+  });
+
+  it('passes when nothing is skipped', () => {
+    expect(assessCatalog(http(200, { data: [], skipped: [] }), 'entries').ok).toBe(true);
+  });
+
+  it('reads catalog.skipped from /health without a key', () => {
+    const skipped = { status: 'degraded', catalog: { skipped: [{ kind: 'dataset' }] } };
+    expect(assessCatalog(http(200, skipped), 'health').ok).toBe(false);
+    expect(assessCatalog(http(200, { status: 'ok', catalog: { skipped: [] } }), 'health').ok).toBe(
+      true,
+    );
+  });
+
+  it('a leftover model nobody uses does not fail the check', () => {
+    const body = { skipped: [{ kind: 'model', id: 'nimbrel-cortex/cortex', unused: true }] };
+    expect(assessCatalog(http(200, body), 'entries')).toMatchObject({
+      ok: true,
+      detail: '/operator/catalog/entries: no catalog entry skipped that something uses (1 unused)',
+    });
+  });
+
+  it('fails when the route does not answer 200', () => {
+    expect(assessCatalog(http(403, {}), 'entries')).toMatchObject({
+      ok: false,
+      detail: '/operator/catalog/entries answered 403',
+    });
+  });
+});
+
 describe('health', () => {
   it('passes when /health reports the deployed SHA', () => {
     const v = assessHealth(http(200, { status: 'ok', version: sha, lockdown: true }), sha);
@@ -98,6 +147,21 @@ describe('health', () => {
     expect(assessHealth(http(200, { status: 'ok', version: 'bootstrap' }), undefined).ok).toBe(
       false,
     );
+  });
+
+  it('passes a /health degraded only by a skipped catalog entry, so the model checks still run', () => {
+    const body = {
+      status: 'degraded',
+      version: sha,
+      modelDiscovery: { state: 'ok' },
+      catalog: { skipped: [{ kind: 'dataset', id: 'digdir/kudos' }] },
+    };
+    expect(assessHealth(http(200, body), sha).ok).toBe(true);
+  });
+
+  it('fails a /health degraded while model discovery has not succeeded', () => {
+    const body = { status: 'degraded', version: sha, modelDiscovery: { state: 'retrying' } };
+    expect(assessHealth(http(200, body), sha).ok).toBe(false);
   });
 
   it('fails when /health does not answer 200 ok', () => {
@@ -865,6 +929,22 @@ describe('expected statuses', () => {
 
   it('fails a write that should have been refused', () => {
     expect(assessStatus(http(201, {}), [403], 'publish').detail).toBe('publish: 201, expected 403');
+  });
+});
+
+describe('internal smoke services', () => {
+  const published = (visibility?: string) =>
+    http(200, { latest: { definition: { spec: visibility ? { visibility } : {} } } });
+
+  it('passes a smoke service the portal never lists because it is internal', () => {
+    expect(assessInternal(published('internal'), 'smoke').ok).toBe(true);
+  });
+
+  it('fails a smoke service published without visibility internal', () => {
+    expect(assessInternal(published(), 'smoke')).toEqual({
+      ok: false,
+      detail: 'smoke is not internal, so the portal lists it',
+    });
   });
 });
 

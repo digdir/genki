@@ -9,7 +9,7 @@ import { expectAccessible, failingFetch, kari, renderAt } from '../test-utils';
 
 const openList = async (fetch?: typeof globalThis.fetch) => {
   await renderAt('#/datasets', fetch);
-  await screen.findByRole('heading', { level: 1, name: 'Datasett' });
+  await screen.findByRole('heading', { level: 1, name: 'Dokumentsamlinger' });
 };
 
 beforeEach(() => {
@@ -49,14 +49,14 @@ const renderLive = async (path: string) => {
   );
 };
 
-describe('Datasett: delte datasett lest inn utenfor plattformen', () => {
+describe('Dokumentsamlinger: delte dokumentsamlinger lest inn utenfor plattformen', () => {
   it('lists a dataset shared with the organisation under the shared filter and not under its own', async () => {
     await renderLive('#/datasets');
     await screen.findByRole('link', { name: 'Kudos' });
     fireEvent.click(screen.getByRole('button', { name: 'Delt med dere' }));
-    expect(screen.getByText('Viser 1 av 1 datasett')).toBeTruthy();
+    expect(screen.getByText('Viser 1 av 1 dokumentsamlinger')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Testetatens egne' }));
-    expect(screen.getByText('Viser 0 av 1 datasett')).toBeTruthy();
+    expect(screen.getByText('Viser 0 av 1 dokumentsamlinger')).toBeTruthy();
   });
 
   it('does not tell the overview there are no datasets when only shared ones exist', async () => {
@@ -64,14 +64,14 @@ describe('Datasett: delte datasett lest inn utenfor plattformen', () => {
     await screen.findByRole('heading', { level: 1, name: 'Oversikt' });
     await screen.findByRole('region', { name: 'Trenger deg nå' });
     await waitFor(() => expect(screen.queryByLabelText('Sjekker hva som trenger deg')).toBeNull());
-    expect(screen.queryByText(/Vi fikk ikke sjekket datasettene/)).toBeNull();
+    expect(screen.queryByText(/Vi fikk ikke sjekket dokumentsamlingene/)).toBeNull();
   });
 });
 
-describe('Datasett in the mock: the live screens users get', () => {
+describe('Dokumentsamlinger in the mock: the live screens users get', () => {
   it('lists the datasets from the tenant dataset API', async () => {
     await openList();
-    const table = screen.getByRole('table', { name: 'Datasett' });
+    const table = screen.getByRole('table', { name: 'Dokumentsamlinger' });
     const kudosRow = within(table)
       .getByRole('link', { name: 'Kudos-rapporter' })
       .closest('tr') as HTMLElement;
@@ -89,7 +89,7 @@ describe('Datasett in the mock: the live screens users get', () => {
 
   it('offers no example wizard, OCR or linked-PDF controls', async () => {
     await renderAt('#/datasets/new');
-    await screen.findByRole('heading', { level: 1, name: 'Nytt datasett' });
+    await screen.findByRole('heading', { level: 1, name: 'Ny dokumentsamling' });
     expect(screen.queryByText(/Velg kilde/)).toBeNull();
     expect(screen.queryByRole('checkbox', { name: /tekstgjenkjenning|PDF/i })).toBeNull();
   });
@@ -107,22 +107,22 @@ describe('Datasett in the mock: the live screens users get', () => {
         features: { datasets: { datasets: [] } },
       }),
     );
-    expect(screen.getByText('Ingen datasett ennå')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Nytt datasett' }));
+    expect(screen.getByText('Ingen dokumentsamlinger ennå')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Ny dokumentsamling' }));
     expect(window.location.hash).toBe('#/datasets/new');
   });
 
   it('shows an error with retry when the list cannot be loaded', async () => {
     await renderAt('#/datasets', failingFetch(/\/tenants\/[^/]+\/datasets$/));
     expect(await screen.findByRole('button', { name: 'Prøv igjen' })).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 1, name: 'Datasett' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Dokumentsamlinger' })).toBeTruthy();
   });
 
   it('says the dataset was not found for an unknown id', async () => {
     await renderAt(`#/datasets/${encodeURIComponent('999888777/ukjent')}`);
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Fant ikke datasettet' }),
+      await screen.findByRole('heading', { level: 1, name: 'Fant ikke dokumentsamlingen' }),
     ).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Gå til Datasett' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Gå til Dokumentsamlinger' })).toBeTruthy();
   });
 });

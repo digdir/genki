@@ -90,7 +90,7 @@ describe('Integrasjoner: tilgangspolicyer', () => {
 
     fireEvent.change(within(dialog).getByLabelText('Navn'), { target: { value: 'Innlesing' } });
     fireEvent.click(within(dialog).getByLabelText('ingest'));
-    fireEvent.change(within(dialog).getByLabelText('Datasett'), {
+    fireEvent.change(within(dialog).getByLabelText('Dokumentsamlinger'), {
       target: { value: 'digdir/kudos, digdir/nettsider' },
     });
     fireEvent.change(within(dialog).getByLabelText('Begrunnelse'), {

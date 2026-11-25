@@ -204,6 +204,8 @@ export interface PlaygroundResult {
   costNok: number | null;
   dataLocation: Residency | null;
   citations?: PlaygroundCitation[];
+  /** The excerpt each `[N]` cites; left out when no `[N]` names an excerpt among the sources. */
+  markers?: PlaygroundMarker[];
   byModel?: PlaygroundModelUsage[];
   clarification?: PlaygroundClarification;
   steps?: TimelineStep[];
@@ -213,6 +215,15 @@ export interface PlaygroundResult {
 export interface PlaygroundCitation {
   index: number;
   chunkId: string;
+}
+
+/** As `/v1` gives it: `marker` as written in the answer, without brackets. */
+export interface PlaygroundMarker {
+  marker: string;
+  chunk_id: string;
+  document: string;
+  /** The words the marker rests on in its excerpt, as `/v1` gives them. */
+  quote?: { type: 'TextQuoteSelector'; exact: string; prefix: string; suffix: string };
 }
 
 export interface PlaygroundModelUsage {

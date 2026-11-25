@@ -1,5 +1,5 @@
 import { Heading, Paragraph } from '@digdir/designsystemet-react';
-import { lazy, useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { translator, useT } from './i18n';
 import { withTexts } from './i18n/areas';
 import './i18n/page-texts';
@@ -8,6 +8,7 @@ import { priceSegment } from './screens/about/public-pages';
 import { apiReferenceHashFor, developerHashFor } from './screens/developer-routes';
 import { Overview } from './screens/Overview';
 import { navigation } from './Shell';
+import { Loading, PageLoading } from './states';
 import './not-found.css';
 
 const distance = (a: string, b: string) => {
@@ -127,13 +128,39 @@ const footerPages = {
   contact: 'shell.contact',
 } as const;
 
-export const Page = ({
-  onFailingIngests,
+export const ScreenLoading = ({ route }: Pick<ScreenProps, 'route'>) => {
+  const t = useT();
+  const [area, ...rest] = route.segments;
+  const item = rest.length === 0 ? navigation.find((i) => i.path === `/${area}`) : undefined;
+  if (!item)
+    return (
+      <div className="screen-loading">
+        <PageLoading label={t('common.loading')} shape="detail" />
+      </div>
+    );
+  return (
+    <div className="screen-loading">
+      <Heading level={1} data-size="lg">
+        {t(item.path === '/playground' ? 'shell.playgroundTitle' : item.label)}
+      </Heading>
+      <Loading label={t('common.loading')} shape="list" />
+    </div>
+  );
+};
+
+export const Page = (props: ScreenProps & { onFollowUp: (count: number) => void }) => (
+  <Suspense fallback={<ScreenLoading route={props.route} />}>
+    <Screen {...props} />
+  </Suspense>
+);
+
+const Screen = ({
+  onFollowUp,
   ...props
-}: ScreenProps & { onFailingIngests: (count: number) => void }) => {
+}: ScreenProps & { onFollowUp: (count: number) => void }) => {
   const t = useT();
   const [area = 'overview', id, sub] = props.route.segments;
-  if (area === 'overview') return <Overview {...props} onFailingIngests={onFailingIngests} />;
+  if (area === 'overview') return <Overview {...props} onFollowUp={onFollowUp} />;
   if (area === 'services') return <Services {...props} />;
   if (area === 'step-flows')
     return (

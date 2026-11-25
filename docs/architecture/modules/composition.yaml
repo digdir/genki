@@ -27,18 +27,22 @@ responsibilities:
   - Apply catalogs, guardrail rules, hooks and skills stored as config entries
   - Move stored model connections, models, processor records and classifications once to
     connections with API families and models with API bindings (ADR 0048)
-  - Fold an embedding catalogue and ColBERT rerankers from before ADR 0048 into the model
+  - Fold an embedding catalogue and rerankers on an engine with an API from before ADR 0048 into the model
     catalogue, keeping ids, and move stored per-1,000-token prices to prices per kind and unit
   - Log the model connections without a processor record at start, and warn or refuse typed calls
     on them by GENAI_PROCESSOR_RECORDS
   - Compile published services into capabilities and quarantine invalid ones
   - Apply per-agency building-block settings (on/off, timeouts) to every service run, in the API and the worker
   - Keep the config entry store, tenant secret vault and change feed contracts
+  - List the model connections again on one replica per interval, claimed in the store, and load
+    what another replica listed when the change feed says so
 files:
   - packages/composition/src/runtime.ts
   - packages/composition/src/block-settings.ts
   - packages/composition/src/catalog-registry.ts
   - packages/composition/src/prices.ts
+  - packages/composition/src/model-relist.ts
+  - packages/composition/src/discovery-retry.ts
   - packages/composition/src/config-store.ts
   - packages/composition/src/hook-runtime.ts
   - packages/composition/src/settings-runtime.ts
@@ -179,13 +183,6 @@ edges:
     witness:
       file: packages/composition/src/runtime.ts
       imports: '@genai/providers-anthropic'
-  - to: providers-colbert
-    label: Composes the ColBERT reranker
-    kind: call
-    target: call
-    witness:
-      file: packages/composition/src/runtime.ts
-      imports: '@genai/providers-colbert'
   - to: providers-openai
     label: Composes the OpenAI adapter and embeddings
     kind: call

@@ -53,6 +53,7 @@ import {
   type VariantOption,
   type Zone,
 } from '@genai/ui-blocks';
+import type { Locale } from '@genai/i18n';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   failureOf,
@@ -64,12 +65,14 @@ import {
   sourceFromWire,
   type AnswerData,
   type AssistantApi,
+  type DatasetRef,
   type ThreadRow,
   type Turn,
 } from './api.js';
 import { useT } from './i18n.js';
 import type { StepFrame } from './procedure.js';
 import { profileOf, type AssistantProfile, type FieldSpec } from './profile.js';
+import { blockRegistry } from './registry.js';
 import { useStoredValue, type AssistantStorage } from './storage.js';
 import { currentYear, withinYears } from './years.js';
 
@@ -120,6 +123,8 @@ export interface AssistantOptions {
   /** The reader's colour scheme, kept by the host, which «Innstillinger» changes. */
   colorScheme?: ColorScheme | undefined;
   onColorSchemeChange?: ((scheme: ColorScheme) => void) | undefined;
+  language?: Locale | undefined;
+  onLanguageChange?: ((language: Locale) => void) | undefined;
   /** Feedback on an answer. Without it, no feedback is offered. */
   onFeedback?: ((feedback: AssistantFeedback) => Promise<void> | void) | undefined;
   /** A thread renamed or deleted in the list. Without them, neither is offered. */
@@ -265,6 +270,8 @@ export const useAssistant = ({
   onNotice,
   colorScheme = 'auto',
   onColorSchemeChange,
+  language,
+  onLanguageChange,
   onFeedback,
   onRename,
   onDelete,
@@ -276,7 +283,10 @@ export const useAssistant = ({
   const t = useT();
   // The host's profile, the layout's filling the rest; the host's own object when the layout has
   // none, so a host that passes one keeps its identity.
-  const profile = useMemo(() => profileOf(layout, hostProfile), [layout.profile, hostProfile]);
+  const profile = useMemo(
+    () => profileOf(layout, hostProfile, language === 'en' ? 'en' : 'nb'),
+    [layout.profile, hostProfile, language],
+  );
   const [models, setModels] = useState<ModelRow[]>();
   // Why genki could not say: the status it answered with, or none when it was not reached. The
   // error's own message is the browser's or genki's, in their language, so it goes to the console.
@@ -319,7 +329,7 @@ export const useAssistant = ({
   const has = useCallback(
     (id: BlockId) =>
       isOn(layout, id) &&
-      blockSpec(id).status === 'built' &&
+      blockRegistry.has(id) &&
       blockSpec(id).needs.every((n) => n.startsWith('component:') || met(n)),
     [layout, met],
   );
@@ -381,17 +391,56 @@ export const useAssistant = ({
   );
   const corpusKey = (corpusChoice ? chosenCorpus : undefined) ?? ownDataset?.key;
   const [corpora, setCorpora] = useState<CorpusOption[]>([]);
+  const [corporaHeard, setCorporaHeard] = useState(false);
+  const [corporaFailed, setCorporaFailed] = useState(false);
+  const [corporaAttempt, setCorporaAttempt] = useState(0);
   useEffect(() => {
     if (!corpusChoice) return;
     let gone = false;
     api.loadCorpora().then(
-      (found) => !gone && setCorpora(found),
-      (error: Error) => console.error('[assistant] corpora', error.message),
+      (found) => {
+        if (gone) return;
+        setCorpora(found);
+        setCorporaHeard(true);
+      },
+      (error: Error) => {
+        console.error('[assistant] corpora', error.message);
+        if (gone) return;
+        setCorporaFailed(true);
+        setCorporaHeard(true);
+      },
     );
     return () => {
       gone = true;
     };
-  }, [api, corpusChoice]);
+  }, [api, corpusChoice, corporaAttempt]);
+  const retryCorpora = useCallback(() => {
+    setCorporaFailed(false);
+    setCorporaHeard(false);
+    setCorporaAttempt((n) => n + 1);
+  }, []);
+  // Owner: the models' for the service's own collection, else the list's, else the models'.
+  const corpusTenant =
+    corpusKey === ownDataset?.key
+      ? ownDataset?.tenant
+      : (corpora.find((c) => c.key === corpusKey)?.tenant ??
+        facts?.datasets.find((d) => d.key === corpusKey)?.tenant);
+  // Owner unknown and the list failed: nothing is asked of it, and Try again reloads the list.
+  const ownerLost =
+    corpusKey !== undefined && corpusTenant === undefined && corpusChoice && corporaFailed;
+  const ownerHeard =
+    corpusTenant !== undefined ||
+    (!ownerLost &&
+      (models !== undefined || modelsFailed !== undefined) &&
+      (!corpusChoice || corporaHeard));
+  // Facets wait until genki has said who owns the collection; with no owner named, the host's.
+  const dataset = useMemo<DatasetRef | undefined>(
+    () =>
+      corpusKey && ownerHeard ? { key: corpusKey, tenant: corpusTenant || tenant } : undefined,
+    [corpusKey, ownerHeard, corpusTenant, tenant],
+  );
+  // A question goes under the same owner as the facets, so it waits for it too.
+  const ownerKnown = !corpusKey || dataset !== undefined;
   const corpusLabel = (key: string) =>
     profile?.corpora?.[key]?.label ?? corpora.find((c) => c.key === key)?.label ?? key;
   const corpus: CorpusOption | undefined = corpusKey
@@ -752,7 +801,7 @@ export const useAssistant = ({
     });
   const [facetsKey, setFacetsKey] = useState(0);
   useEffect(() => {
-    if (!filterOn || !fields || !corpusKey) return;
+    if (!filterOn || !fields || !dataset) return;
     let gone = false;
     setFacetsFailed(false);
     // Year fields bounded everywhere, so «Velg alle» on the years narrows nothing, as «Alle år».
@@ -764,8 +813,8 @@ export const useAssistant = ({
     ) =>
       withinYears(
         await (lists
-          ? api.loadFacets(asked, corpusKey, fields, lists)
-          : api.loadFacets(asked, corpusKey, fields)),
+          ? api.loadFacets(asked, dataset, fields, lists)
+          : api.loadFacets(asked, dataset, fields)),
         fields,
         keep,
         thisYear,
@@ -794,7 +843,7 @@ export const useAssistant = ({
       gone = true;
     };
     // `selection` is new on every render without Filter; `baseFacets` is set here, not a cause.
-  }, [api, filterOn, chosenSelection, facetsKey, corpusKey, fields]);
+  }, [api, filterOn, chosenSelection, facetsKey, dataset, fields]);
 
   const chooseCorpus = (key: string) => {
     // A new collection starts a new thread with an empty filter (kunnskapsassistenten's useCorpus).
@@ -838,16 +887,16 @@ export const useAssistant = ({
           .join(',')
       : '';
   useEffect(() => {
-    if (!sourceKey || !corpusKey) return;
+    if (!sourceKey || !dataset) return;
     let gone = false;
     for (const id of sourceKey.split(','))
-      void api.loadAbout(corpusKey, id).then((line) => {
+      void api.loadAbout(dataset, id).then((line) => {
         if (!gone && line) setAbout((all) => (all.has(id) ? all : new Map(all).set(id, line)));
       });
     return () => {
       gone = true;
     };
-  }, [api, sourceKey, corpusKey]);
+  }, [api, sourceKey, dataset]);
   const documents = useMemo<DocumentItem[] | undefined>(
     () =>
       activeAnswer?.sources?.map((s, i) => {
@@ -877,28 +926,29 @@ export const useAssistant = ({
 
   /**
    * Asks now, or as soon as it can: once genki has said what the service backs, which decides the
-   * collection, once the thread is read, and once an answer still coming has ended. A failed
-   * `/v1/models` is tried again; if it or the thread fails, the question waits in the field, under
-   * the failure.
+   * collection, once genki has said who owns it, once the thread is read, and once an answer still
+   * coming has ended. A failed `/v1/models` or `/api/datasets` is tried again; if it or the thread
+   * fails, the question waits in the field, under the failure.
    */
   const send = (question: string, options: Omit<Asking, 'question'> = {}) => {
     const asking = { question, ...options };
-    if (!working && models && view !== 'loading') {
+    if (!working && models && ownerKnown && view !== 'loading') {
       void start(asking);
       return;
     }
     if (modelsFailed) retryModels();
+    if (ownerLost) retryCorpora();
     setWaiting(asking);
   };
   useEffect(() => {
     if (!waiting) return;
-    if (modelsFailed || view === 'error' || view === 'notfound') setWaiting(undefined);
-    else if (models && !working && view !== 'loading') {
+    if (modelsFailed || ownerLost || view === 'error' || view === 'notfound') setWaiting(undefined);
+    else if (models && ownerKnown && !working && view !== 'loading') {
       setWaiting(undefined);
       void start(waiting);
     }
     // `start` is new on every render; what it waits for is what starts it.
-  }, [waiting, models, modelsFailed, working, view]);
+  }, [waiting, models, modelsFailed, ownerKnown, ownerLost, working, view]);
 
   const start = async ({ question: typed, replaces, fromField, about }: Asking) => {
     const controller = new AbortController();
@@ -991,7 +1041,7 @@ export const useAssistant = ({
         model,
         conversationId: startedIn,
         filters: filtersOf(),
-        dataset: corpusKey ? { tenant: ownDataset?.tenant || tenant, key: corpusKey } : undefined,
+        dataset: corpusKey ? { tenant: corpusTenant || tenant, key: corpusKey } : undefined,
         steps: approachOn,
         signal: controller.signal,
       })) {
@@ -1349,9 +1399,13 @@ export const useAssistant = ({
     setSelection,
     facets,
     baseFacets,
-    facetsFailed,
+    facetsFailed: ownerLost || facetsFailed,
     // A filter genki cannot take fails the same way again: it is changed, not retried.
-    retryFacets: typeof facetsFailed === 'string' ? undefined : () => setFacetsKey((n) => n + 1),
+    retryFacets: ownerLost
+      ? retryCorpora
+      : typeof facetsFailed === 'string'
+        ? undefined
+        : () => setFacetsKey((n) => n + 1),
     // How many documents the next question reads from, and the collection in all, exactly from the
     // facets; undefined while a count is missing.
     readFrom: filterOn
@@ -1503,6 +1557,8 @@ export const useAssistant = ({
     threadInUrl,
     colorScheme,
     onColorSchemeChange,
+    language,
+    onLanguageChange,
     onFeedback,
   };
 };

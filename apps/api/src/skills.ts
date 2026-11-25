@@ -1527,7 +1527,7 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
         return c.json(
           {
             type: 'about:blank',
-            title: 'Ferdigheten oppfyller ikke kravene for publisering',
+            title: 'Arbeidsinstruksen oppfyller ikke kravene for publisering',
             status: 422,
             ok: false,
             requirements: gates.requirements,
@@ -1572,7 +1572,7 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
       const data = await body(c);
       const reason = reasonOf(c);
       if (data.confirm !== true)
-        return problem(c, 422, 'Bekreft at ferdigheten ikke inneholder personopplysninger', [
+        return problem(c, 422, 'Bekreft at arbeidsinstruksen ikke inneholder personopplysninger', [
           { path: 'confirm', message: 'confirm that the skill has no personal or exempt data' },
         ]);
       if (!isReasonLongEnough(reason))
@@ -1581,7 +1581,7 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
         ]);
       const latest = (await deps.definitions.versions('Skill', tenant, id)).at(-1);
       if (!latest)
-        return problem(c, 422, 'Publiser ferdigheten før du deler den', [
+        return problem(c, 422, 'Publiser arbeidsinstruksen før du deler den', [
           { path: 'version', message: 'the skill has no published version' },
         ]);
       const current = await shareOf(tenant, id);

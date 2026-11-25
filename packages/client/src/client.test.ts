@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError, createClient, selection } from './index.js';
+import { ApiError, apiErrorFrom, createClient, selection } from './index.js';
 
 const sse = (chunks: unknown[], headers: Record<string, string> = {}) =>
   new Response(
@@ -226,6 +226,25 @@ describe('@genai/client requests', () => {
     expect(answer.sources).toEqual(excerptSources);
   });
 
+  it('passes on the cited words of a marker as a TextQuoteSelector and drops a malformed one', async () => {
+    const quote = { type: 'TextQuoteSelector', exact: 'Tredje', prefix: '', suffix: '' };
+    const located = {
+      ...excerptBody,
+      markers: excerptBody.markers.map((m) =>
+        m.marker === '2' ? { ...m, quote } : m.marker === '3' ? { ...m, quote: { exact: 3 } } : m,
+      ),
+    };
+    const expected = excerptMarkers.map((m) => (m.marker === '2' ? { ...m, quote } : m));
+    const { fetchFn } = recording(() => Response.json(located));
+
+    const answer = await createClient({ baseUrl: 'http://api', fetch: fetchFn }).ask({
+      service: 's',
+      question: 'q',
+    });
+
+    expect(answer.markers).toEqual(expected);
+  });
+
   it('leaves the markers out when the service cites documents', async () => {
     const { fetchFn } = recording(() =>
       Response.json({
@@ -421,6 +440,32 @@ describe('@genai/client requests', () => {
     expect(calls[0]?.init.method).toBe('POST');
     expect(new Headers(calls[0]?.init.headers).get('x-user-id')).toBe('ola');
     expect(cancelled).toEqual({ taskId: 'task/1', status: 'running' });
+  });
+
+  it('takes the code from a genki problem type when the body names no code', async () => {
+    const problem = {
+      type: 'urn:genai:problem:locked-environment',
+      status: 403,
+      title: 'Låst miljø',
+      detail: 'Testmiljøet er låst for denne tjenesten.',
+    };
+    const error = await apiErrorFrom(
+      new Response(JSON.stringify(problem), {
+        status: 403,
+        headers: { 'content-type': 'application/problem+json' },
+      }),
+    );
+    expect(error).toMatchObject({
+      status: 403,
+      code: 'locked-environment',
+      message: 'Testmiljøet er låst for denne tjenesten.',
+    });
+    const other = await apiErrorFrom(
+      new Response(JSON.stringify({ ...problem, type: 'https://example.no/problem' }), {
+        status: 403,
+      }),
+    );
+    expect(other.code).toBeUndefined();
   });
 
   it('throws the refusal of a cancel for a finished run as an ApiError', async () => {

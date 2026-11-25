@@ -74,6 +74,7 @@ const verifier = (
         keys: createLocalJWKSet({ keys: [key.publicJwk] }),
         ...(trustedEntra ? { trustedEntra } : {}),
         ...(registeredClients ? { registeredClients } : {}),
+        platformLoginKey: new Uint8Array(32),
       },
     ],
   });
@@ -93,6 +94,24 @@ describe('Entra logins through Ansattporten in lockdown', () => {
     expect(personId).toBeUndefined();
     expect(platformRightsOf(principal, PLATFORM, RESOURCE)).toEqual([...PLATFORM_RIGHTS]);
     expect(platformRightsOf(principal, '999999999', RESOURCE)).toEqual([]);
+  });
+
+  it('listing the platform login client among the operator clients gives a token from it straight to the API no rights', async () => {
+    const withPlatform = createTokenVerifier({
+      issuers: [
+        {
+          kind: 'ansattporten',
+          issuer: ISSUER,
+          audience: AUDIENCE,
+          keys: createLocalJWKSet({ keys: [key.publicJwk] }),
+          trustedEntra: { ...trusted, clientIds: [...trusted.clientIds, 'genki-platform-login'] },
+          platformLoginClients: ['genki-platform-login'],
+        },
+      ],
+    });
+    await expect(
+      withPlatform.verify(await sign(entraClaims({ client_id: 'genki-platform-login' }))),
+    ).rejects.toMatchObject({ code: 'invalid_token' });
   });
 
   it('names a trusted Entra login by its name claim, or by its email when the token has none', async () => {
@@ -401,6 +420,76 @@ describe('service groups in lockdown', () => {
     await expect(verify(serviceClaims(), registeredAt('999999999'))).rejects.toMatchObject({
       code: 'not_authorized_for_org',
     });
+  });
+
+  const hostedAt = (tenant: string, hosted = true): ClientRegistry => ({
+    byClientId: async (clientId) =>
+      clientId === 'hosted-web'
+        ? {
+            clientId,
+            audience: AUDIENCE,
+            tenant,
+            service: 'kunnskapsassistent',
+            client: clientId,
+            hosted,
+          }
+        : undefined,
+  });
+
+  it('in lockdown a hosted client passes without being listed', async () => {
+    const { principal } = await verify(
+      serviceClaims({ client_id: 'hosted-web' }),
+      hostedAt(PLATFORM),
+    );
+
+    expect(principal).toMatchObject({
+      authorizedFor: [{ org: PLATFORM, resource: RESOURCE, actions: ['use-services'] }],
+      scopes: [lockdownServiceScope],
+      confinedTo: { tenant: PLATFORM, service: 'kunnskapsassistent', client: 'hosted-web' },
+    });
+  });
+
+  it('listing the platform login client as a service client admits no hosted Client outside the platform tenant', async () => {
+    const platformLoginAt = (tenant: string): ClientRegistry => ({
+      byClientId: async (clientId) =>
+        clientId === 'genki-platform-login'
+          ? {
+              clientId,
+              audience: AUDIENCE,
+              tenant,
+              service: 'kunnskapsassistent',
+              client: 'ka-host',
+              hosted: true,
+              platformLogin: true,
+            }
+          : undefined,
+    });
+    const listed = { ...withServices, serviceClientIds: ['genki-platform-login'] };
+    const claims = serviceClaims({ client_id: 'genki-platform-login' });
+
+    await expect(
+      verifier(listed, platformLoginAt('999999999')).verify(await sign(claims)),
+    ).rejects.toMatchObject({ code: 'entra_not_trusted' });
+    const { principal } = await verifier(listed, platformLoginAt(PLATFORM)).verify(
+      await sign(claims),
+    );
+    expect(principal.confinedTo).toEqual({
+      tenant: PLATFORM,
+      service: 'kunnskapsassistent',
+      client: 'ka-host',
+    });
+  });
+
+  it('a client that is not hosted and not listed admits no service-group member', async () => {
+    await expect(
+      verify(serviceClaims({ client_id: 'hosted-web' }), hostedAt(PLATFORM, false)),
+    ).rejects.toMatchObject({ code: 'entra_not_trusted' });
+  });
+
+  it('a hosted client outside the platform tenant does not pass lockdown', async () => {
+    await expect(
+      verify(serviceClaims({ client_id: 'hosted-web' }), hostedAt('999999999')),
+    ).rejects.toMatchObject({ code: 'entra_not_trusted' });
   });
 
   it('a service-group member with an email outside the domain is refused', async () => {

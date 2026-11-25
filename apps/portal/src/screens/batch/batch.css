@@ -306,6 +306,7 @@
   font-size: 14px;
   white-space: pre-wrap;
   overflow-x: auto;
+  position: relative;
 }
 
 .batch-wizard-actions {

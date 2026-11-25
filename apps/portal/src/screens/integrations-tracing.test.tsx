@@ -167,7 +167,7 @@ describe('Integrasjoner: Langfuse', () => {
 
     expect(
       within(section).getByText(
-        /For å la en dommer vurdere ett testsett, velg datasettet i filteret til dommeren i Langfuse, sammen med isExperimentItemRootSpan = true\./,
+        /For å la en automatisk vurdering ta for seg ett testsett, velg datasettet i filteret til vurderingen i Langfuse, sammen med isExperimentItemRootSpan = true\./,
       ),
     ).toBeTruthy();
   });
@@ -206,7 +206,7 @@ describe('Integrasjoner: Langfuse', () => {
     fireEvent.click(within(form).getByRole('checkbox', { name: 'Møtereferat' }));
     fill('Lagringssted', 'norway');
     fireEvent.change(within(form).getByLabelText(/Begrunnelse/), {
-      target: { value: 'Teamet bruker Langfuse til dommere' },
+      target: { value: 'Teamet bruker Langfuse til automatiske vurderinger' },
     });
     fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
 
@@ -214,7 +214,7 @@ describe('Integrasjoner: Langfuse', () => {
     const puts = calls.filter((c) => c.method === 'PUT');
     expect(puts[0]).toMatchObject({
       url: expect.stringMatching(/\/secrets\/langfuse-etaten$/),
-      reason: 'Teamet bruker Langfuse til dommere',
+      reason: 'Teamet bruker Langfuse til automatiske vurderinger',
       body: { value: 'sk-lf-etaten', allowedHosts: ['https://langfuse.etaten.example.no'] },
     });
     // The key goes to the secret store only, never with the connection.
@@ -222,7 +222,7 @@ describe('Integrasjoner: Langfuse', () => {
     const put = puts[1];
     expect(put).toMatchObject({
       url: expect.stringMatching(/\/tracing\/connections\/etaten$/),
-      reason: 'Teamet bruker Langfuse til dommere',
+      reason: 'Teamet bruker Langfuse til automatiske vurderinger',
       body: {
         host: 'https://langfuse.etaten.example.no',
         publicKey: 'pk-lf-etaten',
@@ -281,7 +281,7 @@ describe('Integrasjoner: Langfuse', () => {
     fill('Offentlig nøkkel', 'pk-lf-etaten');
     fill('Hemmelig nøkkel', 'sk-lf-etaten');
     fireEvent.change(within(form).getByLabelText(/Begrunnelse/), {
-      target: { value: 'Teamet bruker Langfuse til dommere' },
+      target: { value: 'Teamet bruker Langfuse til automatiske vurderinger' },
     });
     fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
 
@@ -331,7 +331,7 @@ describe('Integrasjoner: Langfuse', () => {
     fill('Offentlig nøkkel', 'pk-lf-etaten');
     fill('Hemmelig nøkkel', 'sk-lf-etaten');
     fireEvent.change(within(form).getByLabelText(/Begrunnelse/), {
-      target: { value: 'Teamet bruker Langfuse til dommere' },
+      target: { value: 'Teamet bruker Langfuse til automatiske vurderinger' },
     });
     fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
 
@@ -390,7 +390,7 @@ describe('Integrasjoner: Langfuse', () => {
 });
 
 describe('Integrasjoner: Langfuse, the guide', () => {
-  const guideSummary = 'Slik vurderer Langfuse-dommere testkjøringene';
+  const guideSummary = 'Slik vurderer Langfuse testkjøringene automatisk';
   const guideOf = (section: HTMLElement) => {
     const details = within(section).getByText(guideSummary).closest('details');
     if (!details) throw new Error('the guide is not a details element');
@@ -482,7 +482,7 @@ describe('Integrasjoner: Langfuse, picked from lists', () => {
     const form = within(rendered.section).getByRole('form', { name: 'Ny Langfuse-kobling' });
     const fill = (label: string, value: string) =>
       fireEvent.change(within(form).getByLabelText(label), { target: { value } });
-    const reason = (value = 'Teamet bruker Langfuse til dommere') =>
+    const reason = (value = 'Teamet bruker Langfuse til automatiske vurderinger') =>
       fireEvent.change(within(form).getByLabelText(/Begrunnelse/), { target: { value } });
     return { ...rendered, form, fill, reason };
   };

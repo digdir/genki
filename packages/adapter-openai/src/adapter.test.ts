@@ -850,6 +850,20 @@ describe('helpers', () => {
     expect(run(['Utkast.'], '')).toEqual(['Utkast.', '<retract>']);
   });
 
+  it('streams the refusal text right after a model refusal', () => {
+    const out: string[] = [];
+    const tracker = new AnswerTracker(true, {
+      content: (text) => out.push(text),
+      retract: () => out.push('<retract>'),
+    });
+
+    tracker.notice({ event: 'agent/iteration-started', iteration: 0 });
+    tracker.notice({ stage: 'model-refused', iteration: 0 });
+    tracker.delta('Modellen avviste forespørselen.');
+
+    expect(out).toEqual(['Modellen avviste forespørselen.']);
+  });
+
   it('splits OpenAI messages into history and the last user query', () => {
     expect(
       splitMessages([

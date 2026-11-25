@@ -184,6 +184,21 @@ describe('the excerpt markers a service names', () => {
 
   const reload = (sources: unknown[]) => reloadTurn({ text: 'Ned [1].', sources });
 
+  it('keeps the words a stored marker rests on when the thread is opened again', async () => {
+    const quote = {
+      type: 'TextQuoteSelector',
+      exact: 'Svartiden var kort.',
+      prefix: '',
+      suffix: '',
+    };
+    const answer = await reloadTurn({
+      sources: [wireSource],
+      markers: [wireMarkers[0], { ...wireMarkers[1], quote }],
+    });
+
+    expect(answer?.markers).toEqual([markers[0], { ...markers[1], quote }]);
+  });
+
   it('leads a stored marker to the excerpt as drawn, also one without an id of its own', async () => {
     const answer = await reload([
       {
@@ -633,7 +648,7 @@ describe('the host’s credentials', () => {
     await reads.loadThreads();
     await reads.loadThread('t1');
     await reads.loadCorpora();
-    await reads.loadFacets({}, 'kudos', await reads.loadFields('kudos'));
+    await reads.loadFacets({}, { key: 'kudos' }, await reads.loadFields('kudos'));
     expect(sent.map((r) => [r.url.split('?')[0], r.headers.get('authorization')])).toEqual([
       ['/genki/v1/models', 'Bearer tok'],
       ['/genki/api/conversations', 'Bearer tok'],
@@ -703,6 +718,12 @@ describe('the host’s credentials', () => {
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).status).toBe(401);
     expect(failureOf(error)).toEqual({ kind: 'access' });
+  });
+
+  it('tells a refusal by a locked environment in genki’s own words', () => {
+    const locked = new ApiError(403, 'Testmiljøet er låst.', 'locked-environment');
+    expect(failureOf(locked)).toEqual({ kind: 'access', message: 'Testmiljøet er låst.' });
+    expect(failureOf(new ApiError(403, 'Forbidden', 'other'))).toEqual({ kind: 'access' });
   });
 
   it('stops at a new thread refused with 401, without sending the question', async () => {
@@ -790,6 +811,66 @@ describe('the filter as genki takes it', () => {
   });
 });
 
+describe('the tenant a collection’s facets are asked under', () => {
+  // genki, listing the collections given; returns each facets request's query.
+  const genki = (datasets: unknown[] = []) => {
+    const asked: URLSearchParams[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const [path, query] = url.split('?');
+        if (path === '/genki/api/datasets') return json({ datasets });
+        asked.push(new URLSearchParams(query));
+        return json({ fields: [{ field: 'type', options: [{ value: 'Årsrapport', count: 1 }] }] });
+      }),
+    );
+    return asked;
+  };
+  const field: FieldSpec = { id: 'type', label: 'Type' };
+  // The host's tenant is the organisation number; Kudos is digdir's, shared with it.
+  const hosted = (profile?: GenkiApiOptions['profile']) =>
+    createGenkiApi({ baseUrl: '/genki', tenant: '991825827', profile });
+  const sent = (asked: URLSearchParams[]) =>
+    asked.map((q) => [q.get('tenant'), q.get('dataset-config-key')]);
+
+  it('asks a shared collection’s facets under the tenant that owns it, not the host’s', async () => {
+    const asked = genki();
+    await hosted().loadFacets({}, { key: 'kudos', tenant: 'digdir' }, [field]);
+    expect(sent(asked)).toEqual([['digdir', 'kudos']]);
+  });
+
+  it('asks a collection with no owner named under the host’s tenant', async () => {
+    const asked = genki();
+    await hosted().loadFacets({}, { key: 'own' }, [field]);
+    expect(sent(asked)).toEqual([['991825827', 'own']]);
+  });
+
+  it('asks the line under a document under the collection’s owner, apart from the host’s', async () => {
+    const asked = genki();
+    const about = { idField: 'doc_num', fields: ['type'] };
+    const assistant = hosted({ corpora: { kudos: { about } } });
+    expect(await assistant.loadAbout({ key: 'kudos', tenant: 'digdir' }, '7')).toEqual([
+      'Årsrapport',
+    ]);
+    await assistant.loadAbout({ key: 'kudos' }, '7');
+    expect(sent(asked)).toEqual([
+      ['digdir', 'kudos'],
+      ['991825827', 'kudos'],
+    ]);
+  });
+
+  it('lists each collection with the tenant that owns it', async () => {
+    genki([
+      { id: 'kudos', tenant: 'digdir', name: 'Kudos', description: null },
+      { id: 'own', name: 'Egen', description: null },
+    ]);
+    expect(await hosted().loadCorpora()).toEqual([
+      { key: 'kudos', label: 'Kudos', tenant: 'digdir' },
+      { key: 'own', label: 'Egen' },
+    ]);
+  });
+});
+
 // A layout's profile says nothing of the wire; the dataset does.
 describe('the fields a profile chooses', () => {
   const dataset = () =>
@@ -850,5 +931,127 @@ describe('the fields a profile chooses', () => {
       profile: profileOf(layout),
     });
     expect(await reads.loadFields('kudos')).toEqual([{ ...year, integer: true }]);
+  });
+});
+
+describe('the writes a host sends through genki', () => {
+  const sent = () => {
+    const calls: { url: string; method: string; body: unknown; headers: Headers }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({
+          url,
+          method: init?.method ?? 'GET',
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          headers: new Headers(init?.headers),
+        });
+        return json({ ok: true, success: true, task: 'r1', conversation: { id: 't1' } });
+      }),
+    );
+    return calls;
+  };
+  const writer = () =>
+    createGenkiApi({
+      baseUrl: '/api',
+      tenant: 'digdir',
+      headers: () => ({ 'genai-csrf': '1' }),
+    });
+  const row = { id: 't 1', title: 'Gammel', updatedAt: 0 };
+
+  it('rates an answer on its run, with the host’s headers', async () => {
+    const calls = sent();
+    await writer().sendFeedback({
+      answerId: 'a1',
+      runId: 'r1',
+      rating: 'down',
+      reasons: ['Feil'],
+      comment: 'Mangler kilde',
+    });
+    expect(calls).toEqual([
+      expect.objectContaining({
+        url: '/api/api/feedback',
+        method: 'POST',
+        body: { task: 'r1', rating: 'down', reasons: ['Feil'], comment: 'Mangler kilde' },
+      }),
+    ]);
+    expect(calls[0]?.headers.get('genai-csrf')).toBe('1');
+  });
+
+  it('sends no rating for an answer without a run', async () => {
+    const calls = sent();
+    await expect(
+      writer().sendFeedback({ answerId: 'a1', rating: 'up', reasons: [] }),
+    ).rejects.toThrow();
+    expect(calls).toEqual([]);
+  });
+
+  it('renames and deletes a thread at its own address', async () => {
+    const calls = sent();
+    await writer().renameThread(row, 'Ny');
+    await writer().deleteThread(row);
+    expect(calls.map((c) => [c.method, c.url, c.body])).toEqual([
+      ['PUT', '/api/api/conversations/t%201', { title: 'Ny' }],
+      ['DELETE', '/api/api/conversations/t%201', undefined],
+    ]);
+  });
+
+  it('fails a write genki refuses', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{}', { status: 404 })),
+    );
+    await expect(writer().deleteThread(row)).rejects.toBeInstanceOf(HttpError);
+  });
+});
+
+describe('a cited document’s file through genki', () => {
+  const answering = (body: unknown, status = 200) => {
+    const asked: { url: string; accept: string | null }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        asked.push({ url, accept: new Headers(init?.headers).get('accept') });
+        return status === 200 ? json(body) : new Response('{}', { status });
+      }),
+    );
+    return asked;
+  };
+  const files = (corpora: Record<string, object> = { kudos: {} }) =>
+    createGenkiApi({ baseUrl: '/api', tenant: 'digdir', profile: { corpora } });
+  const signal = new AbortController().signal;
+  const pdf = 'https://kilde.example/dokument/d1/filer/f1.pdf';
+
+  it('frames the PDF genki serves at the file route, asked for the opened excerpt’s file', async () => {
+    const asked = answering({ kind: 'served', mediaType: 'application/pdf', source: pdf });
+    const file = await files().documentFile('kudos:d1', signal, { file: pdf });
+    const address = `/api/api/datasets/kudos/documents/kudos%3Ad1/file?file=${encodeURIComponent(pdf)}`;
+    expect(asked).toEqual([{ url: address, accept: 'application/json' }]);
+    expect(file).toEqual({ url: address, mediaType: 'application/pdf', source: pdf });
+  });
+
+  it('frames an uploaded PDF at the route, and takes the dataset from a qualified number', async () => {
+    const asked = answering({ kind: 'original', mediaType: 'application/pdf', name: 'a.pdf' });
+    const file = await files({}).documentFile('digdir/notater::n1', signal);
+    expect(asked[0]?.url).toBe('/api/api/datasets/digdir/notater/documents/n1/file');
+    expect(file).toEqual({
+      url: '/api/api/datasets/digdir/notater/documents/n1/file',
+      mediaType: 'application/pdf',
+    });
+  });
+
+  it('shows no file for a source page, a document without a file or a number with no dataset', async () => {
+    answering({ kind: 'source', url: 'https://kilde.example/dokument/d1', mediaType: null });
+    expect(await files().documentFile('kudos:d1', signal)).toBeUndefined();
+    answering({}, 404);
+    expect(await files().documentFile('kudos:d1', signal)).toBeUndefined();
+    const asked = answering({});
+    expect(await files({ a: {}, b: {} }).documentFile('d1', signal)).toBeUndefined();
+    expect(asked).toEqual([]);
+  });
+
+  it('fails when genki cannot read the file now', async () => {
+    answering({}, 502);
+    await expect(files().documentFile('kudos:d1', signal)).rejects.toBeInstanceOf(HttpError);
   });
 });

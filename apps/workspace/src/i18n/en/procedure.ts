@@ -5,6 +5,7 @@ export const procedure = {
   plan_queries: 'Understood the question',
   inspect_filters: 'Looked at which sources the thread reads from',
   source_facts: 'Looked at what the source holds',
+  service_facts: 'Looked at facts about the service',
   search: 'Looked for passages about the question',
   read_chunks: 'Read the relevant parts closely',
   rerank_results: 'Picked what answers the question',

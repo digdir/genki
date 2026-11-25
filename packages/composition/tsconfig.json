@@ -63,9 +63,6 @@
       "path": "../providers-anthropic"
     },
     {
-      "path": "../providers-colbert"
-    },
-    {
       "path": "../providers-mcp-client"
     },
     {

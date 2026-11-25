@@ -581,8 +581,13 @@ describe('azure deployment discovery', () => {
     });
 
     expect(found).toEqual([
-      { deployment: 'gpt-4o-2M-tps', model: 'gpt-4o' },
-      { deployment: 'claude-sonnet-5-5', model: 'claude-sonnet-5-5' },
+      { deployment: 'gpt-4o-2M-tps', model: 'gpt-4o', kind: 'chat', kindFrom: 'name' },
+      {
+        deployment: 'claude-sonnet-5-5',
+        model: 'claude-sonnet-5-5',
+        kind: 'chat',
+        kindFrom: 'name',
+      },
     ]);
     expect(seen[0]?.path).toBe('/openai/deployments?api-version=2022-12-01');
     expect(seen[0]?.headers['api-key']).toBe('test-key');
@@ -650,6 +655,116 @@ describe('OpenAI model list discovery', () => {
     ]);
   });
 
+  it('listing follows every page', async () => {
+    const server = await fakeHttp((_body, _attempt, path) => {
+      if (path === '/v1/models')
+        return {
+          status: 200,
+          json: {
+            object: 'list',
+            data: [{ id: 'aivar:borealis' }],
+            has_more: true,
+            last_id: 'aivar:borealis',
+          },
+        };
+      if (path === '/v1/models?after=aivar%3Aborealis')
+        return {
+          status: 200,
+          json: { object: 'list', data: [{ id: 'sigma2:normistral' }], next: '/v1/models?page=3' },
+        };
+      return {
+        status: 200,
+        json: { object: 'list', data: [{ id: 'sigma2:qwen' }], has_more: false },
+      };
+    });
+    servers.push(server);
+    const { url, seen } = server;
+
+    const found = await openAiModels.list({
+      baseURL: `${url}/v1`,
+      credential: { kind: 'bearer', token: async () => 'test-key' },
+      timeoutMs: 5000,
+    });
+
+    expect(found.map((f) => f.deployment)).toEqual([
+      'aivar:borealis',
+      'sigma2:normistral',
+      'sigma2:qwen',
+    ]);
+    expect(seen.map((s) => s.path)).toEqual([
+      '/v1/models',
+      '/v1/models?after=aivar%3Aborealis',
+      '/v1/models?page=3',
+    ]);
+  });
+
+  it('a next page on another origin fails the listing before the key is sent there', async () => {
+    const elsewhere = await fake(() => ({ status: 200, json: { data: [] } }));
+    const { url } = await fake(() => ({
+      status: 200,
+      json: { data: [{ id: 'aivar:borealis' }], next: `${elsewhere.url}/v1/models?page=2` },
+    }));
+
+    await expect(
+      openAiModels.list({
+        baseURL: `${url}/v1`,
+        credential: { kind: 'bearer', token: async () => 'test-key' },
+        timeoutMs: 5000,
+      }),
+    ).rejects.toThrow(/another host/);
+    expect(elsewhere.seen).toEqual([]);
+  });
+
+  it('an Azure deployment list follows nextLink, and a page seen twice fails the listing', async () => {
+    const pages = await fake((_body, attempt) =>
+      attempt === 1
+        ? {
+            status: 200,
+            json: {
+              data: [{ id: 'gpt-6-sol', model: 'gpt-6-sol', status: 'succeeded' }],
+              nextLink: '/openai/deployments?api-version=2022-12-01&page=2',
+            },
+          }
+        : {
+            status: 200,
+            json: {
+              data: [{ id: 'gpt-6-luna', model: 'gpt-6-luna', status: 'succeeded' }],
+              nextLink: '/openai/deployments?api-version=2022-12-01&page=2',
+            },
+          },
+    );
+
+    await expect(
+      azureDeployments.list({
+        baseURL: pages.url,
+        credential: { kind: 'api-key', key: async () => 'x' },
+        timeoutMs: 5000,
+      }),
+    ).rejects.toThrow(/repeats a page/);
+    expect(pages.seen.map((s) => s.path)).toEqual([
+      '/openai/deployments?api-version=2022-12-01',
+      '/openai/deployments?api-version=2022-12-01&page=2',
+    ]);
+  });
+
+  it('a listing that redirects fails instead of following the redirect', async () => {
+    const elsewhere = await fake(() => ({ status: 200, json: { data: [] } }));
+    const { url } = await fake(() => ({
+      status: 302,
+      headers: { location: `${elsewhere.url}/v1/models` },
+      json: {},
+    }));
+
+    await expect(
+      openAiModels.list({
+        baseURL: `${url}/v1`,
+        credential: { kind: 'bearer', token: async () => 'test-key' },
+        timeoutMs: 5000,
+      }),
+    ).rejects.toThrow();
+    expect(elsewhere.seen).toEqual([]);
+  });
+
   it('include and exclude patterns apply to the listed model ids', async () => {
     const { url } = await fake(() => ({ status: 200, json: gatewayModels }));
 
@@ -689,6 +804,71 @@ describe('OpenAI model list discovery', () => {
     expect(r.describe().map((m) => [m.id, m.origin])).toEqual([
       ['ai-gateway/aivar-borealis', 'catalog'],
     ]);
+  });
+
+  it('takes the capabilities a /models entry names, in the shapes gateways use', async () => {
+    const { url } = await fake(() => ({
+      status: 200,
+      json: {
+        object: 'list',
+        data: [
+          { id: 'listed', capabilities: ['tools', 'json_schema', 'vision'] },
+          { id: 'flagged', capabilities: { function_calling: true, streaming: false } },
+          { id: 'parameters', supported_parameters: ['tools', 'structured_outputs', 'reasoning'] },
+          { id: 'info', model_info: { supports_response_schema: true, supports_reasoning: false } },
+          { id: 'bare' },
+        ],
+      },
+    }));
+
+    const r = gateway(url, { capabilities: [] });
+    await r.refresh();
+
+    expect(r.describe().map((m) => [m.deployment, m.capabilities])).toEqual([
+      ['bare', []],
+      ['flagged', ['tools']],
+      ['info', ['json-schema']],
+      ['listed', ['tools', 'json-schema']],
+      ['parameters', ['tools', 'json-schema', 'reasoning']],
+    ]);
+  });
+
+  it('a listed model with no capabilities in its rule that answers in the JSON shape learns json-schema over the wire', async () => {
+    const server = await fakeHttp((body, _attempt, path) => {
+      if (path === '/v1/models')
+        return { status: 200, json: { object: 'list', data: [{ id: 'aivar:borealis' }] } };
+      if (body.stream)
+        return {
+          status: 200,
+          sse: [
+            {
+              data: {
+                ...completion(''),
+                object: 'chat.completion.chunk',
+                choices: [{ index: 0, delta: { content: 'Blue' }, finish_reason: 'stop' }],
+              },
+            },
+            { data: '[DONE]' },
+          ],
+        };
+      if (body.response_format) return { status: 200, json: completion('{"colour":"blue"}') };
+      return { status: 200, json: completion('Blue.') };
+    });
+    servers.push(server);
+
+    const r = gateway(server.url, { capabilities: [] });
+    await r.refresh();
+    const result = await r.learn(testContext().ctx);
+
+    expect(result.checked).toEqual([
+      { model: 'ai-gateway/aivar-borealis', capability: 'json-schema', has: true },
+      { model: 'ai-gateway/aivar-borealis', capability: 'stream', has: true },
+    ]);
+    expect(r.describe()[0]?.capabilities).toEqual(['json-schema', 'stream']);
+    expect(server.seen.find((s) => s.body.response_format)?.body.response_format).toMatchObject({
+      type: 'json_schema',
+      json_schema: { strict: true },
+    });
   });
 
   it('a refused model listing is reported for its connection', async () => {
@@ -744,5 +924,140 @@ describe('OpenAI model list discovery', () => {
     expect((await r.refresh()).failed).toEqual([
       { endpoint: 'claude', error: 'claude does not offer the openai family to list through' },
     ]);
+  });
+});
+
+describe('what a discovered model is offered for', () => {
+  const deployment = (id: string, model = id) => ({ id, model, status: 'succeeded' });
+
+  const foundry = async (deployments: Record<string, unknown>[], source = 'azure-deployments') => {
+    const server = await fake(() =>
+      source === 'azure-deployments'
+        ? { status: 200, json: { data: deployments } }
+        : { status: 200, json: { object: 'list', data: deployments } },
+    );
+    const r = new ModelRouter({
+      catalog: {
+        endpoints: {
+          foundry: {
+            baseURL: `${server.url}/openai/v1`,
+            auth: { kind: 'api-key', header: 'api-key', secret: 'secret://env/test-key' },
+            families: { openai: '' },
+            discovery: [
+              {
+                source,
+                idPrefix: 'foundry-openai',
+                capabilities: ['stream', 'tools', 'json-schema'],
+                apis: { chat: 'openai/chat-completions@1' },
+              },
+            ],
+          },
+        },
+      },
+      adapters: [openAiChat],
+      sources: [azureDeployments, openAiModels],
+      secrets: envSecrets({ TEST_KEY: 'test-key' }),
+    });
+    await r.refresh();
+    return { r, seen: server.seen };
+  };
+
+  it('a discovered realtime model is not offered for chat', async () => {
+    const { r, seen } = await foundry([deployment('gpt-realtime-2.1')]);
+
+    const model = r.describe().find((m) => m.id === 'foundry-openai/gpt-realtime-2.1');
+    const call = open(r, 'foundry-openai/gpt-realtime-2.1').chat(user('Hei'));
+
+    expect(model).toMatchObject({ operations: [], apis: {}, capabilities: [] });
+    expect(model?.transport).toBeUndefined();
+    expect(r.models().has('foundry-openai/gpt-realtime-2.1')).toBe(false);
+    await expect(call).rejects.toThrow();
+    expect(seen.filter((s) => s.path.includes('chat/completions'))).toEqual([]);
+  });
+
+  it.each([
+    'gpt-image-2.5-flare',
+    'gpt-image-2.5-sunburst',
+    'gpt-realtime-2.1-mini',
+    'gpt-live-1',
+    'gpt-4o-transcribe',
+    'gpt-4o-mini-tts',
+    'whisper',
+    'dall-e-3',
+    'sora-2',
+    'text-embedding-3-large',
+  ])('a discovered %s deployment is not offered for chat', async (name) => {
+    const { r } = await foundry([deployment(name)]);
+
+    expect(r.describe().map((m) => [m.deployment, m.operations])).toEqual([[name, []]]);
+  });
+
+  it('a discovered chat model and the model router are offered for chat as the rule says', async () => {
+    const { r } = await foundry([deployment('gpt-5.6-terra'), deployment('model-router')]);
+
+    expect(r.describe().map((m) => [m.deployment, m.operations, m.capabilities])).toEqual([
+      ['gpt-5.6-terra', ['chat'], ['stream', 'tools', 'json-schema']],
+      ['model-router', ['chat'], ['stream', 'tools', 'json-schema']],
+    ]);
+  });
+
+  it('the model the provider reports decides, not the name the deployment was given', async () => {
+    const { r } = await foundry([
+      deployment('voice-desk', 'gpt-realtime-2.1'),
+      deployment('realtime-helper', 'gpt-5.6-terra'),
+    ]);
+
+    expect(r.describe().map((m) => [m.deployment, m.operations])).toEqual([
+      ['realtime-helper', ['chat']],
+      ['voice-desk', []],
+    ]);
+  });
+
+  it('a non-chat model in an OpenAI-compatible /models list is not offered for chat', async () => {
+    const { r } = await foundry(
+      [{ id: 'gpt-image-2.5-flare' }, { id: 'gpt-5.6-terra' }],
+      'openai-models',
+    );
+
+    expect(r.describe().map((m) => [m.deployment, m.operations])).toEqual([
+      ['gpt-5.6-terra', ['chat']],
+      ['gpt-image-2.5-flare', []],
+    ]);
+  });
+
+  it('reading a long listed model name takes linear time', async () => {
+    const name = `${'-'.repeat(200_000)}x${' '.repeat(200_000)}`;
+    const { url } = await fake(() => ({ status: 200, json: { data: [deployment('d', name)] } }));
+
+    const started = performance.now();
+    const found = await azureDeployments.list({
+      baseURL: url,
+      credential: { kind: 'api-key', key: async () => 'x' },
+      timeoutMs: 5000,
+    });
+
+    expect(found).toHaveLength(1);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("an operator's binding wins over discovery and survives the next listing", async () => {
+    const { r } = await foundry([deployment('gpt-live-1')]);
+
+    await r.classify('foundry-openai/gpt-live-1', {
+      apis: { chat: 'openai/chat-completions@1' },
+      capabilities: ['stream'],
+    });
+    await r.refresh();
+
+    expect(r.describe()).toMatchObject([
+      {
+        id: 'foundry-openai/gpt-live-1',
+        kind: 'chat',
+        kindFrom: 'operator',
+        operations: ['chat'],
+        capabilities: ['stream'],
+      },
+    ]);
+    expect(r.models().has('foundry-openai/gpt-live-1')).toBe(true);
   });
 });

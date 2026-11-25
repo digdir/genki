@@ -79,15 +79,6 @@ export const jobs: { id: JobId; label: string; example: string }[] = [
   },
 ];
 
-export const templates: [string, JobId, string][] = [
-  ['Spør dokumentene våre', 'answers', 'Spørsmål → svar med kilder'],
-  ['Utkast til svarbrev', 'drafts', 'Sak og brevmal → brevutkast som dokument'],
-  ['Klarspråk for utgående brev', 'rewrites', 'Brev → omskrevet brev med endringene markert'],
-  ['Sorter innkommende post', 'sorts', 'E-post og vedlegg → saksområde, prioritet og mottaker'],
-  ['Oppsummer høringssvar', 'summarises', 'Mappe med høringssvar → oppsummering per tema'],
-  ['Møtereferat fra lydopptak', 'transcribes', 'Lydopptak → transkripsjon og referat'],
-];
-
 export const statusColor: Record<ServiceStatus, 'neutral' | 'info' | 'success' | 'warning'> = {
   Utkast: 'neutral',
   'I test': 'info',

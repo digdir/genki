@@ -88,6 +88,40 @@ const ragRun = () => {
 };
 
 describe('the run mapper', () => {
+  it('a read step names the document, position and page of each chunk it read', () => {
+    seq = 0;
+    const events = [
+      at(0, 'kernel.task.status', { status: 'running' }),
+      notice(10, {
+        kind: 'read',
+        chunks: [
+          { id: 'c7', document: 'd1', position: 0, page: 1, score: 0.4, title: 'Rapport' },
+          { id: 'c8', document: 'd1', position: 1, page: 2, title: 'Rapport' },
+        ],
+        request: { document: 'd1', chunkRange: { from: 0, to: 1 } },
+      }),
+    ];
+
+    const [manager] = mapRun(events, { details: true }).steps.filter((s) => s.type === 'read');
+    seq = 0;
+    const [starter] = mapRun(events).steps.filter((s) => s.type === 'read');
+
+    expect(manager?.reads).toEqual([
+      {
+        chunks: [
+          { id: 'c7', document: 'd1', position: 0, page: 1, title: 'Rapport' },
+          { id: 'c8', document: 'd1', position: 1, page: 2, title: 'Rapport' },
+        ],
+        request: { document: 'd1', chunkRange: { from: 0, to: 1 } },
+      },
+    ]);
+    expect(manager?.blocks.at(-1)?.items).toEqual([
+      ['Rapport', '2 tekstbiter · deler 1, 2 · sider 1, 2'],
+    ]);
+    expect(starter?.reads?.[0]?.chunks.map((c) => c.id)).toEqual(['c7', 'c8']);
+    expect(starter?.reads?.[0]?.request).toBeUndefined();
+  });
+
   it('shows what a search detected in the query and how it was used', () => {
     seq = 0;
     const steps = mapRun([
@@ -484,6 +518,107 @@ describe('the run mapper', () => {
       });
     });
 
+    it('shows the finish reason on a model step', () => {
+      seq = 0;
+      const mapper = new RunMapper();
+      [
+        notice(100, { event: 'agent/iteration-started', iteration: 0, 'max-iterations': 4 }),
+        at(
+          400,
+          'kernel.usage',
+          {
+            usage: { inputTokens: 500, outputTokens: 20 },
+            port: 'model',
+            model: { kind: 'model', id: 'gpt-test' },
+            finishReason: 'length',
+          },
+          'audit',
+        ),
+      ].forEach((e) => mapper.push(e));
+
+      const [round] = mapper.steps;
+      expect(round).toMatchObject({ type: 'model', finishReason: 'length' });
+      expect(round?.refusalCategory).toBeUndefined();
+      expect(round?.blocks.find((b) => b.kind === 'kv')?.rows).toContainEqual([
+        'Stopp',
+        'kuttet ved maks lengde',
+      ]);
+    });
+
+    it('shows a model refusal with its category', () => {
+      seq = 0;
+      const mapper = new RunMapper();
+      [
+        notice(100, { event: 'agent/iteration-started', iteration: 0, 'max-iterations': 4 }),
+        at(
+          400,
+          'kernel.usage',
+          {
+            usage: { inputTokens: 4923, outputTokens: 0 },
+            port: 'model',
+            model: { kind: 'model', id: 'claude-opus-5-5' },
+            finishReason: 'content_filter',
+            refusalCategory: 'reasoning_extraction',
+          },
+          'audit',
+        ),
+        notice(410, { stage: 'model-refused', iteration: 0, category: 'reasoning_extraction' }),
+      ].forEach((e) => mapper.push(e));
+
+      const [round, refused] = mapper.steps;
+      expect(round).toMatchObject({
+        finishReason: 'content_filter',
+        refusalCategory: 'reasoning_extraction',
+      });
+      expect(round?.blocks.find((b) => b.kind === 'kv')?.rows).toContainEqual([
+        'Stopp',
+        'avvist (reasoning_extraction)',
+      ]);
+      expect(refused).toMatchObject({
+        title: 'Modellen avviste',
+        summary: 'Modellen avviste forespørselen (reasoning_extraction)',
+        warning: true,
+      });
+      expect(mapper.steps.map((s) => s.title)).not.toContain('Tomt svar');
+    });
+
+    it('shows a model refusal without a category', () => {
+      seq = 0;
+      const mapper = new RunMapper();
+      mapper.push(notice(100, { stage: 'model-refused', iteration: 0 }));
+
+      expect(mapper.steps[0]).toMatchObject({
+        title: 'Modellen avviste',
+        summary: 'Modellen avviste forespørselen',
+      });
+    });
+
+    it("takes the finish reason and category from the model step's latest call", () => {
+      seq = 0;
+      const mapper = new RunMapper();
+      const usageEnded = (ms: number, end: Record<string, string>) =>
+        at(
+          ms,
+          'kernel.usage',
+          {
+            usage: { inputTokens: 10, outputTokens: 0 },
+            port: 'model',
+            model: { kind: 'model', id: 'claude-opus-5-5' },
+            ...end,
+          },
+          'audit',
+        );
+      [
+        notice(100, { stage: 'tool', tool: 'generate_response', iteration: 0 }),
+        usageEnded(200, { finishReason: 'content_filter', refusalCategory: 'cyber' }),
+        usageEnded(300, { finishReason: 'stop' }),
+      ].forEach((e) => mapper.push(e));
+
+      const step = mapper.steps.find((s) => s.title === 'Skrev svaret');
+      expect(step?.finishReason).toBe('stop');
+      expect(step?.refusalCategory).toBeUndefined();
+    });
+
     it('upserts the same step id while it runs and when it finishes', () => {
       const mapper = new RunMapper();
       const changes = agentRun()
@@ -498,6 +633,48 @@ describe('the run mapper', () => {
       expect(round.at(-1)?.step.state).toBeUndefined();
       expect(round.at(-1)?.step.summary).toBe('gpt-test · 500 inn, 20 ut');
     });
+  });
+
+  it('names who decided at a gate and the read status it overrode', () => {
+    const mapper = new RunMapper();
+    [
+      notice(0, {
+        stage: 'gate',
+        source: 'llm-sufficiency-gate',
+        status: 'sufficient',
+        strategy: 'finalize',
+        overriddenReadStatus: 'gap-remaining',
+      }),
+      notice(1, {
+        stage: 'gate',
+        source: 'shadow-read-signals',
+        status: 'insufficient',
+        strategy: 'read-more',
+      }),
+    ].forEach((e) => mapper.push(e));
+
+    const [overrode, plain] = mapper.steps.filter((s) => s.type === 'guard');
+    expect(overrode?.blocks).toEqual([
+      {
+        kind: 'kv',
+        rows: [
+          ['Avgjort av', 'Modellen som vurderer kildene'],
+          ['Overstyrte lesesjekken', 'Mangler fortsatt noe'],
+        ],
+      },
+    ]);
+    expect(plain?.blocks).toEqual([{ kind: 'kv', rows: [['Avgjort av', 'Lesesjekken']] }]);
+  });
+
+  it('replaces a renumbered answer without a warning step', () => {
+    const mapper = new RunMapper({ details: true });
+    const changes = [
+      notice(0, { stage: 'answer-discarded', reason: 'renumbered' }),
+      at(1, 'kernel.part.delta', { text: 'Svar [1].' }),
+    ].flatMap((e) => mapper.push(e));
+
+    expect(changes).toContainEqual({ kind: 'retract', reason: 'discarded' });
+    expect(mapper.steps.filter((s) => s.type === 'note')).toEqual([]);
   });
 
   it('shows a clarification as the result', () => {

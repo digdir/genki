@@ -28,7 +28,7 @@ const openPage = async (
   wrap: (inner: typeof fetch) => typeof fetch = (inner) => inner,
 ) => {
   await renderAt(
-    '#/playground',
+    '#/playground/backend',
     wrap(mockFetch(undefined, undefined, undefined, undefined, { features: { playground } })),
   );
   return screen.findByRole('complementary', { name: 'Oppsett' });
@@ -91,13 +91,13 @@ describe('the playground page', () => {
         ? new Promise<Response>(() => undefined)
         : mockFetch()(input, init);
     };
-    await renderAt('#/playground', pending);
+    await renderAt('#/playground/backend', pending);
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Prøveområdet' })).toBeTruthy();
     expect(
-      screen
-        .getByRole('button', { name: 'Sammenlign med et annet oppsett' })
-        .getAttribute('aria-disabled'),
+      (await screen.findByRole('button', { name: 'Sammenlign med et annet oppsett' })).getAttribute(
+        'aria-disabled',
+      ),
     ).toBe('true');
   });
 
@@ -156,7 +156,7 @@ describe('the playground page', () => {
     expect(
       document.getElementById(instructions.getAttribute('aria-describedby') ?? '')?.textContent,
     ).toMatch(/har ingen instruksjoner å bytte ut/);
-    expect(within(panel).getByText('Fast stegflyt «Sorter posten», v1')).toBeTruthy();
+    expect(within(panel).getByText('Fast arbeidsflyt «Sorter posten», v1')).toBeTruthy();
     expect(runs).toHaveLength(0);
   });
 
@@ -164,7 +164,9 @@ describe('the playground page', () => {
     const panel = await openPage();
 
     const facts = within(panel).getByText(/^Data i Norge ·/);
-    expect(facts.textContent).toBe('Data i Norge · 11,90\u00a0kr / 95,20\u00a0kr per 1M tokens');
+    expect(facts.textContent).toBe(
+      'Data i Norge · inn 11,90\u00a0kr / ut 95,20\u00a0kr per 1M tokens',
+    );
   });
 
   it('shows the instruction text when the service keeps its instructions in a prompt file', async () => {
@@ -184,12 +186,8 @@ describe('the playground page', () => {
     await waitFor(() => expect((instructions as HTMLTextAreaElement).value).toBe(promptText));
     fireEvent.change(instructions, { target: { value: 'Svar kort. Vis kilden.' } });
 
-    fireEvent.click(
-      within(panel).getByRole('button', { name: 'Lagre i utkastet til Rapportassistenten' }),
-    );
-    fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre i utkastet' }),
-    );
+    fireEvent.click(within(panel).getByRole('button', { name: 'Lagre i Rapportassistenten' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre' }));
     await screen.findByText(/Endringene er lagret i utkastet/);
 
     expect(puts[0]?.definition).toMatchObject({
@@ -210,7 +208,7 @@ describe('the playground page', () => {
       });
       return inner(input, init);
     };
-    await renderAt('#/playground', recording);
+    await renderAt('#/playground/backend', recording);
     const panel = await screen.findByRole('complementary', { name: 'Oppsett' });
     const instructions = within(panel).getByRole('textbox', { name: 'Instruksjoner' });
     await waitFor(() =>
@@ -218,16 +216,14 @@ describe('the playground page', () => {
     );
     fireEvent.change(instructions, { target: { value: 'Svar kort. Vis kilden.' } });
 
-    fireEvent.click(
-      within(panel).getByRole('button', { name: 'Lagre i utkastet til Rapportassistenten' }),
-    );
-    const dialog = screen.getByRole('dialog', { name: 'Lagre i utkastet til Rapportassistenten?' });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Lagre i Rapportassistenten' }));
+    const dialog = screen.getByRole('dialog', { name: 'Lagre i Rapportassistenten?' });
     expect(within(dialog).getByText('instruksjoner')).toBeTruthy();
     expect(within(dialog).getByText(/blir ikke publisert/)).toBeTruthy();
     const writes = () => requests.filter((r) => r.method !== 'GET');
     expect(writes().filter((r) => r.url.endsWith('/draft'))).toHaveLength(0);
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Lagre i utkastet' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Lagre' }));
     expect(
       await screen.findByText(
         'Endringene er lagret i utkastet til Rapportassistenten. Ingenting er publisert.',
@@ -258,12 +254,8 @@ describe('the playground page', () => {
     fireEvent.change(instructions, { target: { value: 'Svar kort. Vis kilden.' } });
     expect(within(panel).getByText('1 endring fra utkastet: instruksjoner.')).toBeTruthy();
 
-    fireEvent.click(
-      within(panel).getByRole('button', { name: 'Lagre i utkastet til Rapportassistenten' }),
-    );
-    fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre i utkastet' }),
-    );
+    fireEvent.click(within(panel).getByRole('button', { name: 'Lagre i Rapportassistenten' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre' }));
     await screen.findByText(/Endringene er lagret i utkastet/);
 
     await waitFor(() => expect(within(panel).queryByText(/endring fra utkastet/)).toBeNull());
@@ -280,15 +272,11 @@ describe('the playground page', () => {
         puts.push(JSON.parse(init.body) as (typeof puts)[number]);
       return inner(input, init);
     };
-    await renderAt('#/playground', recording);
+    await renderAt('#/playground/backend', recording);
     const panel = await screen.findByRole('complementary', { name: 'Oppsett' });
     const save = async () => {
-      fireEvent.click(
-        within(panel).getByRole('button', { name: 'Lagre i utkastet til Rapportassistenten' }),
-      );
-      fireEvent.click(
-        within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre i utkastet' }),
-      );
+      fireEvent.click(within(panel).getByRole('button', { name: 'Lagre i Rapportassistenten' }));
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre' }));
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     };
 
@@ -296,10 +284,10 @@ describe('the playground page', () => {
       within(panel).getByRole('checkbox', { name: 'Veiledere fra Statens eksempelverk' }),
     );
     await save();
-    chooseStart(panel, 'Rapportassistenten, versjon 7');
+    chooseStart(panel, 'Rapportassistenten, utgave 7');
     fireEvent.click(within(panel).getByRole('checkbox', { name: 'Tilsynsrapporter 2025' }));
     expect(
-      within(panel).getByText('1 endring fra versjon 7: Tilsynsrapporter 2025 på.'),
+      within(panel).getByText('1 endring fra utgave 7: Tilsynsrapporter 2025 på.'),
     ).toBeTruthy();
     await save();
 
@@ -320,7 +308,7 @@ describe('the playground page', () => {
     expect(within(sideA).queryByRole('button', { name: 'Bruk A i utkastet' })).toBeNull();
 
     fireEvent.click(within(sideB).getByRole('button', { name: 'Bruk B i utkastet' }));
-    const dialog = screen.getByRole('dialog', { name: 'Lagre i utkastet til Rapportassistenten?' });
+    const dialog = screen.getByRole('dialog', { name: 'Lagre i Rapportassistenten?' });
     expect(within(dialog).getByText('modell Qwen3.8-27B')).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Avbryt' }));
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -398,7 +386,13 @@ describe('the playground page', () => {
   });
 
   it('marks as different only what differs between A and B', async () => {
-    await openPage();
+    const panel = await openPage();
+    await waitFor(() =>
+      expect(
+        (within(panel).getByRole('textbox', { name: 'Instruksjoner' }) as HTMLTextAreaElement)
+          .value,
+      ).toMatch(/^Svar saksbehandlere/),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Sammenlign med et annet oppsett' }));
 
     const sideA = screen.getByRole('region', { name: /^Oppsett A:/ });

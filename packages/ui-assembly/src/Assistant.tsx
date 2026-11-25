@@ -25,6 +25,7 @@ import {
   EmptyState,
   ErrorState,
   Filter,
+  FilterBasis,
   FilterRead,
   NotFoundState,
   Settings,
@@ -53,6 +54,7 @@ import {
   sameSelection,
   settingsPageIds,
   type AnswerCopied,
+  type BlockId,
   type AnswerFeedbackStatus,
   type ConversationAnswer,
   type SettingsPageId,
@@ -63,14 +65,7 @@ import {
   type SourceSelection,
   type SourceTarget,
 } from '@genai/ui-blocks';
-import {
-  ArrowLeftIcon,
-  ChatIcon,
-  FileSearchIcon,
-  FileTextIcon,
-  PlusIcon,
-  RobotIcon,
-} from '@navikt/aksel-icons';
+import { ArrowLeftIcon, FileTextIcon, PlusIcon } from '@navikt/aksel-icons';
 import {
   useEffect,
   useId,
@@ -83,7 +78,24 @@ import {
 } from 'react';
 import { phrase, useT, type AssemblyTranslator } from './i18n.js';
 import { stepsOf } from './procedure.js';
+import { blockData, blockState, type BlockContext } from './block-data.js';
+import { BlockHostContext, type BlockHost } from './block-events.js';
+import { BlockPlaceholder } from './block-placeholder.js';
+import { RefBlock } from './ref-block.js';
+import {
+  blockRegistry,
+  builtInOrder,
+  refBlocksIn,
+  unavailableIn,
+  type RefBlocks,
+} from './registry.js';
 import { useAssistant, type AssistantOptions, type AssistantState } from './useAssistant.js';
+
+// The next look's field in a conversation is one line until the question grows (dev-chat-samtale).
+const oneLineField = {
+  '--genai-composer-field-min-block-size-floor': '0px',
+  '--genai-composer-field-min-block-size': '0px',
+} as CSSProperties;
 
 // The cards frame's ground, the shell's, under the docked field: it fades into the card, not the
 // page (the next look).
@@ -100,20 +112,21 @@ const sourcesTool = {
   inlineSize: '100%',
 } as CSSProperties;
 
-// `compact-filter`: a field's ticks in one column, so the filter fits its narrow panel.
-const oneColumnTicks = { '--genai-filter-checkboxes-columns': '1' } as CSSProperties;
+// The next look's filter beside the threads: 280 wide, a field's ticks in one column.
+const oneColumnTicks = {
+  '--genai-filter-checkboxes-columns': '1',
+  inlineSize: '100%',
+} as CSSProperties;
 
-// The next look's footnote marks, 16 px as dev-kilder-hoyre draws them.
-const nextFootnotes = { '--genai-answer-footnote-size': 'var(--ds-size-4)' } as CSSProperties;
+// The next look's threads: 220 wide, at most 400 (kunnskapsassistenten#263, #264).
+const threadsWidth = { width: 220, minWidth: 220, maxWidth: 400 };
+const filterWidth = 280;
 
-// The tools' icons in the next look, as the dev-verktoy boards draw them: Fremgangsmåte's robot,
-// Kilder's page with a magnifier. Notater's pencil waits for the block.
-const toolIcons: Record<string, ReactNode> = {
-  approach: <RobotIcon aria-hidden />,
-  chat: <ChatIcon aria-hidden />,
-  sources: <FileSearchIcon aria-hidden />,
-  'document-view': <FileTextIcon aria-hidden />,
-};
+// The next look's footnote marks at 16 px (dev-kilder-hoyre), and the question a lighter grey.
+const nextFootnotes = {
+  '--genai-answer-footnote-size': 'var(--ds-size-4)',
+  '--genai-conversation-question-background': 'var(--ds-color-neutral-background-tinted)',
+} as CSSProperties;
 
 // A plain main-button click is the host's; any other, for a new tab, is the browser's.
 const plainClick = (event: MouseEvent<HTMLAnchorElement>) =>
@@ -128,11 +141,18 @@ export interface AssistantProps extends AssistantOptions {
   mainId?: string | undefined;
   /** Drawn in a host's preview this wide, on the host's page: no `h1` of its own (`Shell`). */
   frameWidth?: number | undefined;
+  /** The pinned edition of each `block: ref`, from the interface's `blocks`. */
+  refBlocks?: RefBlocks | undefined;
 }
 
 /** The assistant a layout describes, live against the service through `api`. */
-export const Assistant = ({ mainId, frameWidth, ...options }: AssistantProps) => (
-  <AssistantView assistant={useAssistant(options)} mainId={mainId} frameWidth={frameWidth} />
+export const Assistant = ({ mainId, frameWidth, refBlocks, ...options }: AssistantProps) => (
+  <AssistantView
+    assistant={useAssistant(options)}
+    mainId={mainId}
+    frameWidth={frameWidth}
+    refBlocks={refBlocks}
+  />
 );
 
 const AnswerRow = ({
@@ -241,6 +261,7 @@ const approachOf = (
   const changed =
     asked && before?.scope?.selection ? !sameSelection(before.scope.selection, asked) : false;
   const count = turn.scope?.documents;
+  const used = turn.answer?.sources?.length;
   // Beside the tool, the card says only how many documents the answer read from.
   const scope =
     asked && place !== 'compact' ? (
@@ -248,6 +269,8 @@ const approachOf = (
     ) : asked && count !== undefined ? (
       <FilterRead selection={{}} count={count} />
     ) : undefined;
+  // The next look's card is the dev boards': the filter the answer built on, then the process.
+  const card = next && !tool;
   return (
     <>
       <Approach
@@ -255,11 +278,23 @@ const approachOf = (
         working={busy}
         startedAt={approach.startedAt}
         {...(approach.finishedAt ? { finishedAt: approach.finishedAt } : {})}
-        {...(turn.answer?.sources ? { used: turn.answer.sources.length } : {})}
-        // The next look's tool is the dev-verktoy boards' list; its card is their bar.
-        {...(next ? (tool ? { variant: 'list' as const } : { summary: 'totals' as const }) : {})}
-        {...(changed ? { note: t('filter.changed') } : {})}
-        {...(scope ? { scope } : {})}
+        {...(used === undefined || card ? {} : { used })}
+        {...(card ? { variant: 'sections' as const } : next ? { variant: 'list' as const } : {})}
+        {...(card && asked
+          ? {
+              filter: (
+                <FilterBasis
+                  selection={asked}
+                  fields={a.facets}
+                  count={count}
+                  used={used}
+                  previous={changed ? before?.scope?.selection : undefined}
+                />
+              ),
+            }
+          : {})}
+        {...(changed && !card ? { note: t('filter.changed') } : {})}
+        {...(scope && !card ? { scope } : {})}
       />
       {a.level === 'detailed' && place !== 'compact' ? (
         // No block draws the detailed level yet: the step frames as genki sent them, for now.
@@ -294,10 +329,12 @@ export const AssistantView = ({
   assistant: a,
   mainId = 'main-content',
   frameWidth,
+  refBlocks = {},
 }: {
   assistant: AssistantState;
   mainId?: string | undefined;
   frameWidth?: number | undefined;
+  refBlocks?: RefBlocks | undefined;
 }) => {
   const t = useT();
   const approachHeadingId = useId();
@@ -311,6 +348,56 @@ export const AssistantView = ({
   const sourcesOn = a.has('sources');
   const documentOn = a.has('document-view');
   const settingsOn = a.has('settings');
+  const unavailable = {
+    primary: unavailableIn(a.layout, 'primary', refBlocks),
+    main: unavailableIn(a.layout, 'main', refBlocks),
+    secondary: unavailableIn(a.layout, 'secondary', refBlocks),
+  };
+  const refs = {
+    primary: refBlocksIn(a.layout, 'primary', refBlocks),
+    main: refBlocksIn(a.layout, 'main', refBlocks),
+    secondary: refBlocksIn(a.layout, 'secondary', refBlocks),
+  };
+  const blockContext: BlockContext = {
+    serviceName: a.assistantName,
+    locale: a.language === 'en' ? 'en' : 'nb',
+    threadTitle: a.threadTitle,
+    threads: a.threads,
+    currentThread: a.currentId,
+  };
+  const latestTurn = a.turns.at(-1);
+  const blockHost = (turn: AssistantState['turns'][number] | undefined): BlockHost => ({
+    locale: blockContext.locale ?? 'nb',
+    onEvent: (event) => {
+      if (event.name === 'ask') a.send(event.question);
+      else if (event.name === 'set-filter')
+        a.setSelection({ ...a.selection, [event.field]: event.values });
+      else if (event.name === 'open-page') window.location.assign(`/${event.page}`);
+      else if (event.name === 'open-document' && turn) {
+        if (sourcesOn) a.showSources(turn.id, { index: event.index }, event.index);
+        else if (documentOn) a.openDocument(turn.id, { index: event.index }, 'answer');
+      }
+    },
+  });
+  const titleOf = (title: RefBlocks[string]['title']) =>
+    (a.language === 'en' ? title.en : undefined) ?? title.nb ?? '';
+  const refView = (
+    zone: 'primary' | 'main' | 'secondary',
+    { payload, placed }: ReturnType<typeof refBlocksIn>[number],
+    turn: AssistantState['turns'][number] | undefined,
+    key: string,
+    level?: 2 | 3,
+  ) => (
+    <BlockHostContext.Provider key={key} value={blockHost(turn)}>
+      <RefBlock
+        payload={payload}
+        data={blockData(zone, turn, blockContext)}
+        state={blockState(turn)}
+        settings={placed.settings as Record<string, boolean | string> | undefined}
+        level={level}
+      />
+    </BlockHostContext.Provider>
+  );
   const name = a.assistantName;
   // The dev boards' look, the layout's `next`: cards, every panel titled, the thread's title as
   // the `h1`, and the reader at the primary panel's foot with the profile menu.
@@ -355,8 +442,6 @@ export const AssistantView = ({
   // The next look draws the filter as its own panel beside the threads, in their card
   // (dev-filter-panel; «9 · Filtrering» A), not as a second view of the same panel.
   const filterPanel = next && threadsOn && filterZone === 'primary' && !filtersBeside;
-  // `compact-filter`: that panel 230 wide at every width of the card, and the threads the rest.
-  const compactFilter = filterPanel && a.flags.has('compact-filter');
   const twoViews = threadsOn && filterZone === 'primary' && !filtersBeside && !filterPanel;
 
   const [atEnd, setAtEnd] = useState(true);
@@ -440,8 +525,10 @@ export const AssistantView = ({
           onFetchAgain={a.fetchAgain}
           assistantName={name}
           answerColor="neutral"
-          // The next look's answer has no card and no name over it (dev-kilder-hoyre).
-          {...(next ? { answerVariant: 'plain' as const, answerLabel: false } : {})}
+          // The next look's answer has no card and no name; the question is a neutral grey.
+          {...(next
+            ? { answerVariant: 'plain' as const, answerLabel: false, questionColor: 'neutral' }
+            : {})}
           // The next look names the thread once, in the main card's `h1`.
           {...(a.named && !next ? { title: a.named, titleRepeatsQuestion: a.repeatsQuestion } : {})}
           target={a.answerTarget}
@@ -487,7 +574,21 @@ export const AssistantView = ({
           closingQuestion
           onAtEndChange={setAtEnd}
           actions={(turn, parts) => (
-            <AnswerRow a={a} turn={turn} end={parts.end} search={parts.search} />
+            <>
+              <AnswerRow a={a} turn={turn} end={parts.end} search={parts.search} />
+              {refs.main.length > 0 ? (
+                <div className="uia-answer-blocks">
+                  {refs.main.map((ref, i) =>
+                    refView(
+                      'main',
+                      ref,
+                      a.turns.find((one) => one.id === turn.id),
+                      `ref-${turn.id}-${i}`,
+                    ),
+                  )}
+                </div>
+              ) : null}
+            </>
           )}
         />
       );
@@ -496,16 +597,21 @@ export const AssistantView = ({
     // The catalogue keeps follow-ups to the current look.
     const followUps = a.option('chat', 'followUps') ? a.profile?.followUps : undefined;
     const disclaimer = a.option('chat', 'disclaimer');
-    // While a question is written, the next look hides the greeting and suggestions in place.
-    const typing = next && start && a.draft !== '';
     return (
       <div
         className="uia-chat"
         data-start={start || undefined}
-        data-typing={typing || undefined}
         data-in-panel={inPanel || undefined}
         // In the next look the docked field stands on the main card's ground, not the page's.
-        style={next ? { ...nextFootnotes, ...(inPanel ? {} : cardGround) } : undefined}
+        style={
+          next
+            ? {
+                ...nextFootnotes,
+                ...(inPanel ? {} : cardGround),
+                ...(start ? {} : oneLineField),
+              }
+            : undefined
+        }
       >
         {titled ? pageHeading : null}
         {middle}
@@ -558,6 +664,16 @@ export const AssistantView = ({
             // scroll margin as tall as it, as kunnskapsassistenten does.
             sticky={!start && !inPanel}
             fieldRef={a.fieldRef}
+            // The dev-chat boards' field: one row with «+» and send, an arrow up, named as they name it.
+            {...(next
+              ? {
+                  variant: 'inline' as const,
+                  label: start ? t('assembly.fieldStart') : t('assembly.fieldFollowUp'),
+                  placeholder: start
+                    ? t('assembly.fieldStartPlaceholder')
+                    : t('assembly.fieldFollowUpPlaceholder'),
+                }
+              : {})}
           />
         )}
         {start ? (
@@ -789,9 +905,7 @@ export const AssistantView = ({
     ) : undefined;
 
   // The next look's sizes, the dev-navbar board's at 1720: threads 220, tools 380.
-  const nextPrimary: Partial<ShellPanel> = next
-    ? { size: { width: 220, minWidth: 220 }, ...profileFoot }
-    : {};
+  const nextPrimary: Partial<ShellPanel> = next ? { size: threadsWidth, ...profileFoot } : {};
   const threadsTitle = next ? { title: t('builder.threads') } : {};
 
   const threadsAndFilter = phrase(t, [t('builder.threads'), t('builder.filter')]);
@@ -829,23 +943,21 @@ export const AssistantView = ({
       foot,
       ...nextPrimary,
       ...(next ? { rail: newThreadRail } : {}),
-      // The filter's own panel in the threads' card, 220 + 440 at 1720 as dev-filter-panel draws
-      // it: «Filter», «Gjelder neste spørsmål», and the card's button on its row.
+      // The filter's own panel in the threads' card (dev-filter-panel); resizing changes the threads only.
       ...(filterPanel
         ? {
-            // With `compact-filter`, no narrower than the threads' 220 beside the filter's 230.
-            size: { width: 660, minWidth: compactFilter ? 220 + 230 : 660 },
+            size: {
+              width: threadsWidth.width + filterWidth,
+              minWidth: threadsWidth.minWidth + filterWidth,
+              maxWidth: threadsWidth.maxWidth + filterWidth,
+            },
             companion: {
               label: t('assembly.filterForThread'),
               title: t('builder.filter'),
               subtitle: t('filter.appliesNext'),
-              width: compactFilter ? 230 : 440,
-              ...(compactFilter
-                ? {
-                    keepWidth: true,
-                    children: <div style={oneColumnTicks}>{filter(undefined, 2)}</div>,
-                  }
-                : { children: filter(undefined, 2) }),
+              width: filterWidth,
+              keepWidth: true,
+              children: <div style={oneColumnTicks}>{filter(undefined, 2)}</div>,
             },
           }
         : {}),
@@ -863,6 +975,25 @@ export const AssistantView = ({
   } else if (profile) {
     primary = { label: t('builder.settings'), ...nextPrimary };
   }
+  if (unavailable.primary.length > 0 || refs.primary.length > 0) {
+    const placeholders = [
+      ...refs.primary.map((ref, i) => refView('primary', ref, latestTurn, `ref-${i}`)),
+      ...unavailable.primary.map((ref, i) => (
+        <BlockPlaceholder key={`unavailable-${i}`} blockRef={ref} />
+      )),
+    ];
+    primary = primary
+      ? {
+          ...primary,
+          children: (
+            <>
+              {primary.children}
+              {placeholders}
+            </>
+          ),
+        }
+      : { label: t('assembly.unavailableBlock'), children: placeholders };
+  }
 
   // ── The next look's «Innstillinger» (dev-innstillinger-1 to -4): the primary panel turns into
   // the settings menu, each page stands in the main card, and there is no secondary panel. ──
@@ -871,10 +1002,14 @@ export const AssistantView = ({
     ...experiment,
     on: a.flags.has(experiment.id),
   }));
-  // «Generelt» offers the colour scheme the host keeps, and its menu line says no more.
-  const general = a.onColorSchemeChange
-    ? { colorScheme: { value: a.colorScheme, onChange: a.onColorSchemeChange } }
-    : {};
+  const general = {
+    ...(a.onLanguageChange
+      ? { language: { value: a.language, onChange: a.onLanguageChange } }
+      : {}),
+    ...(a.onColorSchemeChange
+      ? { colorScheme: { value: a.colorScheme, onChange: a.onColorSchemeChange } }
+      : {}),
+  };
   if (nextSettings)
     primary = {
       label: t('builder.settings'),
@@ -899,8 +1034,7 @@ export const AssistantView = ({
       ),
       foot,
       ...nextPrimary,
-      // The menu alone, 220 at 1720 (dev-innstillinger-1), and never wider: the threads' card, 660
-      // with the filter beside them or as the reader dragged it, keeps its width for the way back.
+      // The menu alone is 220 wide; the threads' card keeps its dragged width for the way back.
       size: { width: 220, minWidth: 220, maxWidth: 220 },
     };
 
@@ -1028,55 +1162,51 @@ export const AssistantView = ({
   // The tool is the detailed one, the next look's as the list of the dev-verktoy boards.
   const approachPanel = approachOf(a, a.active?.id, t, 'tool') ?? approachNote;
   // Each tool's icon, as the dev-verktoy boards draw it, in the switcher.
-  const icon = (id: string) =>
-    next ? { icon: toolIcons[id] ?? <FileTextIcon aria-hidden /> } : {};
-  const tools: ShellTool[] = [
-    ...(approachTool
-      ? [
-          {
-            id: 'approach',
-            label: t('builder.approach'),
-            content: approachPanel,
-            ...icon('approach'),
-          },
-        ]
-      : []),
-    ...(chatZone === 'secondary'
-      ? [{ id: 'chat', label: t('builder.chat'), content: chat(true, false), ...icon('chat') }]
-      : []),
-    ...(sourcesOn
-      ? [
-          {
-            id: 'sources',
-            label: t('builder.sources'),
-            content: sourcesView(false),
-            ...icon('sources'),
-          },
-        ]
-      : []),
+  const icon = (id: BlockId) => (next ? { icon: blockRegistry.get(id)?.icon } : {});
+  // What each built-in block draws as a tool of the secondary panel, where it stands there.
+  const toolContent: Partial<Record<BlockId, ReactNode>> = {
+    ...(approachTool ? { approach: approachPanel } : {}),
+    ...(chatZone === 'secondary' ? { chat: chat(true, false) } : {}),
+    ...(sourcesOn ? { sources: sourcesView(false) } : {}),
     ...(a.documentZone === 'secondary'
-      ? [
-          {
-            id: 'document-view',
-            label: t('builder.documentView'),
-            ...icon('document-view'),
-            content: (
-              <div
-                onKeyDownCapture={escapeStaysInDrawer}
-                // Dokumentvisning's jumps stay at the top while the document scrolls: under the
-                // switcher the shell pins there, not behind it, at the height the shell measures.
-                style={
-                  {
-                    '--genai-document-view-jumps-inset': 'var(--uib-shell-pinned-block-size, 0px)',
-                  } as CSSProperties
-                }
-              >
-                {documentView(false)}
-              </div>
-            ),
-          },
-        ]
-      : []),
+      ? {
+          'document-view': (
+            <div
+              onKeyDownCapture={escapeStaysInDrawer}
+              // Dokumentvisning's jumps stay at the top while the document scrolls: under the
+              // switcher the shell pins there, not behind it, at the height the shell measures.
+              style={
+                {
+                  '--genai-document-view-jumps-inset': 'var(--uib-shell-pinned-block-size, 0px)',
+                } as CSSProperties
+              }
+            >
+              {documentView(false)}
+            </div>
+          ),
+        }
+      : {}),
+  };
+  const tools: ShellTool[] = [
+    ...builtInOrder('secondary').flatMap((id) => {
+      const content = toolContent[id];
+      const block = blockRegistry.get(id);
+      return content !== undefined && block
+        ? [{ id, label: t(block.label), content, ...icon(id) }]
+        : [];
+    }),
+    ...refs.secondary.map((ref, i) => ({
+      id: `ref-${i}`,
+      label: titleOf(ref.payload.title),
+      content: refView('secondary', ref, latestTurn, `ref-${i}`),
+      ...(next ? { icon: <FileTextIcon aria-hidden /> } : {}),
+    })),
+    ...unavailable.secondary.map((ref, i) => ({
+      id: `unavailable-${i}`,
+      label: t('assembly.unavailableBlock'),
+      content: <BlockPlaceholder blockRef={ref} />,
+      ...(next ? { icon: <FileTextIcon aria-hidden /> } : {}),
+    })),
   ];
   // Kilder alone keeps its own heading, as kunnskapsassistenten draws it; the switcher names the
   // tools only when there is a choice, or for a tool with no heading of its own. In the next look
@@ -1183,46 +1313,71 @@ export const AssistantView = ({
   } else {
     // Chat alone is the shell's child, as in kunnskapsassistenten, with no wrapper around it. With
     // Dokumentvisning beside it the wrapper stays, so opening a document moves nothing.
-    const chatAlone = chatZone === 'main' && filterZone !== 'main' && a.documentZone !== 'main';
-    const parts: ReactNode[] = [];
-    // Without Chat beside it, Fremgangsmåte has the column's head, as wide as the strip under it.
-    // Its note is named by a heading, as the secondary panel's switcher names it there; the steps
-    // name themselves on their own summary.
-    if (approachCard && chatZone !== 'main')
-      parts.push(
-        approachSteps ? (
-          <div key="approach" className="uia-main-approach">
-            {approachSteps}
-          </div>
-        ) : (
-          <section key="approach" className="uia-main-approach" aria-labelledby={approachHeadingId}>
-            <Heading id={approachHeadingId} level={2} data-size="xs">
-              {t('builder.approach')}
-            </Heading>
-            {approachNote}
-          </section>
-        ),
-      );
-    if (filterZone === 'main') parts.push(<div key="filter">{filterStrip}</div>);
-    if (chatZone === 'main')
-      parts.push(
-        // Hidden, not gone, while a document stands in its place: the conversation keeps its
-        // place and the field its text, and the way back finds the footnote.
-        <div key="chat" className="uia-main-chat" hidden={chatHidden || undefined}>
-          {chat(false, false)}
-        </div>,
-      );
-    // Beside Chat only while a document is open; without Chat, the document has the column.
-    if (a.documentZone === 'main' && (!a.documentOverChat || a.openDoc))
-      parts.push(
-        <div
-          key="document-view"
-          className="uia-main-document"
-          onKeyDownCapture={escapeStaysInDrawer}
-        >
-          {documentView(true)}
-        </div>,
-      );
+    const chatAlone =
+      chatZone === 'main' &&
+      filterZone !== 'main' &&
+      a.documentZone !== 'main' &&
+      unavailable.main.length === 0;
+    // What each built-in block draws in the main column, where it stands there.
+    const mainContent: Partial<Record<BlockId, ReactNode>> = {
+      // Without Chat beside it, Fremgangsmåte has the column's head, as wide as the strip under
+      // it. Its note is named by a heading, as the secondary panel's switcher names it there; the
+      // steps name themselves on their own summary.
+      ...(approachCard && chatZone !== 'main'
+        ? {
+            approach: approachSteps ? (
+              <div key="approach" className="uia-main-approach">
+                {approachSteps}
+              </div>
+            ) : (
+              <section
+                key="approach"
+                className="uia-main-approach"
+                aria-labelledby={approachHeadingId}
+              >
+                <Heading id={approachHeadingId} level={2} data-size="xs">
+                  {t('builder.approach')}
+                </Heading>
+                {approachNote}
+              </section>
+            ),
+          }
+        : {}),
+      ...(filterZone === 'main' ? { filter: <div key="filter">{filterStrip}</div> } : {}),
+      ...(chatZone === 'main'
+        ? {
+            // Hidden, not gone, while a document stands in its place: the conversation keeps its
+            // place and the field its text, and the way back finds the footnote.
+            chat: (
+              <div key="chat" className="uia-main-chat" hidden={chatHidden || undefined}>
+                {chat(false, false)}
+              </div>
+            ),
+          }
+        : {}),
+      // Beside Chat only while a document is open; without Chat, the document has the column.
+      ...(a.documentZone === 'main' && (!a.documentOverChat || a.openDoc)
+        ? {
+            'document-view': (
+              <div
+                key="document-view"
+                className="uia-main-document"
+                onKeyDownCapture={escapeStaysInDrawer}
+              >
+                {documentView(true)}
+              </div>
+            ),
+          }
+        : {}),
+    };
+    const parts: ReactNode[] = builtInOrder('main').flatMap((id) =>
+      mainContent[id] === undefined ? [] : [mainContent[id]],
+    );
+    parts.push(
+      ...unavailable.main.map((ref, i) => (
+        <BlockPlaceholder key={`unavailable-${i}`} blockRef={ref} level={2} />
+      )),
+    );
     if (!chatZone)
       parts.push(
         <EmptyState

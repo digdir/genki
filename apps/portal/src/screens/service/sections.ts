@@ -12,7 +12,8 @@ export type ServiceSection =
   | 'versions'
   | 'log'
   | 'environments'
-  | 'definition';
+  | 'definition'
+  | 'advanced';
 
 export const sectionLabels: Record<ServiceSection, PlainKey> = {
   overview: 'service.sectionOverview',
@@ -27,6 +28,7 @@ export const sectionLabels: Record<ServiceSection, PlainKey> = {
   log: 'service.sectionLog',
   environments: 'service.sectionEnvironments',
   definition: 'service.sectionDefinition',
+  advanced: 'service.tabAdvanced',
 };
 
 const order: ServiceSection[] = [
@@ -42,18 +44,43 @@ const order: ServiceSection[] = [
   'environments',
   'batch',
   'definition',
+  'advanced',
 ];
 
-const forNew: ServiceSection[] = ['setup', 'interface', 'test', 'channels', 'definition'];
+/** The new Oppsett is for services not published yet; return true to give it to every service. */
+export const usesNewSetup = ({ isNew }: { isNew: boolean }) => isNew;
 
-export type ServiceTab = 'overview' | 'setup' | 'interface' | 'quality' | 'developer';
+const forNew: ServiceSection[] = [
+  'setup',
+  'interface',
+  'test',
+  'channels',
+  'definition',
+  'advanced',
+];
+
+export type ServiceTab =
+  'overview' | 'setup' | 'interface' | 'quality' | 'history' | 'developer' | 'advanced';
+
+export const historyHasOwnTab = true;
+
+const historySections: ServiceSection[] = ['versions'];
 
 const tabSections: Record<ServiceTab, ServiceSection[]> = {
   overview: ['overview'],
   setup: ['setup', 'test', 'settings'],
   interface: ['interface'],
   quality: ['quality'],
-  developer: ['versions', 'log', 'channels', 'environments', 'batch', 'definition'],
+  history: historyHasOwnTab ? historySections : [],
+  developer: [
+    ...(historyHasOwnTab ? [] : historySections),
+    'log',
+    'channels',
+    'environments',
+    'batch',
+    'definition',
+  ],
+  advanced: ['advanced'],
 };
 
 export const tabLabels: Record<ServiceTab, PlainKey> = {
@@ -61,7 +88,31 @@ export const tabLabels: Record<ServiceTab, PlainKey> = {
   setup: 'service.sectionSetup',
   interface: 'service.sectionInterface',
   quality: 'service.sectionQuality',
+  history: 'service.sectionVersions',
   developer: 'service.tabDeveloper',
+  advanced: 'service.tabAdvanced',
+};
+
+/** The parts of the Avansert tab, in the order of its menu. */
+export const advancedItems = [
+  'how',
+  'tools',
+  'variants',
+  'limits',
+  'channels',
+  'json',
+  'yaml',
+] as const;
+
+export type AdvancedItem = (typeof advancedItems)[number];
+
+export const advancedItemOf = (detail: string | undefined): AdvancedItem =>
+  advancedItems.find((item) => item === detail?.split('/')[0]) ?? 'how';
+
+const movedToAdvanced: Partial<Record<ServiceSection, AdvancedItem>> = {
+  channels: 'channels',
+  definition: 'yaml',
+  settings: 'limits',
 };
 
 const notListed: ServiceSection[] = ['test', 'settings'];
@@ -79,8 +130,12 @@ export const serviceTabs = (sections: ServiceSection[]) =>
 export const subSections = (tab: ServiceTab, sections: ServiceSection[]) =>
   tabSections[tab].filter((s) => sections.includes(s) && !notListed.includes(s));
 
-export const availableSections = ({ isNew }: { isNew: boolean }) =>
-  isNew ? order.filter((s) => forNew.includes(s)) : order;
+export const availableSections = ({ isNew }: { isNew: boolean }) => {
+  const fresh = usesNewSetup({ isNew });
+  return (isNew ? order.filter((s) => forNew.includes(s)) : order).filter((s) =>
+    fresh ? !movedToAdvanced[s] : s !== 'advanced',
+  );
+};
 
 export const servicePath = (id: string, section?: ServiceSection, rest = '') => {
   const base = `/services/${encodeURIComponent(id)}`;
@@ -112,7 +167,11 @@ export const locate = (
   const keep = new URLSearchParams(query);
   keep.delete('tab');
   const suffix = () => (keep.size ? `?${keep.toString()}` : '');
-  const go = (section: ServiceSection, rest = '') => {
+  const go = (wanted: ServiceSection, wantedRest = '') => {
+    const moved = allowed.includes(wanted) ? undefined : movedToAdvanced[wanted];
+    const into = moved && allowed.includes('advanced');
+    const section: ServiceSection = into ? 'advanced' : wanted;
+    const rest = into ? `/${moved}` : wantedRest;
     const target = allowed.includes(section) ? section : fallback;
     return {
       section: target,
@@ -128,10 +187,46 @@ export const locate = (
     return go('definition');
   }
   if (raw === 'how-it-works') return go('setup', '/how');
+  // Only the sections of the new Oppsett, where Kanaler and the YAML live under Avansert.
+  const fresh = allowed.includes('advanced') && !allowed.includes('channels');
+  if (fresh) {
+    if (raw === 'settings') return go('settings');
+    if (raw === 'setup' && detail && (advancedItems as readonly string[]).includes(detail))
+      return go('advanced', `/${detail}`);
+    if (raw === 'setup' && (detail === 'risk' || detail === 'guards'))
+      return go('setup', '/publish');
+  }
   if (raw === 'settings' && allowed.includes('setup')) return go('setup', '/limits');
   const known = (Object.keys(sectionLabels) as ServiceSection[]).find((s) => s === raw);
   if (!raw || !known) return { section: fallback, detail: undefined };
-  if (!allowed.includes(known))
+  if (!allowed.includes(known)) {
+    if (movedToAdvanced[known] && allowed.includes('advanced')) return go(known);
     return { section: fallback, detail: undefined, redirect: servicePath(id, fallback) };
+  }
   return { section: known, detail };
 };
+
+export type Edition = 'test' | 'inUse';
+
+export type EditionView = Edition | 'both' | 'shared';
+
+const inUseQuery = 'edition=in-use';
+
+export const editionOf = (query: URLSearchParams): Edition =>
+  query.get('edition') === 'in-use' ? 'inUse' : 'test';
+
+export const editionView = (section: ServiceSection, edition: Edition): EditionView => {
+  const tab = tabOf(section);
+  if (tab === 'developer') return 'both';
+  return tab === 'history' ? 'inUse' : edition;
+};
+
+export const editionPath = (id: string, section: ServiceSection, edition: Edition) =>
+  edition === 'inUse' && editionView(section, 'test') === 'test'
+    ? servicePath(id, section, `?${inUseQuery}`)
+    : servicePath(id, section);
+
+export const switchPaths = (id: string, section: ServiceSection) => ({
+  test: servicePath(id, editionView(section, 'test') === 'test' ? section : 'overview'),
+  inUse: editionPath(id, section, 'inUse'),
+});

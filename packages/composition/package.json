@@ -38,7 +38,6 @@
     "@genai/port-tools": "0.0.0",
     "@genai/providers-a2a-client": "0.0.0",
     "@genai/providers-anthropic": "0.0.0",
-    "@genai/providers-colbert": "0.0.0",
     "@genai/providers-mcp-client": "0.0.0",
     "@genai/providers-openai": "0.0.0",
     "@genai/providers-openapi-tools": "0.0.0",

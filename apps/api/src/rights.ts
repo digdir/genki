@@ -22,8 +22,8 @@ export const rights: readonly Right[] = PLATFORM_RIGHTS;
 export const rightLabels: Readonly<Record<Right, string>> = {
   'use-services': 'Bruke tjenester',
   'manage-services': 'Administrere tjenester',
-  'manage-datasets': 'Administrere datasett',
-  'register-building-blocks': 'Registrere byggeklosser',
+  'manage-datasets': 'Administrere dokumentsamlinger',
+  'register-building-blocks': 'Legge til i katalogen',
   'view-usage': 'Se forbruk og kostnad',
 };
 
@@ -98,6 +98,8 @@ export const adminActionRights: Readonly<
 > = {
   'platform.service.publish': 'manage-services',
   'platform.service.lifecycle': 'manage-services',
+  'platform.service.delete': 'manage-services',
+  'platform.step-flow.archive': 'manage-services',
   'platform.service.access': 'manage-services',
   'platform.service.environments.add': 'manage-services',
   'platform.service.environments.remove': 'manage-services',
@@ -125,6 +127,7 @@ export const adminActionRights: Readonly<
   'platform.keypolicy.attach': 'manage-services',
   'platform.clients.save': 'manage-services',
   'platform.clients.remove': 'manage-services',
+  'platform.client.hosted': 'operator',
   'platform.maskinporten-client.save': 'manage-services',
   'platform.maskinporten-client.remove': 'manage-services',
   'platform.trigger.pause': 'manage-services',
@@ -216,6 +219,8 @@ export const adminActionRights: Readonly<
   'platform.recipe.share': 'operator',
   'platform.recipe.unshare': 'operator',
   'platform.platform-secret.set': 'operator',
+  'platform.platform-secret.delete': 'operator',
+  'platform.operations.kind.delete': 'operator',
   'platform.block.decide': 'operator',
   'platform.proposal.status': 'operator',
   'platform.service.share': 'operator',

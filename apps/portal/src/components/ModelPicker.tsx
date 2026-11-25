@@ -15,23 +15,21 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { CatalogModel } from '../api/models';
 import type { AsyncState } from '../hooks';
 import {
+  bestFitFirst,
   compareMax,
   entriesOf,
   fitsOperation,
   matchesQuery,
   pickerVisible,
-  recommendedFirst,
   residencies,
   usable,
 } from '../models';
 import { ErrorState, Loading } from '../states';
 import type { Residency } from '../types';
 import { Icon } from './Icon';
-import { ModelCompare, type CompareRow } from './ModelCompare';
-import { modelBlockHref, useModelText, type ModelText } from './model-text';
+import { ModelCompare, ModelMark, type CompareRow } from './ModelCompare';
+import { modelBlockHref, useModelText, whereColor, type ModelText } from './model-text';
 import './model-picker.css';
-
-const whereColor = (r: Residency) => (r === 'global' ? 'warning' : 'info');
 
 const Chosen = ({
   model,
@@ -45,6 +43,7 @@ const Chosen = ({
   action: ReactNode;
 }) => (
   <div className="mp-chosen">
+    {model ? <ModelMark model={model} /> : null}
     <div className="mp-chosen-text">
       <div className="tag-row">
         <strong className="mp-chosen-name">{model ? text.name(model) : id}</strong>
@@ -66,9 +65,9 @@ const Chosen = ({
       </div>
       {model ? (
         <span className="mp-facts">
-          {model.price
-            ? text.t('modelPicker.facts', { by: text.byLine(model), price: text.price(model) })
-            : `${text.byLine(model)} · ${text.price(model)}`}
+          {[text.byLine(model), text.gateway(model), text.priceWithUnit(model)]
+            .filter(Boolean)
+            .join(' · ')}
         </span>
       ) : null}
     </div>
@@ -85,8 +84,10 @@ export const ModelPicker = ({
   readOnly = false,
   onRetry,
   triggerLabel,
+  residency,
 }: {
   triggerLabel?: string;
+  residency?: Residency;
   models: AsyncState<CatalogModel[]>;
   value: string;
   onChange: (id: string) => void;
@@ -126,7 +127,7 @@ export const ModelPicker = ({
   if (models.status === 'error')
     return <ErrorState error={models.error} headingLevel={3} {...(onRetry ? { onRetry } : {})} />;
 
-  const all = entriesOf(models.data).sort(recommendedFirst);
+  const all = entriesOf(models.data).sort(bestFitFirst(operation, value, residency));
   const chosen = all.find((m) => m.id === value);
   const operationName = text.use(operation).toLocaleLowerCase();
   const fits = all.filter(
@@ -168,6 +169,7 @@ export const ModelPicker = ({
 
   const rows: CompareRow[] = [
     { label: t('modelWords.rowMaker'), cell: text.maker },
+    { label: t('modelWords.rowOperator'), cell: text.operator },
     { label: t('modelWords.rowWhere'), cell: (m) => text.where(m.residency) },
     { label: t('modelWords.rowContext'), cell: text.context },
     { label: t('modelWords.rowPrice'), cell: text.price },
@@ -206,15 +208,16 @@ export const ModelPicker = ({
         text={text}
         action={
           readOnly ? null : (
-            <Button
+            <button
               ref={trigger}
-              variant="secondary"
+              type="button"
+              className="mp-change"
               aria-haspopup="dialog"
               {...(triggerLabel ? { 'aria-label': t('modelPicker.change') } : {})}
               onClick={openPanel}
             >
               {triggerLabel ?? t('modelPicker.change')}
-            </Button>
+            </button>
           )
         }
       />
@@ -316,7 +319,15 @@ export const ModelPicker = ({
                           onChange={() => setPending(m.id)}
                           label={
                             <span className="tag-row">
-                              <span>{text.name(m)}</span>
+                              <span className="mp-name">
+                                <ModelMark model={m} size="sm" />
+                                <span>{text.name(m)}</span>
+                              </span>
+                              {m.id === value ? (
+                                <Tag data-size="sm" data-color="accent">
+                                  {t('modelPicker.current')}
+                                </Tag>
+                              ) : null}
                               {m.recommended ? (
                                 <Tag data-size="sm" data-color="success">
                                   {t('modelWords.recommended')}
@@ -331,7 +342,11 @@ export const ModelPicker = ({
                           }
                           description={
                             <span className="mp-desc">
-                              <span>{text.byLine(m)}</span>
+                              {text.byLine(m) || m.gateway ? (
+                                <span>
+                                  {[text.byLine(m), text.gateway(m)].filter(Boolean).join(' · ')}
+                                </span>
+                              ) : null}
                               <span className="tag-row">
                                 <Tag data-size="sm" data-color={whereColor(m.residency)}>
                                   {text.dataIn(m.residency)}
@@ -412,10 +427,16 @@ export const ModelPicker = ({
               <Button variant="secondary" onClick={close}>
                 {t('modelPicker.cancel')}
               </Button>
-              <Button variant="primary" onClick={apply}>
-                {t('modelPicker.apply', {
-                  name: pendingModel ? text.name(pendingModel) : pending,
-                })}
+              <Button
+                variant="primary"
+                aria-disabled={pending === value || undefined}
+                onClick={() => pending !== value && apply()}
+              >
+                {pending === value
+                  ? t('modelPicker.pickAnother')
+                  : t('modelPicker.apply', {
+                      name: pendingModel ? text.name(pendingModel) : pending,
+                    })}
               </Button>
             </div>
           </Dialog.Block>

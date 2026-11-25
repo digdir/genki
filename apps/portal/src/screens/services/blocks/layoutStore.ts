@@ -1,8 +1,6 @@
-// Where the interface tab keeps a service's layout: in this browser's session storage only, per
-// tenant and service. The service definition has no place for a layout yet; that waits for an ADR.
-// «Kopier oppsettet» and «Lim inn oppsett» carry a layout as JSON to another browser or a host.
 import {
   blockSpec,
+  fromTemplate,
   isAssistantLayout,
   isBlockId,
   layoutProblems,
@@ -12,6 +10,8 @@ import {
   type AssistantLayout,
   type HeldBlock,
   type LayoutProblem,
+  type PlacedBlock,
+  type Zone,
   type TemplateId,
 } from '@genai/ui-blocks/builder';
 
@@ -31,7 +31,7 @@ export const startTemplate: TemplateId = 'knowledge-assistant-next';
 /** What a text holds as a layout: one that keeps every rule, or why it is not one. */
 export type ReadLayout =
   | { layout: AssistantLayout }
-  | { problem: 'not-json' | 'not-a-layout' }
+  | { problem: 'not-json' | 'not-a-layout' | 'pins-a-block' }
   | { problem: 'breaks-rules'; problems: LayoutProblem[]; pasted: AssistantLayout };
 
 /** Reads a layout from JSON, the shape and the rules; a draft's needs are checked by the tab. */
@@ -43,6 +43,8 @@ export const readLayout = (text: string): ReadLayout => {
     return { problem: 'not-json' };
   }
   if (!isAssistantLayout(value)) return { problem: 'not-a-layout' };
+  if (zones.some((zone) => value.zones[zone].some((placed) => placed.ref !== undefined)))
+    return { problem: 'pins-a-block' };
   const problems = layoutProblems(value);
   if (problems.length > 0) return { problem: 'breaks-rules', problems, pasted: value };
   return { layout: normalised(value) };
@@ -96,7 +98,37 @@ const heldOf = (value: unknown): HeldBlock[] =>
         )
     : [];
 
-/** Reads a kept start, and gives nothing for one that is not a layout or breaks a rule. */
+const editable = (layout: unknown): layout is AssistantLayout =>
+  isAssistantLayout(layout) &&
+  zones.every((zone) =>
+    layout.zones[zone].every((placed) => isBlockId(placed.block) && placed.ref === undefined),
+  ) &&
+  // A text past a limit is kept as typed, where «Tekster» says what to shorten.
+  !layoutProblems(layout).some((p) => !profileRules.has(p.rule));
+
+/** The template a layout still is, so «Maler» shows it chosen after a reload. */
+const templateOf = (layout: AssistantLayout): TemplateId | undefined => {
+  const id = layout.template as TemplateId | undefined;
+  if (!id || !templateIds.includes(id)) return undefined;
+  const blocksOf = (l: AssistantLayout) => JSON.stringify([l.template, l.look, l.zones]);
+  return blocksOf(normalised(layout)) === blocksOf(fromTemplate(id).layout) ? id : undefined;
+};
+
+const startOf = (layout: unknown, template: unknown, held: unknown): BlocksStart | undefined => {
+  if (!editable(layout)) return undefined;
+  // A held block that is also placed is the placed one.
+  const waiting = heldOf(held).filter(
+    (entry) =>
+      !zones.some((zone) => layout.zones[zone].some((p) => p.block === entry.placed.block)),
+  );
+  return {
+    layout: normalised(layout),
+    ...(templateIds.includes(template as TemplateId) ? { template: template as TemplateId } : {}),
+    ...(waiting.length > 0 ? { held: waiting } : {}),
+  };
+};
+
+/** Reads a start kept in this browser, and gives nothing for one that is not a layout or breaks a rule. */
 export const readStart = (raw: string | null): BlocksStart | undefined => {
   if (!raw) return undefined;
   let value: unknown;
@@ -111,23 +143,42 @@ export const readStart = (raw: string | null): BlocksStart | undefined => {
     template?: unknown;
     held?: unknown;
   };
-  // A text past a limit is kept as typed, where «Tekster» says what to shorten; a block that
-  // breaks a rule is not.
-  if (!isAssistantLayout(layout) || layoutProblems(layout).some((p) => !profileRules.has(p.rule)))
-    return undefined;
-  // A held block that is also placed is the placed one.
-  const waiting = heldOf(held).filter(
-    (entry) =>
-      !zones.some((zone) => layout.zones[zone].some((p) => p.block === entry.placed.block)),
-  );
-  return {
-    layout: normalised(layout),
-    ...(templateIds.includes(template as TemplateId) ? { template: template as TemplateId } : {}),
-    ...(waiting.length > 0 ? { held: waiting } : {}),
-  };
+  return startOf(layout, template, held);
 };
 
-/** The layout this browser keeps for a service in this session, if any. */
+export const draftLayoutOf = (definition: Record<string, unknown>): unknown => {
+  const spec = definition.spec as { interface?: { layout?: unknown } } | undefined;
+  return spec?.interface?.layout;
+};
+
+/** `foreign` when the builder cannot edit the layout without losing something, such as an `x-` block or a `ref`. */
+export const draftStart = (layout: unknown): BlocksStart | 'foreign' | undefined => {
+  if (layout === undefined) return undefined;
+  const start = startOf(layout, undefined, undefined);
+  if (!start) return 'foreign';
+  const template = templateOf(start.layout);
+  return template ? { ...start, template } : start;
+};
+
+/** The layout as the draft stores it: the blocks the draft cannot back yet stand where they were chosen. */
+export const storedLayout = (start: BlocksStart): AssistantLayout => {
+  const placed = Object.fromEntries(
+    zones.map((zone) => [zone, [...start.layout.zones[zone]]]),
+  ) as Record<Zone, PlacedBlock[]>;
+  for (const entry of start.held ?? [])
+    if (!placed[entry.zone].some((p) => p.block === entry.placed.block))
+      placed[entry.zone].push(entry.placed);
+  return normalised({ ...start.layout, zones: placed });
+};
+
+/** The stored layout or the start template; nothing when editing would lose part of it. */
+export const shownLayoutOf = (definition: Record<string, unknown>): AssistantLayout | undefined => {
+  const start = draftStart(draftLayoutOf(definition));
+  if (start === 'foreign') return undefined;
+  return start ? storedLayout(start) : fromTemplate(startTemplate).layout;
+};
+
+/** The layout this browser kept for a service before layouts were saved in the draft, if any. */
 export const keptStart = (tenant: string, service: string): BlocksStart | undefined => {
   try {
     return readStart(sessionStorage.getItem(keyOf(tenant, service)));
@@ -136,11 +187,10 @@ export const keptStart = (tenant: string, service: string): BlocksStart | undefi
   }
 };
 
-/** Keeps a service's layout in this browser for this session. */
-export const keepStart = (tenant: string, service: string, start: BlocksStart) => {
+export const forgetKept = (tenant: string, service: string) => {
   try {
-    sessionStorage.setItem(keyOf(tenant, service), JSON.stringify(start));
+    sessionStorage.removeItem(keyOf(tenant, service));
   } catch {
-    // Without storage the tab starts from the template the next time it is opened.
+    // Nothing kept to forget.
   }
 };

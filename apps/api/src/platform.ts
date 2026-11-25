@@ -20,6 +20,7 @@ import {
 import { refusedRight, type Access } from './access.js';
 import { requireRight, rights, rightsOf, seesUsage } from './rights.js';
 import {
+  actorOf,
   operatorOnlyRefused,
   operatorOnlySettingType,
   settingsConflictMessage,
@@ -46,8 +47,9 @@ import {
 import { originOf, serviceOrigin, type DraftOrigin } from './draft-runner.js';
 import { t } from './i18n/index.js';
 import { readOnlyInLockdown } from './lockdown.js';
-import { toTimeline, type TaskReader } from './timeline.js';
+import { onlyTypes, toTimeline, type TaskReader } from './timeline.js';
 import type { ActorNames } from './actor-names.js';
+import type { ServiceDrafts } from './service-drafts.js';
 
 const draftOriginNames: Record<DraftOrigin, () => string> = {
   builder: () => t('runs.originBuilder'),
@@ -73,6 +75,7 @@ export interface PlatformApiOptions {
   tenantQuota?: (tenant: string) => Promise<{ usedPercent: number }>;
   lifecycle?: (tenant: string, service: string) => Promise<{ state: string }>;
   names?: ActorNames;
+  drafts?: Pick<ServiceDrafts, 'followPublish'>;
   now?: () => Date;
   lockdown?: boolean;
 }
@@ -313,9 +316,37 @@ const Timeline = z
         model: z.string().optional(),
         iteration: z.number().int().optional(),
         warning: z.literal(true).optional(),
+        reads: z
+          .array(
+            z.object({
+              chunks: z.array(
+                z.object({
+                  id: z.string(),
+                  document: z.string().optional(),
+                  position: z.number().int().optional(),
+                  page: z.number().int().optional(),
+                  title: z.string().optional(),
+                }),
+              ),
+              auto: z.literal(true).optional(),
+              request: z
+                .object({
+                  chunkIds: z.array(z.string()).optional(),
+                  document: z.string().optional(),
+                  chunkRange: z
+                    .object({ from: z.number().int().optional(), to: z.number().int().optional() })
+                    .optional(),
+                })
+                .optional()
+                .describe('What the read asked for; only for those who manage services'),
+            }),
+          )
+          .optional()
+          .describe('The chunks a read step read, in order'),
         raw: z.unknown().optional(),
       }),
     ),
+    omittedSteps: z.number().int().optional().describe('How many steps the types filter left out'),
     stats: RunStats,
   })
   .openapi('TaskTimeline');
@@ -370,6 +401,14 @@ const routes = {
       params: z.object({
         tenant: tenantParam,
         task: z.string().openapi({ param: { name: 'task', in: 'path' } }),
+      }),
+      query: z.object({
+        types: z
+          .string()
+          .optional()
+          .describe(
+            'Comma-separated step types to keep, for example read,model; other steps are left out',
+          ),
       }),
     },
     responses: {
@@ -607,7 +646,7 @@ const routes = {
       401: problems[401],
       403: {
         content: problemContent,
-        description: `Not allowed for this tenant; ${shareOperatorOnlyType}: the bundle changes a service's spec.availableTo, which only operators change; or ${operatorOnlySettingType}: the bundle sets or pins a limit only an operator changes for a tenant`,
+        description: `Not allowed for this tenant; ${shareOperatorOnlyType}: the bundle changes a service's spec.availableTo, which only operators change, or shares a code Block with everyone; or ${operatorOnlySettingType}: the bundle sets or pins a limit only an operator changes for a tenant`,
       },
       409: {
         content: problemContent,
@@ -710,6 +749,20 @@ const routes = {
 const OperatorModel = z
   .looseObject({
     id: z.string(),
+    kind: z
+      .string()
+      .optional()
+      .describe(
+        'What the model is for: chat, embed, rerank, decide, or a kind genki has no port for, such as evaluation; unknown when nothing says',
+      ),
+    kindFrom: z
+      .enum(['listing', 'operator', 'name'])
+      .optional()
+      .describe("For a discovered model: the provider's listing, the operator's rule, or its name"),
+    listedEndpoints: z
+      .array(z.string())
+      .optional()
+      .describe("The paths the provider's listing says the model answers on"),
     endpoint: z.string().optional(),
     deployment: z.string().optional(),
     family: z.string().optional(),
@@ -725,6 +778,13 @@ const OperatorModel = z
     classified: z.boolean().optional(),
     parameters: parameterRules.optional(),
     rejectedParameters: z.record(z.string(), z.string()).optional(),
+    learned: z
+      .record(
+        z.string(),
+        z.object({ has: z.boolean(), at: z.string(), by: z.enum(['listing', 'call']) }),
+      )
+      .optional()
+      .describe('Capabilities genki checked itself, and when; absent once an operator sets them'),
     transport: z
       .object({ api: z.string(), source: z.enum(['configured', 'learned', 'default']) })
       .optional(),
@@ -750,6 +810,15 @@ const RefreshResult = z
   .object({
     discovered: z.number(),
     failed: z.array(z.object({ endpoint: z.string(), error: z.string() })),
+    learned: z
+      .object({
+        checked: z.array(z.object({ model: z.string(), capability: z.string(), has: z.boolean() })),
+        calls: z.number(),
+        deferred: z.number().describe('Checks left for the next refresh, over the cap'),
+        usage: z.record(z.string(), z.unknown()),
+      })
+      .optional()
+      .describe('What a few small calls found out about discovered models'),
   })
   .openapi('ModelRefreshResult');
 
@@ -767,7 +836,8 @@ const modelRoutes = {
   refresh: createRoute({
     method: 'post',
     path: '/operator/models/refresh',
-    summary: 'Discover models from every endpoint again (operators, audited)',
+    summary:
+      'Discover models from every endpoint again, and check what new ones can do (operators, audited)',
     request: { headers: changeReason },
     responses: {
       200: json(RefreshResult, 'What was found'),
@@ -904,6 +974,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const principal = await auth.authenticate(c.req.raw);
     if (!principal) return problem(c, 401, 'Not authenticated');
     const { tenant, task } = c.req.valid('param');
+    const { types } = c.req.valid('query');
     const acting = access(principal, tenant, c.req.raw);
     if (!acting) return problem(c, 404, 'Not found');
     const found = await options.tasks.task(task);
@@ -912,20 +983,18 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
       !startedBy(found, principal) && refusedRight(c, acting, tenant, 'manage-services');
     if (lacking) return lacking;
     const erasure = await options.tasks.erasure?.(tenant, task);
-    return c.json(
-      toTimeline(
-        found,
-        await options.tasks.events(task),
-        now(),
-        await serviceNameOf(found.service.capability.id),
-        {
-          details: requireRight(acting, tenant, 'manage-services').ok,
-          usage: startedBy(found, principal) || seesUsage(acting, tenant),
-          ...(erasure ? { erasure } : {}),
-        },
-      ),
-      200,
+    const timeline = toTimeline(
+      found,
+      await options.tasks.events(task),
+      now(),
+      await serviceNameOf(found.service.capability.id),
+      {
+        details: requireRight(acting, tenant, 'manage-services').ok,
+        usage: startedBy(found, principal) || seesUsage(acting, tenant),
+        ...(erasure ? { erasure } : {}),
+      },
     );
+    return c.json(types ? onlyTypes(timeline, types) : timeline, 200);
   });
 
   app.openapi(routes.settingOverrides, async (c) => {
@@ -1262,6 +1331,21 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     if (!result.ok && result.type === operatorOnlySettingType)
       return operatorOnlyRefused(c, result.errors);
     if (!result.ok) return problem(c, 422, 'Invalid bundle', { errors: result.errors });
+    for (const item of result.value) {
+      const service = item.target.startsWith('Service:') ? item.target.slice(8) : undefined;
+      if (!service || (item.action !== 'create' && item.action !== 'update')) continue;
+      const latest = await store.get('Service', tenant, service);
+      if (latest)
+        await options.drafts
+          ?.followPublish(
+            actorOf(acting.actor ?? acting),
+            tenant,
+            service,
+            latest,
+            `Fulgte publisert versjon ${latest.version}: ${reason}`,
+          )
+          .catch(() => undefined);
+    }
     return c.json({ dryRun: false, task: result.task, plan: result.value }, 200);
   });
 

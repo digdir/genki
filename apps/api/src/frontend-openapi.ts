@@ -221,13 +221,29 @@ const Source = z
       .string()
       .optional()
       .describe(
-        "The organisation that published the document, several joined with a comma. Present only when the document's fields name one; on Kudos stored in the knowledge database, the publisher, or the owners when Kudos lists none; Kudos served from Typesense has none.",
+        "The organisation that published the document, several joined with a comma. Present only when the document's fields name one; on Kudos, the publisher, or the owners when Kudos lists none.",
       ),
   })
   .passthrough()
   .openapi('Source');
 
-const AnswerMarker = z.object({ marker: z.string(), chunk_id: z.string(), document: z.string() });
+const TextQuote = z
+  .object({
+    type: z.literal('TextQuoteSelector'),
+    exact: z.string(),
+    prefix: z.string(),
+    suffix: z.string(),
+  })
+  .describe(
+    'The words the marker rests on, found word for word in its excerpt text (W3C TextQuoteSelector). Present only when the model cited sentences of the excerpt.',
+  );
+
+const AnswerMarker = z.object({
+  marker: z.string(),
+  chunk_id: z.string(),
+  document: z.string(),
+  quote: TextQuote.optional(),
+});
 
 const ChatRequest = z
   .object({
@@ -649,6 +665,53 @@ export const frontendRoutes: RouteConfig[] = [
       ),
       401: frontendProblem('Invalid or missing credentials'),
       404: frontendProblem('dataset_not_found'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/api/datasets/{id}/documents/{doc}/file',
+    summary:
+      "Open a document's file: its uploaded original, or a redirect to its source's address (302)",
+    description:
+      'Same access as `/api/datasets/{id}`. An uploaded original is only for callers of the organisation that owns the dataset, or a frontend of its service; a PDF is inline, anything else an attachment. A PDF the record lists on an origin in `GENAI_DOCUMENT_FILE_ORIGINS` is read and served by genki, inline (ADR 0066). With `Accept: application/json` the answer says what the file is instead of sending it.',
+    request: {
+      params: idParam.extend({
+        doc: z.string().openapi({ param: { name: 'doc', in: 'path' }, example: '4711' }),
+      }),
+      query: z.object({
+        file: z
+          .string()
+          .optional()
+          .describe(
+            "A PDF the record lists, such as an excerpt's file; served only when it is one of them on an allowed origin.",
+          ),
+      }),
+    },
+    responses: {
+      200: json(
+        z.discriminatedUnion('kind', [
+          z.object({
+            kind: z.literal('original'),
+            mediaType: z.string(),
+            name: z.string(),
+          }),
+          z.object({
+            kind: z.literal('source'),
+            url: z.string().describe('http or https, without credentials or a fragment'),
+            mediaType: z.string().nullable().describe('null when the address does not show it'),
+          }),
+          z.object({
+            kind: z.literal('served'),
+            mediaType: z.literal('application/pdf'),
+            source: z.string().describe('The remote PDF genki reads and serves at this address'),
+          }),
+        ]),
+        'What the file is (Accept: application/json), or the file itself',
+      ),
+      302: { description: "The source's own address, in Location" },
+      401: frontendProblem('Invalid or missing credentials'),
+      404: frontendProblem('dataset_not_found, document_not_found or document_file_not_found'),
+      502: frontendProblem('document_unavailable'),
     },
   }),
   createRoute({

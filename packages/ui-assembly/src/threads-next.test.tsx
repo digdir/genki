@@ -82,7 +82,7 @@ const list = () => document.querySelector<HTMLElement>('.uib-threads');
 describe('the thread list in kunnskapsassistenten’s next look', () => {
   it('draws the design’s list: «Ny tråd» first, no search, no way to the filter', async () => {
     draw('knowledge-assistant-next');
-    const nav = screen.getByRole('navigation', { name: 'Tråder og filter' });
+    const nav = screen.getByRole('navigation', { name: 'Tidligere samtaler og filter' });
     await within(nav).findByRole('link', { name: 'En gammel tråd' });
     expect(list()?.getAttribute('data-variant')).toBe('nav');
     expect(within(nav).queryByRole('searchbox')).toBeNull();
@@ -90,19 +90,19 @@ describe('the thread list in kunnskapsassistenten’s next look', () => {
     expect(list()?.firstElementChild?.textContent).toBe('Ny tråd');
   });
 
-  it('stays on «Tråder» after «Ny tråd», since the filter is not in this panel', async () => {
+  it('stays on «Tidligere samtaler» after «Ny tråd», since the filter is not in this panel', async () => {
     draw('knowledge-assistant-next');
-    const nav = screen.getByRole('navigation', { name: 'Tråder og filter' });
+    const nav = screen.getByRole('navigation', { name: 'Tidligere samtaler og filter' });
     await within(nav).findByRole('link', { name: 'En gammel tråd' });
     fireEvent.click(within(nav).getByRole('link', { name: 'Ny tråd' }));
     expect(within(nav).getByRole('link', { name: 'En gammel tråd' })).toBeTruthy();
-    expect(within(nav).queryByRole('button', { name: 'Tråder' })).toBeNull();
+    expect(within(nav).queryByRole('button', { name: 'Tidligere samtaler' })).toBeNull();
   });
 
   it('leaves «Kunnskapsassistenten» its own list: the search, the way to the filter, the links', async () => {
     draw('knowledge-assistant');
-    fireEvent.click(await screen.findByRole('button', { name: /Tråder/ }));
-    const nav = screen.getByRole('navigation', { name: 'Tråder og filter' });
+    fireEvent.click(await screen.findByRole('button', { name: /Tidligere samtaler/ }));
+    const nav = screen.getByRole('navigation', { name: 'Tidligere samtaler og filter' });
     await within(nav).findByRole('link', { name: 'En gammel tråd' });
     expect(list()?.hasAttribute('data-variant')).toBe(false);
     expect(within(nav).getByRole('searchbox', { name: 'Søk i tråder' })).toBeTruthy();

@@ -235,7 +235,7 @@ export const plugins: PluginSchemas = {
     ],
   ]),
   retrieval: z.unknown(),
-  rerankers: new Set(['colbert']),
+  rerankers: new Set(['omrangering']),
   datasets: new Set(['digdir/kudos']),
 };
 

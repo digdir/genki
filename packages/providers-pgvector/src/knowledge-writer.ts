@@ -15,7 +15,7 @@ import {
   recipeOf,
 } from './partitions.js';
 import { tryGenerationWrite } from './heavy-work.js';
-import { transaction } from './schema.js';
+import { transaction } from './transaction.js';
 import { fieldsText } from './sql.js';
 
 type Options = { textSearchConfig?: string | undefined };
@@ -132,7 +132,19 @@ export const replaceDocument = async (
     file_sha256: c.fileSha256 ?? null,
     heading_path: c.headingPath ?? null,
     vec: checkedVector(target, c.vector, c.id),
+    ...(c.conversion !== undefined
+      ? {
+          conversion: c.conversion,
+          seq_from: c.seqFrom ?? null,
+          seq_to: c.seqTo ?? null,
+          text_start: c.textStart ?? null,
+          text_end: c.textEnd ?? null,
+        }
+      : {}),
   }));
+  // Only chunks made from parts name the parts columns, so a page chunk is written where they are
+  // not added yet (issue 635).
+  const parts = chunks.some((c) => 'conversion' in c);
   const phrases = doc.phrases.map((p) => ({
     id: p.id,
     chunk_id: p.chunkId,
@@ -154,9 +166,13 @@ export const replaceDocument = async (
     ],
   );
   await client.query(
-    `insert into ${tableOf(target, 'kn_chunks')} (dataset, generation, id, doc_id, position, text, metadata, page_from, page_to, file, file_sha256, heading_path, config, vec)
-     select $1, $2, x.id, $3, x.position, x.text, x.metadata, x.page_from, x.page_to, x.file, x.file_sha256, x.heading_path, $4::regconfig, x.vec::halfvec
-     from jsonb_to_recordset($5::jsonb) as x(id text, position integer, text text, metadata jsonb, page_from integer, page_to integer, file text, file_sha256 text, heading_path text[], vec text)`,
+    parts
+      ? `insert into ${tableOf(target, 'kn_chunks')} (dataset, generation, id, doc_id, position, text, metadata, page_from, page_to, file, file_sha256, heading_path, config, vec, conversion, seq_from, seq_to, text_start, text_end)
+         select $1, $2, x.id, $3, x.position, x.text, x.metadata, x.page_from, x.page_to, x.file, x.file_sha256, x.heading_path, $4::regconfig, x.vec::halfvec, x.conversion, x.seq_from, x.seq_to, x.text_start, x.text_end
+         from jsonb_to_recordset($5::jsonb) as x(id text, position integer, text text, metadata jsonb, page_from integer, page_to integer, file text, file_sha256 text, heading_path text[], vec text, conversion bigint, seq_from integer, seq_to integer, text_start integer, text_end integer)`
+      : `insert into ${tableOf(target, 'kn_chunks')} (dataset, generation, id, doc_id, position, text, metadata, page_from, page_to, file, file_sha256, heading_path, config, vec)
+         select $1, $2, x.id, $3, x.position, x.text, x.metadata, x.page_from, x.page_to, x.file, x.file_sha256, x.heading_path, $4::regconfig, x.vec::halfvec
+         from jsonb_to_recordset($5::jsonb) as x(id text, position integer, text text, metadata jsonb, page_from integer, page_to integer, file text, file_sha256 text, heading_path text[], vec text)`,
     [...key, target.config, jsonWithoutNul(chunks)],
   );
   await client.query(

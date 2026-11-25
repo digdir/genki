@@ -13,8 +13,10 @@ import {
   type BlockTexts,
   type RuntimeBlock,
   type RuntimeBlocks,
+  makerOf,
 } from '@genai/composition';
 import {
+  serviceDataLocation,
   type ServiceDefinition,
   type SkillDefinition,
   type StepFlowDefinition,
@@ -58,6 +60,7 @@ import {
 import type { Context, Env, Hono, Schema } from 'hono';
 import { stringify as toYaml } from 'yaml';
 import { actorOf, type AdminHandler, type AdminOutcome } from './admin.js';
+import { isFlowArchived } from './step-flow-archive.js';
 import { tenantServiceUses, type BlockReference, type ServiceUse } from './block-usage.js';
 import {
   appendVersion,
@@ -75,6 +78,8 @@ import type {
 } from './platform-modules.js';
 import type { SinkJudge, TraceConnection } from './trace-connections.js';
 import { requireRight, rightRefused, type Right } from './rights.js';
+import { datasetDataLocation } from './residency.js';
+import { modelDisplayNames } from './model-access.js';
 import { pluginBlockOf, pluginEntries } from './external-plugins.js';
 import { actorNameOf, changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 import { requestLocale, t, translate, translatorFor, type ApiKey } from './i18n/index.js';
@@ -608,20 +613,24 @@ export type { RuntimeBlock, RuntimeBlocks };
 
 export const disabledBlockText = (name: string) => t('blocks.disabled', { name });
 
+const platformTextKey = (kind: 'flow' | 'block', id: string, field: 'Name' | 'Description') =>
+  `platformBlocks.${kind}${id
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('')}${field}`;
+
 const platformText = (
   kind: 'flow' | 'block',
   id: string,
   field: 'Name' | 'Description',
   fallback: string,
 ) => {
-  const camel = id
-    .split('-')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join('');
-  const translator = translatorFor(requestLocale());
-  const key = `platformBlocks.${kind}${camel}${field}`;
-  return translator.has(key) ? translate(key as ApiKey) : fallback;
+  const key = platformTextKey(kind, id, field);
+  return translatorFor(requestLocale()).has(key) ? translate(key as ApiKey) : fallback;
 };
+
+const shippedFlow = (id: string) =>
+  translatorFor(requestLocale()).has(platformTextKey('flow', id, 'Name'));
 
 const blockTexts: BlockTexts = {
   disabled: disabledBlockText,
@@ -797,16 +806,19 @@ export const createBuildingBlocksModule =
       const catalogModels = new Map(
         visible.filter((i) => i.kind === 'model').map((i) => [i.id, i]),
       );
-      for (const model of deps.models.describe()) {
+      const listedModels = deps.models.describe().filter((model) => {
         const item = catalogModels.get(model.id) ?? deps.catalog.get('model', model.id);
-        if (!model.enabled || !servesModelPort(model)) continue;
-        if (item && !catalogModels.has(model.id)) continue;
+        return model.enabled && servesModelPort(model) && !(item && !catalogModels.has(model.id));
+      });
+      const modelNames = modelDisplayNames(listedModels);
+      for (const model of listedModels) {
+        const item = catalogModels.get(model.id) ?? deps.catalog.get('model', model.id);
         const scope = item?.scope ?? platformScope;
         out.push({
           block: {
             id: model.id,
             kind: 'model',
-            name: model.id,
+            name: modelNames.get(model.id) ?? model.id,
             description: model.family ?? model.deployment,
             publisher: publisherOf(scope, tenant),
             version: String(item?.version ?? 1),
@@ -823,7 +835,7 @@ export const createBuildingBlocksModule =
       const engines = new Map(deps.engines().map((e) => [e.engine, e]));
       for (const item of visible) {
         if (item.kind === 'dataset') {
-          const spec = item.spec as { name?: string; description?: string; residency?: string };
+          const spec = item.spec as { name?: string; description?: string };
           out.push({
             block: {
               id: item.id,
@@ -832,7 +844,7 @@ export const createBuildingBlocksModule =
               description: spec.description ?? '',
               publisher: publisherOf(item.scope, tenant),
               version: String(item.version),
-              dataLocation: locationOf(spec.residency),
+              dataLocation: datasetDataLocation(deps.plugins, item.id) ?? null,
               capabilities: Object.keys((item.spec.filters as object | undefined) ?? {}).map(
                 (f) => `filter.${f}`,
               ),
@@ -949,10 +961,15 @@ export const createBuildingBlocksModule =
       const definitionOwners = [...new Set([tenant, deps.platformTenant])];
       for (const owner of wants('skill') || wants('step_flow') ? definitionOwners : []) {
         for (const entry of await deps.definitions.list(owner)) {
-          if (entry.kind === 'Service') continue;
+          if (entry.kind !== 'Skill' && entry.kind !== 'StepFlow') continue;
           const history = await deps.definitions.versions(entry.kind, owner, entry.id);
           const latest = history.at(-1);
           if (!latest) continue;
+          if (
+            entry.kind === 'StepFlow' &&
+            (await isFlowArchived(deps.configEntries, owner, entry.id, latest.version))
+          )
+            continue;
           const kind: BlockKind = entry.kind === 'Skill' ? 'skill' : 'step_flow';
           const definition = latest.definition as SkillDefinition | StepFlowDefinition;
           const spec = definition.spec as {
@@ -977,7 +994,10 @@ export const createBuildingBlocksModule =
                     spec.description ?? spec.purpose ?? '',
                   )
                 : (spec.description ?? spec.purpose ?? ''),
-              publisher: publisherOf(owner, tenant),
+              publisher:
+                owner === tenant && !(ownedByPlatform && shippedFlow(entry.id))
+                  ? { type: 'own', name: tenant }
+                  : publisherOf(owner, tenant),
               version: String(latest.version),
               dataLocation: null,
               capabilities:
@@ -1181,7 +1201,7 @@ export const createBuildingBlocksModule =
             description: compiled.capability.descriptor.description,
             publisher: publisherOf(compiled.service.tenant, tenant),
             version: String(compiled.service.version),
-            dataLocation: locationOf(spec?.model.residency),
+            dataLocation: spec ? (serviceDataLocation(spec, deps.plugins) ?? null) : null,
             capabilities: spec ? [spec.purpose] : [],
             permissions: [],
             settingsSchema: settingsOf(),
@@ -2234,9 +2254,10 @@ export const createBuildingBlocksModule =
           })),
       );
       const record = governance ? await governance.processorRecord(model.endpoint) : undefined;
+      const maker = makerOf(model);
       return {
         connection: model.endpoint,
-        ...(model.maker ? { maker: model.maker } : {}),
+        ...(maker ? { maker } : {}),
         operations,
         ...(governance
           ? {

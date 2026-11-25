@@ -159,7 +159,9 @@ export const assessHealth = (
   const body = record(json(result.text));
   const version = typeof body.version === 'string' ? body.version : undefined;
   const lockdown = typeof body.lockdown === 'boolean' ? body.lockdown : undefined;
-  if (result.status !== 200 || body.status !== 'ok')
+  const discovered = (record(body.modelDiscovery).state ?? 'ok') === 'ok';
+  const up = body.status === 'ok' || (body.status === 'degraded' && discovered);
+  if (result.status !== 200 || !up)
     return { ok: false, detail: `/health answered ${result.status}` };
   if (!version || !sha.test(version))
     return { ok: false, detail: `/health reports no commit SHA (${clip(String(version))})` };
@@ -175,6 +177,31 @@ export const assessHealth = (
     version,
     ...(lockdown === undefined ? {} : { lockdown }),
   };
+};
+
+const entryName = (entry: unknown) => {
+  if (typeof entry === 'string') return entry;
+  const e = record(entry);
+  return [e.kind, e.id].filter((part) => typeof part === 'string').join(' ');
+};
+
+/** Reads `skipped` from /operator/catalog/entries, or `catalog.skipped` from /health without a key; unused entries pass. */
+export const assessCatalog = (result: HttpResult, from: 'entries' | 'health'): Verdict => {
+  const path = from === 'entries' ? '/operator/catalog/entries' : '/health';
+  if (result.status !== 200) return { ok: false, detail: `${path} answered ${result.status}` };
+  const body = record(json(result.text));
+  const all = list(from === 'entries' ? body.skipped : record(body.catalog).skipped);
+  const skipped = all.filter((entry) => record(entry).unused !== true);
+  const unused = all.length - skipped.length;
+  return skipped.length === 0
+    ? {
+        ok: true,
+        detail: `${path}: no catalog entry skipped${unused ? ` that something uses (${unused} unused)` : ''}`,
+      }
+    : {
+        ok: false,
+        detail: `${path}: ${skipped.length} catalog entries skipped: ${clip(skipped.map(entryName).join(', '))}`,
+      };
 };
 
 export const assessOpenapi = (result: HttpResult, version: string): Verdict => {
@@ -542,6 +569,14 @@ export const assessStatus = (result: HttpResult, expected: number[], what: strin
         ok: false,
         detail: `${what}: ${result.status}, expected ${expected.join(' or ')}`,
       };
+
+export const assessInternal = (result: HttpResult, id: string): Verdict => {
+  if (result.status !== 200) return { ok: false, detail: `${id}: ${result.status}, expected 200` };
+  const spec = record(record(record(record(json(result.text)).latest).definition).spec);
+  return spec.visibility === 'internal'
+    ? { ok: true, detail: `${id} is internal` }
+    : { ok: false, detail: `${id} is not internal, so the portal lists it` };
+};
 
 export const assessScopeRefusal = (result: HttpResult, type: string, what: string): Verdict => {
   if (result.status !== 403)

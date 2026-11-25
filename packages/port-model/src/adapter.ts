@@ -4,6 +4,7 @@ import type { z } from 'zod';
 import type { DecisionRequest, DecisionResult } from './decision.js';
 import {
   ModelError,
+  type Capability,
   type ChatChunk,
   type ChatRequest,
   type ChatResult,
@@ -110,6 +111,13 @@ export { authenticatedFetch, authHeaders, shape, type Credential } from '@genai/
 export interface DiscoveredDeployment {
   deployment: string;
   model?: string;
+  /** The operation kind the listing or the model name points to, such as chat, embed or rerank. */
+  kind?: string;
+  kindFrom?: 'listing' | 'name';
+  /** The paths the listing says the model answers on. */
+  endpoints?: string[];
+  /** What the listing says the model can do, when it says anything. */
+  capabilities?: Capability[];
 }
 
 export interface DiscoverySource {

@@ -48,11 +48,16 @@ const convertFields = {
 };
 /**
  * A text-layer job names no converter, as before issue 477, so a worker of the release before reads
- * it; a Docling job names Docling.
+ * it; a Docling job names Docling. A job whose records wait on the file's parts, not its pages, says
+ * `parts: true` (issue 635); a job without it is a pages job, as every job was before.
  */
+const docling = { converter: z.literal('docling') };
+const parts = { parts: z.literal(true) };
 const convertPayload = z.union([
   z.strictObject(convertFields),
-  z.strictObject({ ...convertFields, converter: z.literal('docling') }),
+  z.strictObject({ ...convertFields, ...docling }),
+  z.strictObject({ ...convertFields, ...parts }),
+  z.strictObject({ ...convertFields, ...docling, ...parts }),
 ]);
 const documentPayload = z.strictObject({ run: id, tenant, generation: id, record: id });
 /**
@@ -69,13 +74,26 @@ const nightlyPayload = z.strictObject({});
  * A batch of a seed: the native outputs in Blob of one converter, version and settings hash whose
  * file sha256 starts with `prefix`, stored as conversions (ADR 0042, issue 474).
  */
-const seedPayload = z.strictObject({
+const seedFields = {
   tenant,
   prefix: z.string().regex(/^[0-9a-f]{2}$/, 'two hex characters'),
   converter: id,
   version: id,
   settings: sha256,
-});
+};
+/** A batch of parts names its derivation (ADR 0055); one without stores pages, as before issue 634. */
+const seedPayload = z.union([
+  z.strictObject(seedFields),
+  z.strictObject({ ...seedFields, derivation: z.literal('docling-parts') }),
+]);
+
+/** A seed's target: one converter, version and settings hash, and parts or, when left out, pages. */
+export interface SeedTarget {
+  converter: string;
+  version: string;
+  settings: string;
+  derivation?: 'docling-parts';
+}
 
 const retried = { retryLimit: 2, retryDelaySeconds: 30, retryBackoff: true } as const;
 
@@ -283,8 +301,8 @@ export const knowledgeKeys = {
   fill: (generation: string, record: string) => `${generation}#${record}`,
   build: () => 'knowledge-server',
   check: () => 'knowledge-server',
-  seed: (batch: { prefix: string; converter: string; version: string; settings: string }) =>
-    `${batch.converter}:${batch.version}:${batch.settings}:${batch.prefix}`,
+  seed: (batch: SeedTarget & { prefix: string }) =>
+    `${batch.converter}:${batch.version}:${batch.settings}:${batch.prefix}${batch.derivation ? `:${batch.derivation}` : ''}`,
 } as const;
 
 /** The two-character sha256 prefixes a seed is split by: 256 batches. */
@@ -296,14 +314,19 @@ export const seedPrefixes = Array.from({ length: 256 }, (_, i) => i.toString(16)
  */
 export const convertPriority = { upload: 3, run: 2, candidate: 1, replacement: 0 } as const;
 
-/** Sends a seed's batches, one job per prefix; a batch whose job still waits or runs is not sent again. */
+/**
+ * Sends a seed's batches, one job per prefix, every prefix unless `prefixes` names some; a batch
+ * whose job still waits or runs is not sent again.
+ */
 export const sendSeed = async (
   queue: Pick<JobQueue, 'send'>,
-  target: { converter: string; version: string; settings: string },
+  target: SeedTarget,
+  prefixes: readonly string[] = seedPrefixes,
 ) => {
   let sent = 0;
-  for (const prefix of seedPrefixes) {
-    const batch = { prefix, ...target };
+  for (const prefix of prefixes) {
+    const { derivation, ...rest } = target;
+    const batch = { prefix, ...rest, ...(derivation ? { derivation } : {}) };
     if (
       await queue.send(
         knowledgeSeedQueue,

@@ -146,6 +146,16 @@ interface TimelineStep {
   model?: string;
   tokens?: number;
   blocks: TimelineBlock[];
+  reads?: { chunks: ReadChunk[]; auto?: true }[];
+  raw?: unknown;
+}
+
+interface ReadChunk {
+  id: string;
+  document?: string;
+  position?: number;
+  page?: number;
+  title?: string;
 }
 
 interface Timeline {
@@ -160,6 +170,7 @@ interface Timeline {
   priced?: boolean;
   erasure?: Erasure;
   steps: TimelineStep[];
+  omittedSteps?: number;
 }
 
 interface Strategy {
@@ -170,7 +181,7 @@ interface Strategy {
   description: { en: string };
   takes: { instructions: string; examples: string };
   newConfig: Record<string, unknown>;
-  defaultInstructions?: { text: { en: string } };
+  defaultInstructions?: { text: { en: string }; layered?: boolean };
   schema: string;
 }
 
@@ -465,7 +476,7 @@ const describeStrategy = tool({
   name: 'describe_strategy',
   title: 'Describe a way of working',
   description:
-    'Without an id, list the strategies a service can use. With an id, give the keys its config takes (also the keys a variant may override in overrides), the starting config and the built-in instructions it uses when the service has none.',
+    'Without an id, list the strategies a service can use. With an id, give the keys its config takes (also the keys a variant may override in overrides), the starting config and its built-in instructions: used when the service has none, or for a layered strategy always used, with the instructions of the service added after them.',
   kind: 'read',
   args: z.strictObject({
     id: z.string().min(1).optional().describe('A strategy id, e.g. rag-single-shot'),
@@ -502,8 +513,11 @@ const describeStrategy = tool({
     const schema = await client.request<Record<string, unknown>>('GET', found.schema);
     const config = full ? schema : trimSchema(schema);
     const builtIn = found.defaultInstructions?.text.en;
+    const builtInLead = found.defaultInstructions?.layered
+      ? "Built-in sections, always used; the service's instructions are added after them, and promptSections edits one section:"
+      : 'Built-in instructions, used when the service has none:';
     return {
-      text: `${found.id}@${found.version}: ${found.description.en}\nInstructions: ${found.takes.instructions}, examples: ${found.takes.examples}\nStarting config:\n${stringify(found.newConfig)}${builtIn ? `\nBuilt-in instructions, used when the service has none:\n${builtIn}\n` : ''}\nConfig keys:\n${JSON.stringify(config, null, 1)}`,
+      text: `${found.id}@${found.version}: ${found.description.en}\nInstructions: ${found.takes.instructions}, examples: ${found.takes.examples}\nStarting config:\n${stringify(found.newConfig)}${builtIn ? `\n${builtInLead}\n${builtIn}\n` : ''}\nConfig keys:\n${JSON.stringify(config, null, 1)}`,
       data: { ...found, config },
     };
   },
@@ -592,11 +606,39 @@ const riskOf = (definition: Definition | undefined) =>
     riskConfirmation: definition?.spec?.riskConfirmation,
   });
 
+interface Placement {
+  name: string;
+  version: number | null;
+  followsPublishes: boolean;
+}
+
+const production = 'prod';
+
+const placementsOf = async (client: GenkiClient, id: string) =>
+  (
+    await client.request<{ environments: Placement[] }>(
+      'GET',
+      `${tenantPath(client.tenant)}/services/${segment(id)}/environments`,
+    )
+  ).environments;
+
+const whereItWent = (version: number, environments: Placement[]) => {
+  const inUse = environments.find((e) => e.name === production);
+  if (!inUse || inUse.followsPublishes)
+    return 'It is the first version, so it is also the one in use («I bruk»).';
+  const testing = environments
+    .filter((e) => e.name !== production && e.version === version)
+    .map((e) => e.name);
+  if (testing.length === 0)
+    return `No environment follows publishes, so none runs version ${version} yet. Users still have version ${inUse.version} («I bruk»).`;
+  return `It went to the testutgave (${testing.join(', ')}). Users still have version ${inUse.version} («I bruk») until someone publishes it from the portal.`;
+};
+
 const publishDefinition = tool({
   name: 'publish_definition',
   title: 'Publish a definition',
   description:
-    'Publish a definition as the next version, after validating it. Only when the person has asked for this change. Needs a reason that says what changed and why; it is shown in the version history and Logg, marked as made through a coding agent. The usual rights and quality gates apply. A new service with a risk class above minimal, or a change to riskClass or riskConfirmation, must be confirmed by a person in the portal: this tool refuses it and gives the link.',
+    'Publish a definition as the next version to the testutgave (test), after validating it. Users keep the version in use («I bruk») until a person publishes it from the portal; this tool never changes what users have, and refuses a service without a testutgave. Only when the person has asked for this change. Needs a reason that says what changed and why; it is shown in the version history and Logg, marked as made through a coding agent. The usual rights and quality gates apply. A new service with a risk class above minimal, or a change to riskClass or riskConfirmation, must be confirmed by a person in the portal: this tool refuses it and gives the link.',
   kind: 'write',
   args: z.strictObject({
     yaml: z.string().min(1).describe('The whole definition as YAML'),
@@ -626,15 +668,28 @@ const publishDefinition = tool({
         `Not published, the definition is not valid:\n${await describeInvalid(client, checked.errors)}`,
         { errors: checked.errors },
       );
+    const service = parsed.definition.kind === 'Service';
+    const environments = service && before ? await placementsOf(client, parsed.id) : [];
+    if (environments.find((e) => e.name === production)?.followsPublishes)
+      return fail(
+        `Not published: ${parsed.id} has no testutgave, so a publish would reach its users at once. A coding agent changes only the testutgave: ask the person to add a test edition in the portal${link ? `: ${link}` : ''}, then publish again.`,
+      );
     try {
-      const result = await client.request<{ id: string; version: number }>('POST', '/definitions', {
+      const result = await client.request<{
+        id: string;
+        version: number;
+        environments?: Placement[];
+      }>('POST', '/definitions', {
         body: definitionBody(yaml, files),
         reason: markedReason(reason),
       });
+      const placed =
+        result.environments ??
+        (service ? await placementsOf(client, result.id).catch(() => []) : []);
       const changes = before ? changedPaths(before.latest.definition, parsed.definition) : [];
       return {
-        text: `Published ${result.id} version ${result.version}.${changes.length ? `\nChanged:\n${untrusted(changes.map((c) => `- ${c}`).join('\n'))}` : ''}${link ? `\n${link}` : ''}`,
-        data: { id: result.id, version: result.version, changes },
+        text: `Published ${result.id} version ${result.version}.${placed.length ? ` ${whereItWent(result.version, placed)}` : ''}${changes.length ? `\nChanged:\n${untrusted(changes.map((c) => `- ${c}`).join('\n'))}` : ''}${link ? `\n${link}` : ''}`,
+        data: { id: result.id, version: result.version, changes, environments: placed },
       };
     } catch (error) {
       if (error instanceof GenkiError)
@@ -894,7 +949,22 @@ const compactBlock = (b: TimelineBlock) => {
   return undefined;
 };
 
-const compactTimeline = (t: Timeline) => {
+const chunkText = (c: ReadChunk) =>
+  `${c.id} (${[
+    c.title ?? c.document,
+    c.position === undefined ? undefined : `position ${c.position}`,
+    c.page === undefined ? undefined : `page ${c.page}`,
+  ]
+    .filter(Boolean)
+    .join(', ')})`;
+
+const compactReads = (s: TimelineStep) => {
+  const chunks = (s.reads ?? []).flatMap((r) => r.chunks);
+  if (!chunks.length) return undefined;
+  return `    read ${chunks.slice(0, 20).map(chunkText).join('; ')}${chunks.length > 20 ? `; and ${chunks.length - 20} more` : ''}`;
+};
+
+const compactTimeline = (t: Timeline, first = 1) => {
   const cost =
     t.costMicroNok === null || t.priced === false
       ? 'not fully priced'
@@ -911,41 +981,100 @@ const compactTimeline = (t: Timeline) => {
     ]
       .filter(Boolean)
       .join(', ');
-    const blocks = s.blocks.map(compactBlock).filter(Boolean).join('\n');
-    return `${i + 1}. ${s.type}${flags ? ` [${flags}]` : ''}: ${s.title}${detail ? ` (${detail})` : ''}. ${s.summary}${blocks ? `\n${blocks}` : ''}`;
+    const blocks = [...s.blocks.map(compactBlock), compactReads(s)].filter(Boolean).join('\n');
+    return `${first + i}. ${s.type}${flags ? ` [${flags}]` : ''}: ${s.title}${detail ? ` (${detail})` : ''}. ${s.summary}${blocks ? `\n${blocks}` : ''}`;
   });
   const erased = t.erasure
     ? `\n${erasureText(t.erasure)}: input, steps and answer are gone; status, time, tokens and cost remain.`
     : '';
-  return `${head}${erased}\n${steps.join('\n')}`;
+  const omitted = t.omittedSteps ? `\n${t.omittedSteps} steps left out by types, from or to.` : '';
+  return `${head}${erased}\n${steps.join('\n')}${omitted}`;
+};
+
+const stepRange = (t: Timeline, from = 1, to = t.steps.length): Timeline => {
+  const steps = t.steps.slice(from - 1, to);
+  return { ...t, steps, omittedSteps: (t.omittedSteps ?? 0) + t.steps.length - steps.length };
 };
 
 const reasonOf = (result: PromiseSettledResult<unknown>) =>
   result.status === 'rejected' ? messageOf(result.reason) : '';
 
+export const fullRunLimit = 60_000;
+const hitsShown = 20;
+
+const fewerHits = (step: TimelineStep): TimelineStep => {
+  const raw = (step.raw ?? {}) as { retrieval?: { hits?: unknown } };
+  const hits = raw.retrieval?.hits;
+  if (!Array.isArray(hits) || hits.length <= hitsShown) return step;
+  return {
+    ...step,
+    raw: {
+      ...raw,
+      retrieval: {
+        ...raw.retrieval,
+        hits: hits.slice(0, hitsShown),
+        hitsOmitted: hits.length - hitsShown,
+      },
+    },
+  };
+};
+
+export const fullRun = (timeline: Timeline, allHits = false, first = 1) => {
+  const steps = allHits ? timeline.steps : timeline.steps.map(fewerHits);
+  const kept: TimelineStep[] = [];
+  const size = (list: TimelineStep[], omitted: number) =>
+    JSON.stringify({ ...timeline, steps: list, omittedSteps: omitted }, null, 1).length;
+  for (const step of steps) {
+    if (size([...kept, step], steps.length - kept.length - 1) > fullRunLimit) break;
+    kept.push(step);
+  }
+  const cut = steps.length - kept.length;
+  const omitted = (timeline.omittedSteps ?? 0) + cut;
+  const json = JSON.stringify(
+    { ...timeline, steps: kept, ...(omitted ? { omittedSteps: omitted } : {}) },
+    null,
+    1,
+  );
+  return cut
+    ? `${json}\n${cut} steps after step ${first + kept.length - 1} were left out to stay under ${fullRunLimit} characters; ask again with from, to or types.`
+    : json;
+};
+
 const getRun = tool({
   name: 'get_run',
   title: 'Read a run and its timeline',
   description:
-    'Read one service or playground run with its timeline: each step, what it did, model, tokens, time and warnings. Compact by default; full: true gives every detail, which can be very long.',
+    'Read one service or playground run with its timeline: each step, what it did, model, tokens, time and warnings, and for read steps which chunks were read (id, document, position, page). Compact by default. full: true gives the steps as valid JSON, at most 60,000 characters, and says how many steps it left out; search steps keep their top 20 hits unless allHits is true. Narrow it with types (for example ["read", "model"]) and from/to, step numbers counted after the types filter.',
   kind: 'read',
   args: z.strictObject({
     id: z.string().min(1).describe('The run id from list_runs or run_playground'),
     full: z.boolean().optional(),
+    types: z
+      .array(z.string().min(1))
+      .optional()
+      .describe('Only steps of these types, for example ["read", "model"]'),
+    from: z.number().int().min(1).optional().describe('First step number to return'),
+    to: z.number().int().min(1).optional().describe('Last step number to return'),
+    allHits: z.boolean().optional().describe('With full: true, every hit of each search step'),
   }),
-  run: async ({ client }, { id, full }) => {
+  run: async ({ client }, { id, full, types, from, to, allHits }) => {
     const path = `${tenantPath(client.tenant)}/tasks/${segment(id)}`;
     const [run, timeline] = await Promise.allSettled([
       client.request<Record<string, unknown>>('GET', path),
-      client.request<Timeline>('GET', `${path}/timeline`),
+      client.request<Timeline>(
+        'GET',
+        `${path}/timeline`,
+        types?.length ? { query: { types: types.join(',') } } : undefined,
+      ),
     ]);
     if (run.status === 'rejected' && timeline.status === 'rejected') return fail(reasonOf(run));
-    const found = timeline.status === 'fulfilled' ? timeline.value : undefined;
+    const whole = timeline.status === 'fulfilled' ? timeline.value : undefined;
+    const found = whole && (from || to) ? stepRange(whole, from, to) : whole;
     const summary = run.status === 'fulfilled' ? run.value : undefined;
     const body = found
       ? full
-        ? JSON.stringify(found, null, 1).slice(0, 60_000)
-        : compactTimeline(found)
+        ? fullRun(found, allHits, from ?? 1)
+        : compactTimeline(found, from ?? 1)
       : `The timeline is not available: ${reasonOf(timeline)}\n${JSON.stringify(summary, null, 1)}`;
     return {
       text: untrusted(body),

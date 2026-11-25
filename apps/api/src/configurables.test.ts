@@ -98,7 +98,6 @@ export const boot = async (
     ingestion?: IngestionBackend;
     jobRuns?: JobRuns;
     answer?: string;
-    searchOnlyClusters?: string[];
     tenants?: { orgNumber: string; name: string }[];
   } = {},
 ) => {
@@ -141,7 +140,6 @@ export const boot = async (
       rerank: { endpoints: {}, rerankers: [] },
     },
     prices: { 'fake/gpt': { inputPerThousand: 0.01, outputPerThousand: 0.02 } },
-    ...(options.searchOnlyClusters ? { searchOnlyClusters: options.searchOnlyClusters } : {}),
     secrets: envSecrets({ FAKE_KEY: 'k', SEARCH_KEY: 's' }),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: { decide: async () => ({ allow: true }) },
@@ -761,6 +759,92 @@ describe('tenant catalog entries', () => {
   });
 });
 
+describe('a catalog model an archived service names', () => {
+  const extra = encodeURIComponent('fake/ekstra');
+  const lifecycle = `/tenants/${digdir}/services/svar/lifecycle`;
+
+  const published = async () => {
+    const booted = await boot();
+    const added = await booted.call(`/operator/catalog/model/${extra}`, 'drift', {
+      method: 'PUT',
+      body: {
+        endpoint: 'fake',
+        deployment: 'ekstra',
+        residency: 'norway',
+        capabilities: ['stream'],
+      },
+    });
+    expect(added.status).toBe(200);
+    const ours = await booted.platform.definitions.publish(
+      service({ model: 'fake/ekstra' }),
+      'test',
+      'test',
+      files,
+    );
+    expect(ours.ok).toBe(true);
+    return booted;
+  };
+  const moveTo = (call: Awaited<ReturnType<typeof boot>>['call'], state: string) =>
+    call(lifecycle, 'kari', { method: 'PUT', body: { state } });
+
+  it('is still refused deletion while the service is not archived', async () => {
+    const { call } = await published();
+
+    const removed = await call(`/operator/catalog/model/${extra}`, 'drift', { method: 'DELETE' });
+
+    expect(removed.status).toBe(400);
+    expect(JSON.stringify(await json(removed))).toContain('used by a published service');
+  });
+
+  it('can be deleted once the service is archived', async () => {
+    const { call, platform } = await published();
+    expect((await moveTo(call, 'archived')).status).toBe(200);
+
+    const removed = await call(`/operator/catalog/model/${extra}`, 'drift', { method: 'DELETE' });
+
+    expect(removed.status).toBe(200);
+    expect(platform.plugins.models.has('fake/ekstra')).toBe(false);
+  });
+
+  it('reactivating an archived service whose model was deleted is refused', async () => {
+    const { call } = await published();
+    await moveTo(call, 'archived');
+    await call(`/operator/catalog/model/${extra}`, 'drift', { method: 'DELETE' });
+
+    const reactivated = await moveTo(call, 'active');
+
+    expect(reactivated.status).toBe(409);
+    const body = await json<{ type: string; detail: string; errors: { message: string }[] }>(
+      reactivated,
+    );
+    expect(body.type).toBe('urn:genai:problem:service-outdated');
+    expect(body.errors.map((e) => e.message)).toContain('unknown model fake/ekstra');
+    expect(body.detail).toContain('unknown model fake/ekstra');
+    expect(await json(await call(lifecycle, 'kari'))).toMatchObject({ state: 'archived' });
+  });
+
+  it('pausing an archived service whose model was deleted works, so a fixed version can be published', async () => {
+    const { call, platform } = await published();
+    await moveTo(call, 'archived');
+    await call(`/operator/catalog/model/${extra}`, 'drift', { method: 'DELETE' });
+
+    expect((await moveTo(call, 'paused')).status).toBe(200);
+    const fixed = await platform.definitions.publish(service(), 'test', 'test', files);
+    expect(fixed.ok).toBe(true);
+    expect((await moveTo(call, 'active')).status).toBe(200);
+  });
+
+  it('reactivating an archived service whose models all exist works', async () => {
+    const { call } = await published();
+    await moveTo(call, 'archived');
+
+    const reactivated = await moveTo(call, 'active');
+
+    expect(reactivated.status).toBe(200);
+    expect(await json(reactivated)).toMatchObject({ state: 'active' });
+  });
+});
+
 describe('the dataset list', () => {
   it("counts only the tenant's own services that read each dataset", async () => {
     const { platform, call } = await boot();
@@ -843,9 +927,8 @@ describe('ingestion pipelines', () => {
     ]);
   });
 
-  it('ingestion refuses the shared search-only Typesense cluster', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch');
-    const { call } = await boot({ searchOnlyClusters: ['https://search.example.no'] });
+  it('lets an operator create, update and list a dataset pipeline, refusing a duplicate, a bad spec and an employee', async () => {
+    const { call } = await boot();
     const base = `/operator/datasets/${encodeURIComponent('digdir/kudos')}/pipelines`;
 
     expect((await call(base, 'drift', { body: pipeline })).status).toBe(201);
@@ -866,20 +949,12 @@ describe('ingestion pipelines', () => {
         })
       ).status,
     ).toBe(400);
-    const listed = await json<{
-      data: { id: string; version: number }[];
-      backend: { available: boolean; reason: string };
-    }>(await call(base, 'drift'));
+    const listed = await json<{ data: { id: string; version: number }[] }>(
+      await call(base, 'drift'),
+    );
     expect(listed.data).toEqual([expect.objectContaining({ id: 'nettsider', version: 2 })]);
-    expect(listed.backend).toMatchObject({ available: false });
-    expect(listed.backend.reason).toMatch(/search-only/);
-
-    const run = await call(`${base}/nettsider/execute`, 'drift', { body: {} });
-    expect(run.status).toBe(409);
-    expect(JSON.stringify(await json(run))).toMatch(/shared, search-only Typesense cluster/);
     expect((await call(base, 'kari')).status).toBe(403);
-    expect(fetchSpy).not.toHaveBeenCalled();
-    fetchSpy.mockRestore();
+    expect((await call(base, 'kari', { body: { ...pipeline, id: 'annen' } })).status).toBe(403);
   });
 
   it('refuses a Kudos pipeline that would read the whole archive, and tells when a scheduled one runs', async () => {

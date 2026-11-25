@@ -171,6 +171,7 @@ export const operationsMock = (
   const maturity = new Map<string, Maturity>([
     ['classify', 'production'],
     ['plain-language', 'production'],
+    ['compose', 'test'],
   ]);
   const tries = new Map<string, { id: string; exchange: string }>();
   const records = new Map<string, ProcessorRecord>([
@@ -185,7 +186,7 @@ export const operationsMock = (
   ]);
 
   const kinds = (): OperationKind[] => {
-    const all = new Set(['chat', 'decide', ...entries.map((e) => e.operation)]);
+    const all = new Set(['chat', 'decide', ...entries.map((e) => e.operation), ...maturity.keys()]);
     return [...all].sort().map((kind) => {
       const builtIn = kind === 'chat' || kind === 'decide';
       return {
@@ -386,6 +387,18 @@ export const operationsMock = (
       maturity.set(k, to);
       audit('platform.operations.maturity', `operation-kind:${k}`, reason);
       return json({ ...kinds().find((x) => x.kind === k), step: 'promoted' });
+    }
+    const removing = /^\/operator\/operation-kinds\/([^/]+)$/.exec(path);
+    if (removing && method === 'DELETE') {
+      if (!reason) return problem(400, [{ path: 'change-reason', message: 'missing' }]);
+      const k = decodeURIComponent(removing[1] ?? '');
+      const found = kinds().find((x) => x.kind === k);
+      if (!found) return problem(404, [{ path: 'kind', message: `no operation kind ${k}` }]);
+      if (found.builtIn || found.descriptors.length > 0)
+        return problem(409, [{ path: 'kind', message: `the operation kind ${k} is in use` }]);
+      maturity.delete(k);
+      audit('platform.operations.kind.delete', `operation-kind:${k}`, reason);
+      return new Response(null, { status: 204 });
     }
     if (path === '/operator/operation-descriptors' && method === 'GET')
       return json({ data: entries.map(view).sort((a, b) => a.id.localeCompare(b.id)) });

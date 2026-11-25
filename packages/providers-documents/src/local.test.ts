@@ -12,6 +12,7 @@ import {
   TooManyPagesError,
   UnsupportedDocumentError,
   createLocalConverter,
+  pdfPageCount,
   readEachPage,
 } from './index.js';
 
@@ -191,5 +192,11 @@ describe('reading a PDF page by page', () => {
         throw broken;
       }),
     ).rejects.toBe(broken);
+  });
+
+  it("counts a PDF's pages without reading their text", async () => {
+    expect(await pdfPageCount(pdfBytes([['én'], [], ['tre']]))).toBe(3);
+    // A file pdf.js cannot open has no count, and does not throw: it is only for the task line.
+    expect(await pdfPageCount(encoder.encode('ikke en pdf'))).toBeUndefined();
   });
 });

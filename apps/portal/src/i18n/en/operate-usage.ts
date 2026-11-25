@@ -106,12 +106,12 @@ export const usageArea = {
     lead: 'Tokens and estimated cost for the services of {tenant}. The cost is an estimate. The final amount is on the invoice from Digdir.',
     export: 'Export',
     allProjects: 'All services and projects',
-    environment: 'Environment',
-    allEnvironments: 'All environments',
+    environment: 'Test edition or in use',
+    allEnvironments: 'All',
     environmentScope:
-      'Showing only the usage from runs in the environment {environment}. The quota applies to all of {tenant}.',
-    emptyEnvironmentTitle: 'No usage in the environment yet',
-    emptyEnvironmentText: 'Usage appears here once a service has run in the environment.',
+      'Showing only the usage from runs in {environment}. The quota applies to all of {tenant}.',
+    emptyEnvironmentTitle: 'No usage in the edition yet',
+    emptyEnvironmentText: 'Usage appears here once a service has run in the edition you chose.',
     projectScope:
       'Showing only the usage from runs in the project {project}. The quota applies to all of {tenant}.',
     loading: 'Loading usage',

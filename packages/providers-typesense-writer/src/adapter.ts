@@ -22,7 +22,6 @@ import {
   createTypesenseWriter,
   folderSchemas,
   forCollections,
-  refuseSharedCluster,
   typesenseHttp,
   websiteSchemas,
   type ContractSchemas,
@@ -35,7 +34,6 @@ type Kind = 'docs' | 'chunks' | 'phrases';
 const kinds: Kind[] = ['docs', 'chunks', 'phrases'];
 
 export interface TypesenseIndexWriterOptions {
-  sharedClusterUrls?: (string | undefined)[];
   batchSize?: number;
   fetch?: typeof fetch;
 }
@@ -179,7 +177,6 @@ export const typesenseIndexWriter = (
     const { baseURL, credential } = endpoint;
     if (!baseURL || !credential)
       throw new KnowledgeError('bad_request', 'a Typesense endpoint needs a baseURL and auth');
-    refuseSharedCluster(baseURL, options.sharedClusterUrls);
     const shared = { baseURL, credential, timeoutMs: endpoint.timeoutMs, signal: context.signal };
     const { request, json } = typesenseHttp({
       ...shared,
@@ -190,7 +187,6 @@ export const typesenseIndexWriter = (
       createTypesenseWriter({
         ...shared,
         schemas: schemasFor(dataset),
-        sharedClusterUrls: options.sharedClusterUrls ?? [process.env.TYPESENSE_URL],
         ...(options.batchSize ? { batchSize: options.batchSize } : {}),
         ...(options.fetch ? { fetch: options.fetch } : {}),
       });
@@ -249,11 +245,7 @@ export const typesenseIndexWriter = (
 
     return {
       ...{
-        enrichment: typesenseEnrichment(
-          { request, json },
-          baseURL,
-          options.sharedClusterUrls ?? [process.env.TYPESENSE_URL],
-        ),
+        enrichment: typesenseEnrichment({ request, json }),
       },
       prepare: async (dataset, generation) => {
         const schemas = schemasFor(dataset);

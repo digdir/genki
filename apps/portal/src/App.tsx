@@ -12,9 +12,10 @@ import { tenantNotRegistered } from './problem-types';
 import { PublicLanding } from './screens/about/PublicLanding';
 import { translator, useT } from './i18n';
 import { useSessionTimer } from './session-timer';
-import { EmptyState, NavigationProgress, PageLoading } from './states';
+import { EmptyState, Loading, NavigationProgress } from './states';
 import { pendingInputHash, restoreUnsavedInput, saveUnsavedInput } from './unsaved-input';
 import type { Organisation, Session } from './types';
+import { forgetNotYetSaved } from './screens/services/not-yet-saved';
 
 const Shell = lazy(() => import('./Shell').then((m) => ({ default: m.Shell })));
 const NoAccess = lazy(() => import('./screens/NoAccess').then((m) => ({ default: m.NoAccess })));
@@ -79,6 +80,9 @@ const Portal = ({
   const slowNavigation = useDelayed(navigating, 200);
   const orgParam = route.query.get('org');
   const [session, setSession] = useState<Session | undefined>(auth.current());
+  useEffect(() => {
+    if (!session) forgetNotYetSaved();
+  }, [session]);
   const [picked, setOrganisation] = useState<Organisation | undefined>(
     () => session && chosen(session, orgParam),
   );
@@ -89,7 +93,7 @@ const Portal = ({
   const [failed, setFailed] = useState(false);
   const [unregistered, setUnregistered] = useState<Set<string>>(() => new Set());
   const [expired, setExpired] = useState(false);
-  const [failingIngests, setFailingIngests] = useState<Record<string, number>>({});
+  const [followUp, setFollowUp] = useState<Record<string, number>>({});
   const [serverRights, setServerRights] = useState<Record<string, string[]>>({});
   const active = useLocale().locale;
   const locale = useRef<Locale>(active);
@@ -144,12 +148,10 @@ const Portal = ({
     return restoreUnsavedInput(store);
   }, [token]);
   const tenantKey = organisation?.orgNumber;
-  const reportFailing = useCallback(
+  const reportFollowUp = useCallback(
     (count: number) => {
       if (tenantKey)
-        setFailingIngests((all) =>
-          all[tenantKey] === count ? all : { ...all, [tenantKey]: count },
-        );
+        setFollowUp((all) => (all[tenantKey] === count ? all : { ...all, [tenantKey]: count }));
     },
     [tenantKey],
   );
@@ -288,7 +290,7 @@ const Portal = ({
         />
       );
 
-    const failing = failingIngests[organisation.orgNumber] ?? 0;
+    const failing = followUp[organisation.orgNumber] ?? 0;
     const reported = serverRights[organisation.orgNumber];
     const effective =
       route.segments.length === 0 ? { ...route, path: '/overview', segments: ['overview'] } : route;
@@ -311,6 +313,7 @@ const Portal = ({
           .map((o) => o.name)}
         api={api}
         onRights={reportRights}
+        onFollowUp={reportFollowUp}
         badges={
           failing > 0
             ? {
@@ -340,14 +343,20 @@ const Portal = ({
           </Alert>
         ) : null}
         {slowNavigation ? <NavigationProgress label={t('common.loading')} /> : null}
-        <Suspense fallback={<PageLoading label={t('common.loading')} shape="detail" />}>
+        <Suspense
+          fallback={
+            <div className="screen-loading">
+              <Loading label={t('common.loading')} shape="detail" />
+            </div>
+          }
+        >
           <Page
             api={api}
             tenant={organisation.orgNumber}
             tenantName={organisationName(organisation, t)}
             route={effective}
             live={live}
-            onFailingIngests={reportFailing}
+            onFollowUp={reportFollowUp}
           />
         </Suspense>
       </Shell>

@@ -1,8 +1,8 @@
 # 0052 Answers cite excerpts, not whole documents
 
-Status: proposed, 2026-11-03 (prototype, agent loop only; `@genai/client` passes the markers on, 2026-11-10; stored conversation turns keep the markers, 2026-11-12)
+Status: proposed, 2026-11-03 (prototype, agent loop only; `@genai/client` passes the markers on, 2026-11-10; stored conversation turns keep the markers, 2026-11-12; the playground gives them, 2026-11-24; markers carry the cited sentences as a quote, 2026-11-24)
 
-Left: the `rag` and `step-flow` strategies keep numbering documents.
+Left: the `rag` and `step-flow` strategies keep numbering documents. A quote's position and page selectors wait for conversion parts (#638).
 
 ## Context
 
@@ -18,6 +18,12 @@ The agent loop numbers documents for the model: `numberByDocument` gives one `[N
   - MCP: the same list as `structuredContent.markers`, declared in the output schema.
   - `@genai/client`: the same list as `markers` on the answer and on the `sources` stream event, as `{ marker, chunkId, documentId }`, and `markers` on each source and excerpt. The answer has no `markers` when the service cites documents.
   - A stored conversation turn keeps the mapping, and `GET /api/conversations/{id}` returns it on the message: a `/v1` turn keeps the top-level `markers` and the `markers` of each source and excerpt, a turn answered through MCP keeps `structuredContent.markers` as `markers`. A turn stored before this has no `markers` list and reads as it did.
+  - The playground: the same list as `markers` on the run result of `POST /tenants/{tenant}/playground/runs` and `/stream`, left out when the service cites documents. The portal's try view turns it into the answer's `markers`.
+- **A marker can name the sentences it rests on (#971).** Each excerpt the model reads has its sentences, headings, list items and table rows numbered `⟨1⟩ ⟨2⟩ …` (`packages/strategy-agent-loop/src/sentences.ts`: lines first, then `Intl.Segmenter('nb')`, with pieces cut at Norwegian abbreviations glued back). The model cites `[N:4]`, `[N:4-6]` or `[N:4, 9]`; the strategy turns each cited place into its own plain `[M]`, so the answer text keeps `[N]` only and no frontend's parsing changes. The cited sentences go on the citation as a W3C `TextQuoteSelector` (`exact`, and up to 32 characters of `prefix` and `suffix`), found word for word in the excerpt text as `sources[].excerpts[].text` gives it.
+  - The model cannot point at words that are not there: an id the excerpt lacks, or one that cannot be read, keeps a plain excerpt citation and counts as a miss. A marker to no excerpt is dropped before renumbering. The run's notice `sentence-citations` gives `located` and `missed` places and the `cited` total.
+  - It applies in `generate_response` and the citation backfill, only with `citeBy: excerpt`; a stream filter keeps `[N:4]` from the reader.
+  - `markers[].quote` in `/v1`, MCP, the stored turn and the playground; `quote` on `@genai/client`'s marker. «Kilder» (`@genai/ui-blocks`) marks `exact` in the excerpt a footnote opens.
+  - Waits for #638: a `TextPositionSelector` into today's chunk text would break when chunks are rebuilt from parts, so positions and the page place come from conversion parts there.
 - **Frontends number markers for the reader as they like.** The platform's markers are the numbers in the context; a frontend may show the cited excerpts as 1, 2, 3 in the order the answer first cites them.
 
 ## Why
@@ -26,6 +32,7 @@ A reader can check a sentence against the one passage it rests on, and a fronten
 
 Turned down:
 
+- **The model copying the cited words after the marker,** checked word for word (#971). A model can change a digit or a word, which turns into a miss, and it writes more. Sentence ids are a closed set, need no loose matching, and mark whole sentences, not phrases.
 - **Dotted markers such as `[1.2]`.** They keep the document visible in the marker, but every frontend's `[N]` parsing, the source-list filter and the marker validation would change, for no gain once the output maps each marker to its document.
 - **Excerpt numbering for every service at once.** A frontend that reads `[N]` as document N would point footnotes at the wrong sources. Opting in lets a frontend move first.
 - **Renumbering markers 1, 2, 3 in the platform.** Which numbers a reader sees is presentation, and it differs between frontends.
@@ -55,4 +62,5 @@ Not measured: the whole loop against live retrieval (search, reading, backfill),
 - **Migration note for frontends.** With `citeBy: excerpt`, several markers can lead to one source, and `sources[].index` is only the lowest of them. Resolve `[N]` through `markers` (`/v1`), `structuredContent.markers` (MCP) or `answer.markers` (`@genai/client`), never through `index` alone. `docs/frontend-contract.md` says so.
 - A service turns it on with one line in its strategy config, after its frontend reads `markers`.
 - Not built: excerpt numbering in the `rag` and `step-flow` strategies.
+- The sentence quotes are tested in `packages/strategy-agent-loop/src/sentences.test.ts`, `sentence-citations.test.ts` and `linear-time.test.ts`, the contract tests above, `apps/api/src/playground.test.ts`, `apps/portal/src/screens/services/blocks/draftApi.test.ts`, and in `@genai/ui-blocks` (`sources/sources.test.tsx`, `sources/excerpt-tool.test.tsx`, `answer/answer.test.tsx`) and `@genai/ui-assembly` (`assistant.test.tsx`, `api.test.ts`). Not measured yet: the share of citations that get a location, and whether the answer metrics hold, on a service's test set.
 - The tests are `packages/strategy-agent-loop/src/excerpt-citations.test.ts`, `packages/adapter-openai/src/frontend-contract.test.ts` ("when the answer cites excerpts"), `packages/adapter-mcp/src/markers.test.ts`, `packages/client/src/client.test.ts` and, for stored turns, `packages/conversations/src/conversations.test.ts` and `packages/providers-postgres/src/tenancy.test.ts`.

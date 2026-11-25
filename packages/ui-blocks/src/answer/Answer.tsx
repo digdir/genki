@@ -376,10 +376,12 @@ export const Answer = ({
     const source = at === undefined || at < 0 ? undefined : sources?.[at];
     if (number === undefined || at === undefined || !source) return undefined;
     const title = names[at] ?? source.title;
+    const quote = byExcerpt ? read.citations[citation]?.quote : undefined;
     const goal: SourceTarget = {
       ...(byExcerpt ? { chunkId: item } : {}),
       documentId: source.documentId,
       index: source.index,
+      ...(quote ? { quote } : {}),
     };
     const label = each
       ? t('answer.footnoteEach', { n: number, title })

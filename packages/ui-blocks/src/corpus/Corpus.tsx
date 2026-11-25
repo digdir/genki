@@ -14,6 +14,8 @@ export interface CorpusOption {
   label: string;
   /** What is in it, in the dataset's own words. */
   description?: string | undefined;
+  /** The tenant that owns it, which its facets and questions are asked under. */
+  tenant?: string | undefined;
 }
 
 /** A collection's name in a sentence: its label up to the first comma, if any. */

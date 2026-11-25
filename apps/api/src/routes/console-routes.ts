@@ -622,7 +622,12 @@ export const registerConsoleRoutes = <E extends Env, S extends Schema, B extends
     return applied(c, who.principal, 'platform.task.cancel', { task: c.req.param('task') });
   });
 
-  const kinds = { services: 'Service', 'step-flows': 'StepFlow', skills: 'Skill' } as const;
+  const kinds = {
+    services: 'Service',
+    'step-flows': 'StepFlow',
+    skills: 'Skill',
+    blocks: 'Block',
+  } as const;
   const kindOf = (segment: string) =>
     segment in kinds ? kinds[segment as keyof typeof kinds] : undefined;
   const summary = (v: {

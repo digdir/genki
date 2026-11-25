@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { call, readSignal, result, retrieval, run, toolMessages } from './harness.test-utils.js';
+import {
+  call,
+  chunk,
+  readSignal,
+  result,
+  retrieval,
+  run,
+  toolMessages,
+} from './harness.test-utils.js';
 
 const filtered = {
   'retrieve-filter-by': {
@@ -85,6 +93,71 @@ describe('agent loop with caller filters', () => {
     expect(out.notices).not.toContainEqual(expect.objectContaining({ source: 'grounding-gate' }));
   });
 
+  it.each([
+    [
+      // Run 90db9807 (deploy smoke test 2026-11-24), shortened.
+      'Det gjelder særlig deltakere med svake forutsetninger for å bruke digitale tilbud [1, s. 63].',
+      'Det gjelder særlig deltakere med svake forutsetninger for å bruke digitale tilbud [1] s. 63.',
+    ],
+    [
+      // Run 0fc73255 (deploy smoke test 2026-11-24), shortened.
+      'Hvis kvaliteten er dårlig, vil effekten trolig utebli uansett form. [1 s. 61]',
+      'Hvis kvaliteten er dårlig, vil effekten trolig utebli uansett form. [1] s. 61',
+    ],
+  ])('reads a page written inside the citation bracket as citation [1]: %s', async (raw, shown) => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['digital veiledning'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+          ],
+          synth: [() => raw],
+        },
+      },
+    });
+
+    expect(out.text).toBe(shown);
+    expect(out.meta?.citations).toEqual([{ index: 1, chunkId: 'c1' }]);
+  });
+
+  it('leaves a bracket with a page whose number is not a source as it is', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['digital veiledning'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+          ],
+          synth: [() => 'Svar [1] og [7, s. 12].'],
+        },
+      },
+    });
+
+    expect(out.text).toBe('Svar [1] og [7, s. 12].');
+    expect(out.meta?.citations).toEqual([{ index: 1, chunkId: 'c1' }]);
+  });
+
+  it('a generate_response draft with the page inside the citation bracket passes the grounding gate as cited', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result('', [call('generate_response', { query: 'x' })]),
+          ],
+          read: [() => readSignal('gap-remaining', { scope_assessment: 'ambiguous' })],
+          synth: [() => 'Svar [1, s. 63].'],
+        },
+      },
+    });
+
+    expect(out.text).toBe('Svar [1] s. 63.');
+    expect(out.meta?.citations).toEqual([{ index: 1, chunkId: 'c1' }]);
+    expect(out.notices).not.toContainEqual(expect.objectContaining({ source: 'grounding-gate' }));
+  });
+
   it('says nothing about filters when the caller set none', async () => {
     const out = await run({
       scripts: { primary: { loop: [() => result('Svaret er 42.')] } },
@@ -140,7 +213,7 @@ describe('what the search detected in the query', () => {
     const out = await run({ retrieval: detected(), scripts: searchOnce });
 
     expect(toolMessages(out.loops[1])[0]).toContain(
-      'Hint, no filter applied: The query names "Datatilsynet"; orgs_long can filter on it. The query names the years "2023", "2024"; title can filter on them. Add filter_by only if the question asks for nothing else; a question about an organisation also needs other organisations\' documents.',
+      'Hint, no filter applied: The query names "Datatilsynet"; orgs_long can filter on it. The query names the years "2023", "2024"; title can filter on them. Use filter_by when the question is only about these; search without it when the question also needs other documents.',
     );
   });
 
@@ -178,6 +251,15 @@ describe('what the search detected in the query', () => {
     const out = await run({ retrieval: boosted, scripts: searchOnce });
 
     expect(toolMessages(out.loops[1])[0]).not.toContain('Hint');
+  });
+
+  it('a retrieval notice carries the pages of a chunk that runs over two pages', async () => {
+    const store = new Map([[`c1`, chunk(1, { page: 25, pageEnd: 26 })]]);
+
+    const out = await run({ retrieval: retrieval({}, store).impl, scripts: searchOnce });
+
+    const notice = out.notices.find((n) => n.kind === 'retrieval');
+    expect(notice?.hits).toEqual([expect.objectContaining({ id: 'c1', page: 25, pageEnd: 26 })]);
   });
 
   it('records what the search detected in the retrieval notice', async () => {

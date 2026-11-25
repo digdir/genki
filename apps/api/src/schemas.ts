@@ -475,6 +475,31 @@ export const schemaRoutes: RouteConfig[] = [
       404: { content: v1ErrorContent, description: 'No such service for this credential' },
     },
   }),
+  createRoute({
+    method: 'get',
+    path: '/v1/models/{id}/interface',
+    summary: "The assistant interface of the service version the caller's environment runs",
+    request: {
+      params: zo.object({
+        id: zo.string().openapi({
+          param: { name: 'id', in: 'path' },
+          example: 'kunnskapsassistenten__default',
+        }),
+      }),
+    },
+    responses: {
+      200: {
+        content: { 'application/json': { schema: zo.record(zo.string(), zo.unknown()) } },
+        description:
+          '`spec.interface`: the layout, the menu and the pages, and `blocks`: the pinned edition of every `block: ref` in the layout, keyed by its ref, as `RefBlockPayload`',
+      },
+      401: { content: v1ErrorContent, description: 'Invalid or missing credentials' },
+      404: {
+        content: v1ErrorContent,
+        description: 'No such service for this credential, or interface_not_found',
+      },
+    },
+  }),
 ];
 
 const notFound = (c: Context) =>

@@ -7,6 +7,8 @@ import { envSecrets } from '@genai/kernel';
 import { onePage, type DocumentConverter } from '@genai/ingest';
 import { InMemoryBlobStore, type BlobKey, type BlobStore } from '@genai/port-blob';
 import { fakeEmbeddingAdapter } from '@genai/port-embedding/testing';
+import type { DatasetConfig, IndexWriter } from '@genai/port-knowledge';
+import { memoryEngine } from '@genai/port-knowledge/testing';
 import { createPool } from '@genai/providers-postgres';
 import { stopPostgres } from '@genai/providers-postgres/testing';
 import { createAdmin } from './admin.js';
@@ -18,6 +20,7 @@ import {
   type DatasetDeleteResult,
 } from './dataset-delete.js';
 import { deleteHoldMessage } from './ingestion.js';
+import { internalServiceViewer } from './internal-services.js';
 import { digdir, fakeModels, files, testService } from './testkit.js';
 
 const other = '999888777';
@@ -32,6 +35,13 @@ const principals: Record<string, Principal> = {
     authorizedFor: [{ org: digdir, actions: ['use-services'] }],
   },
   drift: { kind: 'operator', issuer: 'test', subject: 'drift' },
+  owner: {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'eier',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir }],
+  },
 };
 const embedding = { model: 'fake/embed', dimensions: 8 };
 const reason = 'Datasettet ble satt opp med feil modell';
@@ -49,8 +59,59 @@ afterAll(async () => {
   await stopPostgres(container);
 });
 
+/**
+ * The engine tenant datasets are created on, in memory as platform-pg went with issue 151.
+ * It keeps the generations it holds per dataset, so a test can count every document left.
+ */
+const localEngine = () => {
+  const engine = memoryEngine();
+  const held = new Map<string, { dataset: DatasetConfig; generations: Set<string> }>();
+  const writer: typeof engine.writer = {
+    ...engine.writer,
+    connect: (endpoint, context) => {
+      const inner = engine.writer.connect(endpoint, context);
+      const tracked: typeof inner = {
+        ...inner,
+        prepare: async (dataset, generation) => {
+          await inner.prepare(dataset, generation);
+          const entry = held.get(dataset.id) ?? { dataset, generations: new Set<string>() };
+          entry.generations.add(generation);
+          held.set(dataset.id, entry);
+        },
+        drop: async (dataset, generation, dropOptions) => {
+          await inner.drop(dataset, generation, dropOptions);
+          held.get(dataset.id)?.generations.delete(generation);
+        },
+      };
+      return tracked;
+    },
+  };
+  const connected = () =>
+    engine.writer.connect({ engine: 'memory', options: {} } as never, {} as never) as IndexWriter;
+  return {
+    adapter: engine.adapter,
+    writer,
+    /** Every document of the dataset in any generation the engine still holds. */
+    documentsOf: async (dataset: string) => {
+      const entry = held.get(dataset);
+      if (!entry) return 0;
+      let documents = 0;
+      for (const generation of entry.generations)
+        documents += (await connected().stats(entry.dataset, generation)).documents;
+      return documents;
+    },
+    activeOf: async (dataset: string) => {
+      const entry = held.get(dataset);
+      return entry ? connected().active(entry.dataset) : undefined;
+    },
+  };
+};
+
+type LocalEngine = ReturnType<typeof localEngine>;
+
 const boot = async (
   options: {
+    local?: LocalEngine;
     blobs?: BlobStore;
     converter?: DocumentConverter;
     store?: ConfigEntryStore;
@@ -58,16 +119,13 @@ const boot = async (
   } = {},
 ) => {
   const blobs = options.blobs ?? new InMemoryBlobStore();
+  const local = options.local ?? localEngine();
   const platform = await createPlatform({
     catalogs: {
       models: fakeModels,
       knowledge: {
         endpoints: {
-          'platform-pg': {
-            engine: 'pgvector',
-            options: { connection: 'platform' },
-            sharing: { tenants: '*' },
-          },
+          lokal: { engine: 'memory', sharing: { tenants: '*' } },
           'knowledge-pg': {
             engine: 'pgvector',
             options: { connection: 'knowledge' },
@@ -103,7 +161,7 @@ const boot = async (
       const principal = principals[request.headers.get('authorization')?.slice(7) ?? ''];
       return principal ? { principal } : undefined;
     },
-    knowledgePool: pool,
+    knowledgeEngines: [local],
     knowledgeServer: { reader: pool },
     embeddingAdapters: [fakeEmbeddingAdapter()],
     blobStore: blobs,
@@ -121,15 +179,27 @@ const boot = async (
     extensions: platform.extensions,
   });
   const app = new Hono();
+  app.use(
+    '*',
+    internalServiceViewer(
+      async (request) => principals[request.headers.get('authorization')?.slice(7) ?? ''],
+    ),
+  );
   platform.mount(app, admin);
   const call = (
     path: string,
     as: string,
-    init: { method?: string; body?: unknown; reason?: string } = {},
+    init: {
+      method?: string;
+      body?: unknown;
+      reason?: string;
+      headers?: Record<string, string>;
+    } = {},
   ) =>
     app.request(path, {
       method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
       headers: {
+        ...init.headers,
         authorization: `Bearer ${as}`,
         'content-type': 'application/json',
         ...(init.reason === ''
@@ -147,16 +217,16 @@ const boot = async (
       body: form,
     });
   };
-  return { platform, admin, app, call, upload, blobs };
+  return { platform, admin, app, call, upload, blobs, local };
 };
 
 type Booted = Awaited<ReturnType<typeof boot>>;
 const json = async <T>(response: Response) => (await response.json()) as T;
 const base = (id: string, tenant = digdir) => `/tenants/${tenant}/datasets/${id}`;
 
-const createDataset = async ({ call }: Booted, id: string, endpoint = 'platform-pg') => {
+const createDataset = async ({ call }: Booted, id: string, endpoint = 'lokal') => {
   const created = await call(`/tenants/${digdir}/datasets`, 'kari', {
-    body: { id, name: 'Veiledere', residency: 'norway', index: { endpoint }, embedding },
+    body: { id, name: 'Veiledere', residency: 'eu', index: { endpoint }, embedding },
   });
   expect(created.status).toBe(201);
 };
@@ -218,21 +288,37 @@ const gatedBlobs = (store: InMemoryBlobStore, onDelete: (key: BlobKey) => Promis
   return blobs;
 };
 
-const documentsOf = async (dataset: string) =>
-  Number(
-    (
-      await pool.query<{ n: string }>('select count(*) as n from kn_docs where dataset = $1', [
-        dataset,
-      ])
-    ).rows[0]?.n,
-  );
-
 const reads = (dataset: string) => ({
   ...testService('leser'),
-  spec: { ...testService('leser').spec, knowledge: { datasets: [{ dataset }] } },
+  spec: {
+    ...testService('leser').spec,
+    model: { ...testService('leser').spec.model, residency: 'eu' },
+    knowledge: { datasets: [{ dataset }] },
+  },
 });
 
 describe('deleting a dataset', () => {
+  it('an operator in the portal cannot delete a dataset an internal service uses', async () => {
+    const booted = await boot();
+    await createDataset(booted, 'veiledere');
+    const internal = reads(`${digdir}/veiledere`);
+    const published = await booted.platform.definitions.publish(
+      { ...internal, spec: { ...internal.spec, visibility: 'internal' } },
+      'test',
+      'Røyktesten leser veilederne',
+      files,
+    );
+    expect(published.ok).toBe(true);
+
+    const refused = await booted.call(base('veiledere'), 'owner', {
+      method: 'DELETE',
+      headers: { 'genki-surface': 'portal' },
+    });
+
+    expect(refused.status).toBe(409);
+    expect(await json(refused)).toMatchObject({ type: datasetInUseType });
+  });
+
   it('refuses while a published service reads the dataset, and names it on the dataset', async () => {
     const booted = await boot();
     await createDataset(booted, 'veiledere');
@@ -259,7 +345,7 @@ describe('deleting a dataset', () => {
     expect(refused.status).toBe(409);
     expect(await json(refused)).toMatchObject({
       type: datasetInUseType,
-      errors: [{ path: 'usedBy', message: `service ${digdir}/leser bruker datasettet` }],
+      errors: [{ path: 'usedBy', message: `service ${digdir}/leser bruker dokumentsamlingen` }],
     });
     expect((await booted.call(base('veiledere'), 'kari')).status).toBe(200);
   });
@@ -269,7 +355,7 @@ describe('deleting a dataset', () => {
     const { call, blobs } = booted;
     await createDataset(booted, 'veiledere');
     const run = await filled(booted, 'veiledere');
-    expect(await documentsOf(`${digdir}/veiledere`)).toBe(1);
+    expect(await booted.local.documentsOf(`${digdir}/veiledere`)).toBe(1);
 
     const deleted = await call(base('veiledere'), 'kari', { method: 'DELETE' });
     expect(deleted.status).toBe(200);
@@ -285,11 +371,8 @@ describe('deleting a dataset', () => {
     });
     expect((await call(base('veiledere'), 'kari')).status).toBe(404);
     expect(await blobs.list(digdir)).toEqual([]);
-    expect(await documentsOf(`${digdir}/veiledere`)).toBe(0);
-    expect(
-      (await pool.query('select 1 from kn_active where dataset = $1', [`${digdir}/veiledere`]))
-        .rowCount,
-    ).toBe(0);
+    expect(await booted.local.documentsOf(`${digdir}/veiledere`)).toBe(0);
+    expect(await booted.local.activeOf(`${digdir}/veiledere`)).toBeUndefined();
     const versions = await json<{ data: { deleted?: boolean }[] }>(
       await call(`/tenants/${digdir}/catalog/dataset/veiledere/versions`, 'kari'),
     );
@@ -317,7 +400,7 @@ describe('deleting a dataset', () => {
         id: 'arkitektur',
         name: 'Arkitektur',
         residency: 'norway',
-        index: { endpoint: 'platform-pg' },
+        index: { endpoint: 'lokal' },
         embedding,
       },
     });
@@ -325,7 +408,7 @@ describe('deleting a dataset', () => {
     expect(JSON.stringify(await json(again))).toContain('until they are dropped');
     const viaCatalog = await call(`/tenants/${digdir}/catalog/dataset/arkitektur`, 'kari', {
       method: 'PUT',
-      body: { name: 'Arkitektur', residency: 'norway', endpoint: 'platform-pg', embedding },
+      body: { name: 'Arkitektur', residency: 'norway', endpoint: 'lokal', embedding },
     });
     expect(viaCatalog.status).toBe(409);
   });
@@ -374,7 +457,7 @@ describe('deleting a dataset', () => {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     expect((await call(base('veiledere'), 'kari', { method: 'DELETE' })).status).toBe(200);
-    expect(await documentsOf(`${digdir}/veiledere`)).toBe(0);
+    expect(await booted.local.documentsOf(`${digdir}/veiledere`)).toBe(0);
   });
 
   it('a step that fails leaves the dataset in place, and a second delete finishes the job', async () => {
@@ -392,7 +475,7 @@ describe('deleting a dataset', () => {
     const failed = await call(base('veiledere'), 'kari', { method: 'DELETE' });
     expect(failed.status).toBe(500);
     expect((await call(base('veiledere'), 'kari')).status).toBe(200);
-    expect(await documentsOf(`${digdir}/veiledere`)).toBe(1);
+    expect(await booted.local.documentsOf(`${digdir}/veiledere`)).toBe(1);
 
     down = false;
     const deleted = await call(base('veiledere'), 'kari', { method: 'DELETE' });
@@ -403,7 +486,7 @@ describe('deleting a dataset', () => {
     });
     expect((await call(base('veiledere'), 'kari')).status).toBe(404);
     expect(await store.list(digdir)).toEqual([]);
-    expect(await documentsOf(`${digdir}/veiledere`)).toBe(0);
+    expect(await booted.local.documentsOf(`${digdir}/veiledere`)).toBe(0);
   });
 
   it('a drop that fails before the catalog version is written leaves the dataset in place, and a second delete finishes the job', async () => {
@@ -427,7 +510,7 @@ describe('deleting a dataset', () => {
     const failed = await call(base('veiledere'), 'kari', { method: 'DELETE' });
     expect(failed.status).toBe(500);
     expect((await call(base('veiledere'), 'kari')).status).toBe(200);
-    expect(await documentsOf(`${digdir}/veiledere`)).toBeGreaterThan(0);
+    expect(await booted.local.documentsOf(`${digdir}/veiledere`)).toBeGreaterThan(0);
 
     down = false;
     const deleted = await call(base('veiledere'), 'kari', { method: 'DELETE' });
@@ -437,7 +520,7 @@ describe('deleting a dataset', () => {
       kept: { knowledgeRecords: false, generations: [] },
     });
     expect((await call(base('veiledere'), 'kari')).status).toBe(404);
-    expect(await documentsOf(`${digdir}/veiledere`)).toBe(0);
+    expect(await booted.local.documentsOf(`${digdir}/veiledere`)).toBe(0);
   });
 
   it('a run started on another replica while the delete is going is refused, and nothing is left serving', async () => {
@@ -454,10 +537,11 @@ describe('deleting a dataset', () => {
       reached();
       await gate;
     });
-    const first = await boot({ blobs, store: entries });
+    const local = localEngine();
+    const first = await boot({ local, blobs, store: entries });
     await createDataset(first, 'veiledere');
     await filled(first, 'veiledere');
-    const second = await boot({ blobs, store: entries });
+    const second = await boot({ local, blobs, store: entries });
     expect((await second.call(base('veiledere'), 'kari')).status).toBe(200);
 
     const deleting = first.call(base('veiledere'), 'kari', { method: 'DELETE' });
@@ -479,19 +563,20 @@ describe('deleting a dataset', () => {
       kept: { knowledgeRecords: false, generations: [] },
     });
     expect((await first.call(base('veiledere'), 'kari')).status).toBe(404);
-    expect(await documentsOf(`${digdir}/veiledere`)).toBe(0);
+    expect(await local.documentsOf(`${digdir}/veiledere`)).toBe(0);
   });
 
   it('a delete whose process died stops holding the dataset two minutes after its last beat', async () => {
     let clock = new Date('2026-11-10T10:00:00Z');
     const entries = new InMemoryConfigEntryStore();
-    const first = await boot({ store: entries, now: () => clock });
+    const local = localEngine();
+    const first = await boot({ local, store: entries, now: () => clock });
     await createDataset(first, 'veiledere');
     await prepared(first, 'veiledere');
     expect(
       await first.platform.ingestion.hold(`${digdir}/veiledere`, 'kari', reason),
     ).toBeDefined();
-    const second = await boot({ store: entries, now: () => clock });
+    const second = await boot({ local, store: entries, now: () => clock });
 
     const refused = await second.call(`${base('veiledere')}/pipelines/filer/execute`, 'kari', {
       body: {},
@@ -500,7 +585,7 @@ describe('deleting a dataset', () => {
     clock = new Date('2026-11-10T10:02:30Z');
     await ran(second, 'veiledere');
     expect((await second.call(base('veiledere'), 'kari', { method: 'DELETE' })).status).toBe(200);
-    expect(await documentsOf(`${digdir}/veiledere`)).toBe(0);
+    expect(await local.documentsOf(`${digdir}/veiledere`)).toBe(0);
   });
 
   it("an operator's delete of a platform dataset leaves a tenant's uploads under the same id alone", async () => {
@@ -513,7 +598,7 @@ describe('deleting a dataset', () => {
         id: 'felles',
         name: 'Felles',
         residency: 'norway',
-        index: { endpoint: 'platform-pg' },
+        index: { endpoint: 'lokal' },
         embedding,
       },
     });
@@ -550,7 +635,7 @@ describe('deleting a dataset', () => {
       removed: { generations: [] },
       kept: { knowledgeRecords: false, generations: ['fremmed'] },
     });
-    expect(await documentsOf(`${digdir}/veiledere`)).toBe(1);
+    expect(await booted.local.documentsOf(`${digdir}/veiledere`)).toBe(1);
   });
 
   it('records the delete as an audited task with the reason', async () => {
@@ -592,7 +677,7 @@ describe('deleting a dataset', () => {
         id: 'felles',
         name: 'Felles',
         residency: 'norway',
-        index: { endpoint: 'platform-pg' },
+        index: { endpoint: 'lokal' },
         embedding,
       },
     });

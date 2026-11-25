@@ -40,6 +40,8 @@ const hits = (chunks: FlowChunk[]) =>
     id: c.chunkId,
     ...(c.document === undefined ? {} : { document: c.document }),
     ...(c.position === undefined ? {} : { position: c.position }),
+    ...(c.page === undefined ? {} : { page: c.page }),
+    ...(c.pageEnd === undefined ? {} : { pageEnd: c.pageEnd }),
     ...(c.score === undefined ? {} : { score: c.score }),
     ...(c.title === undefined ? {} : { title: c.title }),
   }));
@@ -280,7 +282,7 @@ export const synthesizeBlock: Block<
       temperature: params.temperature,
       maxTokens: params.maxTokens ?? defaultMaxOutputTokens,
     });
-    const answer = normaliseCitationMarkers(result.content);
+    const answer = normaliseCitationMarkers(result.content, (n) => n in index);
     const renumbered = renumberCitations(answer, parseCitations(answer, index), index);
     const insufficiency = detectInsufficientContext(renumbered.text);
     return {

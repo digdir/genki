@@ -1,7 +1,7 @@
 import { useFormat } from '@genai/i18n/react';
 import type { CatalogModel } from '../api/models';
 import { useT, type PlainKey } from '../i18n';
-import { displayName, perMillion, usable, type ModelStatus } from '../models';
+import { displayName, isFree, kronerDigits, perMillion, usable, type ModelStatus } from '../models';
 import type { Residency } from '../types';
 
 const whereKeys: Record<Residency, PlainKey> = {
@@ -17,6 +17,8 @@ const statusKeys: Record<ModelStatus, PlainKey> = {
   pending_approval: 'modelWords.statusPendingApproval',
   not_allowed: 'modelWords.statusNotAllowed',
 };
+
+export const whereColor = (r: Residency) => (r === 'global' ? 'warning' : 'info');
 
 export const statusColor = (status: ModelStatus) =>
   status === 'in_use'
@@ -67,7 +69,7 @@ export const modelBlockHref = (id: string) => `#/building-blocks/model/${encodeU
 export const useModelText = () => {
   const t = useT();
   const f = useFormat();
-  const kr = (v: number) => f.number(v, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const kr = (v: number) => f.number(v, kronerDigits);
   const where = (r: Residency) => t(whereKeys[r]);
   const operator = (m: CatalogModel) =>
     m.operator
@@ -75,7 +77,7 @@ export const useModelText = () => {
         ? t('modelWords.operatorWithRegion', { name: m.operator.name, region: m.operator.region })
         : m.operator.name
       : '';
-  const maker = (m: CatalogModel) => m.maker || t('modelWords.unknownMaker');
+  const maker = (m: CatalogModel) => m.maker ?? '';
   return {
     t,
     f,
@@ -83,10 +85,6 @@ export const useModelText = () => {
     where,
     dataIn: (r: Residency) =>
       r === 'global' ? t('modelWords.dataInGlobal') : t('modelWords.dataIn', { where: where(r) }),
-    whereLong: (m: CatalogModel) =>
-      m.residency === 'eu' && m.operator?.region
-        ? `${where(m.residency)} (${m.operator.region})`
-        : where(m.residency),
     status: (s: ModelStatus) => t(statusKeys[s]),
     use: (op: string) => {
       const key = Object.hasOwn(useKeys, op) ? useKeys[op] : undefined;
@@ -104,26 +102,26 @@ export const useModelText = () => {
         : t('modelWords.noCapabilities'),
     price: (m: CatalogModel) => {
       if (!m.price) return t('modelWords.notPriced');
+      if (isFree(m.price)) return t('modelWords.free');
       const p = perMillion(m.price);
       return t('modelWords.pricePerMillion', { input: kr(p.input), output: kr(p.output) });
     },
     priceWithUnit: (m: CatalogModel) => {
       if (!m.price) return t('modelWords.notPriced');
+      if (isFree(m.price)) return t('modelWords.freeLong');
       const p = perMillion(m.price);
       return t('modelWords.pricePerMillionUnit', { input: kr(p.input), output: kr(p.output) });
     },
     context: (m: CatalogModel) =>
-      m.contextWindow
-        ? t('modelWords.contextTokens', { tokens: f.number(m.contextWindow) })
-        : t('modelWords.notStated'),
+      m.contextWindow ? t('modelWords.contextTokens', { tokens: f.number(m.contextWindow) }) : '',
     maker,
     operator,
     byLine: (m: CatalogModel) => {
       const op = operator(m);
-      return op
-        ? t('modelWords.byLine', { maker: maker(m), operator: op })
-        : t('modelWords.byMaker', { maker: maker(m) });
+      if (m.maker && op) return t('modelWords.byLine', { maker: m.maker, operator: op });
+      return m.maker ?? (op ? t('modelWords.byOperator', { operator: op }) : '');
     },
+    gateway: (m: CatalogModel) => (m.gateway ? t('modelWords.viaGateway') : ''),
     reason: (m: CatalogModel) =>
       usable(m)
         ? ''

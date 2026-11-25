@@ -180,8 +180,8 @@ describe('the block catalogue', () => {
   it('offers the whole document in Document view as a switch, on by default and marked beta in both languages', () => {
     const view = blockCatalogue.find((s) => s.id === 'document-view');
     expect(view?.options).toEqual([{ id: 'file', kind: 'switch', default: true }]);
-    expect(nb.builder.documentViewFile).toBe('Vis hele dokumentet (beta)');
-    expect(en.builder.documentViewFile).toBe('Show the whole document (beta)');
+    expect(nb.builder.documentViewFile).toBe('PDF-visning (beta)');
+    expect(en.builder.documentViewFile).toBe('PDF view (beta)');
     expect(nb.builder.documentViewFileHelp).toMatch(/Av: dokumentvisningen viser bare utdragene$/);
   });
 

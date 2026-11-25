@@ -426,6 +426,70 @@ describe('anthropic-messages adapter', () => {
     });
   });
 
+  it('passes a refusal and its category through in chat', async () => {
+    const { url } = await fake(() => ({
+      status: 200,
+      json: {
+        ...message([], 'refusal'),
+        stop_details: { type: 'refusal', category: 'reasoning_extraction', explanation: 'x' },
+      },
+    }));
+
+    const result = await open(router(url)).chat({ messages: [{ role: 'user', content: 'x' }] });
+
+    expect(result).toMatchObject({
+      content: '',
+      finishReason: 'content_filter',
+      stopDetail: { category: 'reasoning_extraction' },
+    });
+  });
+
+  it('passes a refusal and its category through in chatStream', async () => {
+    const frame = (data: Record<string, unknown>) => ({ event: data.type as string, data });
+    const { url } = await fake(() => ({
+      status: 200,
+      sse: [
+        frame({ type: 'message_start', message: message([], null as unknown as string) }),
+        frame({
+          type: 'message_delta',
+          delta: {
+            stop_reason: 'refusal',
+            stop_sequence: null,
+            stop_details: { type: 'refusal', category: 'cyber', explanation: null },
+          },
+          usage: { output_tokens: 0 },
+        }),
+        frame({ type: 'message_stop' }),
+      ],
+    }));
+
+    const chunks: ChatChunk[] = [];
+    for await (const c of open(router(url)).chatStream({
+      messages: [{ role: 'user', content: 'x' }],
+    }))
+      chunks.push(c);
+
+    expect(chunks.at(-1)).toMatchObject({
+      kind: 'done',
+      result: { content: '', finishReason: 'content_filter', stopDetail: { category: 'cyber' } },
+    });
+  });
+
+  it('gives no stop detail when a refusal names no category', async () => {
+    const { url } = await fake(() => ({
+      status: 200,
+      json: {
+        ...message([], 'refusal'),
+        stop_details: { type: 'refusal', category: null, explanation: null },
+      },
+    }));
+
+    const result = await open(router(url)).chat({ messages: [{ role: 'user', content: 'x' }] });
+
+    expect(result.finishReason).toBe('content_filter');
+    expect(result.stopDetail).toBeUndefined();
+  });
+
   it('maps rate limits, overload, refusals and cancellation', async () => {
     const limited = await fake(() => ({
       status: 429,

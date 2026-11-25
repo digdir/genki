@@ -5,7 +5,8 @@ import {
   ConversionPending,
   ConversionRefused,
   NoTextLayerError,
-  joinPages,
+  blankConversion,
+  textOfConversion,
   type Conversion,
   type DocumentConverter,
 } from './converter.js';
@@ -116,15 +117,16 @@ const kudosTexts = async (
         ...(file.mimetype ? { mimetype: file.mimetype } : {}),
       };
       const converted = conversion ?? (await options.converter.convert(document));
-      if (converted.pages.every((p) => p.trim() === '')) {
+      if (blankConversion(converted)) {
         skip = 'no_text';
         continue;
       }
-      texts.push(joinPages(converted.pages));
+      texts.push(textOfConversion(converted));
       read.push({
         name: document.name,
         ...(file.sha256 ? { sha256: file.sha256 } : {}),
         pages: converted.pages,
+        ...(converted.parts ? { parts: converted.parts } : {}),
       });
     } catch (error) {
       skip = error instanceof NoTextLayerError ? 'no_text' : 'conversion_failed';

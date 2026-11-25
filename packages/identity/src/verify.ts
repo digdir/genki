@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import type { Assurance, Principal } from '@genai/contracts';
 import {
   createLocalJWKSet,
@@ -45,6 +46,9 @@ export interface RegisteredClient {
   tenant: string;
   service: string;
   client: string;
+  hosted?: boolean;
+  /** Resolved for a login through genki's platform login client, not the Client's own id. */
+  platformLogin?: boolean;
 }
 
 export interface ClientRegistry {
@@ -73,6 +77,8 @@ export type TrustedIssuer =
       trustedEntra?: TrustedEntra;
       trustedClients?: readonly string[];
       registeredClients?: ClientRegistry;
+      platformLoginClients?: readonly string[];
+      platformLoginKey?: Uint8Array;
     }
   | {
       kind: 'maskinporten';
@@ -100,6 +106,7 @@ export interface VerifiedIdentity {
 export interface TokenVerifierOptions {
   issuers: TrustedIssuer[];
   clockToleranceSeconds?: number;
+  now?: () => Date;
 }
 
 export const remoteJwks = (
@@ -168,7 +175,7 @@ const trustedEntraLogin = (
   issuer: string,
   trusted: TrustedEntra,
   payload: JWTPayload,
-  registered: boolean,
+  registered: RegisteredClient | undefined,
 ): VerifiedIdentity => {
   const claimed = new Set(
     (Array.isArray(payload.groups) ? payload.groups : []).flatMap((g) =>
@@ -182,7 +189,10 @@ const trustedEntraLogin = (
   const clientId = typeof payload.client_id === 'string' ? payload.client_id : undefined;
   const platformClient = clientId !== undefined && trusted.clientIds.includes(clientId);
   const serviceClient =
-    registered && clientId !== undefined && (trusted.serviceClientIds ?? []).includes(clientId);
+    registered !== undefined &&
+    clientId !== undefined &&
+    ((!registered.platformLogin && (trusted.serviceClientIds ?? []).includes(clientId)) ||
+      (registered.hosted === true && registered.tenant === trusted.tenant));
   const grantOf = (): keyof typeof scopeOf | undefined => {
     if (operatorLogin) return registered || platformClient ? 'operator' : undefined;
     if (userLogin && !registered && platformClient) return 'user';
@@ -222,10 +232,21 @@ const trustedEntraLogin = (
 const employee = (
   issuer: Extract<TrustedIssuer, { kind: 'ansattporten' }>,
   payload: JWTPayload,
-  registered: boolean,
+  registered: RegisteredClient | undefined,
 ): VerifiedIdentity => {
   const assurance = assuranceOf(payload.acr);
   if (!assurance) throw new AuthenticationError('insufficient_assurance', 'unknown acr');
+  const clientId = typeof payload.client_id === 'string' ? payload.client_id : undefined;
+  if (
+    !registered &&
+    clientId !== undefined &&
+    issuer.platformLoginClients?.includes(clientId) &&
+    !issuer.trustedClients?.includes(clientId)
+  )
+    throw new AuthenticationError(
+      'invalid_token',
+      'a platform login counts only on the hostname it was made for',
+    );
   if (assurance === 'entraid' && issuer.trustedEntra)
     return trustedEntraLogin(issuer.issuer, issuer.trustedEntra, payload, registered);
   if (
@@ -380,19 +401,40 @@ const operator = (
   };
 };
 
+/** The subject a platform login gets on one Client, never the Ansattporten subject it shares with every Client. */
+export const platformLoginSubject = (
+  key: Uint8Array,
+  tenant: string,
+  client: string,
+  subject: string,
+) => createHmac('sha256', key).update(`${tenant}|${client}|${subject}`).digest('base64url');
+
 const confineToClient = (
   identity: VerifiedIdentity,
   client: RegisteredClient,
+  platformLoginKey: Uint8Array | undefined,
 ): VerifiedIdentity => {
   if (!identity.principal.authorizedFor?.some((a) => a.org === client.tenant))
     throw new AuthenticationError(
       'not_authorized_for_org',
       `the login does not carry rights for ${client.tenant}`,
     );
+  if (client.platformLogin && !platformLoginKey)
+    throw new AuthenticationError('invalid_token', 'the platform login has no subject key');
+  const subject =
+    client.platformLogin && platformLoginKey
+      ? platformLoginSubject(
+          platformLoginKey,
+          client.tenant,
+          client.client,
+          identity.principal.subject,
+        )
+      : identity.principal.subject;
   return {
     ...identity,
     principal: {
       ...identity.principal,
+      subject,
       tenant: client.tenant,
       client: client.clientId,
       confinedTo: { tenant: client.tenant, service: client.service, client: client.client },
@@ -423,6 +465,7 @@ export const createTokenVerifier = (options: TokenVerifierOptions) => ({
         algorithms: ['RS256'],
         requiredClaims: ['exp', 'iat'],
         clockTolerance: options.clockToleranceSeconds ?? 30,
+        ...(options.now ? { currentDate: options.now() } : {}),
       }));
     } catch (error) {
       throw new AuthenticationError(
@@ -433,8 +476,8 @@ export const createTokenVerifier = (options: TokenVerifierOptions) => ({
     if (issuer.kind === 'ansattporten') {
       if (typeof payload.sub !== 'string')
         throw new AuthenticationError('invalid_token', 'missing sub');
-      const verified = employee(issuer, payload, registered !== undefined);
-      return registered ? confineToClient(verified, registered) : verified;
+      const verified = employee(issuer, payload, registered);
+      return registered ? confineToClient(verified, registered, issuer.platformLoginKey) : verified;
     }
     if (issuer.kind === 'entra') return operator(issuer, payload);
     return system(issuer, payload);

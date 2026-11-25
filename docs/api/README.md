@@ -63,6 +63,49 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+The public `/v1` routes are what other systems build on, so CI refuses a breaking change to them unless this list announces it. [openapi-v1.json](openapi-v1.json) is the `/v1` part of `/openapi.json`, written by `apps/api/src/openapi/public-api.test.ts` (refresh it with `npx vitest run apps/api/src/openapi/public-api.test.ts -u`). `npm run api:compat` compares it with the copy on `origin/main`, or the base of the pull request in CI. These are breaking:
+
+- a removed path or method;
+- a removed response field, a field that is no longer always present, or a removed success response;
+- a new required request field, parameter or body;
+- a narrowed type or enum: a request accepts less than before, or a response can send a type or value it could not before (such as `null`);
+- a changed auth requirement: an open operation that starts to need a credential, the reverse, or another security scheme.
+
+To announce one, add a line to a new dated entry below that names the operation in backticks as the method and path, such as `` `POST /v1/chat/completions` ``. Only lines added in the same change count. Changes outside `/v1` are listed here too, but CI does not check them, nor path parameter schemas or `additionalProperties`.
+
+`npm run definitions:compat` checks every YAML or JSON file in the repository that is a service, step flow, skill or block definition (seeds, examples and fixtures) against the current schema, including the strategy, tool and guardrail settings. Models, datasets, rerankers, tools and blocks are not looked up, since each environment has its own. Give it the path to a tenant export (`GET /tenants/{tenant}/export`) or a folder of definitions to check those instead.
+
+### 2026-11-24: the playground gives the excerpt each footnote cites
+
+- `POST /tenants/{tenant}/playground/runs` (and `/stream`) gives `markers: [{ marker, chunk_id, document }]` when each `[N]` in the answer names one excerpt, the same list `/v1` gives ([ADR 0052](../adr/0052-answers-cite-excerpts.md)). A marker whose excerpt is not among the run's sources is left out. Without `markers`, no `[N]` names an excerpt: the answer cites documents, where `[N]` names the N-th document, or it cites no excerpt among the sources. The portal's try view turns the list into the answer's `markers`, as `@genai/client` does for `/v1`.
+
+### 2026-11-20: archived services and catalog references
+
+- An archived service no longer keeps a catalog model or reranker in use, so `DELETE /operator/catalog/{kind}/{id}` can delete one only archived services name, and a skipped model only they name is marked `unused`.
+- `PUT /tenants/{tenant}/services/{id}/lifecycle` to `active` from `paused` or `archived` checks the latest version against the catalog as publishing does, and answers `409` with `urn:genai:problem:service-outdated` when it no longer validates; `errors` names what is missing. Pausing an archived service stays unchecked, so a fixed version can be published before activating it.
+
+### 2026-11-20: genki checks what discovered models can do
+
+- `POST /operator/models/refresh` also checks the capabilities of discovered models that their discovery rule does not name, with at most 12 small synthetic model calls through the gate, and answers `learned` with `checked` (model, capability, `has`), `calls`, `deferred` (checks left over the cap) and the priced `usage`. The audit `result` carries the same.
+- `GET /operator/models` answers `learned` per model: each capability genki checked, with `has`, `at` and `by` (`listing` or `call`). It is absent once an operator sets the capabilities, which then win.
+- A definition whose model lacks what its strategy needs is refused as before; when genki checked a missing capability, the message ends `; checked <capabilities> on <YYYY-MM-DD>`.
+
+### 2026-11-20: readable model names, makers and operators
+
+- `GET /models` answers a readable `name` (`GPT-6 Luna` for `gpt-6-luna`, `Borealis 27B` for `sigma2:borealis-27b`), still with the deployment or id added where two names collide, and the same names reach the playground, the step operations and the builder assistant.
+- `maker` is read from the model name when the model list sets none, and `operator` is the host a gateway deployment names before its colon (`aivar:`, `sigma2:`), else the connection's operator, else one read from the connection address (Azure AI Foundry). New `gateway: true` when the connection is marked as the AI gateway.
+- In `GET /tenants/{tenant}/building-blocks` a model block's `name` is the readable name, decided among the models the tenant sees, and the model block's `maker` is read the same way.
+
+### 2026-11-19: removing unused step flows, operation kinds and platform secrets
+
+- New `DELETE /tenants/{tenant}/step-flows/{id}` (manage-services, `change-reason`, audited as `platform.step-flow.archive`) archives one of the organisation's own step flows: Arbeidsflyter and Katalog stop listing it, its versions stay, and publishing it again lists it again. It answers `409` with `urn:genai:problem:step-flow-in-use` while the latest version, or a version an environment is pinned to, of a service that is not archived runs it, directly or as a subflow, in any organisation for a Digdir flow. Internal services count. `usedBy` names only services in the caller's own organisation; `otherOrganisations` counts the rest, and `internalServices` the internal ones the caller may not see.
+- New `DELETE /operator/operation-kinds/{kind}` (operators, `change-reason`, audited as `platform.operations.kind.delete`) deletes a kind that is not built in and that no descriptor describes; `409` with `urn:genai:problem:operation-kind-built-in` or `urn:genai:problem:operation-kind-in-use`.
+- New `DELETE /operator/secrets/{name}` (operators, `change-reason`, audited as `platform.platform-secret.delete` without the value) deletes a stored platform secret nothing names; `409` with `urn:genai:problem:platform-secret-in-use` and `usedBy` while a catalog entry, a configuration entry such as an operator hook, or a definition in any organisation, internal services included, names it. It answers `503` and deletes nothing when the platform cannot check the uses.
+
+### 2026-11-19: the host route names the whole login
+
+- `GET /v1/hosts/{hostname}` gives `login.audience` (the hosted Client's `oidc.audience`, or its client id; the API audience for a Client on genki's platform login) and `login.altinnResource` (the platform's Altinn resource, or `null`) beside `issuer` and `clientId`, so a host can start the login with nothing else. `GENAI_ASSISTANT_HOSTNAME` names genki's own assistant hostname, the one name under genki's own zones a hosted Client may claim once `GENAI_HOSTED_HOSTNAMES` opens it to the tenant (see [frontend.md](frontend.md#a-hosted-assistant)).
+
 ### 2026-11-19: ranking metrics and comparisons across engines
 
 - The `retrieval` evaluator scores `recall@1`, `recall@5`, `recall@20`, `hit@5`, `mrr@10`, `ndcg@10` and `document-recall@10` beside `recall@10` and `citations-grounded`, from the hits the run's searches reported, and `returned-recall@1`, `returned-recall@5`, `returned-recall@10`, `returned-hit@5`, `returned-mrr@10` and `returned-ndcg@10` from the sources a run returned (see [work.md](work.md#two-kinds-of-evaluation-run)). `recall@10` keeps its values.
@@ -138,6 +181,7 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 - `GET /tenants/{tenant}/settings/overrides?key=` lists the tenant's services that set their own value for one setting, `{ data: [{ service, name, value }] }`, to any member; an unknown key answers `404`.
 - `GET /health` adds `environment` (from `GENAI_ENV`). `GET /tenants/{tenant}/status` adds `pastIncidents`: resolved incidents that concerned the tenant in the last 90 days, `{ date, title, text }`, newest first.
 - `GET /models` adds `maker` and `operator: { name, region? }` from the model list (`maker` on a model or a discovery rule, `operator` on its endpoint).
+- `GET /shared-services` and `GET /tenants/{tenant}/services` add `dataLocation`, where the service processes data: the widest place of the models, datasets, reranker and agents it uses, and of the trace sink when it receives content, or null when one is not in the catalogue. `residency` on a shared service is its rule, the widest place it allows.
 - `GET /shared-services` adds `storage: { keepsText, logDays }` (the owner's retention), `languages: { in, out }` (`out` is `same`, `nb` or `nn`) and `estimatedCostPerThousandRuns: { microNok, basis }`, the average of the owner's completed runs of the last 30 days at the model's price, rounded to two significant digits, and absent with fewer than 20 such runs, so no single run can be worked out from it.
 - The usage report adds `failedRequests` next to every `runs`: totals, per service, per day and service, per project and per environment.
 - `GET /tenants/{tenant}/datasets` gives `documents` for shared datasets too, read from the search engine when genki cannot count its own store. `PUT /tenants/{tenant}/datasets/{id}` with `description: null` clears the description.
@@ -232,7 +276,7 @@ jq -n --arg data "$(base64 < brev.txt | tr -d '\n')" '{
 
 ### 2026-11-05: embedders, rerankers and prices per unit
 
-- Embedding models are models in the model catalogue with `apis: { embed: openai/embeddings@1 }` and `embed: { dimensions, maxBatch? }`; the embedding catalogue and the schemas `Embedding` and `EmbeddingEndpoint` are gone. A reranker on an engine with an API is a model with `apis: { rerank: colbert/rerank@1 }` and `rerank: { onFailure }`. Ids do not change, and neither model is listed in `GET /models` as a chat model.
+- Embedding models are models in the model catalogue with `apis: { embed: openai/embeddings@1 }` and `embed: { dimensions, maxBatch? }`; the embedding catalogue and the schemas `Embedding` and `EmbeddingEndpoint` are gone. A reranker on an engine with an API is a model with `apis: { rerank: … }` and `rerank: { onFailure }`, such as the bundled descriptor `compatible/rerank@1`; the earlier built-in rerank descriptor is removed. Ids do not change, and neither model is listed in `GET /models` as a chat model.
 - The descriptor `openai/embed@1` is `openai/embeddings@1`; the old id is still read, and a model bound to it moves to the new one.
 - `PUT /operator/models/{id}/price` takes `{ <kind>: { <unit>: <kroner per unit> } }` with the units `input-token`, `output-token`, `cached-input-token`, `audio-second`, `image`, `video-second`, `character` and `request`. `{ inputPerThousand, outputPerThousand }` is still accepted and holds for every kind the model binds. The answer adds `prices`, and keeps `inputPerThousand` and `outputPerThousand` as the per-1,000-token view. A unit not in the list answers `400`.
 - `GET /operator/apis` adds `units`, the units each API reports.

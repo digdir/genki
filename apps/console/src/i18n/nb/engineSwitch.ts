@@ -10,6 +10,7 @@ export const engineSwitch = defineNamespace({
     'Datasettet leses inn på nytt fra kilden. Tjenestene søker i den gamle søkemotoren til du tar den nye i bruk.',
   start: 'Start flyttingen',
   close: 'Lukk',
+  onKnowledge: 'Datasettet ligger i kunnskapsdatabasen.',
   noTargets:
     'Det finnes ingen søkemotor i kunnskapsdatabasen ennå. Lag en under Søkemotorer, med tilkoblingen Kunnskapsserveren.',
   route: 'Fra {from} til {to}',

@@ -20,7 +20,7 @@ import {
   type OperationShape,
   type Walked,
 } from './payload.js';
-import type { PortContext } from './spi.js';
+import type { CallEnd, PortContext } from './spi.js';
 import { addUsage } from './usage-sum.js';
 
 export const residencies = ['norway', 'eu', 'global'] as const;
@@ -149,6 +149,8 @@ export interface GateTarget {
 export interface GatePayload<Res> {
   shape: OperationShape;
   usage?(result: Res): Usage | undefined;
+  /** How the call ended, kept with its usage. */
+  end?(result: Res): CallEnd | undefined;
   provenance?(result: Res): ResourceProvenance | undefined;
   /** Fields the adapter dropped from the provider's answer before it reached the port. */
   dropped?(result: Res): number | undefined;
@@ -158,7 +160,7 @@ export type GateChunk<Res> = { kind: 'delta'; text: string } | { kind: 'done'; r
 
 export interface OutsideRun {
   audit(ctx: PortContext, record: GateRecord): Promise<void>;
-  meter(ctx: PortContext, usage: Usage, model: Ref): Promise<void>;
+  meter(ctx: PortContext, usage: Usage, model: Ref, end?: CallEnd): Promise<void>;
 }
 
 /** Why the call's tenant may spend no more tokens now, or undefined when it may. */
@@ -568,8 +570,9 @@ export const createGate = (options: GateOptions = {}): Gate => {
     let outcome: GateRecord['outcome'] = refused ? 'refused' : 'ok';
     try {
       if (usage) {
-        await ctx.meter(usage, target.model);
-        await outside(ctx)?.meter(ctx, usage, target.model);
+        const end = payload.end?.(answer.result);
+        await ctx.meter(usage, target.model, end);
+        await outside(ctx)?.meter(ctx, usage, target.model, end);
       }
       if (refused) {
         const message = `the answer was refused: ${refused}`;

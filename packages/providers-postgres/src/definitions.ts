@@ -21,6 +21,7 @@ import {
   type ServiceDefinition,
   type SkillDefinition,
   type StepFlowDefinition,
+  type StoredDefinitionRef,
   type FlowFinder,
   type SkillFinder,
   type ValidationError,
@@ -57,6 +58,34 @@ const subflows = (steps: FlowStep[]): string[] =>
     ...subflows(s.else ?? []),
   ]);
 
+interface SharedFinders {
+  flow?: FlowFinder | undefined;
+  skill?: SkillFinder | undefined;
+}
+
+type Db = Pool | PoolClient;
+
+/** Remembers what the shared finders answer, so the transaction can ask again without the pool. */
+const rememberShared = (finders: SharedFinders) => {
+  const answers = new Map<string, unknown>();
+  const keep =
+    (kind: string, find: ((owner: string, id: string, version: number) => unknown) | undefined) =>
+    async (owner: string, id: string, version: number) => {
+      const found = await find?.(owner, id, version);
+      answers.set(`${kind}\u0000${owner}\u0000${id}\u0000${version}`, found);
+      return found;
+    };
+  const recall = (kind: string) => async (owner: string, id: string, version: number) =>
+    answers.get(`${kind}\u0000${owner}\u0000${id}\u0000${version}`);
+  return {
+    lookup: {
+      flow: keep('flow', finders.flow),
+      skill: keep('skill', finders.skill),
+    } as SharedFinders,
+    recall: { flow: recall('flow'), skill: recall('skill') } as SharedFinders,
+  };
+};
+
 const latestServices = `select distinct on (tenant, id) * from definition_versions
   where kind = 'Service' order by tenant, id, version desc`;
 
@@ -82,24 +111,30 @@ export class PostgresDefinitionStore implements DefinitionStore {
     const { definition } = validated;
     const { tenant, id } = definition.metadata;
 
+    const errorsOf = async (db: Db, shared: SharedFinders) => [
+      ...checkPromptFiles(definition, files),
+      ...(definition.kind === 'Service'
+        ? await this.#checkService(db, definition, shared)
+        : definition.kind === 'StepFlow'
+          ? await this.#missingFlows(
+              db,
+              tenant,
+              subflows(definition.spec.steps),
+              'spec.steps',
+              shared,
+            )
+          : []),
+    ];
+    const shared = rememberShared({ flow: this.sharedFlow, skill: this.sharedSkill });
+    // The shared finders read through the pool, so they are asked before the transaction holds a connection.
+    if (this.sharedFlow || this.sharedSkill) await errorsOf(this.pool, shared.lookup);
+
     const client = await this.pool.connect();
     try {
       await client.query('begin');
       await client.query(`select pg_advisory_xact_lock(hashtext('genai-definitions'))`);
       await client.query(`select set_config('app.tenant', $1, true)`, [tenant]);
-      const errors = [
-        ...checkPromptFiles(definition, files),
-        ...(definition.kind === 'Service'
-          ? await this.#checkService(client, definition)
-          : definition.kind === 'StepFlow'
-            ? await this.#missingFlows(
-                client,
-                tenant,
-                subflows(definition.spec.steps),
-                'spec.steps',
-              )
-            : []),
-      ];
+      const errors = await errorsOf(client, shared.recall);
       if (errors.length > 0) {
         await client.query('rollback');
         return { ok: false, errors };
@@ -167,6 +202,14 @@ export class PostgresDefinitionStore implements DefinitionStore {
     return found.rows.map((r) => ({ kind: r.kind, id: r.id }));
   }
 
+  async listAcross(kind: 'Block') {
+    const found = await this.pool.query<{ tenant: string; id: string }>(
+      'select distinct tenant, id from definition_versions where kind = $1 order by tenant, id',
+      [kind],
+    );
+    return found.rows.map((r) => ({ tenant: r.tenant, id: r.id }));
+  }
+
   async resolve(name: string, version?: number): Promise<CompiledCapability | undefined> {
     const rows =
       version === undefined
@@ -192,11 +235,34 @@ export class PostgresDefinitionStore implements DefinitionStore {
     return compileStoredServices(rows.map(toVersion), this.plugins, onInvalid);
   }
 
+  async remove(tenant: string, definitions: StoredDefinitionRef[]) {
+    if (definitions.length === 0) return;
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+      await client.query(`select pg_advisory_xact_lock(hashtext('genai-definitions'))`);
+      await client.query(`select set_config('app.tenant', $1, true)`, [tenant]);
+      await client.query(
+        `delete from definition_versions d
+          using unnest($2::text[], $3::text[]) as gone(kind, id)
+          where d.tenant = $1 and d.kind = gone.kind and d.id = gone.id`,
+        [tenant, definitions.map((d) => d.kind), definitions.map((d) => d.id)],
+      );
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async #missingFlows(
-    client: PoolClient,
+    client: Db,
     tenant: string,
     refs: string[],
     path: string,
+    finders: SharedFinders,
   ): Promise<ValidationError[]> {
     const errors: ValidationError[] = [];
     for (const ref of refs) {
@@ -211,7 +277,7 @@ export class PostgresDefinitionStore implements DefinitionStore {
           : { rowCount: 0 };
       const shared =
         !found.rowCount && at > 0 && Number.isInteger(version)
-          ? await this.sharedFlow?.(tenant, ref.slice(0, at), version)
+          ? await finders.flow?.(tenant, ref.slice(0, at), version)
           : undefined;
       if (!found.rowCount && !shared)
         errors.push({ path, message: `no published step flow ${ref}` });
@@ -220,8 +286,9 @@ export class PostgresDefinitionStore implements DefinitionStore {
   }
 
   async #checkService(
-    client: PoolClient,
+    client: Db,
     definition: ServiceDefinition,
+    shared: SharedFinders,
   ): Promise<ValidationError[]> {
     const { tenant, id } = definition.metadata;
     const taken = new Map<string, string>();
@@ -246,13 +313,13 @@ export class PostgresDefinitionStore implements DefinitionStore {
       }
     });
     for (const { flow, path } of flowUsesOf(definition.spec))
-      errors.push(...(await this.#missingFlows(client, tenant, [flow], path)));
+      errors.push(...(await this.#missingFlows(client, tenant, [flow], path, shared)));
     const flowOf = async (owner: string, flow: string, version: number) => {
       const found = await client.query<{ definition: StepFlowDefinition }>(
         `select definition from definition_versions where kind = 'StepFlow' and tenant = $1 and id = $2 and version = $3`,
         [owner, flow, version],
       );
-      return found.rows[0]?.definition ?? (await this.sharedFlow?.(owner, flow, version));
+      return found.rows[0]?.definition ?? (await shared.flow?.(owner, flow, version));
     };
     errors.push(
       ...(await checkServiceSkills(definition, async (owner, skill, version) => {
@@ -260,7 +327,7 @@ export class PostgresDefinitionStore implements DefinitionStore {
           `select definition from definition_versions where kind = 'Skill' and tenant = $1 and id = $2 and version = $3`,
           [owner, skill, version],
         );
-        return found.rows[0]?.definition ?? (await this.sharedSkill?.(owner, skill, version));
+        return found.rows[0]?.definition ?? (await shared.skill?.(owner, skill, version));
       })),
       ...(await checkServiceFlowTools(definition, flowOf)),
       ...(await checkServiceFlowSettings(definition, flowOf)),

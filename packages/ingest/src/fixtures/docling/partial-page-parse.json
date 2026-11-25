@@ -1,0 +1,1949 @@
+{
+  "status": 200,
+  "body": {
+    "document": {
+      "filename": "small.pdf",
+      "md_content": null,
+      "json_content": {
+        "schema_name": "DoclingDocument",
+        "version": "1.10.0",
+        "name": "small",
+        "origin": {
+          "mimetype": "application/pdf",
+          "binary_hash": 10360526012877778318,
+          "filename": "small.pdf",
+          "uri": null
+        },
+        "furniture": {
+          "self_ref": "#/furniture",
+          "parent": null,
+          "children": [],
+          "content_layer": "furniture",
+          "meta": null,
+          "name": "_root_",
+          "label": "unspecified"
+        },
+        "body": {
+          "self_ref": "#/body",
+          "parent": null,
+          "children": [
+            {
+              "$ref": "#/texts/0"
+            },
+            {
+              "$ref": "#/texts/1"
+            },
+            {
+              "$ref": "#/texts/2"
+            },
+            {
+              "$ref": "#/texts/3"
+            },
+            {
+              "$ref": "#/texts/4"
+            },
+            {
+              "$ref": "#/texts/5"
+            },
+            {
+              "$ref": "#/texts/6"
+            },
+            {
+              "$ref": "#/texts/7"
+            },
+            {
+              "$ref": "#/texts/8"
+            },
+            {
+              "$ref": "#/texts/9"
+            },
+            {
+              "$ref": "#/texts/10"
+            },
+            {
+              "$ref": "#/texts/11"
+            },
+            {
+              "$ref": "#/texts/12"
+            },
+            {
+              "$ref": "#/texts/13"
+            },
+            {
+              "$ref": "#/texts/14"
+            },
+            {
+              "$ref": "#/groups/0"
+            },
+            {
+              "$ref": "#/texts/26"
+            },
+            {
+              "$ref": "#/texts/27"
+            },
+            {
+              "$ref": "#/groups/1"
+            },
+            {
+              "$ref": "#/texts/29"
+            },
+            {
+              "$ref": "#/texts/30"
+            },
+            {
+              "$ref": "#/groups/2"
+            },
+            {
+              "$ref": "#/texts/32"
+            },
+            {
+              "$ref": "#/texts/33"
+            },
+            {
+              "$ref": "#/texts/34"
+            },
+            {
+              "$ref": "#/texts/35"
+            },
+            {
+              "$ref": "#/texts/36"
+            },
+            {
+              "$ref": "#/groups/3"
+            }
+          ],
+          "content_layer": "body",
+          "meta": null,
+          "name": "_root_",
+          "label": "unspecified"
+        },
+        "groups": [
+          {
+            "self_ref": "#/groups/0",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [
+              {
+                "$ref": "#/texts/15"
+              },
+              {
+                "$ref": "#/texts/16"
+              },
+              {
+                "$ref": "#/texts/17"
+              },
+              {
+                "$ref": "#/texts/18"
+              },
+              {
+                "$ref": "#/texts/19"
+              },
+              {
+                "$ref": "#/texts/20"
+              },
+              {
+                "$ref": "#/texts/21"
+              },
+              {
+                "$ref": "#/texts/22"
+              },
+              {
+                "$ref": "#/texts/23"
+              },
+              {
+                "$ref": "#/texts/24"
+              },
+              {
+                "$ref": "#/texts/25"
+              }
+            ],
+            "content_layer": "body",
+            "meta": null,
+            "name": "list",
+            "label": "list"
+          },
+          {
+            "self_ref": "#/groups/1",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [
+              {
+                "$ref": "#/texts/28"
+              }
+            ],
+            "content_layer": "body",
+            "meta": null,
+            "name": "list",
+            "label": "list"
+          },
+          {
+            "self_ref": "#/groups/2",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [
+              {
+                "$ref": "#/texts/31"
+              }
+            ],
+            "content_layer": "body",
+            "meta": null,
+            "name": "list",
+            "label": "list"
+          },
+          {
+            "self_ref": "#/groups/3",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [
+              {
+                "$ref": "#/texts/37"
+              },
+              {
+                "$ref": "#/texts/38"
+              },
+              {
+                "$ref": "#/texts/39"
+              },
+              {
+                "$ref": "#/texts/40"
+              },
+              {
+                "$ref": "#/texts/41"
+              },
+              {
+                "$ref": "#/texts/42"
+              },
+              {
+                "$ref": "#/texts/43"
+              },
+              {
+                "$ref": "#/texts/44"
+              },
+              {
+                "$ref": "#/texts/45"
+              },
+              {
+                "$ref": "#/texts/46"
+              },
+              {
+                "$ref": "#/texts/47"
+              },
+              {
+                "$ref": "#/texts/48"
+              },
+              {
+                "$ref": "#/texts/49"
+              },
+              {
+                "$ref": "#/texts/50"
+              },
+              {
+                "$ref": "#/texts/51"
+              }
+            ],
+            "content_layer": "body",
+            "meta": null,
+            "name": "list",
+            "label": "list"
+          }
+        ],
+        "texts": [
+          {
+            "self_ref": "#/texts/0",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "section_header",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 792.924,
+                  "r": 351.07199999999995,
+                  "b": 776.274,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  33
+                ]
+              }
+            ],
+            "orig": "Rapport om digitalisering, side 1",
+            "text": "Rapport om digitalisering, side 1",
+            "formatting": null,
+            "hyperlink": null,
+            "level": 1
+          },
+          {
+            "self_ref": "#/texts/1",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 747.898,
+                  "r": 424.75899999999996,
+                  "b": 737.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 1 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 1 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/2",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 729.898,
+                  "r": 424.75899999999996,
+                  "b": 719.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 2 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 2 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/3",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 711.898,
+                  "r": 424.75899999999996,
+                  "b": 701.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 3 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 3 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/4",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 693.898,
+                  "r": 424.75899999999996,
+                  "b": 683.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 4 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 4 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/5",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 675.898,
+                  "r": 424.75899999999996,
+                  "b": 665.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 5 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 5 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/6",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 657.898,
+                  "r": 424.75899999999996,
+                  "b": 647.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 6 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 6 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/7",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 639.898,
+                  "r": 424.75899999999996,
+                  "b": 629.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 7 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 7 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/8",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 621.898,
+                  "r": 424.75899999999996,
+                  "b": 611.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 8 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 8 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/9",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 603.898,
+                  "r": 424.75899999999996,
+                  "b": 593.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 9 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 9 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/10",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 585.898,
+                  "r": 430.875,
+                  "b": 575.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 10 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 10 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/11",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 567.898,
+                  "r": 430.875,
+                  "b": 557.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 11 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 11 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/12",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 549.898,
+                  "r": 430.875,
+                  "b": 539.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 12 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 12 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/13",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 531.898,
+                  "r": 430.875,
+                  "b": 521.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 13 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 13 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/14",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 513.898,
+                  "r": 430.875,
+                  "b": 503.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 14 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 14 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/15",
+            "parent": {
+              "$ref": "#/groups/0"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 495.898,
+                  "r": 430.875,
+                  "b": 485.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 15 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 15 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/16",
+            "parent": {
+              "$ref": "#/groups/0"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 477.898,
+                  "r": 430.875,
+                  "b": 467.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 16 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 16 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/17",
+            "parent": {
+              "$ref": "#/groups/0"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 459.898,
+                  "r": 430.875,
+                  "b": 449.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 17 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 17 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/18",
+            "parent": {
+              "$ref": "#/groups/0"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 441.898,
+                  "r": 430.875,
+                  "b": 431.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 18 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 18 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/19",
+            "parent": {
+              "$ref": "#/groups/0"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 423.898,
+                  "r": 430.875,
+                  "b": 413.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 19 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 19 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/20",
+            "parent": {
+              "$ref": "#/groups/0"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 405.898,
+                  "r": 430.875,
+                  "b": 395.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 20 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 20 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/21",
+            "parent": {
+              "$ref": "#/groups/0"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 387.898,
+                  "r": 430.875,
+                  "b": 377.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 21 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 21 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/22",
+            "parent": {
+              "$ref": "#/groups/0"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 369.898,
+                  "r": 430.875,
+                  "b": 359.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 22 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 22 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/23",
+            "parent": {
+              "$ref": "#/groups/0"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 351.898,
+                  "r": 430.875,
+                  "b": 341.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 23 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 23 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/24",
+            "parent": {
+              "$ref": "#/groups/0"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 333.898,
+                  "r": 430.875,
+                  "b": 323.72300000000007,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 24 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 24 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/25",
+            "parent": {
+              "$ref": "#/groups/0"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 1,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 315.898,
+                  "r": 430.875,
+                  "b": 305.72300000000007,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 25 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 25 paa side 1. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/26",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "section_header",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 792.924,
+                  "r": 351.07199999999995,
+                  "b": 776.274,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  33
+                ]
+              }
+            ],
+            "orig": "Rapport om digitalisering, side 2",
+            "text": "Rapport om digitalisering, side 2",
+            "formatting": null,
+            "hyperlink": null,
+            "level": 1
+          },
+          {
+            "self_ref": "#/texts/27",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 747.898,
+                  "r": 424.75899999999996,
+                  "b": 737.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 1 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 1 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/28",
+            "parent": {
+              "$ref": "#/groups/1"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 729.898,
+                  "r": 424.75899999999996,
+                  "b": 719.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 2 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 2 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/29",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 711.898,
+                  "r": 424.75899999999996,
+                  "b": 701.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 3 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 3 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/30",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 693.898,
+                  "r": 424.75899999999996,
+                  "b": 683.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 4 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 4 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/31",
+            "parent": {
+              "$ref": "#/groups/2"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 675.898,
+                  "r": 424.75899999999996,
+                  "b": 665.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 5 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 5 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/32",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 657.898,
+                  "r": 424.75899999999996,
+                  "b": 647.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 6 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 6 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/33",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 639.898,
+                  "r": 424.75899999999996,
+                  "b": 629.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 7 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 7 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/34",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 621.898,
+                  "r": 424.75899999999996,
+                  "b": 611.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 8 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 8 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/35",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 603.898,
+                  "r": 424.75899999999996,
+                  "b": 593.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  76
+                ]
+              }
+            ],
+            "orig": "Dette er linje 9 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 9 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/36",
+            "parent": {
+              "$ref": "#/body"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "text",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 585.898,
+                  "r": 430.875,
+                  "b": 575.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 10 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 10 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null
+          },
+          {
+            "self_ref": "#/texts/37",
+            "parent": {
+              "$ref": "#/groups/3"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 567.898,
+                  "r": 430.875,
+                  "b": 557.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 11 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 11 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/38",
+            "parent": {
+              "$ref": "#/groups/3"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 549.898,
+                  "r": 430.875,
+                  "b": 539.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 12 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 12 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/39",
+            "parent": {
+              "$ref": "#/groups/3"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 531.898,
+                  "r": 430.875,
+                  "b": 521.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 13 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 13 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/40",
+            "parent": {
+              "$ref": "#/groups/3"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 513.898,
+                  "r": 430.875,
+                  "b": 503.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 14 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 14 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/41",
+            "parent": {
+              "$ref": "#/groups/3"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 495.898,
+                  "r": 430.875,
+                  "b": 485.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 15 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 15 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/42",
+            "parent": {
+              "$ref": "#/groups/3"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 477.898,
+                  "r": 430.875,
+                  "b": 467.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 16 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 16 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/43",
+            "parent": {
+              "$ref": "#/groups/3"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 459.898,
+                  "r": 430.875,
+                  "b": 449.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 17 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 17 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/44",
+            "parent": {
+              "$ref": "#/groups/3"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 441.898,
+                  "r": 430.875,
+                  "b": 431.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 18 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 18 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/45",
+            "parent": {
+              "$ref": "#/groups/3"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 423.898,
+                  "r": 430.875,
+                  "b": 413.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 19 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 19 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/46",
+            "parent": {
+              "$ref": "#/groups/3"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 405.898,
+                  "r": 430.875,
+                  "b": 395.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 20 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 20 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/47",
+            "parent": {
+              "$ref": "#/groups/3"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 387.898,
+                  "r": 430.875,
+                  "b": 377.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 21 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 21 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/48",
+            "parent": {
+              "$ref": "#/groups/3"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 369.898,
+                  "r": 430.875,
+                  "b": 359.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 22 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 22 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/49",
+            "parent": {
+              "$ref": "#/groups/3"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 351.898,
+                  "r": 430.875,
+                  "b": 341.723,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 23 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 23 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/50",
+            "parent": {
+              "$ref": "#/groups/3"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 333.898,
+                  "r": 430.875,
+                  "b": 323.72300000000007,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 24 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 24 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          },
+          {
+            "self_ref": "#/texts/51",
+            "parent": {
+              "$ref": "#/groups/3"
+            },
+            "children": [],
+            "content_layer": "body",
+            "meta": null,
+            "label": "list_item",
+            "prov": [
+              {
+                "page_no": 2,
+                "bbox": {
+                  "l": 72.0,
+                  "t": 315.898,
+                  "r": 430.875,
+                  "b": 305.72300000000007,
+                  "coord_origin": "BOTTOMLEFT"
+                },
+                "charspan": [
+                  0,
+                  77
+                ]
+              }
+            ],
+            "orig": "Dette er linje 25 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "text": "Dette er linje 25 paa side 2. Direktoratet for forvaltning og okonomistyring.",
+            "formatting": null,
+            "hyperlink": null,
+            "enumerated": false,
+            "marker": ""
+          }
+        ],
+        "pictures": [],
+        "tables": [],
+        "key_value_items": [],
+        "form_items": [],
+        "pages": {
+          "1": {
+            "size": {
+              "width": 595.2756,
+              "height": 841.8898
+            },
+            "image": null,
+            "page_no": 1
+          },
+          "2": {
+            "size": {
+              "width": 595.2756,
+              "height": 841.8898
+            },
+            "image": null,
+            "page_no": 2
+          }
+        }
+      },
+      "html_content": null,
+      "text_content": null,
+      "doctags_content": null,
+      "doclang_content": null
+    },
+    "status": "partial_success",
+    "errors": [
+      {
+        "component_type": "document_backend",
+        "module_name": "preprocess",
+        "error_message": "Page 1 failed to parse.",
+        "category": "backend_failure",
+        "page_no": 1
+      }
+    ],
+    "processing_time": 1.2323074209998595,
+    "timings": {},
+    "confidence": {
+      "parse_score": 1.0,
+      "layout_score": 0.7356867721447578,
+      "table_score": null,
+      "ocr_score": null,
+      "mean_score": 0.8678433860723789,
+      "low_score": 0.7489024335375198,
+      "mean_grade": "good",
+      "low_grade": "fair",
+      "pages": {
+        "1": {
+          "parse_score": 1.0,
+          "layout_score": 0.7974633505711188,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": 0.8987316752855594,
+          "low_score": 0.8075901830425629,
+          "mean_grade": "good",
+          "low_grade": "good",
+          "pages": {}
+        },
+        "2": {
+          "parse_score": 1.0,
+          "layout_score": 0.6739101937183967,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": 0.8369550968591983,
+          "low_score": 0.6902146840324769,
+          "mean_grade": "good",
+          "low_grade": "fair",
+          "pages": {}
+        }
+      }
+    }
+  }
+}

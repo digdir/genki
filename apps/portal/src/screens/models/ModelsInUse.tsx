@@ -10,10 +10,12 @@ import {
 } from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import { BackLink } from '../../components/BackLink';
+import { ModelMark } from '../../components/ModelCompare';
 import {
   modelBlockHref,
   statusColor,
   useModelText,
+  whereColor,
   type ModelText,
 } from '../../components/model-text';
 import type { PlainKey } from '../../i18n';
@@ -32,6 +34,8 @@ import { useModelEntries } from './data';
 import './models.css';
 
 type Column = 'name' | 'maker' | 'where' | 'used' | 'price' | 'status';
+const usedByShown = 3;
+
 const columns: Column[] = ['name', 'maker', 'where', 'used', 'price', 'status'];
 
 const headKeys: Record<Column, PlainKey> = {
@@ -200,11 +204,14 @@ export const ModelsInUse = ({ api, tenant, tenantName }: ScreenProps) => {
             {paged.items.map((m) => (
               <Table.Row key={m.id}>
                 <Table.HeaderCell scope="row" className="mc-nowrap">
-                  <Link href={modelBlockHref(m.id)}>{text.name(m)}</Link>
+                  <span className="mp-name">
+                    <ModelMark model={m} size="sm" />
+                    <Link href={modelBlockHref(m.id)}>{text.name(m)}</Link>
+                  </span>
                 </Table.HeaderCell>
                 <Table.Cell>
                   <span className="mc-cell-stack">
-                    <span>{text.maker(m)}</span>
+                    <span>{text.maker(m) || (text.operator(m) ? '' : '–')}</span>
                     {text.operator(m) ? (
                       <span className="meta">
                         {t('modelsInUse.operatedBy', { operator: text.operator(m) })}
@@ -213,7 +220,7 @@ export const ModelsInUse = ({ api, tenant, tenantName }: ScreenProps) => {
                   </span>
                 </Table.Cell>
                 <Table.Cell>
-                  <Tag data-size="sm" data-color={m.residency === 'global' ? 'warning' : 'info'}>
+                  <Tag data-size="sm" data-color={whereColor(m.residency)}>
                     {text.where(m.residency)}
                   </Tag>
                 </Table.Cell>
@@ -221,7 +228,17 @@ export const ModelsInUse = ({ api, tenant, tenantName }: ScreenProps) => {
                   {m.usedBy.length
                     ? t('modelsInUse.usedBy', {
                         count: m.usedBy.length,
-                        names: m.usedBy.map((u) => u.name).join(', '),
+                        names: [
+                          m.usedBy
+                            .slice(0, usedByShown)
+                            .map((u) => u.name)
+                            .join(', '),
+                          m.usedBy.length > usedByShown
+                            ? t('modelsInUse.andMore', { count: m.usedBy.length - usedByShown })
+                            : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' '),
                       })
                     : t('modelsInUse.usedByNone')}
                 </Table.Cell>

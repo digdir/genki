@@ -70,10 +70,22 @@
     border-radius: var(--genai-composer-frame-border-radius, var(--ds-border-radius-xl));
   }
 
-  .uib-composer-frame:focus-within {
+  /* Hover as Designsystemet draws it on a text field: one more line of the border's colour. */
+  .uib-composer-frame:has(.uib-composer-field:hover):not(:has(.uib-composer-field :focus-visible)) {
+    outline: var(--genai-composer-frame-border-width, var(--ds-border-width-default)) solid
+      var(--genai-composer-frame-border-color, var(--ds-color-border-default));
+    outline-offset: 0;
+  }
+
+  .uib-composer-frame:has(.uib-composer-field :focus-visible) {
     box-shadow: var(--dsc-focus-boxShadow);
     outline: var(--dsc-focus-outline);
     outline-offset: var(--genai-composer-focus-offset, var(--ds-border-width-focus));
+  }
+
+  /* The border goes while the ring shows, so the ring is the only line; a dragged file keeps it. */
+  .uib-composer-frame:not([data-dragging]):has(.uib-composer-field :focus-visible) {
+    border-color: transparent;
   }
 
   /* Pinned to accent: the frame lights up for a file, as a pressable control does. */
@@ -113,6 +125,8 @@
     border: 0;
   }
 
+  /* Hover too: the field's own hover outline would be a second line inside the frame's. */
+  .uib-composer-field textarea:hover,
   .uib-composer-field textarea:focus-visible {
     box-shadow: none;
     outline: none;
@@ -146,6 +160,68 @@
   .uib-composer-actions {
     display: flex;
     min-inline-size: 0;
+  }
+
+  /* Inline, as the dev-chat boards draw it: the field and its buttons in one row on a frame. */
+  .uib-composer-frame[data-variant='inline'] {
+    flex-flow: row wrap;
+    align-items: flex-end;
+    gap: var(--genai-composer-frame-gap, var(--ds-size-1));
+    box-shadow: var(--genai-composer-frame-shadow, var(--ds-shadow-md));
+  }
+
+  .uib-composer-frame[data-variant='inline']:has(.uib-composer-field :focus-visible) {
+    box-shadow: var(--dsc-focus-boxShadow), var(--genai-composer-frame-shadow, var(--ds-shadow-md));
+  }
+
+  .uib-composer-frame[data-variant='inline'] .uib-composer-controls {
+    display: contents;
+  }
+
+  .uib-composer-frame[data-variant='inline'] .uib-composer-attach {
+    order: 1;
+  }
+
+  .uib-composer-frame[data-variant='inline'] .uib-composer-field {
+    order: 2;
+    flex: 1 1 0;
+  }
+
+  .uib-composer-frame[data-variant='inline'] .uib-composer-actions {
+    order: 3;
+  }
+
+  .uib-composer-frame[data-variant='inline'] .uib-composer-send {
+    --dsc-button-border-radius: var(
+      --genai-composer-send-border-radius,
+      var(--ds-border-radius-xl)
+    );
+
+    order: 4;
+    margin-inline-start: auto;
+  }
+
+  /* The question centred on the buttons' line, six lines at most before it scrolls. */
+  .uib-composer-frame[data-variant='inline'] .uib-composer-field textarea {
+    max-block-size: var(--genai-composer-field-max-block-size, 7lh);
+    padding-block: var(--genai-composer-field-padding-block, var(--ds-size-3));
+    padding-inline: var(--genai-composer-field-padding-inline-start, var(--ds-size-2)) 0;
+  }
+
+  .uib-composer-frame[data-variant='inline']:has(.uib-composer-attach)
+    .uib-composer-field
+    textarea {
+    padding-inline-start: var(--genai-composer-field-padding-inline-start, var(--ds-size-1));
+  }
+
+  /* A question longer than a line: over the buttons in full width, «+» left and send right. */
+  .uib-composer-frame[data-variant='inline'][data-wrapped] .uib-composer-field {
+    order: 0;
+    flex-basis: 100%;
+  }
+
+  .uib-composer-frame[data-variant='inline'][data-wrapped] .uib-composer-field textarea {
+    padding-inline-start: var(--genai-composer-field-padding-inline-start, var(--ds-size-2));
   }
 
   .uib-composer-file-input {

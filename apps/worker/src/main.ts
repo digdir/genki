@@ -6,6 +6,8 @@ import {
   type BlockTexts,
   boundPlatformId,
   createRuntime,
+  modelDiscoveryFromEnv,
+  type DiscoveryListing,
   databaseHosts,
   knowledgeServerEndpoints,
   savedKnowledgeCatalog,
@@ -25,12 +27,14 @@ import {
   saveUsdNok,
   scheduleUsdNok,
   scheduleRegisterSync,
+  onKnowledgeServer,
   stateRegisterGuard,
   TenantSecretVault,
   traceSinkAccess,
   tracesContent,
   tracingEgress,
   withBlockSettings,
+  organisationNameFrom,
 } from '@genai/composition';
 import {
   defaultHeavyThreshold,
@@ -75,6 +79,7 @@ import {
   doclingConverter,
   knowledgeListingOf,
   kudosClient,
+  kudosDownloads,
   kudosProd,
   type CopyIds,
 } from '@genai/ingest';
@@ -86,7 +91,7 @@ import {
 } from '@genai/providers-ai-gateway';
 import { EgressGuard } from '@genai/providers-mcp-client';
 import { nativeOutputStoreFromEnv } from '@genai/providers-azure-blob';
-import { createLocalConverter } from '@genai/providers-documents';
+import { createLocalConverter, pdfPageCount } from '@genai/providers-documents';
 import {
   createTraceExporter,
   langfuseTraceSink,
@@ -95,6 +100,7 @@ import {
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { openJobQueue, PgBossRunJobs } from '@genai/providers-pgboss';
 import {
+  addChunkColumns,
   knowledgeConversionsOf,
   knowledgeHeavyWork,
   prepareGeneration,
@@ -108,6 +114,7 @@ import {
   managedIdentityTokenSource,
   platformId,
   PostgresDefinitionStore,
+  PostgresDiscoveredModels,
   PostgresJobRunRecords,
   PostgresLeases,
   postgresSourceFromEnv,
@@ -139,6 +146,7 @@ import {
 } from './knowledge-handlers.js';
 import { conversionRunJobs, openWorkerJobs } from './knowledge-jobs.js';
 import { platformWork } from './platform-work.js';
+import { startQueueStats } from './queue-stats.js';
 import { reconcileKnowledgeRuns } from './reconciler.js';
 import { runProgress } from './run-progress.js';
 import { scheduleUsagePolls, usagePollWork, type PolledSource } from './usage-poll.js';
@@ -147,6 +155,11 @@ import { createWorker, ownTenantOnly } from './worker.js';
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
 keepRunningOnRejection(log);
+
+/** One pacing for every KUDOS file download this worker runs; each wait is logged (issue 931). */
+const kudosFileDownloads = kudosDownloads({
+  onWait: (wait) => log('a KUDOS download waits', { ...wait }),
+});
 
 const root = join(import.meta.dirname, '..', '..', '..');
 const envFile = join(root, '.env.local');
@@ -171,17 +184,13 @@ const platformTenant = platformTenantFrom(process.env);
 
 const databaseSource = postgresSourceFromEnv(process.env);
 const db = databaseSource
-  ? await createPostgresStores(
-      databaseSource,
-      LocalKeyWrapper.fromBase64(process.env.CONTENT_MASTER_KEY),
-      {
-        onError: (error) => log('postgres connection error', { error: String(error) }),
-        role: workerRole,
-        ...(process.env.DATABASE_RUNTIME_URL
-          ? { runtime: { connectionString: process.env.DATABASE_RUNTIME_URL } }
-          : {}),
-      },
-    )
+  ? await createPostgresStores(databaseSource, LocalKeyWrapper.fromEnv(process.env), {
+      onError: (error) => log('postgres connection error', { error: String(error) }),
+      role: workerRole,
+      ...(process.env.DATABASE_RUNTIME_URL
+        ? { runtime: { connectionString: process.env.DATABASE_RUNTIME_URL } }
+        : {}),
+    })
   : undefined;
 log('storage', { kind: db ? 'postgres' : 'memory' });
 
@@ -196,6 +205,11 @@ const docling = process.env.DOCLING_URL
   ? doclingConverter({
       url: process.env.DOCLING_URL,
       credential: { kind: 'api-key', key: async () => process.env.DOCLING_API_KEY ?? '' },
+      // A task no replica knows any more, such as after a scale-in, is submitted again (issue 906).
+      onTaskLost: ({ submits }) => log('docling task lost', { submits }),
+      // One line a task, with its file's sha256, pages and replica, so a kill names the files it held (issue 922).
+      countPages: pdfPageCount,
+      onTask: (task) => log('docling task', { ...task }),
     })
   : undefined;
 log('document converter', { converter: docling ? 'docling' : 'text-layer', convertConcurrency });
@@ -319,7 +333,7 @@ const knowledgeServerDatasets = (): DatasetConfig[] => {
   const runtime = late.runtime;
   if (!runtime) return [];
   return runtime.writers
-    .datasetIds((endpoint) => endpoint.options?.connection === 'knowledge')
+    .datasetIds((endpoint) => onKnowledgeServer(endpoint))
     .flatMap((id) => {
       try {
         const { dataset } = runtime.writers.open(id, { signal: new AbortController().signal });
@@ -474,6 +488,11 @@ const knowledgeHandlers =
                   dataset,
                   generation,
                 ),
+              // Before every parts write: it takes no lock once the columns are there (issue 635).
+              chunkColumns: () =>
+                addChunkColumns(
+                  knowledgeServer.pools.owner as Parameters<typeof addChunkColumns>[0],
+                ),
             }
           : {}),
         listingOf: (spec, scope, signal, converter) =>
@@ -482,6 +501,7 @@ const knowledgeHandlers =
             {
               uploads: new FileSystemBlobStore(blobDir),
               converter: converter ?? createLocalConverter(),
+              kudos: { downloads: kudosFileDownloads },
               ...(process.env.INGEST_FOLDER_ROOT
                 ? { folderRoot: process.env.INGEST_FOLDER_ROOT }
                 : {}),
@@ -615,6 +635,15 @@ const nightWindowTimer = nightWindow
     )
   : undefined;
 const jobs = workerJobs?.platform ?? new InMemoryJobQueue();
+const queueStats = workerJobs
+  ? startQueueStats(
+      () => [
+        { server: 'platform', jobs: workerJobs.platform },
+        ...(workerJobs.knowledge ? [{ server: 'knowledge', jobs: workerJobs.knowledge }] : []),
+      ],
+      log,
+    )
+  : undefined;
 if (!workerJobs) await workQueues(jobs, work);
 await scheduleUsagePolls(jobs, polledSources);
 log('jobs', {
@@ -654,7 +683,7 @@ log('traces', { enabled: Boolean(traces) });
 
 const blockTexts: BlockTexts = {
   disabled: (name) =>
-    `Byggeklossen «${name}» er slått av for virksomheten. Slå den på igjen under Byggeklosser, eller fjern den fra tjenesten.`,
+    `Delen «${name}» er slått av for virksomheten. Slå den på igjen under Katalog, eller fjern den fra tjenesten.`,
   toolTimedOut: (seconds) => `Verktøyet svarte ikke innen ${seconds} sekunder.`,
 };
 const knowledgeDatasets =
@@ -682,6 +711,7 @@ const usedTokens = async (tenant: string, since: string) =>
     : 0;
 const runtime = await createRuntime({
   platformTenant,
+  ...(db ? { organisationName: organisationNameFrom(db.tenants) } : {}),
   federatedTokens,
   catalogs: {
     models: catalogs.models.catalog,
@@ -738,13 +768,13 @@ const runtime = await createRuntime({
   ...(traces ? { observe: (l: EventLog) => observedEventLog(l, traces) } : {}),
   ...(db
     ? {
-        knowledgePool: db.pool,
         ...knowledgeRuntimeInput(knowledgeServer, knowledgeBinding),
         connections: db.connections,
         modelClassifications: db.modelClassifications,
+        discoveredModels: new PostgresDiscoveredModels<DiscoveryListing>(db.runtimePool),
       }
     : {}),
-  searchOnlyClusters: [process.env.TYPESENSE_URL],
+  modelDiscovery: modelDiscoveryFromEnv(process.env),
   onWarning: (message) => log('warning', { message }),
   logger: log,
   logFailureMessages: process.env.LOG_FAILURE_MESSAGES === 'true',
@@ -1097,6 +1127,7 @@ const knowledgeReconciler = knowledgeRunRecords
   : undefined;
 
 const stop = () => {
+  queueStats?.stop();
   knowledgeProgress.stop();
   retention?.stop();
   exchangeRate?.stop();

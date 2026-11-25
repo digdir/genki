@@ -56,6 +56,8 @@ const tenantTables = [
   'trigger_runs',
   'api_key_policies',
   'provider_objects',
+  'bff_sessions',
+  'request_leases',
 ];
 
 const publishedTables = { definition_versions: 'tenant', config_entries: 'scope' };
@@ -65,6 +67,8 @@ const kernelTables = ['content_keys', 'erased_scopes', 'events', 'tasks', 'state
 const platformTables = [
   'identities',
   'model_classifications',
+  'discovered_models',
+  'model_discovery_claims',
   'setting_default_versions',
   'setting_locks',
   'judge_labels',
@@ -482,6 +486,27 @@ const migrations: string[] = [
      primary key (tenant, id)
    )`,
   ...tenantIsolation('tool_connections'),
+  `create table if not exists bff_sessions (
+     tenant text not null,
+     id_hash text not null,
+     hostname text not null,
+     client text not null,
+     sealed bytea not null,
+     expires_at timestamptz not null,
+     created_at timestamptz not null default now(),
+     updated_at timestamptz not null default now(),
+     primary key (tenant, id_hash)
+   )`,
+  `create index if not exists bff_sessions_expiry on bff_sessions (expires_at)`,
+  ...tenantIsolation('bff_sessions'),
+  `create table if not exists request_leases (
+     tenant text not null,
+     name text not null,
+     holder text not null,
+     until timestamptz not null,
+     primary key (tenant, name)
+   )`,
+  ...tenantIsolation('request_leases'),
   `do $$
      declare previous text := current_setting('app.platform_access', true);
      begin
@@ -1122,7 +1147,30 @@ const migrations: string[] = [
   ...Object.entries(publishedTables).flatMap(([table, column]) =>
     publishedIsolation(table, column),
   ),
+  `drop policy if exists tenant_delete on definition_versions`,
+  `create policy tenant_delete on definition_versions for delete
+     using (tenant = current_setting('app.tenant', true))`,
   ...usageMigrations,
+  `create table if not exists discovered_models (
+     connection text not null,
+     source text not null,
+     deployments jsonb not null default '[]'::jsonb,
+     target text,
+     listed_at timestamptz,
+     failed_at timestamptz,
+     error_kind text,
+     updated_at timestamptz not null default now(),
+     primary key (connection, source)
+   )`,
+  `create or replace trigger discovered_models_changed after insert or update or delete
+     on discovered_models for each statement execute function bump_change('model-classifications')`,
+  `create table if not exists model_discovery_claims (
+     name text primary key,
+     claimed_at timestamptz not null
+   )`,
+  // The shared search tables of the retired `connection: platform`: every pgvector dataset is on
+  // the knowledge server, and no release since issue 151 reads them (ADR 0042, Consequences).
+  `drop table if exists kn_phrases, kn_chunks, kn_docs, kn_active, kn_generations`,
   ...appRole(runtimeRole),
   ...appRole(workerRole, runtimeRole),
   `grant select, insert, update, delete on ${[

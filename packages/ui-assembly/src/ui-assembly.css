@@ -19,6 +19,15 @@
     flex-direction: column;
   }
 
+  /* An answer's ref blocks: a line of their own under its buttons. */
+  .uia-answer-blocks {
+    display: flex;
+    flex: 1 0 100%;
+    flex-direction: column;
+    gap: var(--genai-assembly-answer-blocks-gap, var(--ds-size-4));
+    min-inline-size: 0;
+  }
+
   /* While a document stands in the conversation's place. */
   .uia-main > .uia-main-chat[hidden] {
     display: none;
@@ -84,12 +93,6 @@
     padding-block-end: var(--genai-assembly-room-inset, var(--ds-size-3));
   }
 
-  /* Writing hides the greeting and suggestions but keeps their room, so the field stays put. */
-  .uia-chat[data-typing] .uia-welcome,
-  .uia-chat[data-typing] .uia-suggestions {
-    visibility: hidden;
-  }
-
   .uia-disclaimer {
     color: var(--genai-assembly-disclaimer-color, var(--ds-color-neutral-text-subtle));
     text-align: center;
@@ -142,7 +145,7 @@
     padding: var(--genai-assembly-strip-padding, var(--ds-size-3) var(--ds-size-4));
     border: var(--genai-assembly-strip-border-width, var(--ds-border-width-default)) solid
       var(--genai-assembly-strip-border-color, var(--ds-color-neutral-border-subtle));
-    border-radius: var(--genai-assembly-strip-radius, var(--ds-border-radius-lg));
+    border-radius: var(--genai-assembly-strip-radius, var(--ds-border-radius-xl));
     background: var(--genai-assembly-strip-background, var(--ds-color-neutral-surface-default));
   }
 
@@ -182,5 +185,9 @@
 
   .uia-notice:empty {
     display: none;
+  }
+
+  .uia-declarative-notice {
+    margin: 0;
   }
 }

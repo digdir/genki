@@ -5,6 +5,7 @@ import {
   secretRefPattern,
   withoutTrailingSlashes,
 } from '@genai/kernel';
+import { currentApiId, type DescriptorRegistry } from '@genai/operations';
 import type { RerankAdapter } from './adapter.js';
 import { failureModes, residencies, type FailureMode, type Residency } from './port.js';
 
@@ -27,12 +28,15 @@ const connection = z.object({
   baseURL: z.url({ protocol: /^https?$/ }),
   auth,
   families: z.record(z.string(), z.string()),
+  settings: z.record(z.string(), z.string()).optional(),
+  keys: z.record(z.string(), secret).optional(),
   gateway: z.boolean().optional(),
 });
 
 const reranker = z.object({
   id,
   endpoint: id,
+  deployment: z.string().min(1).optional(),
   residency: z.enum(residencies),
   tenants: z.array(z.string().regex(/^\d{9}$/)).optional(),
   apis: z.object({ rerank: z.string() }),
@@ -46,10 +50,15 @@ export interface ModelReranker {
   residency: Residency;
   onFailure: FailureMode;
   tenants?: string[];
+  deployment?: string;
   api: string;
+  /** Set when a typed rerank descriptor serves the API instead of a built-in adapter. */
+  described?: boolean;
   baseURL: string;
   auth: z.infer<typeof auth>;
   gateway: boolean;
+  settings?: Record<string, string>;
+  keys?: Record<string, string>;
   options: Record<string, unknown>;
 }
 
@@ -71,6 +80,7 @@ const familyURL = (baseURL: string, base: string) =>
 export const parseModelRerankers = (
   modelCatalog: unknown,
   adapters: readonly RerankAdapter[],
+  descriptors?: DescriptorRegistry,
 ): ModelRerankersResult => {
   const catalog = record(modelCatalog);
   const endpoints = record(catalog.endpoints);
@@ -86,25 +96,36 @@ export const parseModelRerankers = (
       return;
     }
     const m = parsed.data;
-    const adapter = adapters.find((a) => a.api?.id === m.apis.rerank);
-    if (!adapter?.api) {
+    const apiId = currentApiId(m.apis.rerank);
+    const adapter = adapters.find((a) => a.api?.id === apiId);
+    const descriptor = adapter?.api ? undefined : descriptors?.get(apiId);
+    const described = descriptor?.status === 'typed' && descriptor.operation === 'rerank';
+    const family = adapter?.api?.family ?? (described ? descriptor.api.family : undefined);
+    if (!family) {
       errors.push({
         path: `models.${index}.apis.rerank`,
-        message: `no built-in implementation ${m.apis.rerank}`,
+        message: `no built-in implementation or typed rerank descriptor ${m.apis.rerank}`,
       });
       return;
     }
     const spec = connection.safeParse(endpoints[m.endpoint]);
-    const base = spec.success ? spec.data.families[adapter.api.family] : undefined;
+    const base = spec.success ? spec.data.families[family] : undefined;
     if (!spec.success || base === undefined) {
       errors.push({
         path: `models.${index}.endpoint`,
-        message: `${m.endpoint} does not offer the ${adapter.api.family} family`,
+        message: `${m.endpoint} does not offer the ${family} family`,
       });
       return;
     }
-    const options = adapter.rerankerOptions.safeParse(m.options);
-    if (!options.success) {
+    if (described && !m.deployment) {
+      errors.push({
+        path: `models.${index}.deployment`,
+        message: 'a reranker served by a descriptor names its deployment',
+      });
+      return;
+    }
+    const options = adapter ? adapter.rerankerOptions.safeParse(m.options) : undefined;
+    if (options && !options.success) {
       for (const i of options.error.issues)
         errors.push({
           path: ['models', index, 'options', ...i.path].join('.'),
@@ -118,10 +139,14 @@ export const parseModelRerankers = (
       residency: m.residency,
       onFailure: m.rerank?.onFailure ?? 'degrade',
       ...(m.tenants ? { tenants: m.tenants } : {}),
-      api: adapter.api.id,
+      ...(m.deployment ? { deployment: m.deployment } : {}),
+      api: apiId,
+      ...(described ? { described: true } : {}),
       baseURL: familyURL(spec.data.baseURL, base),
       auth: spec.data.auth,
       gateway: spec.data.gateway === true,
+      ...(spec.data.settings ? { settings: spec.data.settings } : {}),
+      ...(spec.data.keys ? { keys: spec.data.keys } : {}),
       options: m.options,
     });
   });

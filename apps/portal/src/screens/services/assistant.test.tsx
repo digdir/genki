@@ -94,10 +94,10 @@ const interfaceReply = () => ({
   usage: { tokens: 10, budgetLeftToday: 199_990, dailyBudget: 200_000 },
 });
 
-const blocksSwitcher = 'Byggeklosser og maler';
+const blocksSwitcher = 'Designelementer og maler';
 
 const documentView = () =>
-  within(screen.getByRole('group', { name: 'Høyre panel' })).getByRole('switch', {
+  within(screen.getByRole('group', { name: 'Høyre' })).getByRole('switch', {
     name: 'Dokumentvisning',
   }) as HTMLInputElement;
 
@@ -110,11 +110,11 @@ const askForDocumentView = async (turns: AssistantTurnRequest[] = []) => {
   const switcher = await screen.findByRole('group', { name: blocksSwitcher });
   if (documentView().checked) fireEvent.click(documentView());
   expect(documentView().checked).toBe(false);
-  fireEvent.click(within(switcher).getByRole('radio', { name: 'Chat' }));
+  fireEvent.click(within(switcher).getByRole('radio', { name: 'Samtale' }));
   const panel = screen.getByRole('complementary', { name: 'Byggeassistent' });
   say(panel, 'Leserne må ha enkel tilgang til originaldokumentet');
-  await within(panel).findByText('Slår på i grensesnittet: Dokumentvisning.', {}, slow);
-  fireEvent.click(within(switcher).getByRole('radio', { name: 'Byggeklosser' }));
+  await within(panel).findByText('Slår på i utformingen: Dokumentvisning.', {}, slow);
+  fireEvent.click(within(switcher).getByRole('radio', { name: 'Designelementer' }));
 };
 
 describe('builder assistant', () => {
@@ -324,7 +324,7 @@ describe('builder assistant', () => {
     const card = title.closest('.ax-card') as HTMLElement;
     expect(
       within(card).getByText(
-        'Lager også stegflyten soknadsuttrekk-kort og publiserer den i biblioteket.',
+        'Lager også arbeidsflyten soknadsuttrekk-kort og publiserer den i biblioteket.',
       ),
     ).toBeTruthy();
     await waitFor(() =>
@@ -462,10 +462,10 @@ describe('builder assistant', () => {
     const panel = await open('#/services/soknadsuttrekk/setup?assistent=plattform-3', fetch);
     await within(panel).findByText('Byggekloss: Risikoscore for tilskudd', {}, slow);
     const current = panel.querySelector('[aria-current="step"]');
-    expect(current?.textContent).toContain('Ny byggekloss foreslått');
-    expect(within(panel).getByText('3 av 4: Ny byggekloss foreslått')).toBeTruthy();
-    fireEvent.click(within(panel).getByRole('button', { name: 'Godkjenn og ta i bruk' }));
-    const confirm = within(panel).getByRole('button', { name: 'Bekreft og ta i bruk' });
+    expect(current?.textContent).toContain('Ny del til katalogen foreslått');
+    expect(within(panel).getByText('3 av 4: Ny del til katalogen foreslått')).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Bruk forslaget' }));
+    const confirm = within(panel).getByRole('button', { name: 'Bekreft og bruk forslaget' });
     fireEvent.click(confirm);
     expect(within(panel).getByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
     fireEvent.change(within(panel).getByLabelText('Begrunnelse'), {
@@ -499,10 +499,8 @@ describe('builder assistant', () => {
     const card = (
       await within(other).findByText('Byggekloss: Risikoscore for tilskudd', {}, slow)
     ).closest('.ax-card') as HTMLElement;
-    expect(within(other).queryByRole('button', { name: 'Godkjenn og ta i bruk' })).toBeNull();
-    expect(
-      within(other).getByText(/Du har ikke rettigheten til å registrere byggeklosser/),
-    ).toBeTruthy();
+    expect(within(other).queryByRole('button', { name: 'Bruk forslaget' })).toBeNull();
+    expect(within(other).getByText(/Du har ikke rettigheten «Legge til i katalogen»/)).toBeTruthy();
     fireEvent.click(within(other).getByRole('button', { name: 'Send til godkjenning' }));
     fireEvent.change(within(other).getByLabelText('Begrunnelse'), {
       target: { value: 'Trenger risikoscore i vurderingen' },

@@ -30,6 +30,20 @@
   max-width: 100%;
 }
 
+.usage-table-details thead th {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 5.5rem;
+  vertical-align: bottom;
+}
+
+.usage-table-details :is(thead, tbody) th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--ds-color-neutral-background-default);
+}
+
 .usage-head-actions {
   display: flex;
   flex-wrap: wrap;

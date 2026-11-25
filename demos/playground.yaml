@@ -2,7 +2,7 @@ title: Prøv en tjeneste i prøveområdet
 language: nb-NO
 voice: nb-NO-PernilleNeural
 viewport: [1280, 720]
-start: https://portal.genki-test.digdir.cloud/#/playground
+start: https://portal.genki-test.digdir.cloud/#/playground/backend
 signedIn: true
 ready: Endre oppsett
 steps:

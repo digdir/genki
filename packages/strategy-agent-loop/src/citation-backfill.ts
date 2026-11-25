@@ -1,5 +1,16 @@
-import { detectInsufficientContext, parseCitations, validateCitations } from './citations.js';
-import { exhaustionDefault, noToolCallHonestMiss } from './prompts.js';
+import { normaliseCitationMarkers, untrustedData } from '@genai/port-model';
+import {
+  detectInsufficientContext,
+  locateSentences,
+  unlocated,
+  numberByDocument,
+  numberByExcerpt,
+  parseCitations,
+  stripSourceLists,
+  validateCitations,
+} from './citations.js';
+import { citeDraftPrompt, isFallbackText } from './prompts.js';
+import { skillsSection } from './skills.js';
 import { insufficientContextResponse, runBuiltinTool, type ToolEnvironment } from './tools.js';
 import type { Chunk, Workspace } from './workspace.js';
 
@@ -18,13 +29,21 @@ const refusalPatterns = [
   /(?<![\p{L}\p{N}])umulig å (forutsi|si|svare|fastslå)(?![\p{L}\p{N}])/u,
   /(?<![\p{L}\p{N}])(dekker ikke|foreligger ikke)(?![\p{L}\p{N}])/u,
   /^ønsker du\b/u,
+  /(?<![\p{L}\p{N}])(fann|finn|funne)\s+(eg\s+)?(ikkje|ingen)(?![\p{L}\p{N}])/u,
+  /(?<![\p{L}\p{N}])(har|hadde)\s+(dessverre\s+)?ikkje\s+(funne|klart å finne|informasjon)(?![\p{L}\p{N}])/u,
+  /(?<![\p{L}\p{N}])ikkje\s+(har\s+)?(funne|klart å finne|tilgang)(?![\p{L}\p{N}])/u,
+  /(?<![\p{L}\p{N}])(kunne|kan) ikkje finne(?![\p{L}\p{N}])/u,
+  /(?<![\p{L}\p{N}])ser ikkje ut til(?![\p{L}\p{N}])/u,
+  /(?<![\p{L}\p{N}])ikkje\s+(spesifikt\s+)?(nemnt|omtalt|oppgitt|spesifisert|tilgjengeleg)(?![\p{L}\p{N}])/u,
+  /(?<![\p{L}\p{N}])(ikkje inneheld|inneheld ikkje|dekkjer ikkje|ligg ikkje føre)(?![\p{L}\p{N}])/u,
+  /^ønskjer du\b/u,
   /\b(could not|couldn't|did not|didn't) find\b/,
 ];
 
 export const soundsLikeRefusal = (text: string): boolean => {
   const normalized = text.toLowerCase().replace(/\s+/g, ' ').trim();
   if (normalized === '') return true;
-  if (text === exhaustionDefault || text === noToolCallHonestMiss) return true;
+  if (isFallbackText(text)) return true;
   return (
     detectInsufficientContext(normalized).insufficient ||
     refusalPatterns.some((p) => p.test(normalized))
@@ -61,6 +80,14 @@ const unreadSearchHits = (workspace: Workspace) => {
     .slice(0, backfillReadLimit);
 };
 
+// Nothing read answers the question, so a rewrite from it adds only what is beside the point.
+const declineJudged = (workspace: Workspace) => {
+  const d = workspace.latestDecision();
+  if (!d || ('degraded' in d && d.degraded)) return false;
+  if ('reasonCode' in d && d.reasonCode === 'wrong-scope') return true;
+  return d.status === 'insufficient' || d.status === 'off-topic';
+};
+
 export const settleCitations = (answer: string, workspace: Workspace): CitationSettlement => {
   if (validateCitations(answer, workspace.citationIndex).grounded)
     return { action: 'keep', reason: 'cited' };
@@ -73,13 +100,14 @@ export const settleCitations = (answer: string, workspace: Workspace): CitationS
     validateCitations(generated, workspace.citationIndex).grounded
   )
     return { action: 'carry-through' };
-  if (workspace.citationIndex.size > 0) return { action: 'keep', reason: 'generated-uncited' };
-  if (refusal)
+  if (refusal) {
+    if (workspace.citationIndex.size > 0) return { action: 'keep', reason: 'generated-uncited' };
+    if (declineJudged(workspace)) return { action: 'keep', reason: 'declined-after-insufficient' };
     return refusalBackfillCandidates(workspace).length
       ? { action: 'backfill', readFirst: [], refusal: true }
-      : { action: 'keep', reason: 'refusal' };
-  const candidates = backfillCandidates(workspace);
-  if (candidates.length) return { action: 'backfill', readFirst: [] };
+      : { action: 'keep', reason: 'no-answer-text' };
+  }
+  if (backfillCandidates(workspace).length) return { action: 'backfill', readFirst: [] };
   if (workspace.readChunkIds().size > 0) return { action: 'keep', reason: 'no-supporting-chunks' };
   const unread = unreadSearchHits(workspace);
   return unread.length
@@ -87,10 +115,58 @@ export const settleCitations = (answer: string, workspace: Workspace): CitationS
     : { action: 'keep', reason: 'nothing-retrieved' };
 };
 
+const withoutMarkers = (text: string) =>
+  text
+    .replace(/ ?\[\d+\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+export const keepsTheDraft = (cited: string, draft: string) =>
+  withoutMarkers(cited) === withoutMarkers(draft);
+
+const citeDraft = async (
+  env: ToolEnvironment,
+  draft: string,
+  candidates: Chunk[],
+): Promise<string | undefined> => {
+  const { workspace } = env;
+  const {
+    context,
+    index: numbered,
+    chunks,
+  } = env.citeBy === 'excerpt' ? numberByExcerpt(candidates) : numberByDocument(candidates);
+  const written = await env.synthesize(
+    env.systemPrompt + skillsSection([...workspace.loadedSkills.values()]),
+    citeDraftPrompt(context, untrustedData('draft-answer', draft), env.citeBy === 'excerpt'),
+  );
+  if (written === undefined) return undefined;
+  const cleaned = stripSourceLists(normaliseCitationMarkers(written, (n) => numbered.has(n)));
+  const located =
+    env.citeBy === 'excerpt'
+      ? locateSentences(cleaned, numbered, chunks)
+      : unlocated(cleaned, numbered);
+  const { text, index } = located;
+  if (
+    !validateCitations(text, index).grounded ||
+    insufficientContextResponse(text) ||
+    !keepsTheDraft(text, draft)
+  )
+    return undefined;
+  workspace.citationIndex = index;
+  workspace.citationQuotes = located.quotes;
+  workspace.sentenceIds = { located: located.located, missed: located.missed };
+  workspace.quotedText = text;
+  workspace.sourceOrder = chunks;
+  workspace.citations = parseCitations(text, index);
+  for (const c of chunks) if (!workspace.chunks.has(c.chunkId)) workspace.chunks.set(c.chunkId, c);
+  return text;
+};
+
 export const backfillCitations = async (
   env: ToolEnvironment,
   readFirst: string[],
   refusal = false,
+  draft?: string,
 ): Promise<string | undefined> => {
   const { workspace } = env;
   if (readFirst.length) {
@@ -101,6 +177,7 @@ export const backfillCitations = async (
   }
   const candidates = refusal ? refusalBackfillCandidates(workspace) : backfillCandidates(workspace);
   if (candidates.length === 0) return undefined;
+  if (!refusal && readFirst.length === 0 && draft?.trim()) return citeDraft(env, draft, candidates);
   const previous = workspace.contextDocs;
   workspace.contextDocs = candidates;
   try {

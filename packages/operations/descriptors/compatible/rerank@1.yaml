@@ -1,0 +1,47 @@
+id: compatible/rerank@1
+operation: rerank
+status: typed
+summary: Reranking in the shape Cohere, Jina, vLLM and LiteLLM share, on the base of an OpenAI-compatible endpoint.
+api:
+  family: openai
+  version: v1
+auth:
+  keyHeader: authorization
+request:
+  method: POST
+  path: /rerank
+  body:
+    model: $deployment
+    query: $input.query
+    documents: $input.documents
+input:
+  object:
+    query: text
+    documents: [text]
+output:
+  - object:
+      index: { number: { integer: true } }
+      score: number
+      rank: number
+wire:
+  request:
+    object:
+      model: plain
+      query: text
+      documents: [text]
+  response:
+    object:
+      results:
+        array:
+          object:
+            index: { number: { integer: true, min: 0 } }
+            relevance_score: number
+result:
+  $each: $response.results
+  $map:
+    index: $item.index
+    score: $item.relevance_score
+    rank: $position
+usage:
+  request: 1
+stream: none

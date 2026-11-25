@@ -30,9 +30,28 @@ export interface TimelineStep {
   depth?: number;
   tokens?: number;
   model?: string;
+  /** Why the model call stopped, as the provider said: stop, length, tool_calls, content_filter or other. */
+  finishReason?: string;
+  /** The provider's category for a refusal, such as reasoning_extraction. */
+  refusalCategory?: string;
   iteration?: number;
   warning?: true;
+  reads?: StepRead[];
   raw?: unknown;
+}
+
+export interface ReadChunk {
+  id: string;
+  document?: string;
+  position?: number;
+  page?: number;
+  title?: string;
+}
+
+export interface StepRead {
+  chunks: ReadChunk[];
+  auto?: true;
+  request?: { chunkIds?: string[]; document?: string; chunkRange?: { from?: number; to?: number } };
 }
 
 export interface ModelTokens {
@@ -68,6 +87,7 @@ export interface HitView {
   id: string;
   document?: string;
   position?: number;
+  page?: number;
   score?: number;
   title?: string;
 }
@@ -128,6 +148,28 @@ const decimal = (n: number) =>
 const plain = t as unknown as (key: ApiKey) => string;
 
 const round = (seconds: number) => Math.max(0, Math.round(seconds * 100) / 100);
+
+const stopKeys: Record<
+  string,
+  | 'steps.stop_stop'
+  | 'steps.stop_tool_calls'
+  | 'steps.stop_length'
+  | 'steps.stop_content_filter'
+  | 'steps.stop_other'
+> = {
+  stop: 'steps.stop_stop',
+  tool_calls: 'steps.stop_tool_calls',
+  length: 'steps.stop_length',
+  content_filter: 'steps.stop_content_filter',
+  other: 'steps.stop_other',
+};
+
+/** A finish reason in plain words, with the provider's category after a refusal. */
+const stopText = (reason: string, category: string | undefined) => {
+  const key = stopKeys[reason];
+  const text = key ? t(key) : reason;
+  return category ? t('steps.stopWithCategory', { reason: text, category }) : text;
+};
 
 const counted = (
   key: 'steps.hits' | 'steps.searches' | 'steps.chunks' | 'steps.documents' | 'steps.sources',
@@ -236,6 +278,7 @@ const toolTitles: Record<string, [string, ApiKey]> = {
   generate_response: ['model', 'steps.toolGenerate'],
   inspect_filters: ['tool', 'steps.toolInspect'],
   source_facts: ['tool', 'steps.toolSourceFacts'],
+  service_facts: ['tool', 'steps.toolServiceFacts'],
   use_skill: ['tool', 'steps.toolSkill'],
 };
 
@@ -262,6 +305,13 @@ const gateStatus: Record<string, ApiKey> = {
   partial: 'steps.gatePartial',
 };
 
+const gateSources: Record<string, ApiKey> = {
+  'shadow-read-signals': 'steps.gateByReadCheck',
+  'llm-sufficiency-gate': 'steps.gateByModel',
+  'response-validation': 'steps.gateByAnswerCheck',
+  'grounding-gate': 'steps.gateByGrounding',
+};
+
 const nextMoves: Record<string, ApiKey> = {
   're-search': 'steps.nextReSearch',
   'read-more': 'steps.nextReadMore',
@@ -282,6 +332,7 @@ const hitsOf = (value: unknown): HitView[] =>
     if (!id) return [];
     const document = str(r.document);
     const position = num(r.position);
+    const page = num(r.page);
     const score = num(r.score);
     const title = str(r.title);
     return [
@@ -289,6 +340,7 @@ const hitsOf = (value: unknown): HitView[] =>
         id,
         ...(document ? { document } : {}),
         ...(position === undefined ? {} : { position }),
+        ...(page === undefined ? {} : { page }),
         ...(score === undefined ? {} : { score }),
         ...(title ? { title } : {}),
       },
@@ -334,6 +386,39 @@ const hitMeta = (h: HitView) =>
   ]
     .filter(Boolean)
     .join(' · ');
+
+const listed = (values: number[]) => [...new Set(values)].sort((a, b) => a - b).join(', ');
+
+const readMeta = (chunks: HitView[]) => {
+  const parts = chunks.flatMap((c) => (c.position === undefined ? [] : [c.position + 1]));
+  const pages = chunks.flatMap((c) => (c.page === undefined ? [] : [c.page]));
+  return [
+    counted('steps.chunks', chunks.length),
+    parts.length ? t('steps.parts', { parts: listed(parts), count: new Set(parts).size }) : '',
+    pages.length ? t('steps.pages', { pages: listed(pages), count: new Set(pages).size }) : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+};
+
+const readRequest = (value: unknown): StepRead['request'] => {
+  const r = record(value);
+  const chunkIds = strings(r.chunkIds);
+  const document = str(r.document);
+  const range = record(r.chunkRange);
+  const from = num(range.from);
+  const to = num(range.to);
+  const chunkRange = {
+    ...(from === undefined ? {} : { from }),
+    ...(to === undefined ? {} : { to }),
+  };
+  if (!chunkIds.length && !document) return undefined;
+  return {
+    ...(chunkIds.length ? { chunkIds } : {}),
+    ...(document ? { document } : {}),
+    ...(Object.keys(chunkRange).length ? { chunkRange } : {}),
+  };
+};
 
 const textOf = (parts: Part[]) =>
   parts
@@ -652,6 +737,7 @@ export class RunMapper {
     if (stage === 'citations') return this.citations(e, ts, prev, data);
     if (stage === 'answer-discarded') return this.discarded(e, ts, data);
     if (stage === 'exhausted' || stage === 'recovered-empty') return this.exhausted(e, ts, data);
+    if (stage === 'model-refused') return this.refused(e, ts, data);
     if (kind === 'decision') return this.decision(e, ts, data);
     if (kind === 'documents')
       return void this.add(
@@ -852,11 +938,11 @@ export class RunMapper {
     const chunks = hitsOf(data.chunks);
     this.remember(chunks);
     this.chunksRead += chunks.length;
-    const perDocument = new Map<string, number>();
+    const perDocument = new Map<string, HitView[]>();
     for (const c of chunks) {
       const doc = c.title ?? c.document ?? c.id;
       if (c.document) this.documents.add(c.document);
-      perDocument.set(doc, (perDocument.get(doc) ?? 0) + 1);
+      perDocument.set(doc, [...(perDocument.get(doc) ?? []), c]);
     }
     const open = this.openOf('read', 'search');
     const auto = data.auto === true;
@@ -871,12 +957,18 @@ export class RunMapper {
     const block: TimelineBlock = {
       kind: 'list',
       label: auto ? t('steps.readAuto') : t('steps.readDocuments'),
-      items: [...perDocument].map((entry): [string, string] => [
-        entry[0],
-        counted('steps.chunks', entry[1]),
-      ]),
+      items: [...perDocument].map(([doc, read]): [string, string] => [doc, readMeta(read)]),
     };
     step.blocks = [...step.blocks, block];
+    const request = readRequest(data.request);
+    step.reads = [
+      ...(step.reads ?? []),
+      {
+        chunks: chunks.map(({ score: _score, ...chunk }) => chunk),
+        ...(auto ? { auto: true as const } : {}),
+        ...(this.details && request ? { request } : {}),
+      },
+    ];
     const summary = t('steps.readSummary', {
       chunks: counted('steps.chunks', chunks.length),
       documents: counted('steps.documents', perDocument.size),
@@ -1166,6 +1258,14 @@ export class RunMapper {
     const status = String(data.status ?? '');
     const strategy = str(data.strategy);
     const move = strategy ? lookup(nextMoves, strategy) : undefined;
+    const source = str(data.source);
+    const overrode = str(data.overriddenReadStatus);
+    const rows: [string, string][] = [
+      ...(source ? [[t('steps.gateSource'), lookup(gateSources, source)] as [string, string]] : []),
+      ...(overrode
+        ? [[t('steps.gateOverrode'), lookup(readSignals, overrode)] as [string, string]]
+        : []),
+    ];
     this.add(
       this.completed(e, ts, prev, {
         type: 'guard',
@@ -1176,7 +1276,7 @@ export class RunMapper {
         summary: [lookup(gateStatus, status), move ? t('steps.next', { move }) : '']
           .filter(Boolean)
           .join(' · '),
-        blocks: [],
+        blocks: rows.length ? [{ kind: 'kv', rows }] : [],
         ...this.rawOf(data),
       }),
       true,
@@ -1204,6 +1304,10 @@ export class RunMapper {
   }
 
   private discarded(e: Event, ts: number, data: Data) {
+    if (data.reason === 'renumbered') {
+      this.out.push({ kind: 'retract', reason: 'discarded' });
+      return;
+    }
     const uncited = data.reason === 'uncited';
     const text = uncited ? t('steps.discardedUncited') : t('steps.discardedGate');
     this.warn(text);
@@ -1214,6 +1318,24 @@ export class RunMapper {
       title: t('steps.discardedTitle'),
       summary: text,
       at: this.offset(ts),
+      warning: true,
+      blocks: [],
+      ...this.rawOf(data),
+    });
+  }
+
+  private refused(e: Event, ts: number, data: Data) {
+    const category = str(data.category);
+    const text = category ? t('steps.refusedWithCategory', { category }) : t('steps.refused');
+    this.warn(text);
+    this.channel = 'answer';
+    this.add({
+      id: `e${e.seq}`,
+      type: 'note',
+      title: t('steps.refusedTitle'),
+      summary: text,
+      at: this.offset(ts),
+      state: 'partial',
       warning: true,
       blocks: [],
       ...this.rawOf(data),
@@ -1302,6 +1424,8 @@ export class RunMapper {
     const output = num(usage.outputTokens) ?? 0;
     const cached = num(usage.cachedInputTokens) ?? 0;
     const model = str(record(data.model).id) ?? str(record(data.ref).id) ?? t('steps.unknownModel');
+    const finishReason = str(data.finishReason);
+    const refusalCategory = str(data.refusalCategory);
     this.inputTokens += input;
     this.outputTokens += output;
     this.cachedInputTokens += cached;
@@ -1342,12 +1466,20 @@ export class RunMapper {
               ...(cached ? [[t('steps.cached'), nbCount(cached)] as [string, string]] : []),
             ]
           : []),
+        ...(finishReason
+          ? [[t('steps.stopReason'), stopText(finishReason, refusalCategory)] as [string, string]]
+          : []),
       ],
       usage: true,
     });
     if (host) {
       if (tokens !== undefined) host.tokens = (host.tokens ?? 0) + tokens;
       host.model = model;
+      // The step shows how its latest call ended.
+      if (finishReason) host.finishReason = finishReason;
+      else delete host.finishReason;
+      if (refusalCategory) host.refusalCategory = refusalCategory;
+      else delete host.refusalCategory;
       host.blocks = [...host.blocks.filter((b) => !b.usage), kv(host)];
       if (host === this.turn) {
         host.summary = tokenText;
@@ -1362,6 +1494,8 @@ export class RunMapper {
       summary: tokenText,
       ...(tokens === undefined ? {} : { tokens }),
       model,
+      ...(finishReason ? { finishReason } : {}),
+      ...(refusalCategory ? { refusalCategory } : {}),
       blocks: [],
       ...(this.usageShown ? this.rawOf(data) : {}),
     });

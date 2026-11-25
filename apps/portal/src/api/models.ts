@@ -6,6 +6,7 @@ export type ModelUnavailableReason = 'not_allowed' | 'requires_approval';
 export interface CatalogModel extends ModelOption {
   maker?: string;
   operator?: { name: string; region?: string };
+  gateway?: boolean;
   contextWindow?: number;
   releaseDate?: string;
   recommended?: boolean;

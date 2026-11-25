@@ -92,10 +92,34 @@ describe('the strategy catalogue', () => {
     });
     expect(defaults['rag-single-shot']?.text.nb).toBe(datedSystemPromptTemplate);
     expect(defaults['rag-single-shot']?.note?.nb).toContain('{date}');
-    expect(defaults['agent-loop']?.note?.en).toContain('skills');
+    expect(defaults['agent-loop']?.note?.en).toContain('work instructions');
     expect(defaults['single-call']).toBeUndefined();
     expect(defaults['step-flow']).toBeUndefined();
     expect(defaults['remote-agent']).toBeUndefined();
+  });
+
+  it('lists each section of the agent instructions with a reason, in the order the agent gets them', async () => {
+    const { body } = await listed();
+    const agent = body.data.find((s) => s.id === 'agent-loop')?.defaultInstructions;
+
+    expect(agent?.layered).toBe(true);
+    expect(agent?.sections?.map((s) => s.id)).toEqual(['role', 'reasoning', 'workflow', 'gate']);
+    expect(agent?.sections?.map((s) => s.text).join('\n\n')).toBe(defaultSystemPrompt);
+    for (const section of agent?.sections ?? []) {
+      expect(section.title.nb).not.toBe('');
+      expect(section.reason.en).toMatch(/keep/i);
+    }
+  });
+
+  it('labels the reasoning section by what it lets the agent say, not as a request for reasoning', async () => {
+    const { body } = await listed();
+    const section = body.data
+      .find((s) => s.id === 'agent-loop')
+      ?.defaultInstructions?.sections?.find((s) => s.id === 'reasoning');
+
+    expect(section?.title.en).not.toMatch(/reason/i);
+    expect(section?.title.nb).not.toMatch(/begrunn/i);
+    expect(section?.reason.en).not.toMatch(/each step|traceable/i);
   });
 
   it('gives the rag default the same text the strategy sends, with the date filled in', () => {

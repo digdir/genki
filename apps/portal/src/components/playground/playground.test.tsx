@@ -51,7 +51,7 @@ const withPlayground = (playground: PlaygroundMockOptions, seen: string[] = []) 
 };
 
 const openPage = async (playground: PlaygroundMockOptions = {}, seen: string[] = []) => {
-  await renderAt('#/playground', withPlayground(playground, seen));
+  await renderAt('#/playground/backend', withPlayground(playground, seen));
   return screen.findByRole('textbox', { name: 'Spørsmål' });
 };
 
@@ -211,7 +211,7 @@ describe('Prøveområde', () => {
     expect(panel.style.position).toBe('fixed');
     expect(panel.style.inset).toMatch(/^0(px)?$/);
     expect(screen.getByText('Søk og svar med Kudos-rapporter')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Datasett: Kudos-rapporter' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Dokumentsamlinger: Kudos-rapporter' })).toBeTruthy();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledOnce();
     cleanup();
@@ -222,7 +222,9 @@ describe('Prøveområde', () => {
     expect(wide.getAttribute('aria-modal')).toBe('false');
     expect(wide.style.position).toBe('');
     expect(
-      screen.getByText('Med ferdigheten Skrive vedtaksbrev slik den er i siste publiserte versjon'),
+      screen.getByText(
+        'Med arbeidsinstruksen Skrive vedtaksbrev slik den er i siste publiserte utgave',
+      ),
     ).toBeTruthy();
   });
 
@@ -235,7 +237,9 @@ describe('Prøveområde', () => {
     });
 
     expect(
-      screen.getByText('Med ferdigheten Klarspråk i vedtak slik den er i siste publiserte versjon'),
+      screen.getByText(
+        'Med arbeidsinstruksen Klarspråk i vedtak slik den er i siste publiserte utgave',
+      ),
     ).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: 'Hva sier evalueringene om digital veiledning?' }),
@@ -408,7 +412,7 @@ describe('Prøveområde', () => {
     expect(
       (within(setupPanel()).getByRole('combobox', { name: 'Start fra' }) as HTMLSelectElement)
         .selectedOptions[0]?.textContent,
-    ).toBe('Svar, versjon 2');
+    ).toBe('Svar, utgave 2');
     expect(within(setupPanel()).getByText('Kudos-rapporter')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Sammenlign med et annet oppsett' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Spørsmål til begge' }), {
@@ -506,7 +510,7 @@ describe('Prøveområde', () => {
     expect(within(setupPanel()).queryByRole('combobox', { name: 'Variant' })).toBeNull();
   });
 
-  it('the answer language sits inside the Ferdigheter, byggeklosser og svarform disclosure', async () => {
+  it('the answer language sits inside the Arbeidsinstrukser, deler fra katalogen og svarform disclosure', async () => {
     await openPage();
 
     const language = within(setupPanel()).getByRole('combobox', {
@@ -515,7 +519,7 @@ describe('Prøveområde', () => {
     });
     const disclosure = language.closest('details');
     expect(disclosure?.querySelector('summary')?.textContent).toBe(
-      'Ferdigheter, byggeklosser og svarform',
+      'Arbeidsinstrukser, deler fra katalogen og svarform',
     );
   });
 
@@ -578,7 +582,7 @@ describe('Prøveområde', () => {
         errors: [
           {
             path: 'setup.spec.knowledge.datasets[0].dataset',
-            message: 'Datasettet digdir/kudos lagres utenfor EU/EØS.',
+            message: 'Dokumentsamlingen digdir/kudos lagres utenfor EU/EØS.',
           },
         ],
       },
@@ -821,7 +825,9 @@ describe('Prøveområde', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
-    expect(screen.getByText('Datasett: Kudos-rapporter, Tilsynsrapporter 2025')).toBeTruthy();
+    expect(
+      screen.getByText('Dokumentsamlinger: Kudos-rapporter, Tilsynsrapporter 2025'),
+    ).toBeTruthy();
     await waitFor(() => expect(runs).toHaveLength(1));
     expect(runs[0]?.setup.service).toMatchObject({ id: 'smoke', version: 'draft' });
     expect(runs[0]?.setup.datasets).toEqual(['digdir/kudos', '999888777/tilsynsrapporter-2025']);
@@ -911,6 +917,17 @@ describe('Prøveområde', () => {
 
     await waitFor(() => expect(runs).toHaveLength(1));
     expect(runs[0]?.setup.datasets).toEqual(['regelverk']);
+  });
+
+  it('the side panel links to Backend in the playground, where questions are asked', async () => {
+    const api = createApiClient({
+      baseUrl: '/api',
+      fetch: withPlayground({}),
+      token: () => 'kari',
+    });
+    render(<PlaygroundPanel layout="side" api={api} tenant="991825827" tenantName="Testetaten" />);
+    const link = await screen.findByRole('link', { name: 'Åpne i prøveområdet' });
+    expect(link.getAttribute('href')).toBe('#/playground/backend');
   });
 
   it('on the test page of a published service, the setup lists the draft and the published versions, and runs the chosen published one', async () => {

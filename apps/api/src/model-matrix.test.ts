@@ -17,6 +17,7 @@ import { InMemoryBlobStore } from '@genai/port-blob';
 import type { ModelCatalog } from '@genai/port-model';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { trustedEntraScope } from '@genai/identity';
+import { testRerankAdapter } from './rerank.test-utils.js';
 import { createAdmin } from './admin.js';
 import { restartMessage, type LeaseOptions } from './background-lease.js';
 import { resolveCatalog } from './catalogs.js';
@@ -146,6 +147,20 @@ const testSet = parseTestSet({
   },
 });
 
+/** A connection that offers the test rerank engine, since genki has none built in (ADR 0048). */
+const withRerankEndpoint = (catalog: ModelCatalog): ModelCatalog => ({
+  ...catalog,
+  endpoints: {
+    ...catalog.endpoints,
+    omrangering: {
+      baseURL: 'https://rerank.example',
+      auth: { kind: 'api-key', secret: 'secret://env/rerank-key' },
+      families: { 'test-rerank': '' },
+      discovery: [],
+    },
+  },
+});
+
 interface Restart {
   store?: InMemoryConfigEntryStore;
   evalStores?: Parameters<typeof createPlatform>[0]['evalStores'];
@@ -189,12 +204,9 @@ const boot = async (
     const knows = body.model !== 'kandidat' || candidateKnowsDeadlines;
     return reply(knows ? 'Fristen er 1. mai.' : 'Vi svarer snart.', stream);
   });
-  const search = await fakeHttp(() => ({ status: 200, json: {} }));
-  servers.push(model, search);
+  servers.push(model);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
-    TYPESENSE_URL: search.url,
-    COLBERT_API_URL: search.url,
   };
   const background: Promise<void>[] = [];
   const stored = new Map<string, StoredTask>();
@@ -207,11 +219,14 @@ const boot = async (
   const platform = await createPlatform({
     tasks,
     catalogs: {
-      models: resolveCatalog(yaml('models.yaml'), 'models', env).catalog as ModelCatalog,
+      models: withRerankEndpoint(
+        resolveCatalog(yaml('models.yaml'), 'models', env).catalog as ModelCatalog,
+      ),
       knowledge: resolveCatalog(yaml('knowledge.yaml'), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', RERANK_KEY: 'r' }),
+    rerankAdapters: [testRerankAdapter],
     definitions: (plugins) =>
       restart.definitions
         ? (restart.definitions.store ??= new InMemoryDefinitionStore(plugins))
@@ -681,7 +696,7 @@ describe('a candidate model that serves only an operation kind', () => {
 });
 
 describe('a candidate model that serves only reranking', () => {
-  const reranker = 'colbert/kandidat';
+  const reranker = 'omrangering/kandidat';
 
   it('cannot be the reranker of a published service until it is released', async () => {
     const { platform, send } = await boot(true);
@@ -690,11 +705,11 @@ describe('a candidate model that serves only reranking', () => {
       `/operator/models/${reranker}`,
       'operator',
       {
-        endpoint: 'colbert',
+        endpoint: 'omrangering',
         deployment: 'kandidat-omrangering',
         residency: 'global',
         capabilities: [],
-        apis: { rerank: 'colbert/rerank@1' },
+        apis: { rerank: 'test/rerank@1' },
       },
       { 'change-reason': reason },
     );

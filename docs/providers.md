@@ -39,7 +39,15 @@ endpoints:
         apis: { chat: openai/chat-completions@1 }
 ```
 
-A discovered model gets the id `<idPrefix>/<deployment>` with the deployment slugged as the console does when a model is added by hand: lower case, characters other than letters, digits, `_`, `.` and `-` replaced by `-`, and leading and trailing separators removed. `aivar:borealis` becomes `ai-gateway/aivar-borealis`, and `meta-llama/Llama-3.1-8B` becomes `ai-gateway/meta-llama-llama-3.1-8b`. A deployment that is already a model on the connection is not listed again. A discovered model is a candidate until an operator confirms it, and the OpenAI list says nothing of residency, family or capabilities, so the operator sets them then. A listing that fails is reported for its connection in the refresh result.
+A discovered model gets the id `<idPrefix>/<deployment>` with the deployment slugged as the console does when a model is added by hand: lower case, characters other than letters, digits, `_`, `.` and `-` replaced by `-`, and leading and trailing separators removed. `aivar:borealis` becomes `ai-gateway/aivar-borealis`, and `meta-llama/Llama-3.1-8B` becomes `ai-gateway/meta-llama-llama-3.1-8b`. A deployment that is already a model on the connection is not listed again. A discovered model is a candidate until an operator confirms it, and the OpenAI list says nothing of residency or family, so the operator sets them then. Capabilities a `/models` entry names (`capabilities`, `supported_parameters`, or `supports_*` flags, also under `model_info`) are taken as learned, and genki checks the rest with a few small calls (ADR 0021). A listing that fails is reported for its connection in the refresh result.
+
+### How discovered models are kept
+
+The last good listing of each connection is stored in the platform database (`discovered_models`, one row per connection and discovery source), and every API replica and the worker serve the models built from it with the connection's current rules. A listing that succeeds is merged into the row: each model it names gets `lastSeenAt` set to now, and a model it leaves out is kept until it has been missing for the grace period, 24 hours by default (`MODEL_DISCOVERY_GRACE_HOURS`). A listing that fails changes no model; it records only the kind of failure (`unauthorized`, `not-found`, `rate-limited`, `provider-error`, `timeout`, `unreachable`, `misconfigured` or `error`) and when. A replica that cannot list at startup serves the stored set, not only the catalogue's own models. The row remembers the address it listed: a connection moved to another address serves none of the old address's models and starts a new listing. A listing that cannot be stored is still served by the replica that made it, and its refresh reports `the listing was not stored`.
+
+One replica lists again every 30 minutes by default (`MODEL_RELIST_MINUTES`): each API replica tries four times an interval, jittered, to claim the interval in `model_discovery_claims`, and only the one that claims it lists; a replica that cannot reach the claim lists anyway. A replica that starts within an interval of the last claimed re-list loads the stored set and does not list; an operator's refresh takes no claim. Every write to `discovered_models` announces `model-classifications` on the change feed, and the other replicas then load the stored set without listing anything. An operator's refresh (`POST /operator/models/refresh`) still lists every connection at once, on the replica that takes it, and answers with `discovered` and `failed` as before.
+
+A listing follows every page: `has_more` with `last_id` (or the last entry's `id`) as `?after=`, or a `next` or `nextLink` link. A next page on another origin, a redirect, more than 100 pages, or a page seen twice fails the listing, so the connection's credential goes only to the connection's own origin. `/health` reports per connection under `modelDiscovery.connections`: how many models it serves (`discovered`), how many deployments the stored listing holds (`listed`), when a listing last succeeded (`listedAt`) and the kind and time of the last failure (`lastError`), never a URL, a key or the provider's error text.
 
 An API has the id `<provider>/<api>@<version>`, a kind (`chat`, `decide`, `embed` and so on) and a family. `GET /operator/apis` lists every API Genki can bind: built-in implementations and operation descriptors, under one id each. The built-in APIs are:
 
@@ -50,31 +58,49 @@ An API has the id `<provider>/<api>@<version>`, a kind (`chat`, `decide`, `embed
 | `openai/decide@1`           | `decide` | `openai`    | Structured decisions.                                  |
 | `anthropic/messages@1`      | `chat`   | `anthropic` | Default for the family; option `defaultMaxTokens`.     |
 | `openai/embeddings@1`       | `embed`  | `openai`    | Embeddings; was `openai/embed@1`, still read.          |
-| `colbert/rerank@1`          | `rerank` | `colbert`   | Reranking; option `maxInputLength`.                    |
 
 A model binds one API per kind with `apis`. A binding is valid when the API exists, is of that kind, and is in a family the model's connection offers; a `chat` binding also needs an API with a built-in implementation. A model without `apis` on a connection with one family binds that family's default chat API. A discovery rule binds the APIs of the models it finds, and `idPrefix` sets the first part of their ids, so ids stay the same when two connections become one.
 
+The bundled descriptor `compatible/rerank@1` (kind `rerank`, family `openai`) sends `POST {base}/rerank` with `model`, `query` and `documents`, and reads `results[].index` and `results[].relevance_score`, the shape Cohere, Jina, vLLM and LiteLLM share.
+
+### What kind a discovered model is
+
+Each discovered model gets a kind, from the first of these that says one:
+
+1. The listing: a `kind` or `mode` on the `/models` entry (also `model_info.mode`, or a `type` genki knows), then the paths in `endpoints`. `chat`, `completion` and `responses` are `chat`, `embedding` is `embed`, `rerank` is `rerank`, `image_generation` is `generate-image`, `audio_transcription` is `transcribe` and `audio_speech` is `generate-speech`; any other mode is kept as the kind, such as `evaluation`. A path ending in `/chat/completions` or `/responses` is `chat`, `/embeddings` is `embed` and `/rerank` is `rerank`; other paths make the kind `unknown`.
+2. The rule: `models: { <deployment>: { kind: rerank } }` wins over the listing.
+3. The name: a part such as `image`, `dall`, `sora`, `realtime`, `live`, `transcribe`, `whisper`, `tts`, `embedding`, `rerank`, `reranker` or `moderation` gives the kind; a name with none of them is `chat`.
+
+A `chat` model binds the rule's `apis` and its capabilities. A model of another kind binds the rule's API for that kind (`apis: { rerank: compatible/rerank@1 }`), else the kind's default API, else the one API of that kind in the connection's families, and gets no capabilities. With none it binds nothing: it is listed with its kind and listed endpoints, offered for nothing, and needs an operator to bind an API or add a reviewed descriptor. It is never offered for chat. An operator binds a model by hand with `PATCH /operator/models/{id}`, and that binding wins over the next listing.
+
+A rule's `residency` is where the models it finds process data, `global` when left out. An operator's residency on one model still wins.
+
+```yaml
+discovery:
+  - source: openai-models
+    include: ['sigma2:*']
+    apis: { chat: openai/chat-completions@1 }
+    residency: norway
+    models:
+      sigma2:qwen-embedding: { embed: { dimensions: 1024 } }
+      sigma2:clef-flash: { kind: decide }
+```
+
 ## Embedding and rerank models
 
-Embedders and rerankers are models in the same catalogue, with a binding for `embed` or `rerank` and the kind's settings under the kind. They are changed like any model, without a deploy, and are not offered as chat models.
+Embedders and rerankers are models in the same catalogue, with a binding for `embed` or `rerank` and the kind's settings under the kind. They are changed like any model, without a deploy, and are not offered as chat models. The one rerank API is the bundled descriptor `compatible/rerank@1` (above), and a service that names no reranker runs with rerank off.
 
 ```yaml
 models:
   - id: foundry/text-embedding-3-small
     endpoint: foundry
     deployment: text-embedding-3-small
-    residency: global
+    residency: eu
     apis: { embed: openai/embeddings@1 }
     embed: { dimensions: 1536, maxBatch: 64 }
-  - id: colbert
-    endpoint: colbert
-    deployment: colbert
-    residency: norway
-    apis: { rerank: colbert/rerank@1 }
-    rerank: { onFailure: degrade }
 ```
 
-An embedding model must name `embed.dimensions`. A rerank engine that a plug-in registers without an API stays in the rerank catalogue; a model with the same id wins over it.
+An embedding model must name `embed.dimensions`. A discovered embedding model is served by the embedding port once its rule names its dimensions under `models.<deployment>.embed`, and a discovered reranker as soon as it binds an API; both can then be named by id like any other. A rerank engine without an API would stay in the rerank catalogue, and a model with the same id wins over it; with no such engine in genki, a rerank plug-in cannot be registered yet.
 
 ## Prices
 
@@ -126,7 +152,7 @@ Before ADR 0048 a connection named one `protocol` and a model listed `operations
 - models keep their ids, move to the new connection and get `apis` from their former protocol, `operations` and `options.api`;
 - processor records and model classifications follow;
 - the embedding catalogue's endpoints merge into the connection on the same resource (`foundry-embeddings` into `foundry`) and its models become embedding models with the same ids;
-- a reranker whose engine has an API (`colbert`) becomes a model with the same id;
+- a reranker whose engine has an API becomes a model with the same id;
 - a binding to `openai/embed@1` becomes `openai/embeddings@1`;
 - a seed connection whose rules name a former id with `idPrefix` takes over its models and processor records.
 
@@ -145,3 +171,7 @@ Output text becomes `content`; function calls become port tool calls using `call
 Streaming emits `response.output_text.delta` as text chunks. Tool items and argument deltas are assembled by output index; done events replace partial values. Terminal completed or incomplete events supply final usage and status. Failed, error or truncated streams fail without a successful done chunk. Tool and reasoning events stay internal because the port exposes only text deltas and a final result.
 
 The provider runs the same port contract suite for both APIs, plus fake HTTP tests for the mappings and learned recovery. Wire details follow the [official Responses migration guide](https://developers.openai.com/api/docs/guides/migrate-to-responses) and [streaming event reference](https://developers.openai.com/api/reference/resources/responses/streaming-events).
+
+## How a call ended
+
+A chat result carries `finishReason`, and `stopDetail.category` when the provider names why it refused. Anthropic's `stop_reason: "refusal"` becomes `content_filter`, and its `stop_details.category` (such as `reasoning_extraction`) becomes `stopDetail.category`, in `chat` and in the stream's `message_delta`; the explanation text is not kept. The gate puts both on the `kernel.usage` event of each chat call through it, in a run or outside one, as `finishReason` and `refusalCategory`, and the run view shows them as the «Stopp» row of the model step. Usage a strategy charges itself (`budget.charge`, such as the builder assistant) carries neither.

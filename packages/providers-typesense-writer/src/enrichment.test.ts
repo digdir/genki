@@ -3,7 +3,6 @@ import type { DatasetConfig } from '@genai/port-knowledge';
 import { typesenseDatasetOptions } from '@genai/providers-typesense';
 import { typesenseIndexWriter } from './adapter.js';
 import { questionsFilter } from './enrichment.js';
-import { SharedClusterRefused } from './writer.js';
 
 interface Seen {
   method: string;
@@ -47,10 +46,9 @@ const dataset = (embedPhrases = true): DatasetConfig =>
 const credential = { kind: 'api-key' as const, key: async () => 'local-key' };
 
 const connect = (fetch: typeof globalThis.fetch, baseURL = 'http://localhost:8108') =>
-  typesenseIndexWriter({ fetch, sharedClusterUrls: ['search.shared.example'] }).connect(
-    { engine: 'typesense', baseURL, credential } as never,
-    { signal: new AbortController().signal },
-  ) as unknown as {
+  typesenseIndexWriter({ fetch }).connect({ engine: 'typesense', baseURL, credential } as never, {
+    signal: new AbortController().signal,
+  }) as unknown as {
     enrichment: {
       replaceQuestions(d: DatasetConfig, rows: unknown[], chunkIds: string[]): Promise<number>;
       revertQuestions(d: DatasetConfig, chunkId: string, promptHash?: string): Promise<number>;
@@ -130,10 +128,5 @@ describe('typesense enrichment store', () => {
 
     const missing = fakeFetch(() => ({ status: 404 }));
     expect(await connect(missing.fetch).enrichment.revertQuestions(dataset(), 'c1')).toBe(0);
-  });
-
-  it('never writes enrichment to the shared search cluster', () => {
-    const { fetch } = fakeFetch(() => ({ status: 200 }));
-    expect(() => connect(fetch, 'https://search.shared.example')).toThrow(SharedClusterRefused);
   });
 });

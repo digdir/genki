@@ -221,7 +221,7 @@ export const BatchWizard = ({
           tenant,
           service.current,
           { dataset, filters, sample: false },
-          'Telte dokumenter for samlet jobb',
+          'Telte dokumenter for massekjøring',
         )
         .then((result) => {
           if (ask === asked.current) setPick({ state: 'ready', estimate: result });
@@ -261,8 +261,8 @@ export const BatchWizard = ({
           ...(sample ? {} : { sample: false }),
         },
         sample
-          ? 'Målte kostnad for samlet jobb med prøvekjøring'
-          : 'Beregnet kostnad for samlet jobb',
+          ? 'Målte kostnad for massekjøring med prøvekjøring'
+          : 'Beregnet kostnad for massekjøring',
       );
       setEstimate(result);
       setCap(suggestedCap(result));
@@ -290,8 +290,8 @@ export const BatchWizard = ({
           ...(jobName.trim() ? { name: jobName.trim() } : {}),
         },
         estimate.priced
-          ? `Startet samlet jobb over ${estimate.items} dokumenter`
-          : `Startet samlet jobb over ${estimate.items} dokumenter uten pris: ${unpricedWhy.trim()}`,
+          ? `Startet massekjøring over ${estimate.items} dokumenter`
+          : `Startet massekjøring over ${estimate.items} dokumenter uten pris: ${unpricedWhy.trim()}`,
       );
       onStarted(run.id);
     } catch (e) {

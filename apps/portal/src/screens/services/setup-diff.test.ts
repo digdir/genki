@@ -70,6 +70,32 @@ describe('draft changes against the published version', () => {
   });
 });
 
+describe('the risk confirmation in the changes', () => {
+  const confirmed = (riskClass: string, reasons: string[], at: string) =>
+    edit({
+      riskClass,
+      riskConfirmation: { riskClass, reasons, by: `test:${at}`, at },
+    });
+
+  it('finds no change when only who confirmed the risk and when differ', () => {
+    expect(
+      draftChanges(
+        confirmed('limited', ['Svarer ansatte'], '2026-11-01T10:00:00Z'),
+        confirmed('limited', ['Svarer ansatte'], '2026-11-21T10:00:00Z'),
+      ),
+    ).toEqual([]);
+  });
+
+  it('finds a change when the reasons for the risk class change', () => {
+    expect(
+      draftChanges(
+        confirmed('limited', ['Svarer ansatte'], '2026-11-01T10:00:00Z'),
+        confirmed('limited', ['Svarer ansatte', 'Leser saker'], '2026-11-21T10:00:00Z'),
+      ),
+    ).toEqual([{ area: 'risk', topic: 'riskConfirmation', kind: 'changed' }]);
+  });
+});
+
 describe('sentence diff of the instructions', () => {
   it('marks only the sentences that were added or removed', () => {
     expect(sentenceDiff('Svar kort. Vis kilder.', 'Svar kort. Bruk bokmål. Vis kilder.')).toEqual([

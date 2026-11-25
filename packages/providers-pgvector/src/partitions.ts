@@ -109,6 +109,32 @@ const recordMigrations: string[] = [
   `alter table src_conversions add column if not exists failure text`,
   // Files a converter reads get stored conversions; HTML and plain text are read by the index job.
   `alter table src_files add column if not exists converts boolean not null default false`,
+  // Page count and blank end per conversion, so short files need no pages (issue 749).
+  `alter table src_conversions add column if not exists page_count integer`,
+  `alter table src_conversions add column if not exists blank_end integer`,
+  // A conversion's number, which its units and chunks name (ADR 0055, "Units and storage"). A
+  // nullable column, then its sequence as the default, so the seeded table is not rewritten under
+  // the lock; rows stored before keep no number. The unique index is built in this transaction.
+  `alter table src_conversions add column if not exists id bigint`,
+  `create sequence if not exists src_conversions_id_seq owned by src_conversions.id`,
+  `alter table src_conversions alter column id set default nextval('src_conversions_id_seq')`,
+  `create unique index if not exists src_conversions_id on src_conversions (id)`,
+  // A parts conversion's parts, one row per unit: a page of a PDF.
+  `create table if not exists src_conversion_units (
+     conversion bigint not null references src_conversions (id) on delete cascade,
+     unit integer not null,
+     kind text not null,
+     label text,
+     width real,
+     height real,
+     text_start integer,
+     text_end integer,
+     unit_to integer not null,
+     seq_from integer not null,
+     seq_to integer not null,
+     parts jsonb not null,
+     primary key (conversion, unit)
+   )`,
 ];
 
 const migrations: string[] = [
@@ -182,13 +208,44 @@ const migrations: string[] = [
   `grant select, insert, update, delete on kn_docs, kn_chunks, kn_phrases to ${knowledgeRoles.writer}`,
   `grant select on kn_generations to ${knowledgeRoles.writer}`,
   `grant update (recipe, data_version) on kn_generations to ${knowledgeRoles.writer}`,
-  `grant select, insert, update, delete on src_changes, src_documents, src_files, src_tombstones, kn_applied, src_conversions, src_conversion_waits, src_conversion_keys to ${knowledgeRoles.writer}`,
-  `grant usage, select on sequence src_documents_number_seq to ${knowledgeRoles.writer}`,
+  `grant select, insert, update, delete on src_changes, src_documents, src_files, src_tombstones, kn_applied, src_conversions, src_conversion_waits, src_conversion_keys, src_conversion_units to ${knowledgeRoles.writer}`,
+  `grant usage, select on sequence src_documents_number_seq, src_conversions_id_seq to ${knowledgeRoles.writer}`,
   // Functions are executable by PUBLIC when created; the reader reaches data only through the read functions.
   `revoke execute on function kn_int(jsonb), kn_text(jsonb) from public`,
   `grant execute on function kn_int(jsonb), kn_text(jsonb) to ${knowledgeRoles.writer}`,
   ...readFunctionMigrations(knowledgeRoles.reader),
 ];
+
+const relationExists = `select to_regclass($1) is not null as applied`;
+const columnExists = `select exists (select 1 from pg_attribute
+   where attrelid = to_regclass($1) and attname = $2 and not attisdropped) as applied`;
+const sequenceDefault = `select exists (select 1 from pg_attrdef d
+   join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+   where d.adrelid = to_regclass($1) and a.attname = $2
+     -- The default's dependency on its sequence: pg_get_expr would lock the table to print it.
+     and exists (select 1 from pg_depend p
+       where p.classid = 'pg_attrdef'::regclass and p.objid = d.oid
+         and p.refobjid = to_regclass($3))) as applied`;
+
+/** Catalog checks for steps already applied, skipped since their DDL locks before it looks (ADR 0055). */
+const appliedChecks: [RegExp, string][] = [
+  [/^create table if not exists (\w+)/, relationExists],
+  [/^create (?:unique )?index if not exists (\w+)/, relationExists],
+  [/^create sequence if not exists (\w+)/, relationExists],
+  [/^alter table (\w+) add column if not exists (\w+)/, columnExists],
+  [/^alter table (\w+) alter column (\w+) set default nextval\('(\w+)'\)$/, sequenceDefault],
+];
+
+/** True when the step's effect is already in the catalog; false for steps that run every time. */
+const applied = async (client: PoolClient, sql: string) => {
+  for (const [pattern, check] of appliedChecks) {
+    const match = pattern.exec(sql);
+    if (!match) continue;
+    const { rows } = await client.query<{ applied: boolean }>(check, match.slice(1));
+    return rows[0]?.applied === true;
+  }
+  return false;
+};
 
 /** Runs at a worker's first knowledge use; like partition DDL it gives up after `lockTimeoutMs` rather than queue writes behind it. */
 export const migrateKnowledgeServer = async (owner: Pool, options: PartitionOptions = {}) => {
@@ -199,7 +256,7 @@ export const migrateKnowledgeServer = async (owner: Pool, options: PartitionOpti
       `${options.lockTimeoutMs ?? defaultLockTimeoutMs}ms`,
     ]);
     await client.query(`select pg_advisory_xact_lock(hashtext('genai-knowledge-server-migrate'))`);
-    for (const sql of migrations) await client.query(sql);
+    for (const sql of migrations) if (!(await applied(client, sql))) await client.query(sql);
     await client.query('commit');
   } catch (error) {
     await client.query('rollback').catch(() => undefined);
@@ -280,6 +337,28 @@ export const generationOf = async (db: Pool | PoolClient, generation: string) =>
       [generation],
     )
   ).rows[0];
+
+/**
+ * Adds to a generation table the nullable columns its parent gained after it was made `like` it,
+ * such as the chunk columns of parts (issue 635), so it can attach: a partition needs every column
+ * of its parent.
+ */
+const addParentColumns = async (client: PoolClient, parent: string, child: string) => {
+  const { rows } = await client.query<{ name: string; type: string }>(
+    `select quote_ident(p.attname) as name, format_type(p.atttypid, p.atttypmod) as type
+       from pg_attribute p
+      where p.attrelid = to_regclass($1) and p.attnum > 0 and not p.attisdropped
+        and not exists (select 1 from pg_attribute c
+                         where c.attrelid = to_regclass($2) and c.attname = p.attname
+                           and not c.attisdropped)
+      order by p.attnum`,
+    [parent, child],
+  );
+  if (rows.length > 0)
+    await client.query(
+      `alter table ${child} ${rows.map((r) => `add column ${r.name} ${r.type}`).join(', ')}`,
+    );
+};
 
 const attached = async (client: PoolClient, table: string) =>
   Boolean(
@@ -464,10 +543,12 @@ export const attachGeneration = (
     for (const sql of build) await client.query(sql);
     await syncTableFilters(client, dataset, docs, false);
     for (const table of knowledgeTables)
-      if (!(await attached(client, partitionOf(table, generation))))
+      if (!(await attached(client, partitionOf(table, generation)))) {
+        await addParentColumns(client, table, partitionOf(table, generation));
         await client.query(
           `alter table ${table} attach partition ${partitionOf(table, generation)} for values in (${literal(generation)})`,
         );
+      }
     await client.query(`update kn_generations set state = 'attached' where generation = $1`, [
       generation,
     ]);
@@ -495,3 +576,82 @@ export const dropGeneration = (
     await client.query(`delete from kn_applied where generation = $1`, [generation]);
     await client.query(`delete from kn_generations where generation = $1`, [generation]);
   });
+
+/** The columns a chunk made from parts fills (ADR 0055, "Chunks and reads"); a page chunk leaves them null. */
+export const chunkPartsColumns = [
+  ['conversion', 'bigint'],
+  ['seq_from', 'integer'],
+  ['seq_to', 'integer'],
+  ['text_start', 'integer'],
+  ['text_end', 'integer'],
+] as const;
+
+/** How long the chunk columns step waits for its lock: searches queue behind it while it waits. */
+const chunkColumnsLockTimeoutMs = 1000;
+
+/**
+ * Adds the chunk columns of parts to `kn_chunks` and to every generation table not yet attached,
+ * which was made `like kn_chunks` before they were there (issue 635). It is not a step of the
+ * server's migration, which every knowledge use waits for: adding a column to the partitioned
+ * parent locks every attached partition, which searches read all day, so only a parts index job
+ * waits for it. One statement a table, so the lock is taken once; nullable columns with no default
+ * change only the catalog. Tables that have the columns take no lock, so it is cheap to run before
+ * every parts write: a generation prepared while it ran gets its columns from the next run. False
+ * when a lock was not had in `lockTimeoutMs`, 1 s by default, or another step holds its turn;
+ * nothing is changed then.
+ */
+export const addChunkColumns = async (
+  owner: Pool,
+  options: PartitionOptions = {},
+): Promise<boolean> => {
+  const client = await owner.connect();
+  try {
+    await client.query('begin');
+    await client.query(`select set_config('lock_timeout', $1, true)`, [
+      `${options.lockTimeoutMs ?? chunkColumnsLockTimeoutMs}ms`,
+    ]);
+    const { rows: standalone } = await client.query<{ generation: string }>(
+      `select generation from kn_generations where state = 'standalone' order by generation`,
+    );
+    // The parent last: its lock holds every attached partition, which searches read, so it is
+    // taken only once every table being written has its columns.
+    const tables = [...standalone.map((g) => partitionOf('kn_chunks', g.generation)), 'kn_chunks'];
+    const changes: { table: string; missing: (typeof chunkPartsColumns)[number][] }[] = [];
+    for (const table of tables) {
+      const { rows } = await client.query<{ name: string }>(
+        `select attname as name from pg_attribute
+          where attrelid = to_regclass($1) and attnum > 0 and not attisdropped`,
+        [table],
+      );
+      if (rows.length === 0) continue;
+      const has = new Set(rows.map((r) => r.name));
+      const missing = chunkPartsColumns.filter(([name]) => !has.has(name));
+      if (missing.length > 0) changes.push({ table, missing });
+    }
+    // One step at a time waits on a table lock, so searches queue behind one ALTER at most; another
+    // step answers false at once and its job gives way.
+    if (changes.length > 0) {
+      const { rows } = await client.query<{ ok: boolean }>(
+        `select pg_try_advisory_xact_lock(hashtext('genai-chunk-columns')) as ok`,
+      );
+      if (!rows[0]?.ok) {
+        await client.query('rollback');
+        return false;
+      }
+    }
+    for (const { table, missing } of changes)
+      await client.query(
+        `alter table ${table} ${missing
+          .map(([name, type]) => `add column if not exists ${name} ${type}`)
+          .join(', ')}`,
+      );
+    await client.query('commit');
+    return true;
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined);
+    if ((error as { code?: string }).code === '55P03') return false;
+    throw error;
+  } finally {
+    client.release();
+  }
+};

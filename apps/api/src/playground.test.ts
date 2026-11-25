@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Principal } from '@genai/contracts';
 import {
@@ -23,6 +23,7 @@ import { platformScope } from './config-store.js';
 import { localeMiddleware } from './i18n/index.js';
 import type { TaskIndex } from './extensions.js';
 import type { PlaygroundOptions, PlaygroundRunResponse } from './playground.js';
+import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -121,7 +122,9 @@ const service = (id: string, instructions: string) => ({
 const knowledgeWith = (
   datasets: (list: Record<string, unknown>[]) => Record<string, unknown>[],
 ) => {
-  const catalog = yaml('knowledge.yaml') as { datasets: Record<string, unknown>[] };
+  const catalog = seedOnTypesense(yaml('knowledge.yaml')) as {
+    datasets: Record<string, unknown>[];
+  };
   return { ...catalog, datasets: datasets(catalog.datasets) };
 };
 
@@ -169,7 +172,6 @@ const boot = async ({
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
     TYPESENSE_URL: search.url,
-    COLBERT_API_URL: search.url,
   };
   const settings = new SettingsRegistry(platformSettings);
   const blobs = new InMemoryBlobStore();
@@ -181,7 +183,7 @@ const boot = async ({
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     prices: { [modelId]: { inputPerThousand: 1, outputPerThousand: 2 } },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
     definitions: store,
     settings,
     ...(taskIndex ? { taskIndex } : {}),
@@ -236,6 +238,40 @@ const own = (instructions: string) => ({
   instructions,
   output: 'text',
 });
+
+// The run answers with excerpts c7 and c8 of two documents, and the answer part cites as given.
+const citing = (
+  platform: Awaited<ReturnType<typeof boot>>['platform'],
+  meta: {
+    citations: { index: number; chunkId: string; document?: string; quote?: unknown }[];
+    citeBy?: string;
+  },
+) => {
+  const runDraft = platform.drafts.run.bind(platform.drafts);
+  const sources = [
+    { chunkId: 'c7', title: 'Årsrapport', document: 'd1', text: 'Ventetid.' },
+    { chunkId: 'c8', title: 'Tildelingsbrev', document: 'd2', text: 'Mål.' },
+  ];
+  vi.spyOn(platform.drafts, 'run').mockImplementationOnce(async (input) => {
+    const outcome = await runDraft(input);
+    if (!outcome.ok) return outcome;
+    return {
+      ...outcome,
+      sources,
+      parts: [
+        {
+          mime: 'text/plain',
+          body: { kind: 'text', text: 'Ventetiden gikk ned [1], målet står [2].' },
+          meta,
+        },
+        {
+          mime: 'application/vnd.genai.sources+json',
+          body: { kind: 'json', json: { sources } },
+        },
+      ],
+    };
+  });
+};
 
 describe('the playground', () => {
   it('a playground run with a not-allowed model is refused with the rule and owner', async () => {
@@ -309,6 +345,59 @@ describe('the playground', () => {
     });
     expect(body.runId).not.toBe(body.compare?.runId);
     expect(typeof body.timeMs).toBe('number');
+  });
+
+  it('gives the excerpt each footnote cites when the run cites excerpts, as chat does', async () => {
+    const { platform, run } = await boot();
+    citing(platform, {
+      citeBy: 'excerpt',
+      citations: [
+        { index: 2, chunkId: 'c8', document: 'd2' },
+        { index: 1, chunkId: 'c7' },
+      ],
+    });
+    const { body } = await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } });
+    expect(body.markers).toEqual([
+      { marker: '1', chunk_id: 'c7', document: 'd1' },
+      { marker: '2', chunk_id: 'c8', document: 'd2' },
+    ]);
+    expect(body.citations).toEqual([
+      { index: 2, chunkId: 'c8' },
+      { index: 1, chunkId: 'c7' },
+    ]);
+    expect(body).not.toHaveProperty('citeBy');
+  });
+
+  it('gives the words a footnote rests on with its marker, as chat does', async () => {
+    const { platform, run } = await boot();
+    const quote = { type: 'TextQuoteSelector', exact: 'Ventetid.', prefix: '', suffix: '' };
+    citing(platform, {
+      citeBy: 'excerpt',
+      citations: [{ index: 1, chunkId: 'c7', document: 'd1', quote }],
+    });
+    const { body } = await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } });
+    expect(body.markers).toEqual([{ marker: '1', chunk_id: 'c7', document: 'd1', quote }]);
+  });
+
+  it('pairs no footnote with an excerpt that is not among the answer’s sources', async () => {
+    const { platform, run } = await boot();
+    citing(platform, {
+      citeBy: 'excerpt',
+      citations: [
+        { index: 1, chunkId: 'c7', document: 'd1' },
+        { index: 3, chunkId: 'ukjent', document: 'd9' },
+      ],
+    });
+    const { body } = await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } });
+    expect(body.markers).toEqual([{ marker: '1', chunk_id: 'c7', document: 'd1' }]);
+  });
+
+  it('gives no footnote markers when the run cites documents, since [N] then names a document', async () => {
+    const { platform, run } = await boot();
+    citing(platform, { citations: [{ index: 1, chunkId: 'c7' }] });
+    const { body } = await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } });
+    expect(body.citations).toEqual([{ index: 1, chunkId: 'c7' }]);
+    expect(body).not.toHaveProperty('markers');
   });
 
   it('a failed model call answers a 502 problem, stores nothing and is not counted', async () => {
@@ -958,6 +1047,14 @@ describe('the playground run stream', () => {
     return { status: res.status, type, frames: frames(await res.text()) };
   };
 
+  it('gives the excerpt each footnote cites in the result it streams, as the run does', async () => {
+    const app = await boot();
+    citing(app.platform, { citeBy: 'excerpt', citations: [{ index: 1, chunkId: 'c7' }] });
+    const res = await stream(app, { setup: own('Svar på bokmål.'), input: { text: 'Hei' } });
+    const result = res.frames.find((f) => f.event === 'result')?.data.result;
+    expect(result).toMatchObject({ markers: [{ marker: '1', chunk_id: 'c7', document: 'd1' }] });
+  });
+
   it('streams status, steps, the answer, usage stats, the result and the quota', async () => {
     const app = await boot();
 
@@ -1220,7 +1317,9 @@ describe('playground changes on top of a service version', () => {
 
     expect(res.status).toBe(422);
     expect(res.body).toMatchObject({
-      errors: [{ path: 'setup.instructions', message: expect.stringContaining('Fast stegflyt') }],
+      errors: [
+        { path: 'setup.instructions', message: expect.stringContaining('Fast arbeidsflyt') },
+      ],
     });
     expect(model.seen.length).toBe(before);
   });
@@ -1308,7 +1407,7 @@ describe('playground changes on top of a service version', () => {
     expect(strategyOf('flyt')).toEqual({
       id: 'step-flow',
       version: 1,
-      title: { nb: 'Fast stegflyt', en: 'Fixed step flow' },
+      title: { nb: 'Fast arbeidsflyt', en: 'Fixed workflow' },
       takesInstructions: false,
       flow: {
         ref: 'les-dokumentet@1',

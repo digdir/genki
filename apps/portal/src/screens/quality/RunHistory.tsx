@@ -562,7 +562,8 @@ export const RunHistory = ({
     (signal) => api.quality.draft(tenant, serviceId, signal).then(Boolean),
     [api, tenant, serviceId],
   );
-  const noDraft = draft.status === 'ready' && !draft.data;
+  const [draftGone, setDraftGone] = useState(false);
+  const noDraft = draftGone || (draft.status === 'ready' && !draft.data);
   const version = noDraft ? 'published' : picked;
   const versions = noDraft ? (['published'] as const) : (['draft', 'published'] as const);
   const [models] = useAsync((signal) => api.listModels({ all: true }, signal), [api]);
@@ -626,14 +627,17 @@ export const RunHistory = ({
       return;
     setConfirming(undefined);
     setStarting(true);
-    const names = { name: testSet.name, version: versionText(t, version).toLowerCase() };
     try {
+      const gone = version === 'draft' && !(await api.quality.draft(tenant, serviceId));
+      if (gone) setDraftGone(true);
+      const runOn = gone ? 'published' : version;
+      const names = { name: testSet.name, version: versionText(t, runOn).toLowerCase() };
       const started = await api.quality.startRun(
         tenant,
         serviceId,
         {
           testSet: testSet.id,
-          version,
+          version: runOn,
           ...(choice === 'marked' ? { cases: marked } : {}),
           ...(trace && sink ? { trace: true } : {}),
         },

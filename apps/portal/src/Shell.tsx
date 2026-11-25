@@ -31,6 +31,7 @@ import { Icon, type IconComponent } from './components/Icon';
 import { formatOrgNumber, hasOwnName, organisationName, profileFor } from './data/organisations';
 import { restoringScroll, useEscape, useNarrow } from './hooks';
 import { translator, useT, type PlainKey, type T } from './i18n';
+import { needsFollowUp } from './screens/datasets/live-model';
 import { Unregistered } from './screens/Unregistered';
 import type { Organisation, PortalRight, Session } from './types';
 
@@ -158,9 +159,22 @@ const legacyRights: Record<string, readonly PortalRight[]> = {
   write: ['manage-services', 'manage-datasets', 'register-building-blocks', 'view-usage'],
 };
 
+// The action names in the Altinn resource; the portal's own labels may differ.
+const altinnActionNames: Record<PortalRight, string> = {
+  'use-services': 'Bruke tjenester',
+  'manage-services': 'Administrere tjenester',
+  'manage-datasets': 'Administrere datasett',
+  'register-building-blocks': 'Registrere byggeklosser',
+  'view-usage': 'Se forbruk og kostnad',
+};
+
 const toRight = (action: string) =>
   allRights.find(
-    (r) => r === action || rightLabel(nbT, r) === action || rightLabel(enT, r) === action,
+    (r) =>
+      r === action ||
+      altinnActionNames[r] === action ||
+      rightLabel(nbT, r) === action ||
+      rightLabel(enT, r) === action,
   );
 
 export const rightsFor = (actions: readonly string[], t: T = nbT) => {
@@ -249,6 +263,7 @@ interface ShellProps {
   registeredElsewhere?: string[];
   api: ApiClient;
   onRights?: (rights: readonly PortalRight[]) => void;
+  onFollowUp?: (count: number) => void;
   children: ReactNode;
 }
 
@@ -348,28 +363,38 @@ export const Shell = ({
   registeredElsewhere = [],
   api,
   onRights,
+  onFollowUp,
   children,
 }: ShellProps) => {
   const t = useT();
   const narrow = useNarrow();
-  const [open, setOpen] = useState<'user' | 'menu' | undefined>();
+  const [open, setOpen] = useState<'user' | undefined>();
+  const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readCollapsed);
-  const closeAll = useCallback(() => setOpen(undefined), []);
+  const closeAll = useCallback(() => {
+    setOpen(undefined);
+    setMenuOpen(false);
+  }, []);
   const userButton = useRef<HTMLButtonElement>(null);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const openNow = useRef(open);
   openNow.current = open;
   const closeToButton = useCallback(() => {
-    const was = openNow.current;
-    setOpen(undefined);
-    if (was === 'user') userButton.current?.focus();
+    if (openNow.current === 'user') {
+      setOpen(undefined);
+      userButton.current?.focus();
+      return;
+    }
+    setMenuOpen(false);
+    menuButton.current?.focus();
   }, []);
   const toggleCollapsed = () =>
     setCollapsed((c) => {
       storeCollapsed(!c);
       return !c;
     });
-  useEscape(open !== undefined, closeToButton);
+  useEscape(open !== undefined || menuOpen, closeToButton);
   useEffect(() => {
     if (open === 'user')
       userMenuRef.current
@@ -377,7 +402,7 @@ export const Shell = ({
         ?.focus({ preventScroll: true });
   }, [open]);
   useEffect(() => {
-    if (!narrow) setOpen((o) => (o === 'menu' ? undefined : o));
+    if (!narrow) setMenuOpen(false);
   }, [narrow]);
   const shownPath = useRef(path);
   useEffect(() => {
@@ -386,6 +411,16 @@ export const Shell = ({
     closeAll();
   }, [path, closeAll]);
   const area = path.split('/')[1] ?? '';
+  const tenant = organisation.orgNumber;
+  useEffect(() => {
+    if (!onFollowUp || unregistered) return;
+    const controller = new AbortController();
+    api.datasets
+      .list(tenant, controller.signal)
+      .then((views) => onFollowUp(views.filter(needsFollowUp).length))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [api, tenant, unregistered, onFollowUp]);
   const shownArea = useRef(area);
   useEffect(() => {
     if (shownArea.current === area) return;
@@ -397,7 +432,7 @@ export const Shell = ({
     if (open !== 'user') return;
     const onPointer = (event: MouseEvent) => {
       if (!(event.target instanceof Element) || !event.target.closest('.popover-anchor'))
-        closeAll();
+        setOpen(undefined);
     };
     document.addEventListener('mousedown', onPointer);
     window.addEventListener('resize', closeAll);
@@ -419,16 +454,16 @@ export const Shell = ({
     unregistered && !readableUnregistered.some((p) => path === p || path.startsWith(`${p}/`));
   const orgMeta = t(unregistered ? 'shell.orgMetaUnregistered' : 'shell.orgMeta', { orgNr });
   const [above, setAbove] = useState<CSSProperties>();
-  // In the sidebar a menu opens above its button, placed from where the button is now.
-  const toggle = (which: 'user' | 'menu', from?: HTMLElement) => {
-    if (from) {
-      const box = from.getBoundingClientRect();
-      setAbove({ left: box.left, bottom: window.innerHeight - box.top + 8 });
-    }
-    setOpen((o) => (o === which ? undefined : which));
+  // In the sidebar and the phone menu the user menu opens above its button, placed from where the button is now.
+  const toggleUser = (from: HTMLElement) => {
+    const box = from.getBoundingClientRect();
+    setAbove({ left: box.left, bottom: window.innerHeight - box.top + 8 });
+    setOpen((o) => (o === 'user' ? undefined : 'user'));
   };
-  // The sidebar holds the brand and the user menu; without one (narrow, unregistered) they stay in the header.
+  // The sidebar or the phone menu holds the user menu; an unregistered organisation keeps it in the header.
   const userInSidebar = !narrow && !unregistered;
+  const userInMenu = narrow && !unregistered;
+  const userBelow = userInSidebar || userInMenu;
   const brand = (
     <a className="brand" href="#/overview">
       <img src="/emblem-felleslosning.svg" alt="" width={32} height={32} />
@@ -445,7 +480,7 @@ export const Shell = ({
     </a>
   );
   const userMenu = (
-    <div className={userInSidebar ? 'popover-anchor sidebar-user' : 'popover-anchor'}>
+    <div className={userBelow ? 'popover-anchor sidebar-user' : 'popover-anchor'}>
       <Button
         ref={userButton}
         variant="tertiary"
@@ -455,20 +490,20 @@ export const Shell = ({
         aria-controls={open === 'user' ? 'user-menu' : undefined}
         aria-label={t('shell.userMenuButton', { name: session.name, organisation: orgName })}
         className="user-button"
-        onClick={(e) => toggle('user', e.currentTarget)}
+        onClick={(e) => toggleUser(e.currentTarget)}
         onKeyDown={(e) => {
           if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
           e.preventDefault();
-          if (open !== 'user') toggle('user', e.currentTarget);
+          if (open !== 'user') toggleUser(e.currentTarget);
         }}
       >
         <Avatar data-size="sm" aria-hidden="true">
           {initials(session.name)}
         </Avatar>
-        {narrow || (userInSidebar && collapsed) ? null : (
+        {(narrow && !userInMenu) || (userInSidebar && collapsed) ? null : (
           <span className="user-button-text">
             <span className="user-button-name">{session.name}</span>
-            {userInSidebar ? <span className="user-button-org">{orgName}</span> : null}
+            {userBelow ? <span className="user-button-org">{orgName}</span> : null}
           </span>
         )}
       </Button>
@@ -479,7 +514,7 @@ export const Shell = ({
           role="menu"
           aria-label={t('shell.userMenu')}
           className="popover user-menu"
-          style={userInSidebar ? above : undefined}
+          style={userBelow ? above : undefined}
           onKeyDown={(e) => {
             if (e.key === 'Tab') closeAll();
             else moveFocus(e);
@@ -575,26 +610,31 @@ export const Shell = ({
       {userInSidebar ? null : (
         <header className="header">
           <div className="header-bar">
-            {narrow && !unregistered ? (
+            {brand}
+            <div className="header-spacer" />
+            {unregistered ? (
+              <>
+                {orgStatic}
+                {userMenu}
+              </>
+            ) : (
               <Button
-                variant="tertiary"
+                ref={menuButton}
+                variant="secondary"
                 data-size="sm"
-                aria-expanded={open === 'menu'}
+                aria-expanded={menuOpen}
                 aria-controls="hovedmeny"
-                onClick={() => toggle('menu')}
+                onClick={() => setMenuOpen((o) => !o)}
               >
                 <Icon icon={MenuHamburgerIcon} />
                 <span>{t('shell.menu')}</span>
               </Button>
-            ) : null}
-            {brand}
-            <div className="header-spacer" />
-            {orgStatic}
-            {userMenu}
+            )}
           </div>
-          {narrow && open === 'menu' && !unregistered ? (
+          {menuOpen && userInMenu ? (
             <nav id="hovedmeny" aria-label={t('shell.mainMenu')} className="narrow-nav">
               <NavLinks path={path} badges={badges} onNavigate={closeAll} />
+              <div className="narrow-account">{userMenu}</div>
             </nav>
           ) : null}
         </header>

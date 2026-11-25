@@ -45,6 +45,8 @@ interface Call {
   body: unknown;
 }
 
+const draftChecks = /\/services\/utkast-[0-9a-f]{8}\/draft\/checks$/;
+
 const platform = (
   options: {
     unmasked?: UnmaskedInputUse[];
@@ -58,6 +60,9 @@ const platform = (
     const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : undefined;
     const method = init?.method ?? 'GET';
     calls.push({ url, method, body });
+    // The draft is ready as far as the platform's draft checks go; only unmasked input is left.
+    if (method === 'GET' && draftChecks.test(url))
+      return Response.json({ revision: 1, ready: true, problems: [] });
     if (url.endsWith('/definitions/validate'))
       return Response.json({
         valid: true,
@@ -72,66 +77,68 @@ const platform = (
   return { calls, fetch };
 };
 
+const leftHeading = 'Dette gjenstår før du kan publisere';
+
+/** Opens the first publish page of a new service, with the risk level confirmed and a reason. */
 const openPublish = async (fetch: typeof globalThis.fetch) => {
   const auth = mockAnsattporten({ name: 'Ingrid Berg', organisations: exampleOrganisations });
   await auth.login();
   window.location.hash = '#/services/new';
   render(<App auth={auth} fetch={fetch} live />);
-  await screen.findByRole('heading', { name: 'Lag med KI' });
-  fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
-    target: { value: 'Hent ut felter fra innsendte filer' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
+  await screen.findByRole('heading', { level: 2, name: 'Grunnleggende' });
   fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-  const dialog = await screen.findByRole('dialog');
-  fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
+  await screen.findByRole('heading', { level: 1, name: /^Publiser / });
+  fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
+  fireEvent.change(screen.getByLabelText('Hva er endret, og hvorfor?'), {
     target: { value: 'Første versjon av tjenesten' },
   });
-  return dialog;
+  return screen.getByRole('main');
 };
 
 const published = (calls: Call[]) =>
   calls.filter((c) => c.method === 'POST' && c.url.endsWith('/api/definitions'));
 
-const publishButton = (dialog: HTMLElement) =>
-  within(dialog).getByRole('button', { name: 'Publiser' });
+const publishButton = (page: HTMLElement) => within(page).getByRole('button', { name: 'Publiser' });
 
-describe('unmasked input in the publish dialog', () => {
+const nothingLeft = (page: HTMLElement) =>
+  waitFor(() => expect(within(page).queryByText(leftHeading)).toBeNull());
+
+describe('unmasked input on the first publish page', () => {
   it('publish is refused without a reason for each unmasked type', async () => {
     const { calls, fetch } = platform({ unmasked: [textUse, imageUse] });
-    const dialog = await openPublish(fetch);
-    const text = await within(dialog).findByLabelText('Begrunnelse for text/plain');
+    const page = await openPublish(fetch);
+    const text = await within(page).findByLabelText('Begrunnelse for text/plain');
     expect(
-      within(dialog).getByText(
+      within(page).getByText(
         'Tekstfiler (text/plain) sendes umaskert i steget «Hent ut feltene» i oppskriften uttrekk@1.',
       ),
     ).toBeTruthy();
     fireEvent.change(text, { target: { value: 'Innsendte skjemaer må leses som de er' } });
-    fireEvent.change(within(dialog).getByLabelText('Begrunnelse for image/png'), {
+    fireEvent.change(within(page).getByLabelText('Begrunnelse for image/png'), {
       target: { value: 'kort' },
     });
-    expect(within(dialog).getByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
-    expect(within(dialog).getByText('1 av 2 mangler begrunnelse')).toBeTruthy();
+    expect(within(page).getByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
+    expect(
+      within(page).getByRole('link', { name: 'Begrunn innholdet som sendes umaskert' }),
+    ).toBeTruthy();
 
-    fireEvent.click(publishButton(dialog));
+    fireEvent.click(publishButton(page));
+    expect(within(page).getByText(/^Du kan ikke publisere ennå\./)).toBeTruthy();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(published(calls)).toEqual([]);
   });
 
   it('publish succeeds with a reason for each unmasked type and records them on the risk assessment', async () => {
     const { calls, fetch } = platform({ unmasked: [textUse, imageUse] });
-    const dialog = await openPublish(fetch);
-    fireEvent.change(await within(dialog).findByLabelText('Begrunnelse for text/plain'), {
+    const page = await openPublish(fetch);
+    fireEvent.change(await within(page).findByLabelText('Begrunnelse for text/plain'), {
       target: { value: 'Innsendte skjemaer må leses som de er' },
     });
-    fireEvent.change(within(dialog).getByLabelText('Begrunnelse for image/png'), {
+    fireEvent.change(within(page).getByLabelText('Begrunnelse for image/png'), {
       target: { value: 'Skannede vedlegg uten tekstlag' },
     });
-    await waitFor(() =>
-      expect(publishButton(dialog).getAttribute('aria-disabled')).not.toBe('true'),
-    );
-    fireEvent.click(publishButton(dialog));
+    await nothingLeft(page);
+    fireEvent.click(publishButton(page));
     await waitFor(() => expect(published(calls)).toHaveLength(1));
     const body = published(calls)[0]?.body as { definition: ServiceDefinition };
     expect(body.definition.spec.riskConfirmation?.unmaskedInput).toEqual([
@@ -143,13 +150,11 @@ describe('unmasked input in the publish dialog', () => {
 
   it('the unmasked input control does not show when nothing goes unmasked', async () => {
     const { calls, fetch } = platform();
-    const dialog = await openPublish(fetch);
+    const page = await openPublish(fetch);
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/validate'))).toBe(true));
-    await waitFor(() =>
-      expect(publishButton(dialog).getAttribute('aria-disabled')).not.toBe('true'),
-    );
-    expect(within(dialog).queryByText('Lyd, bilder og filer som sendes umaskert')).toBeNull();
-    expect(within(dialog).queryByText('Umaskede typer begrunnet')).toBeNull();
+    await nothingLeft(page);
+    expect(within(page).queryByText('Lyd, bilder og filer som sendes umaskert')).toBeNull();
+    expect(within(page).queryByText('Umaskede typer begrunnet')).toBeNull();
   });
 
   it('a refusal for unmasked input shows its message on the reason field and focuses it', async () => {
@@ -170,15 +175,13 @@ describe('unmasked input in the publish dialog', () => {
           { status: 422, headers: { 'content-type': 'application/problem+json' } },
         ),
     });
-    const dialog = await openPublish(fetch);
-    await waitFor(() =>
-      expect(publishButton(dialog).getAttribute('aria-disabled')).not.toBe('true'),
-    );
-    fireEvent.click(publishButton(dialog));
-    const field = await within(dialog).findByLabelText('Begrunnelse for text/plain');
+    const page = await openPublish(fetch);
+    await nothingLeft(page);
+    fireEvent.click(publishButton(page));
+    const field = await within(page).findByLabelText('Begrunnelse for text/plain');
     await waitFor(() => expect(document.activeElement).toBe(field));
     expect(
-      within(dialog).getAllByText(
+      within(page).getAllByText(
         'Tekstfiler (text/plain) kan ikke maskeres, og plattformen fant ingen begrunnelse for det.',
       ).length,
     ).toBeGreaterThan(0);

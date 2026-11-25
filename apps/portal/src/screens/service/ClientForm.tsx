@@ -14,6 +14,7 @@ import { useT, type T } from '../../i18n';
 import type { ClientChannel, ClientSpec, ClientView, WebhookEvent } from '../../types';
 import { channelKeys, channelOrder } from './snippets';
 import { reasonProblem } from '../../components/ReasonField';
+import { placeName } from './dev-format';
 
 export interface ClientDraft {
   id: string;
@@ -243,7 +244,7 @@ export const ClientForm = ({
           {choices.map((name) => (
             <Checkbox
               key={name}
-              label={name}
+              label={placeName(t, name)}
               checked={d.environments.includes(name)}
               onChange={() => set({ environments: toggle(d.environments, name) })}
             />

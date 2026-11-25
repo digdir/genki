@@ -25,6 +25,13 @@ export const modelOperations = {
   promote: 'Move to production',
   demote: 'Move back to test',
   promoteFor: 'Move {kind} to production',
+  deleteKind: 'Delete',
+  deleteKindFor: 'Delete {kind}',
+  deleteKindTitle: 'Delete the kind {kind}?',
+  deleteKindText:
+    'No API describes the kind, and it is not built in. It disappears from the list in this environment. If an API for the kind comes later, it starts in test.',
+  deleteKindFailed: 'We could not delete the kind.',
+  kindDeleted: 'The kind {kind} is deleted.',
   demoteFor: 'Move {kind} back to test',
   promoteTitle: 'Move {kind} to production',
   demoteTitle: 'Move {kind} back to test',

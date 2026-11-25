@@ -72,7 +72,7 @@ afterEach(() => {
   else Reflect.deleteProperty(navigator, 'clipboard');
 });
 
-describe('Fellestjenester: liste', () => {
+describe('Delte tjenester: liste', () => {
   it('looks up model prices among all models, so a model the policy holds back keeps its price', async () => {
     const urls: string[] = [];
     const base = mockFetch();
@@ -81,7 +81,7 @@ describe('Fellestjenester: liste', () => {
       return base(input, init);
     };
     await renderAt('#/shared-services', fetch);
-    await screen.findByRole('heading', { level: 1, name: 'Fellestjenester' });
+    await screen.findByRole('heading', { level: 1, name: 'Delte tjenester' });
     expect(urls.filter((u) => /\/models(\?|$)/.test(u))).toEqual(['/api/models?all=true']);
   });
 
@@ -93,7 +93,7 @@ describe('Fellestjenester: liste', () => {
       return base(input, init);
     };
     await renderAt('#/shared-services', fetch);
-    expect(await screen.findByRole('heading', { level: 1, name: 'Fellestjenester' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Delte tjenester' })).toBeTruthy();
     expect(urls.some((u) => u.endsWith('/shared-services'))).toBe(true);
     const cards = within(screen.getByRole('main'))
       .getAllByRole('heading', { level: 2 })
@@ -179,7 +179,7 @@ describe('Fellestjenester: liste', () => {
 
   it('ends the list by asking which shared services are needed, linked to the contact page', async () => {
     await renderAt('#/shared-services');
-    expect(await screen.findByText(/Flere fellestjenester kommer\./)).toBeTruthy();
+    expect(await screen.findByText(/Flere delte tjenester kommer\./)).toBeTruthy();
     expect(
       screen.getByRole('link', { name: 'Si fra hvilke dere trenger.' }).getAttribute('href'),
     ).toBe('#/contact');
@@ -195,7 +195,7 @@ describe('Fellestjenester: liste', () => {
   it('shows an error with retry when the catalogue cannot be loaded', async () => {
     await renderAt('#/shared-services', failingFetch(/shared-services/));
     expect(await screen.findByText('Kunne ikke hente dataene')).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 1, name: 'Fellestjenester' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Delte tjenester' })).toBeTruthy();
   });
 
   it('shows an empty state when no capabilities are available', async () => {
@@ -203,7 +203,7 @@ describe('Fellestjenester: liste', () => {
       '#/shared-services',
       mockFetch(undefined, undefined, undefined, undefined, { shared: [] }),
     );
-    expect(await screen.findByText('Ingen fellestjenester er tilgjengelige ennå')).toBeTruthy();
+    expect(await screen.findByText('Ingen delte tjenester er tilgjengelige ennå')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Si fra hva dere trenger' }).getAttribute('href')).toBe(
       '#/contact',
     );
@@ -222,6 +222,7 @@ describe('Fellestjenester: liste', () => {
             version: null,
             riskClass: null,
             residency: 'norway',
+            dataLocation: 'norway' as const,
             model: 'foundry-openai/gpt-4.1',
             exposure: [],
             variants: [],
@@ -236,7 +237,7 @@ describe('Fellestjenester: liste', () => {
   });
 });
 
-describe('Fellestjenester: detalj', () => {
+describe('Delte tjenester: detalj', () => {
   const withFacts = {
     tenant: '991825827',
     id: 'nynorsk',
@@ -245,6 +246,7 @@ describe('Fellestjenester: detalj', () => {
     version: 1,
     riskClass: null,
     residency: 'eu',
+    dataLocation: 'eu' as const,
     model: 'aivar/borealis-27b',
     exposure: [],
     variants: [{ id: 'default', publicName: 'nynorsk__default', aliases: [] }],
@@ -287,6 +289,7 @@ describe('Fellestjenester: detalj', () => {
       version: null,
       riskClass: null,
       residency: 'eu',
+      dataLocation: 'eu' as const,
       exposure: [],
       variants: [],
     };
@@ -300,7 +303,7 @@ describe('Fellestjenester: detalj', () => {
     expect(fact('Modell')?.textContent).toBe('Ikke oppgitt');
     expect(fact('Hvor data behandles')?.textContent).toBe('EU/EØS Slik behandles data');
     expect(screen.queryByRole('group', { name: 'Valg' })).toBeNull();
-    expect(screen.queryByText('Versjon')).toBeNull();
+    expect(screen.queryByText('Utgave')).toBeNull();
   });
 
   it('leaves out quality, which the API does not give', async () => {
@@ -310,10 +313,10 @@ describe('Fellestjenester: detalj', () => {
     expect(screen.queryByText(/av 100/)).toBeNull();
     expect(screen.queryByText(/Kvaliteten falt/)).toBeNull();
   });
-  it('names who publishes it, the version and when that version was published', async () => {
+  it('names who publishes it, the edition and when that edition was published', async () => {
     await openDetail('klarsprak', 'Klarspråk');
     expect(
-      await screen.findByText('Fra Digdir · versjon 3, oppdatert 4. november 2026'),
+      await screen.findByText('Fra Digdir · utgave 3, oppdatert 4. november 2026'),
     ).toBeTruthy();
     const fact = screen.getByText('Ansvarlig', { selector: 'dt' }).nextElementSibling;
     expect(fact?.textContent).toBe('Digdir');
@@ -365,7 +368,7 @@ describe('Fellestjenester: detalj', () => {
       '#/services/vedtaksutkast',
     );
   });
-  it('takes where data is processed from the service, as Byggeklosser does, not from its model', async () => {
+  it("takes where data is processed from the platform's data location for the service, not from the widest place its rule allows", async () => {
     const tolk = {
       tenant: '991825827',
       id: 'tolk',
@@ -373,7 +376,8 @@ describe('Fellestjenester: detalj', () => {
       purpose: 'Tolker tekst.',
       version: null,
       riskClass: null,
-      residency: 'eu',
+      residency: 'global',
+      dataLocation: 'eu' as const,
       model: 'foundry-openai/gpt-4o-2m-tps',
       exposure: [],
       variants: [],
@@ -586,9 +590,9 @@ describe('Fellestjenester: detalj', () => {
   it('says the capability was not found for an unknown id', async () => {
     await renderAt('#/shared-services/finnes-ikke');
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Fant ikke fellestjenesten' }),
+      await screen.findByRole('heading', { level: 1, name: 'Fant ikke den delte tjenesten' }),
     ).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Gå til Fellestjenester' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Gå til Delte tjenester' })).toBeTruthy();
   });
 
   it('offers the builder only to people who may manage services, and names the right otherwise', async () => {

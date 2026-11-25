@@ -115,6 +115,17 @@ export const sourcesOf = (sources: readonly PlaygroundSource[]): Source[] => {
   return [...documents.values()];
 };
 
+// The excerpt each [N] cites, as the run gives it; none when the run cites documents.
+const markersOf = (result: PlaygroundResult) =>
+  result.markers?.length
+    ? result.markers.map((m) => ({
+        marker: m.marker,
+        chunkId: m.chunk_id,
+        documentId: m.document,
+        ...(m.quote ? { quote: m.quote } : {}),
+      }))
+    : undefined;
+
 const answerTextOf = (result: PlaygroundResult) =>
   result.clarification?.question ?? result.text ?? '';
 
@@ -331,7 +342,7 @@ export const createDraftApi = ({
 
     // One call per field, narrowed by the other fields only: counts «given the others».
     loadFacets: async (selection, dataset, fields) => {
-      const found = await datasetOf(dataset);
+      const found = await datasetOf(dataset.key);
       return Promise.all(
         fields.map(async (field) => {
           const others = Object.fromEntries(
@@ -339,8 +350,8 @@ export const createDraftApi = ({
           );
           const filter = filterSet(others, fields);
           const query = new URLSearchParams({
-            tenant: found?.tenant || tenant,
-            'dataset-config-key': dataset,
+            tenant: found?.tenant || dataset.tenant || tenant,
+            'dataset-config-key': dataset.key,
             fields: field.id,
             ...(filter ? { filter: JSON.stringify(filter) } : {}),
           });
@@ -496,10 +507,12 @@ export const createDraftApi = ({
             const noAnswer = event.result.noAnswer === true;
             // Kept with the collection's links, so the thread opened again links as the answer did.
             const corpus = corpusProfile(params.dataset?.key);
+            const markers = markersOf(event.result);
             answer = {
               text,
               status: 'complete',
               sources: sources.map((s, at) => sourceFromWire(s, corpus, at)),
+              ...(markers ? { markers } : {}),
               noAnswer,
               created: now(),
             };
@@ -511,6 +524,7 @@ export const createDraftApi = ({
                 conversationId: id,
                 sources,
                 citations: [],
+                ...(markers ? { markers } : {}),
                 noAnswer,
               },
             };

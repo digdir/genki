@@ -228,6 +228,31 @@ describe('a search strategy that fails', () => {
     ]);
   });
 
+  it('a search that throws still reports what it detected', async () => {
+    const detections = [
+      {
+        kind: 'organisation' as const,
+        field: 'orgs_short',
+        values: ['Digdir'],
+        queries: ['digdir 2025'],
+        use: 'hint' as const,
+      },
+    ];
+    const r: AgentRetrieval = {
+      ...retrieval().impl,
+      search: async () => {
+        throw Object.assign(new Error('timeout exceeded when trying to connect'), { detections });
+      },
+    };
+    const out = await searchOnce(r);
+
+    expect(retrievalNotice(out.notices)).toMatchObject({ detections, failedCompletely: 'error' });
+    const text = toolMessages(out.loops[1])[0] ?? '';
+    expect(text).toContain('Search backend error: every search failed.');
+    expect(text).toContain('Hint, no filter applied:');
+    expect(text).toContain('filter orgs_short with "Digdir"');
+  });
+
   it("keeps a search's engine message for the audit log only when it fails completely", async () => {
     const r: AgentRetrieval = {
       ...retrieval().impl,

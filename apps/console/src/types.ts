@@ -1,3 +1,4 @@
+import type { DefinitionKind } from './definition-kinds';
 export interface OperatorSession {
   name: string;
   roles: string[];
@@ -156,6 +157,9 @@ export interface ModelUsage {
 
 export interface OperatorModel {
   id: string;
+  kind?: string;
+  kindFrom?: 'listing' | 'operator' | 'name';
+  listedEndpoints?: string[];
   endpoint: string;
   deployment: string;
   family?: string;
@@ -170,6 +174,13 @@ export interface OperatorModel {
   price?: ModelPrice | null;
   parameters?: ParameterRules;
   rejectedParameters?: Partial<Record<TunableParameter, string>>;
+  learned?: Partial<Record<Capability, CapabilityCheck>>;
+}
+
+export interface CapabilityCheck {
+  has: boolean;
+  at: string;
+  by: 'listing' | 'call';
 }
 
 export type TunableParameter = 'temperature' | 'reasoning' | 'maxTokens';
@@ -192,6 +203,11 @@ export interface ModelClassification {
 export interface RefreshResult {
   discovered: number;
   failed: { endpoint: string; error: string }[];
+  learned?: {
+    checked: { model: string; capability: Capability; has: boolean }[];
+    calls: number;
+    deferred: number;
+  };
 }
 
 export interface SupportSession {
@@ -749,7 +765,7 @@ export interface SettingsGrid {
 }
 
 export interface TenantDefinition {
-  kind: 'Service' | 'StepFlow';
+  kind: DefinitionKind;
   id: string;
   name: string;
   latestVersion: number;
@@ -774,7 +790,7 @@ export interface DefinitionVersion extends VersionSummary {
 }
 
 export interface TenantDefinitionHistory {
-  kind: 'Service' | 'StepFlow';
+  kind: DefinitionKind;
   tenant: string;
   id: string;
   latest: DefinitionVersion;

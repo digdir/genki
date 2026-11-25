@@ -30,8 +30,9 @@ export const problems = {
     'A test-runner key reads in its own organisation, checks definitions, gives feedback, tries published services it reaches and smoke- services in the playground, and changes only definitions whose id starts with smoke-.',
   testRunnerRefused: 'The key cannot get test-runner access',
   testRunnerEnvironmentDetail:
-    'Test-runner access can only be given in a locked test environment (GENAI_LOCKDOWN=true and GENAI_ENV=test).',
-  testRunnerCreatorDetail: 'Only operators who log in with Entra ID can give test-runner access.',
+    'Test-runner access is off in this environment (GENAI_TEST_RUNNER_KEYS is not true).',
+  testRunnerCreatorDetail:
+    'Only an operator acting in the platform organisation can give test-runner access; in a locked environment, one who logs in with Entra ID.',
   tenantNotRegisteredDetail: 'Organisation {tenant} has not been registered by Digdir.',
   modelsLocked:
     'The environment is locked: only registered clients and Entra ID logins may use models here',
@@ -51,6 +52,9 @@ export const problems = {
   entraNotTrusted: 'Your Entra ID login gives no access to this environment',
   entraNotTrustedDetail:
     'Only members of the configured Digdir Entra groups can log in with Entra ID here. Log in with TestID to read, or ask for access.',
+  serviceLocked: 'This assistant is only open to Digdir employees in the test environment',
+  serviceLockedDetail:
+    'Log in with your Digdir account (Entra ID). If you have and still cannot get in, ask the team behind the service for access.',
   unreadableDefinition: 'Unreadable definition',
   invalidDefinition: 'Invalid definition',
   skillsPublishedThrough:
@@ -100,7 +104,7 @@ export const problems = {
   diagnosticsSearchInvalid: 'The search cannot run',
   diagnosticsSearchFailed: 'The search failed',
   datasetSearchTimedOut: 'The search took too long',
-  datasetSearchNeedsRight: 'You need the right «Manage services» or «Manage datasets»',
+  datasetSearchNeedsRight: 'You need the right «Manage services» or «Manage document collections»',
   datasetSearchNoProfile: 'The dataset {dataset} has no search profile «{profile}»',
   datasetSearchRefused: 'The search was not let through',
   datasetDocumentsOffsetNotPage: 'offset must be a multiple of limit',
@@ -160,11 +164,19 @@ export const problems = {
   shareOperatorOnly:
     'Only platform operators change who the service is shared with. Keep spec.availableTo as it is in the published version.',
   shareOperatorOnlyTitle: 'Only operators change sharing',
+  builtInBlockOperatorOnly:
+    'Only platform operators publish built-in blocks. They belong to genki and are shared with everyone.',
+  codeBlockShareOperatorOnly:
+    'Only platform operators share a code block with everyone, after one of them has read its code. Share it with your own organisation.',
+  blockNotPinned: 'The block is not in the service draft',
+  blockNotFound: 'No edition of the block that this organisation may use',
+  blockOtherTenant: 'The block belongs to another organisation than the one in the address',
   internalOperatorOnly: 'Only operators make a service internal.',
   serviceIdTaken: 'The id is already in use.',
   operatorOnlySettingTitle: 'Only Digdir changes this limit for an organisation',
   uploadRequestTooLarge:
     'The request is larger than {size} MB. Send the files in several requests.',
+  databaseBusy: 'The database has no free connection right now. Try again shortly.',
   status400: 'The request cannot be read',
   status401: 'You are not signed in',
   status403: 'No access',
@@ -172,6 +184,23 @@ export const problems = {
   status405: 'The method is not supported here',
   status409: 'Conflict',
   serviceArchivedTitle: 'The service is archived',
+  serviceNotArchivedTitle: 'The service is not archived',
+  serviceInUseTitle: 'The service is in use',
+  serviceUsedByFrontend: 'The frontend {name} uses the service',
+  serviceUsedByKey: 'The API key {name} is bound to the service',
+  serviceUsedByService: 'The service {service} uses the service',
+  serviceUsedByOthers: '{count} services in other organisations use the service',
+  serviceUsedByInternal: '{count} internal services use the service',
+  serviceOutdatedTitle: 'The service uses something that no longer exists',
+  hostNotFoundTitle: 'No service on this hostname',
+  bffProxyRefused: "The request did not come through the host's proxy",
+  bffSignedOut: 'You are signed out. Sign in again.',
+  bffLoggedOutTitle: 'You are signed out',
+  bffLoggedOutBody: 'You can close this tab.',
+  bffCsrfRefused: 'The request did not come from this page',
+  bffLoginUnavailable: 'Sign-in is not answering now. Try again shortly.',
+  bffNotConfigured: 'Sign-in is not set up for this hostname',
+  bffOrganisationRefused: 'You cannot act for this organisation',
   status413: 'The request is too large',
   status415: 'The format is not supported',
   status422: 'The change is invalid',
@@ -190,4 +219,18 @@ export const problems = {
     'The {strategy} way of working has no single instructions field, so the playground cannot replace them. Change the steps in a draft instead.',
   playgroundDatasetNotAvailable:
     'The dataset {dataset} does not exist, or the organisation has no access to it.',
+  stepFlowNotFound: 'No step flow {id}',
+  stepFlowInUseTitle: 'The step flow is in use',
+  stepFlowUsedBy: 'The service {tenant}/{service} uses the step flow',
+  stepFlowUsedByInternal: '{count} internal services use the step flow',
+  stepFlowUsedByOthers: '{count} services in other organisations use the step flow',
+  operationKindNotFound: 'No operation kind {kind}',
+  operationKindBuiltIn: 'The operation kind {kind} is built in and cannot be deleted',
+  operationKindInUseTitle: 'The operation kind is in use',
+  operationKindDescribedBy: 'The API {descriptor} describes the operation kind',
+  platformSecretNotFound: 'No platform secret {name}',
+  platformSecretInUseTitle: 'The platform secret is in use',
+  platformSecretUsedBy: '{kind} {id} uses the platform secret',
+  platformSecretUsesUnknown:
+    'Genki cannot check what uses the platform secret, so it is not deleted',
 } satisfies Translation<typeof source>;

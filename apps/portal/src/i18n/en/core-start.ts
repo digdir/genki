@@ -41,7 +41,7 @@ export const dataHandling = {
   notDecidedYet: 'Not decided yet',
   accessWho: 'Who has access',
   storageTime: 'How long data is stored',
-  storageTimeBody: 'Datasets are stored until the organisation deletes them.',
+  storageTimeBody: 'Document collections are stored until the organisation deletes them.',
   storageTimePlaceholder:
     'How long questions, answers and logs are stored, and what happens to data when an agency stops using the platform, has not been decided yet.',
 } satisfies Translation<typeof dataHandlingSource>;

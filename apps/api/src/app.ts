@@ -1,11 +1,15 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import type { MiddlewareHandler } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import type { DiscoveryState } from '@genai/composition/discovery-retry';
+import { listingErrorKinds, type ListingStatus } from '@genai/port-model';
 import type { Principal } from '@genai/contracts';
 import type { DefinitionStore, PluginSchemas, SettingsRegistry } from '@genai/definitions';
 import { isApiKeyPrincipal, isTestRunnerKey } from '@genai/identity';
+import { isPoolExhausted } from '@genai/providers-postgres';
 import { tenantAccess, type Access } from './access.js';
 import { refuseWritesToArchived } from './archived-services.js';
+import { publicSkipped, skippedEntries, type SkippedSource } from './catalog-health.js';
 import { requireChangeReason } from './change-reason.js';
 import { rememberActorNames, type ActorNames } from './actor-names.js';
 import { createAdmin, type Admin, type ModelAdmin } from './admin.js';
@@ -38,7 +42,8 @@ import {
 const Health = z
   .object({
     status: z.enum(['ok', 'degraded']).openapi({
-      description: 'Degraded while model discovery has not succeeded; the API still answers',
+      description:
+        'Degraded while model discovery has not succeeded or a stored catalog entry is skipped; the API still answers',
     }),
     version: z.string(),
     environment: z.string().optional().openapi({
@@ -57,9 +62,57 @@ const Health = z
         attempts: z.number().int(),
         lastError: z.string().optional(),
         since: z.string().optional().openapi({ description: 'When discovery first failed' }),
+        connections: z
+          .array(
+            z.object({
+              connection: z.string(),
+              source: z.string().openapi({ description: 'The discovery source that lists it' }),
+              discovered: z.number().int().openapi({
+                description: 'Models served from the last good listing, after the rules',
+              }),
+              listed: z.number().int().openapi({
+                description:
+                  'Deployments the stored listing holds, including those kept through the grace period',
+              }),
+              listedAt: z.string().optional().openapi({
+                description: 'When a listing last succeeded, on any replica',
+              }),
+              lastError: z
+                .object({
+                  kind: z.enum(listingErrorKinds),
+                  at: z.string(),
+                })
+                .optional()
+                .openapi({
+                  description:
+                    'The last failed listing; it is past when listedAt is later. It never holds a URL or a key',
+                }),
+            }),
+          )
+          .optional(),
       })
       .optional()
       .openapi({ description: 'Whether the models listed by the providers have been found' }),
+    catalog: z
+      .object({
+        skipped: z.array(
+          z.object({
+            kind: z.string(),
+            id: z.string().optional().openapi({
+              description: "Left out for an organisation's own entry",
+            }),
+            unused: z.literal(true).optional().openapi({
+              description:
+                'A model or reranker no published service and no dataset uses; it does not hold back a deploy',
+            }),
+          }),
+        ),
+      })
+      .optional()
+      .openapi({
+        description:
+          'Stored catalog entries the last catalog rebuild left out, so the platform runs the seed in their place, or has none when there is no seed',
+      }),
   })
   .openapi('Health');
 
@@ -96,11 +149,13 @@ export type PlatformOptions = Authentication & {
   lifecycle?: PlatformApiOptions['lifecycle'];
   models?: ModelAdmin;
   drafts?: Pick<ServiceDrafts, 'outdated' | 'followPublish'>;
+  environments?: DefinitionsApiOptions['environments'];
   unmaskedInput?: DefinitionsApiOptions['unmaskedInput'];
   names?: ActorNames;
   now?: () => Date;
   lockdown?: boolean;
   loginRefusal?: (request: Request) => Promise<string | undefined>;
+  platformClientIds?: readonly string[];
 };
 
 const withoutApiKeys = (caller: Caller): Authenticator => ({
@@ -116,9 +171,13 @@ export interface AppOptions {
   builtAt?: string;
   environment?: string;
   modelDiscovery?: () => DiscoveryState;
+  discoveryConnections?: () => ListingStatus[];
+  catalogSkipped?: () => readonly SkippedSource[];
   platform?: PlatformOptions;
   requestTiming?: RequestTimingOptions;
 }
+
+export const databaseBusyType = 'urn:genai:problem:database-busy';
 
 export const createApp = (version: string, options: AppOptions = {}) => {
   const app = new OpenAPIHono({
@@ -132,6 +191,17 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       });
     },
   });
+  app.onError((error, c) => {
+    if (isPoolExhausted(error))
+      return c.json(
+        { type: databaseBusyType, title: t('problems.databaseBusy'), status: 503 },
+        503,
+        { 'content-type': 'application/problem+json', 'retry-after': '5' },
+      );
+    if (error instanceof HTTPException) return error.getResponse();
+    console.error(error);
+    return c.text('Internal Server Error', 500);
+  });
   if (options.requestTiming) app.use('*', requestTiming(options.requestTiming));
   acceptDecodedIds(app);
 
@@ -143,7 +213,13 @@ export const createApp = (version: string, options: AppOptions = {}) => {
   const builtAt = options.builtAt ? { builtAt: options.builtAt } : {};
   app.openapi(healthRoute, (c) => {
     const discovery = options.modelDiscovery?.();
-    const status = discovery && discovery.state !== 'ok' ? ('degraded' as const) : ('ok' as const);
+    const skipped = options.catalogSkipped
+      ? publicSkipped(skippedEntries(options.catalogSkipped()))
+      : undefined;
+    const status =
+      (discovery && discovery.state !== 'ok') || (skipped?.length ?? 0) > 0
+        ? ('degraded' as const)
+        : ('ok' as const);
     return c.json(
       {
         status,
@@ -151,7 +227,17 @@ export const createApp = (version: string, options: AppOptions = {}) => {
         ...(options.environment ? { environment: options.environment } : {}),
         lockdown,
         ...builtAt,
-        ...(discovery ? { modelDiscovery: discovery } : {}),
+        ...(discovery
+          ? {
+              modelDiscovery: {
+                ...discovery,
+                ...(options.discoveryConnections
+                  ? { connections: options.discoveryConnections() }
+                  : {}),
+              },
+            }
+          : {}),
+        ...(skipped ? { catalog: { skipped } } : {}),
       },
       200,
     );
@@ -187,7 +273,13 @@ export const createApp = (version: string, options: AppOptions = {}) => {
     const { caller, auth } = authentication;
     app.use('*', internalServiceViewer(caller));
     if (options.platform.loginRefusal)
-      app.use('*', refuseUntrustedEntra(options.platform.loginRefusal));
+      app.use(
+        '*',
+        refuseUntrustedEntra(
+          options.platform.loginRefusal,
+          new Set(options.platform.platformClientIds ?? []),
+        ),
+      );
     if (lockdown) app.use('*', refuseLockedRoutes(caller));
     app.use('*', refuseOutsideTestRunnerScope(caller));
     app.use('*', requireChangeReason(caller));
@@ -224,6 +316,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       admin,
       access,
       ...(options.platform.drafts ? { drafts: options.platform.drafts } : {}),
+      ...(options.platform.environments ? { environments: options.platform.environments } : {}),
       ...(options.platform.unmaskedInput ? { unmaskedInput: options.platform.unmaskedInput } : {}),
       ...(options.platform.names ? { names: options.platform.names } : {}),
       ...(options.platform.registered ? { registered: options.platform.registered } : {}),
@@ -248,6 +341,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
         : {}),
       ...(options.platform.lifecycle ? { lifecycle: options.platform.lifecycle } : {}),
       ...(options.platform.names ? { names: options.platform.names } : {}),
+      ...(options.platform.drafts ? { drafts: options.platform.drafts } : {}),
       ...(options.platform.now ? { now: options.platform.now } : {}),
       lockdown,
     });

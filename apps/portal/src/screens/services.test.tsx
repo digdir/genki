@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { mockFetch } from '../mock';
-import { expectAccessible, failingFetch, go, renderAt } from '../test-utils';
+import { expectAccessible, failingFetch, go, renderAt, renderLive } from '../test-utils';
 import { parseYaml } from '../yaml';
 import { openArea, setupNav } from './services/setup-areas.test-utils';
 
@@ -63,17 +63,27 @@ const subLink = (tab: string, name: string) =>
     name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
   });
 
-const yamlField = () => screen.getByLabelText('Tjenestedefinisjon (YAML)') as HTMLTextAreaElement;
+const yamlField = () =>
+  screen.getByRole('textbox', { name: 'Oppsettet som YAML' }) as HTMLTextAreaElement;
+
+/** Opens a new service in the example portal at its YAML, under Avansert. */
+const openNewYaml = async () => {
+  await renderAt('#/services/new');
+  await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
+  go('#/services/new/definition');
+  await waitFor(() => expect(window.location.hash).toBe('#/services/new/advanced/yaml'));
+  await screen.findByRole('textbox', { name: 'Oppsettet som YAML' });
+};
 
 describe('service list', () => {
   it('lists services from the design and the live API, with filters and search', async () => {
     const { calls, fetch } = recording();
     await renderAt('#/services', fetch);
     await screen.findByRole('heading', { level: 1, name: 'Tjenester' });
+    expect(
+      (await screen.findByRole('link', { name: 'Rapportassistenten' })).getAttribute('href'),
+    ).toBe('#/services/rapportassistenten');
     expect(calls.some((c) => /\/tenants\/[^/]+\/definitions$/.test(c.url))).toBe(true);
-    expect(screen.getByRole('link', { name: 'Rapportassistenten' }).getAttribute('href')).toBe(
-      '#/services/rapportassistenten',
-    );
     expect(screen.getByRole('link', { name: 'Postsortering' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Ny tjeneste' })).toBeTruthy();
 
@@ -86,6 +96,34 @@ describe('service list', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Nullstill søk og filter' }));
     expect(screen.getByRole('link', { name: 'Rapportassistenten' })).toBeTruthy();
     expectAccessible();
+  });
+
+  it('names the model of each service in the list, from the service summary', async () => {
+    const summary = {
+      id: 'tolk',
+      name: 'Tolk',
+      purpose: 'Tolker tekst.',
+      outputKind: 'answer',
+      channels: [],
+      model: { id: 'aivar/borealis-27b', residency: 'norway' },
+      latestVersion: 1,
+      status: 'active',
+      statusReason: null,
+      lifecycle: 'active',
+      updatedAt: '2026-10-07T10:00:00Z',
+      updatedBy: 'kari.nordmann@testetaten.example.no',
+      warnings: [],
+      runsThisWeek: 3,
+    };
+    await renderLive('#/services', {}, (url, method) =>
+      method === 'GET' && /\/tenants\/[^/]+\/services$/.test(url)
+        ? Response.json({ data: [summary] })
+        : undefined,
+    );
+
+    const row = (await screen.findByRole('link', { name: 'Tolk' })).closest('li') as HTMLElement;
+    const model = within(row).getByText('Modell', { selector: 'dt' }).nextElementSibling;
+    expect(model?.textContent).toMatch(/borealis/i);
   });
 
   it('shows an error with retry when the list cannot be loaded', async () => {
@@ -105,28 +143,15 @@ describe('the service page against the mock', () => {
 });
 
 describe('new service', () => {
-  it('starts the builder from a job with the assistant asking questions', async () => {
+  it('opens a new service straight in its Oppsett, as one form with every basic area', async () => {
     await renderAt('#/services/new');
     await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    expect(screen.getByRole('heading', { name: 'Lag med KI' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Lag med KI' })).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: 'Grunnleggende' })).toBeTruthy();
+    for (const area of ['Formål og målgruppe', 'Kunnskap', 'Inndata', 'Resultat', 'Modell'])
+      expect(screen.getByRole('heading', { level: 3, name: area })).toBeTruthy();
+    expect(screen.getByText(/^Lagres i testutgaven med en gang\./)).toBeTruthy();
     expectAccessible();
-
-    fireEvent.click(screen.getByRole('button', { name: /Henter ut opplysninger/ }));
-    expect(await screen.findByText('Satte jobb: henter ut opplysninger')).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 1, name: 'Ny tjeneste' })).toBeTruthy();
-    expect(screen.getByText('Ikke publisert · lagres automatisk')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^Formål og målgruppe/ })).toBeTruthy();
-    expectAccessible();
-  });
-
-  it('guesses the job from free text', async () => {
-    await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
-      target: { value: 'Utkast til svarbrev på klager' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
-    expect(await screen.findByText('Satte jobb: lager utkast')).toBeTruthy();
   });
 });
 
@@ -142,31 +167,28 @@ describe('builder', () => {
     expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       ['Oversikt', '#/services/rapportassistenten'],
       ['Oppsett', '#/services/rapportassistenten/setup'],
-      ['Grensesnitt', '#/services/rapportassistenten/interface'],
+      ['Utforming', '#/services/rapportassistenten/interface'],
       ['Kvalitet', '#/services/rapportassistenten/quality'],
-      ['Utviklerverktøy', '#/services/rapportassistenten/versions'],
+      ['Historikk', '#/services/rapportassistenten/versions'],
+      ['Teknisk', '#/services/rapportassistenten/log'],
     ]);
     expect(navLink('Oversikt').getAttribute('aria-selected')).toBe('true');
     expect(await screen.findByRole('heading', { level: 2, name: 'Slik går det' })).toBeTruthy();
-    expect(screen.getByText('Utkast basert på versjon 7 · lagres automatisk')).toBeTruthy();
     expect(screen.queryByRole('complementary', { name: 'Byggeassistent' })).toBeNull();
     expect(screen.queryByRole('navigation', { name: 'Brødsmuler' })).toBeNull();
     expectAccessible();
 
     go('#/services/rapportassistenten/versions');
-    expect(await screen.findByText('Versjon 7')).toBeTruthy();
-    expect(navLink('Utviklerverktøy').getAttribute('aria-selected')).toBe('true');
-    expect(subLink('Utviklerverktøy', 'Versjoner').getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByText('Versjon 6')).toBeTruthy();
-    expect(screen.getByText('«Strammere krav til kilder»')).toBeTruthy();
+    expect(await screen.findByText('Strammere krav til kilder')).toBeTruthy();
+    expect(navLink('Historikk').getAttribute('aria-selected')).toBe('true');
     expectAccessible();
   });
 
   it.each([
     ['/setup', 'Oppsett', undefined, /^Formål og målgruppe/],
     ['/quality', 'Kvalitet', undefined, /Testsett/],
-    ['/log', 'Utviklerverktøy', 'Logg', /Logg/],
-    ['/channels', 'Utviklerverktøy', 'Nøkler og kanaler', /Start og kanaler/],
+    ['/log', 'Teknisk', 'Logg', /Logg/],
+    ['/channels', 'Teknisk', 'API-nøkler og kanaler', /^Kanaler/],
   ])('deep-links %s inside the same page', async (path, label, sub, content) => {
     await openBuilder(`#/services/rapportassistenten${path}`, 'Rapportassistenten');
     expect(navLink(label).getAttribute('aria-selected')).toBe('true');
@@ -191,7 +213,9 @@ describe('builder', () => {
   it('opens the old settings address in Oppsett under Grenser og logging', async () => {
     await openBuilder('#/services/rapportassistenten/settings', 'Rapportassistenten');
     await waitFor(() => expect(navLink('Oppsett').getAttribute('aria-selected')).toBe('true'));
-    expect(await screen.findByRole('heading', { name: 'Grenser og logging' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Begrensninger og loggføring' }),
+    ).toBeTruthy();
   });
 
   it('opens the shared playground for the conversation service tweak', async () => {
@@ -207,7 +231,7 @@ describe('builder', () => {
     ['uttrekk-samtale', 'Oppsett'],
     ['uttrekk-inn-og-ut', 'Oppsett'],
     ['uttrekk-prove', 'Oppsett'],
-    ['uttrekk-yaml', 'Utviklerverktøy'],
+    ['uttrekk-yaml', 'Teknisk'],
   ])('reaches the %s tweak', async (tweak, tab) => {
     await renderAt(`#/services?visning=${tweak}`);
     await screen.findByRole('heading', { level: 1, name: 'Søknadsuttrekk' });
@@ -264,7 +288,7 @@ describe('risk level and v3 checks', () => {
   it('offers only the audiences the platform supports under Formål og målgruppe', async () => {
     await openBuilder('#/services/soknadsuttrekk/setup', 'Søknadsuttrekk');
     openArea(/^Formål og målgruppe/);
-    const audience = screen.getByLabelText(/Innbyggere og næringsliv · Kommer senere/);
+    const audience = screen.getByRole('radio', { name: /^Innbyggere og næringsliv\s*Kommer$/ });
     expect(audience.getAttribute('aria-disabled')).toBe('true');
   });
 
@@ -302,24 +326,24 @@ describe('risk level and v3 checks', () => {
       fireEvent.click(screen.getByRole('button', { name: /^Bytt (arbeidsmåte|stegflyt)$/ }));
       return screen.getByRole('combobox', { name: 'Arbeidsmåte' }) as HTMLSelectElement;
     };
-    openArea(/^Sluttresultat/);
+    openArea(/^Resultat/);
     expect(table().disabled).toBe(true);
     openArea(/^Arbeidsmåte/);
     fireEvent.change(way(), { target: { value: 'step-flow' } });
-    openArea(/^Sluttresultat/);
+    openArea(/^Resultat/);
     expect(table().disabled).toBe(false);
     fireEvent.click(table());
     expect(table().checked).toBe(true);
-    expect(screen.queryByText(/Bare en fast stegflyt kan lage en tabell/)).toBeNull();
+    expect(screen.queryByText(/Bare en fast arbeidsflyt kan lage en tabell/)).toBeNull();
     openArea(/^Arbeidsmåte/);
     fireEvent.change(way(), { target: { value: 'single-call' } });
-    openArea(/^Sluttresultat/);
-    expect(screen.getByText(/Bare en fast stegflyt kan lage en tabell/)).toBeTruthy();
+    openArea(/^Resultat/);
+    expect(screen.getByText(/Bare en fast arbeidsflyt kan lage en tabell/)).toBeTruthy();
   });
 
   it('warns when an output field would be emptied by the PII filter', async () => {
     await openBuilder('#/services/soknadsuttrekk/setup', 'Søknadsuttrekk');
-    openArea(/^Sluttresultat/);
+    openArea(/^Resultat/);
     expect(screen.getByText(/Feltet blir da tomt/)).toBeTruthy();
   });
 });
@@ -332,7 +356,7 @@ describe('developer view', () => {
       'Rapportassistenten',
       fetch,
     );
-    const editor = (await screen.findByLabelText('Definisjonen')) as HTMLTextAreaElement;
+    const editor = (await screen.findByLabelText('Teknisk tekst')) as HTMLTextAreaElement;
     const text = editor.value;
     expect(text).toContain('kind: Service');
     expect(text).toMatch(
@@ -349,12 +373,7 @@ describe('developer view', () => {
   });
 
   it('applies and discards YAML edits', async () => {
-    await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.click(screen.getByRole('button', { name: /^Svarer/ }));
-    await screen.findByText('Satte jobb: svarer på spørsmål');
-    go('#/services/new/definition');
-    await screen.findByLabelText('Tjenestedefinisjon (YAML)');
+    await openNewYaml();
     const apply = screen.getByRole('button', { name: 'Bruk endringene' });
     expect(apply.getAttribute('aria-disabled')).toBe('true');
     fireEvent.change(yamlField(), {
@@ -375,12 +394,7 @@ describe('developer view', () => {
 
 describe('pasting the example definitions', () => {
   it.each(serviceExamples)('applies %s in the builder YAML tab', async (_, text) => {
-    await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.click(screen.getByRole('button', { name: /^Svarer/ }));
-    await screen.findByText('Satte jobb: svarer på spørsmål');
-    go('#/services/new/definition');
-    await screen.findByLabelText('Tjenestedefinisjon (YAML)');
+    await openNewYaml();
     fireEvent.change(yamlField(), { target: { value: text } });
     fireEvent.click(screen.getByRole('button', { name: 'Bruk endringene' }));
     expect(await screen.findByText('Endringene er brukt i oppsettet.')).toBeTruthy();
@@ -391,40 +405,43 @@ describe('pasting the example definitions', () => {
 });
 
 describe('versions', () => {
-  it('compares a version with the one before and publishes it again as a new version', async () => {
+  it('restores the edition before the one in use by publishing it again', async () => {
     const { calls, fetch } = recording();
     await openBuilder('#/services/rapportassistenten/versions', 'Rapportassistenten', fetch);
-    fireEvent.click(await screen.findByRole('button', { name: /^Versjon 6/ }));
-    expect(await screen.findByRole('heading', { name: 'Versjon 6, første versjon' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Ta i bruk igjen' }));
-    const confirm = screen.getByRole('alertdialog', { name: 'Publiser versjon 6 på nytt' });
-    expect(within(confirm).getByText(/publiseres som versjon 8/)).toBeTruthy();
-    fireEvent.change(within(confirm).getByLabelText('Begrunnelse'), {
-      target: { value: 'Versjon 7 avslår for sjelden' },
-    });
-    fireEvent.click(within(confirm).getByRole('button', { name: 'Publiser som versjon 8' }));
-    expect(await screen.findByText('Versjon 6 er publisert på nytt som versjon 8.')).toBeTruthy();
-    expect(calls.some((c) => c.url.endsWith('/rapportassistenten/versions/6'))).toBe(true);
+    const [restore] = await screen.findAllByRole('button', { name: 'Gjenopprett denne utgaven' });
+    fireEvent.click(restore as HTMLElement);
+    const confirm = await screen.findByRole('dialog', { name: /^Gjenopprette utgaven fra / });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Gjenopprett denne utgaven' }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/rapportassistenten/versions/6'))).toBe(true),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/definitions'))).toBe(true);
     expectAccessible();
   });
 });
 
 describe('publishing', () => {
+  const publishPage = async (name: string) =>
+    screen.findByRole('heading', { level: 1, name: `Publiser ${name}` });
+
   it('blocks publishing until the risk level is confirmed', async () => {
-    await openBuilder('#/services?visning=uttrekk-publiser', 'Søknadsuttrekk');
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('heading', { name: 'Publiser Søknadsuttrekk' })).toBeTruthy();
-    expect(within(dialog).getByText(/Publiser erstatter versjonen som er i bruk/)).toBeTruthy();
-    expect(within(dialog).getByText(/Uten testsett ser du ikke/)).toBeTruthy();
-    expect(within(dialog).getByText('Risikonivå bekreftet')).toBeTruthy();
-    expect(
-      within(dialog).getByRole('button', { name: 'Publiser' }).getAttribute('aria-disabled'),
-    ).toBe('true');
-    expectAccessible();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Gå til risikonivå' }));
+    await renderAt('#/services?visning=uttrekk-publiser');
+    await publishPage('Søknadsuttrekk');
+    await waitFor(() =>
+      expect(window.location.hash).toBe('#/services/soknadsuttrekk/setup/publish'),
+    );
     expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText(/Publiser erstatter utgaven som er i bruk/)).toBeTruthy();
+    expect(screen.getByText(/Uten testsett ser du ikke/)).toBeTruthy();
+    expect(screen.getByText('Risikonivå bekreftet')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Publiser' }).getAttribute('aria-disabled')).toBe(
+      'true',
+    );
+    expectAccessible();
+    fireEvent.click(screen.getByRole('button', { name: 'Gå til risikonivå' }));
     expect(await screen.findByRole('button', { name: 'Bekreft risikonivå' })).toBeTruthy();
+    expect(window.location.hash).toBe('#/services/soknadsuttrekk/setup/risk');
   });
 
   it('publishes with a reason through the API', async () => {
@@ -433,15 +450,22 @@ describe('publishing', () => {
     openArea(/^Risiko og KI-forordningen/);
     fireEvent.click(screen.getByRole('button', { name: 'Bekreft risikonivå' }));
     fireEvent.click(screen.getAllByRole('button', { name: 'Publiser' })[0] as HTMLElement);
-    const dialog = await screen.findByRole('dialog');
-    const publish = within(dialog).getByRole('button', { name: 'Publiser' });
+    await publishPage('Rapportassistenten');
+    // The draft is checked against the platform first; Publiser waits for it.
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/definitions/validate'))).toBe(true),
+    );
+    expect(await screen.findByText('Alle krav er bestått.')).toBeTruthy();
+    const publish = screen.getByRole('button', { name: 'Publiser' });
     fireEvent.click(publish);
-    expect(within(dialog).getByText(/minst 10 tegn/)).toBeTruthy();
-    fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
+    expect(screen.getByText(/minst 10 tegn/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Hva er endret, og hvorfor?'), {
       target: { value: 'Bekreftet risikonivå før lansering' },
     });
     fireEvent.click(publish);
-    expect(await screen.findByText('Versjon 8 er publisert.')).toBeTruthy();
+    expect(await screen.findByText('Utgave 8 er publisert.')).toBeTruthy();
+    expect(window.location.hash).toBe('#/services/rapportassistenten/setup');
+    expect(screen.queryByRole('dialog')).toBeNull();
     const call = calls.find((c) => c.method === 'POST' && c.url.endsWith('/definitions'));
     expect(decodeURIComponent(call?.headers.get('change-reason') ?? '')).toBe(
       'Bekreftet risikonivå før lansering',
@@ -451,16 +475,40 @@ describe('publishing', () => {
     expect(definition.metadata?.version).toBe(8);
     expect(definition.spec?.riskConfirmation).toBeTruthy();
     go('#/services/rapportassistenten/versions');
-    expect(await screen.findByText('Versjon 8')).toBeTruthy();
+    expect(await screen.findByText('Bekreftet risikonivå før lansering')).toBeTruthy();
+  });
+
+  it('publishes nothing and returns to Oppsett when the person cancels on the publish page', async () => {
+    const { calls, fetch } = recording();
+    await openBuilder('#/services/rapportassistenten/setup', 'Rapportassistenten', fetch);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Publiser' })[0] as HTMLElement);
+    await publishPage('Rapportassistenten');
+    fireEvent.change(screen.getByLabelText('Hva er endret, og hvorfor?'), {
+      target: { value: 'Prøver publisering' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Avbryt' }));
+    await waitFor(() => expect(window.location.hash).toBe('#/services/rapportassistenten/setup'));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('heading', { level: 1, name: 'Publiser Rapportassistenten' }),
+      ).toBeNull(),
+    );
+    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/definitions'))).toBe(false);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Publiser' })[0] as HTMLElement);
+    await publishPage('Rapportassistenten');
+    expect((screen.getByLabelText('Hva er endret, og hvorfor?') as HTMLTextAreaElement).value).toBe(
+      '',
+    );
   });
 
   it('publishes to test without changing the live version', async () => {
     await openBuilder('#/services/rapportassistenten', 'Rapportassistenten');
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser til test' }));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(/Publiser til test gjør versjonen tilgjengelig/)).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Publiser til test' }));
-    expect(await screen.findByText('Versjon 8 er publisert til test.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser som testutgave' }));
+    await publishPage('Rapportassistenten');
+    expect(screen.getByText(/Publiser som testutgave gjør utgaven tilgjengelig/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser som testutgave' }));
+    expect(await screen.findByText('Utgave 8 er publisert som testutgave.')).toBeTruthy();
   });
 });
 
@@ -485,7 +533,7 @@ describe('narrow screens', () => {
       expect(within(nav).getByRole('button', { name: /^Formål og målgruppe/ })).toBeTruthy();
       expect(nav.compareDocumentPosition(side) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(
-        within(side).getByRole('tab', { name: 'Assistent' }).getAttribute('aria-selected'),
+        within(side).getByRole('tab', { name: 'Byggeassistent' }).getAttribute('aria-selected'),
       ).toBe('true');
       expectAccessible();
     } finally {

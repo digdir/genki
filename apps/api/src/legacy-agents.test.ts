@@ -10,6 +10,7 @@ import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
 import { resolveCatalog } from './catalogs.js';
 import { createPlatform } from './composition.js';
+import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
 
 const tenant = '991825827';
 const config = join(import.meta.dirname, '..', 'config', 'local');
@@ -160,21 +161,12 @@ const boot = async () => {
       ),
     },
   }));
-  const colbert = await fakeHttp((body) => ({
-    status: 200,
-    json: (body.documents as unknown[]).map((_, i) => ({
-      index: i,
-      score: 1 - i * 0.1,
-      rank: i + 1,
-    })),
-  }));
-  fakes.push(model, search, colbert);
+  fakes.push(model, search);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
     TYPESENSE_URL: search.url,
-    COLBERT_API_URL: colbert.url,
   };
-  const knowledge = yaml('knowledge.yaml');
+  const knowledge = seedOnTypesense(yaml('knowledge.yaml'));
   const kari = {
     kind: 'employee',
     issuer: 'test',
@@ -188,7 +180,7 @@ const boot = async () => {
       knowledge: resolveCatalog(knowledge, 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: { decide: async () => ({ allow: true }) },
     authenticate: async (request) =>

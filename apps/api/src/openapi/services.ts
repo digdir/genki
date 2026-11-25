@@ -6,6 +6,7 @@ import { serviceIntents, skillIntents, unavailableReasons } from '@genai/strateg
 import { turnBody } from '../assistant.js';
 import { InputField } from '../frontend-openapi.js';
 import { changeReason, problemContent } from '../http.js';
+import { blockRoutes } from './blocks.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
 import { runSchema } from '../playground.js';
 
@@ -92,6 +93,11 @@ const ServiceSummary = z
       .nullable()
       .describe(
         "The primary model. Its residency is the model's own, not spec.model.residency, which is the widest the service allows",
+      ),
+    dataLocation: residency
+      .nullable()
+      .describe(
+        "Where the service processes data: the widest place of the models, datasets, reranker and agents it uses, and of the trace sink when it receives content, from the platform's catalogue. null when one of them is not in it",
       ),
     latestVersion: z.number().int().nullable(),
     status: z.enum(['active', 'paused']),
@@ -218,11 +224,29 @@ const StrategyCatalogueEntry = z
         note: UiText.optional().openapi({
           description: 'What the platform adds to the instructions at run time',
         }),
+        sections: z
+          .array(
+            z.object({
+              id: z.string(),
+              title: UiText,
+              reason: UiText.openapi({ description: 'Why the platform has the section' }),
+              text: z.string(),
+            }),
+          )
+          .optional()
+          .openapi({
+            description:
+              'The sections of the built-in instructions, in order. A service edits one in spec.strategy.config.promptSections under its id; an empty text leaves it out',
+          }),
+        layered: z.literal(true).optional().openapi({
+          description:
+            'Instructions written in the service are added after the sections instead of replacing them',
+        }),
       })
       .optional()
       .openapi({
         description:
-          'The built-in instructions, only for a strategy that has them. Writing instructions in the service replaces them',
+          'The built-in instructions, only for a strategy that has them. Writing instructions in the service replaces them, unless layered is true',
       }),
     schema: z.string().openapi({ description: 'The config schema, with labels, under /schemas' }),
   })
@@ -1293,6 +1317,27 @@ const PlaygroundResult = z
       }),
     ),
     citations: z.array(z.object({ index: z.number().int(), chunkId: z.string() })).optional(),
+    markers: z
+      .array(
+        z.object({
+          marker: z.string(),
+          chunk_id: z.string(),
+          document: z.string(),
+          quote: z
+            .object({
+              type: z.literal('TextQuoteSelector'),
+              exact: z.string(),
+              prefix: z.string(),
+              suffix: z.string(),
+            })
+            .optional()
+            .describe('The words the marker rests on in its excerpt, when the model cited them.'),
+        }),
+      )
+      .optional()
+      .describe(
+        'The excerpt each `[N]` in the answer cites, in marker order, as `/v1` gives them. Left out when the answer cites documents, where `[N]` names the N-th document, or cites no excerpt among the sources.',
+      ),
     clarification: z.object({ question: z.string(), options: z.array(z.string()) }).optional(),
     byModel: z.array(
       z.object({
@@ -1745,6 +1790,83 @@ export const serviceRoutes: RouteConfig[] = [
       400: problem('Missing reason or invalid state'),
       ...tenantErrors,
       404: problem('No such service'),
+      409: problem(
+        'urn:genai:problem:service-outdated: activating a paused or archived service checks its latest version against the catalog as publishing does, and it no longer validates, for example because a model it names was deleted while it was archived. errors names what is missing; pause it, publish a fixed version, then activate it',
+      ),
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/tenants/{tenant}/services/{id}',
+    summary:
+      'Delete an archived service for good: its definition, every version, its draft, its environments and the step flows of the organisation that nothing else still stored runs. Runs, conversations and documents stay and follow normal retention (ADR 0011). The id can be used again. Needs manage-services; audited',
+    request: { params: z.object({ tenant, id: service }), headers: changeReason },
+    responses: {
+      200: audited(
+        z.object({
+          id: z.string(),
+          deleted: z.literal(true),
+          versions: z.number().int(),
+          stepFlows: z.array(z.string()),
+        }),
+        'Deleted',
+      ),
+      400: problem('Missing reason'),
+      ...tenantErrors,
+      404: problem('No such service'),
+      409: {
+        description:
+          'urn:genai:problem:service-not-archived: only an archived service can be deleted. urn:genai:problem:service-in-use: a frontend, a live API key or another service that is not archived still uses it; errors name them, with path frontends, apiKeys or services',
+        content: {
+          'application/problem+json': {
+            schema: z.object({
+              type: z.enum([
+                'urn:genai:problem:service-not-archived',
+                'urn:genai:problem:service-in-use',
+              ]),
+              title: z.string(),
+              status: z.literal(409),
+              errors: z.array(z.object({ path: z.string(), message: z.string() })),
+            }),
+          },
+        },
+      },
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/tenants/{tenant}/step-flows/{id}',
+    summary:
+      "Archive one of the organisation's own step flows: Stegflyter and Byggeklosser stop listing it, its versions stay so runs and history keep working, and publishing it again lists it again. Refused while the latest version, or a version an environment is pinned to, of any service that is not archived runs it, directly or as a subflow, internal services included. Needs manage-services; audited",
+    request: {
+      params: z.object({ tenant, id: z.string().openapi({ param: { name: 'id', in: 'path' } }) }),
+      headers: changeReason,
+    },
+    responses: {
+      200: audited(
+        z.object({ id: z.string(), archived: z.literal(true), version: z.number().int() }),
+        'Archived',
+      ),
+      400: problem('Missing reason'),
+      ...tenantErrors,
+      404: problem('No such step flow in the organisation, or it is already archived'),
+      409: {
+        description:
+          "urn:genai:problem:step-flow-in-use: services still run the step flow. usedBy names those in the caller's own organisation it may see; otherOrganisations counts services elsewhere and internalServices the internal ones it may not see",
+        content: {
+          'application/problem+json': {
+            schema: z.object({
+              type: z.literal('urn:genai:problem:step-flow-in-use'),
+              title: z.string(),
+              status: z.literal(409),
+              errors: z.array(z.object({ path: z.string(), message: z.string() })),
+              usedBy: z.array(z.object({ tenant: z.string(), service: z.string() })),
+              otherOrganisations: z.number().int().optional(),
+              internalServices: z.number().int().optional(),
+            }),
+          },
+        },
+      },
     },
   }),
   createRoute({
@@ -1878,18 +2000,20 @@ export const serviceRoutes: RouteConfig[] = [
     method: 'post',
     path: '/tenants/{tenant}/services/{id}/environments/{environment}/promote',
     summary:
-      'Set the environment, usually prod, to the version another environment runs (test unless from says otherwise), without publishing. Needs manage-services; audited',
+      'Set the environment, usually prod, to the version another environment runs (test unless from says otherwise), without publishing. With version, refused unless the source still runs that version. Needs manage-services; audited',
     request: {
       params: z.object({ tenant, id: service, environment }),
       headers: changeReason,
-      body: body(z.object({ from: z.string().optional() })),
+      body: body(
+        z.object({ from: z.string().optional(), version: z.number().int().positive().optional() }),
+      ),
     },
     responses: {
       200: audited(ServiceEnvironments, 'Promoted'),
       400: problem('Missing reason, or promoting an environment to itself'),
       ...tenantErrors,
       404: problem('No such service or environment'),
-      409: problem('prod is the only environment'),
+      409: problem('prod is the only environment, or the source no longer runs version'),
     },
   }),
   createRoute({
@@ -2990,7 +3114,15 @@ export const serviceRoutes: RouteConfig[] = [
               purpose: z.string(),
               version: z.number().int().nullable(),
               riskClass: z.string().nullable(),
-              residency: z.string().nullable(),
+              residency: z
+                .string()
+                .nullable()
+                .describe('The widest place the service allows, spec.model.residency'),
+              dataLocation: residency
+                .nullable()
+                .describe(
+                  "Where the service processes data: the widest place of the models, datasets, reranker and agents it uses, and of the trace sink when it receives content, from the platform's catalogue. null when one of them is not in it",
+                ),
               model: z.string().nullable(),
               exposure: z.array(z.string()),
               storage: z
@@ -3124,7 +3256,7 @@ type DocumentedApp = { openAPIRegistry?: { registerPath(route: RouteConfig): voi
 export const documentServiceRoutes = (app: unknown) => {
   const registry = (app as DocumentedApp).openAPIRegistry;
   if (!registry) return;
-  for (const route of serviceRoutes) registry.registerPath(route);
+  for (const route of [...serviceRoutes, ...blockRoutes]) registry.registerPath(route);
 };
 
 export const servicesOpenApiModule: PlatformModuleFactory = () => ({

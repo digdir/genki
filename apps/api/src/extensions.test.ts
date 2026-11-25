@@ -65,6 +65,7 @@ const boot = async (options: { quotaExhausted?: boolean } = {}) => {
   const candidates = new InMemoryCandidateStore();
   const feedback = new InMemoryFeedbackStore();
   const app = new Hono();
+  const vault = new TenantSecretVault();
   const adminTasks: { action: string; target: string; stored: number }[] = [];
   const kernel = {
     task: async (principal: Principal, id: string) => {
@@ -105,7 +106,7 @@ const boot = async (options: { quotaExhausted?: boolean } = {}) => {
         errors: [{ path: 'principal', message: 'mangler rett' }],
         problem: {
           type: 'about:blank',
-          title: 'Du trenger rettigheten «Registrere byggeklosser»',
+          title: 'Du trenger rettigheten «Legge til i katalogen»',
           status: 403,
           errors: [{ path: 'right', message: 'register-building-blocks' }],
         },
@@ -113,7 +114,7 @@ const boot = async (options: { quotaExhausted?: boolean } = {}) => {
     } as unknown as Admin,
     authenticate: async (request) =>
       people[request.headers.get('authorization')?.replace(/^Bearer /, '') ?? ''],
-    vault: new TenantSecretVault(),
+    vault,
     connections: new InMemoryConnections(),
     directory: new TenantDirectory(),
     tasks: async () => tracked.filter((t) => t.status === 'queued' || t.status === 'running'),
@@ -158,7 +159,7 @@ const boot = async (options: { quotaExhausted?: boolean } = {}) => {
       who,
       headers,
     );
-  return { app, testSets, candidates, feedback, call, read, propose, adminTasks };
+  return { app, vault, testSets, candidates, feedback, call, read, propose, adminTasks };
 };
 
 describe('the tenant directory', () => {
@@ -302,7 +303,7 @@ describe('tenant access', () => {
 
     expect(refused.status).toBe(403);
     expect(refused.body).toMatchObject({
-      title: 'Du trenger rettigheten «Registrere byggeklosser»',
+      title: 'Du trenger rettigheten «Legge til i katalogen»',
       errors: [{ path: 'right', message: 'register-building-blocks' }],
     });
   });
@@ -612,5 +613,21 @@ describe('adding an organisation', () => {
     expect(await directory.list()).toEqual([
       { orgNumber: '312521172', name: 'Testetaten', status: 'active' },
     ]);
+  });
+});
+
+describe('deleting a platform secret without its uses', () => {
+  it('a platform secret is not deleted when its uses cannot be checked', async () => {
+    const { app, vault, adminTasks } = await boot();
+    await vault.set('platform', 'nimbrel-api-key', 'verdi-som-aldri-skal-vises');
+
+    const refused = await app.request('/operator/secrets/nimbrel-api-key', {
+      method: 'DELETE',
+      headers: { authorization: 'Bearer drift', 'change-reason': 'Rydder bort en ubrukt nøkkel' },
+    });
+
+    expect(refused.status).toBe(503);
+    expect(await vault.names('platform')).toEqual(['nimbrel-api-key']);
+    expect(adminTasks).toEqual([]);
   });
 });

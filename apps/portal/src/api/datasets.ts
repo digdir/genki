@@ -71,7 +71,26 @@ export interface DatasetReader {
   addedByName?: string;
 }
 
+export interface EndpointEngine {
+  engine?: string;
+  engineTitle?: string;
+}
+
+export interface DatasetEffective extends EndpointEngine {
+  endpoint: string;
+  generation?: string;
+  version: number;
+  fromSeed: boolean;
+  expected?: EndpointEngine & {
+    endpoint: string;
+    generation?: string;
+    version: number;
+    at: string;
+  };
+}
+
 export interface DatasetDetailView extends DatasetView {
+  effective?: DatasetEffective;
   skipped?: SkippedDocument[];
   usedBy?: DatasetReader[];
 }
