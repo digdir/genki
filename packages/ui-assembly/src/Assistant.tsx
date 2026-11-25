@@ -909,6 +909,8 @@ export const AssistantView = ({
         onNavigate={() => a.showSettings()}
       />
     ) : undefined;
+  // Pinned at the panel's foot, under the threads however few, as the next look's profile is.
+  const footPart: Partial<ShellPanel> = foot ? { foot, footPinned: true } : {};
 
   // The next look's sizes: threads 252 (dev-navbar's 220 + 32), tools 482 (dev-kilder-hoyre at 1440).
   const nextPrimary: Partial<ShellPanel> = next
@@ -921,7 +923,13 @@ export const AssistantView = ({
   if (twoViews) {
     primary =
       primaryView === 'threads'
-        ? { label: threadsAndFilter, ...threadsTitle, children: threadList, foot, ...nextPrimary }
+        ? {
+            label: threadsAndFilter,
+            ...threadsTitle,
+            children: threadList,
+            ...footPart,
+            ...nextPrimary,
+          }
         : {
             label: threadsAndFilter,
             head: (
@@ -940,7 +948,7 @@ export const AssistantView = ({
             ),
             pinnedRef: setFilterPin,
             children: filter(filterPin, 2),
-            foot,
+            ...footPart,
             ...nextPrimary,
           };
   } else if (threadsOn) {
@@ -948,7 +956,7 @@ export const AssistantView = ({
       label: filterPanel ? threadsAndFilter : t('builder.threads'),
       ...threadsTitle,
       children: threadList,
-      foot,
+      ...footPart,
       ...nextPrimary,
       ...(next ? { rail: newThreadRail } : {}),
       // The filter's own panel in the threads' card (dev-filter-panel); resizing changes the threads only.
@@ -975,7 +983,7 @@ export const AssistantView = ({
       label: t('builder.filter'),
       pinnedRef: setFilterPin,
       children: filter(filterPin, 2),
-      foot,
+      ...footPart,
       ...nextPrimary,
     };
   } else if (foot) {
@@ -1040,7 +1048,7 @@ export const AssistantView = ({
           onBack={a.backToThreads}
         />
       ),
-      foot,
+      ...footPart,
       ...nextPrimary,
       // The menu alone is as wide as the threads start; their card keeps its dragged width for the way back.
       size: { width: sideWidth, minWidth: sideWidth, maxWidth: sideWidth },
