@@ -346,7 +346,7 @@ export const AssistantPanel = ({
             </Label>
             <Textarea
               id="til-assistenten"
-              rows={side && !chat ? 1 : 2}
+              rows={chat ? 3 : side ? 1 : 2}
               {...(side ? { placeholder: t('assistant.sidePlaceholder') } : {})}
               value={composer}
               disabled={off}

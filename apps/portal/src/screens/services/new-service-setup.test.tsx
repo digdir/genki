@@ -72,7 +72,7 @@ const wishField = () =>
   }) as HTMLTextAreaElement;
 
 describe('Oppsett of a new service', () => {
-  it('says what the builder assistant is for before the first message, over a field two rows high', async () => {
+  it('says what the builder assistant is for before the first message, over a field three rows high, as the chat', async () => {
     await openNew();
 
     const side = screen.getByRole('region', { name: 'Byggeassistent og prøving' });
@@ -83,7 +83,7 @@ describe('Oppsett of a new service', () => {
     ).toBeTruthy();
     expect(
       within(side).getByRole('textbox', { name: 'Skriv til assistenten' }).getAttribute('rows'),
-    ).toBe('2');
+    ).toBe('3');
   });
 
   it('lists what an area lacks only after the person presses Publiser', async () => {
