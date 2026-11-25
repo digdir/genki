@@ -2,7 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { open, seal } from './crypto.js';
 import type { ContentKeys } from './keys.js';
 import { withLease } from './leases.js';
-import { withTenant } from './tenancy.js';
+import { withPlatformAccess, withTenant } from './tenancy.js';
 
 const SCOPE = 'bff-sessions';
 
@@ -11,6 +11,7 @@ export interface BffSessionRow {
   client: string;
   expiresAt: number;
   payload: string;
+  logoutKeys?: readonly string[];
 }
 
 interface Stored {
@@ -43,10 +44,51 @@ export class PostgresBffSessions {
         tenant,
       ]);
       await client.query(
+        `insert into bff_sessions (tenant, id_hash, hostname, client, sealed, expires_at, logout_keys)
+         values ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          tenant,
+          idHash,
+          row.hostname,
+          row.client,
+          sealed,
+          new Date(row.expiresAt),
+          [...(row.logoutKeys ?? [])],
+        ],
+      );
+    });
+  }
+
+  async claim(tenant: string, idHash: string, row: BffSessionRow): Promise<boolean> {
+    const key = await this.keys.get(tenant, SCOPE, true);
+    if (!key) throw new Error('no content key');
+    const sealed = seal(
+      key,
+      Buffer.from(row.payload),
+      rowAad(tenant, idHash, row.hostname, row.client),
+    );
+    return withTenant(this.pool, tenant, async (client) => {
+      await client.query('delete from bff_sessions where tenant = $1 and expires_at <= now()', [
+        tenant,
+      ]);
+      const inserted = await client.query(
         `insert into bff_sessions (tenant, id_hash, hostname, client, sealed, expires_at)
-         values ($1, $2, $3, $4, $5, $6)`,
+         values ($1, $2, $3, $4, $5, $6) on conflict (tenant, id_hash) do nothing`,
         [tenant, idHash, row.hostname, row.client, sealed, new Date(row.expiresAt)],
       );
+      return (inserted.rowCount ?? 0) > 0;
+    });
+  }
+
+  /** Back-channel logout: the sessions of a person's login, in whichever tenant they are. */
+  async endByLogoutKeys(keys: readonly string[]): Promise<number> {
+    if (keys.length === 0) return 0;
+    return withPlatformAccess(this.pool, 'bff back-channel logout', async (client) => {
+      const { rows } = await client.query<{ ended: number }>(
+        'select end_bff_sessions_by_logout_keys($1) as ended',
+        [[...keys]],
+      );
+      return rows[0]?.ended ?? 0;
     });
   }
 

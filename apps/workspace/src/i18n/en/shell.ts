@@ -37,6 +37,7 @@ export const shell = {
   logout: 'Log out',
   login: 'Log in',
   loggedOut: 'You are logged out.',
+  notLoggedIn: 'You are not logged in.',
   sessionExpired: 'Your session has expired. Log in again to continue.',
   sessionEnding:
     'Your session ends at {time}. Log in again now and we will fill in what you have written.',

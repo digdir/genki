@@ -109,6 +109,7 @@ const definerFunctions = [
   'hostname_claims_in(text[], integer)',
   'find_hostname_claim(text)',
   'hostname_claim_holder(text)',
+  'end_bff_sessions_by_logout_keys(text[])',
 ];
 
 const platformAccess = `coalesce(current_setting('app.platform_access', true), '') <> ''`;
@@ -502,6 +503,16 @@ const migrations: string[] = [
      primary key (tenant, id_hash)
    )`,
   `create index if not exists bff_sessions_expiry on bff_sessions (expires_at)`,
+  `alter table bff_sessions add column if not exists logout_keys text[] not null default '{}'`,
+  `create index if not exists bff_sessions_logout_keys on bff_sessions using gin (logout_keys)`,
+  `create or replace function end_bff_sessions_by_logout_keys(p_keys text[]) returns integer
+     language plpgsql volatile security definer set search_path = public
+     as $$ declare ended integer; begin
+       perform require_platform_access();
+       delete from bff_sessions where logout_keys && p_keys;
+       get diagnostics ended = row_count;
+       return ended;
+     end $$`,
   ...tenantIsolation('bff_sessions'),
   `create table if not exists request_leases (
      tenant text not null,

@@ -50,7 +50,7 @@ export const shell = defineNamespace({
     other: '{count} kvoteforespørsler venter',
   },
   badgeOperations: '{count} feil',
-  completingLogin: 'Fullfører innloggingen',
+  checkingLogin: 'Sjekker innloggingen',
   loggedOutTitle: 'Du er logget ut',
   loggedOutText: 'Økten din er utløpt. Logg inn igjen for å fortsette der du var.',
   retryAfterFailure: '{message} Prøv igjen.',
@@ -60,6 +60,8 @@ export const shell = defineNamespace({
   refusedTitle: 'Du har ikke tilgang til driftskonsollet',
   refusedText:
     'Du er logget inn som {name}. Driftskonsollet er bare for Digdirs driftsteam. Kontoen din mangler driftsrollen.',
+  refusedNotOperator:
+    'Driftskonsollet er bare for Digdirs driftsteam. Kontoen du logget inn med, mangler driftsrollen.',
   refusedHelp: 'Trenger du tilgang, kan lederen din be om driftsrollen for deg.',
   notFound: 'Fant ikke siden',
   notFoundHelp: 'Sjekk adressen, eller gå til Virksomheter.',

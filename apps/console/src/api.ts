@@ -326,6 +326,7 @@ export const createApiClient = ({
       method,
       headers: {
         accept: 'application/json',
+        'genai-csrf': '1',
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         ...encodeReason(headers),
         ...(name ? { 'actor-name': encodeURIComponent(name) } : {}),
@@ -531,6 +532,7 @@ export const createApiClient = ({
         headers: {
           accept: 'text/event-stream',
           'content-type': 'application/json',
+          'genai-csrf': '1',
           'accept-language': locale?.() ?? 'nb',
           ...(bearer ? { authorization: `Bearer ${bearer}` } : {}),
         },
@@ -654,7 +656,7 @@ export const createApiClient = ({
       const response = await send(
         `${baseUrl}/operator/recordings/${encodeURIComponent(recording)}/files/${encodeURIComponent(name)}`,
         {
-          headers: bearer ? { authorization: `Bearer ${bearer}` } : {},
+          headers: { 'genai-csrf': '1', ...(bearer ? { authorization: `Bearer ${bearer}` } : {}) },
           ...(signal ? { signal } : {}),
         },
       );

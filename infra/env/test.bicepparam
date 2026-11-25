@@ -99,10 +99,6 @@ param altinnPeopleMaskinportenClientId = altinnPeopleClient
 param altinnPeopleMaskinportenScope = readEnvironmentVariable('ALTINN_PEOPLE_MASKINPORTEN_SCOPE', '')
 param operatorSubjects = readEnvironmentVariable('OPERATOR_SUBJECTS', '')
 param platformTenant = readEnvironmentVariable('PLATFORM_TENANT', '')
-param portalClientId = readEnvironmentVariable('PORTAL_CLIENT_ID', '')
-param workspaceClientId = readEnvironmentVariable('WORKSPACE_CLIENT_ID', '')
-param consoleClientId = readEnvironmentVariable('CONSOLE_CLIENT_ID', '')
-param consoleTokenEndpoint = readEnvironmentVariable('CONSOLE_TOKEN_ENDPOINT', '')
 
 param hostnames = {
   api: 'api.genki-test.digdir.cloud'

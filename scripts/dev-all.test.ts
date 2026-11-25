@@ -1,14 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { parse } from 'yaml';
 import { createServer } from 'node:net';
-import { createMockAnsattporten, createSigningKey } from '@genai/identity';
 import {
   devProcesses,
   localModelPort,
-  missingCallbacks,
-  mockAcceptsRedirect,
   portInUse,
   prefixer,
   repoRoot,
@@ -21,19 +17,47 @@ const apiEnv = (env: Record<string, string>) =>
   devProcesses(env).find((p) => p.name === 'api')?.env;
 
 describe('dev:all', () => {
-  it('runs each app on the port its vite config and OIDC client expect', () => {
-    const identity = parse(
-      readFileSync(join(repoRoot, 'apps/api/config/local/identity.yaml'), 'utf8'),
-    ) as { clients: { clientId: string; redirectUris: string[] }[] };
+  it('runs each app on the port its vite config expects, through the BFF of the API', () => {
     for (const app of ['portal', 'console', 'workspace']) {
-      const port = portOf(app);
       const vite = readFileSync(join(repoRoot, `apps/${app}/vite.config.ts`), 'utf8');
-      expect(vite).toContain(`port: ${port}`);
-      expect(vite).toContain('target: `http://localhost:${process.env.GENAI_API_PORT ?? 8080}`');
-      const client = identity.clients.find((c) => c.clientId === `local-${app}`);
-      expect(client?.redirectUris).toContain(`http://localhost:${port}/callback`);
+      expect(vite).toContain(`port: ${portOf(app)}`);
+      expect(vite).toContain('`http://localhost:${process.env.GENAI_API_PORT ?? 8080}`');
+      expect(vite).toContain('process.env.GENAI_PROXY_KEY');
     }
     expect(portOf('api')).toBe(8080);
+  });
+
+  it('signs the apps in locally through the platform login, with one proxy key for the API and the apps', () => {
+    const processes = devProcesses({});
+    const api = processes.find((p) => p.name === 'api')?.env ?? {};
+    expect(api).toMatchObject({
+      PLATFORM_LOGIN_CLIENT_ID: 'genki-platform-login-local',
+      PLATFORM_LOGIN_HOSTNAME: 'localhost',
+      PLATFORM_LOGIN_ORIGIN: 'http://localhost:5173',
+      PLATFORM_APP_ORIGINS:
+        'portal=http://portal.localhost:5173,workspace=http://workspace.localhost:5176,console=http://console.localhost:5174',
+    });
+    expect(api.GENAI_PROXY_KEY).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(api.PLATFORM_LOGIN_CLIENT_SECRET).toBeTruthy();
+    for (const app of ['portal', 'console', 'workspace'])
+      expect(processes.find((p) => p.name === app)?.env?.GENAI_PROXY_KEY).toBe(api.GENAI_PROXY_KEY);
+  });
+
+  it('gives the apps no proxy key outside dev mode, where the API has none to check it against', () => {
+    const processes = devProcesses({ GENAI_DEV_MODE: 'false' });
+    for (const name of ['api', 'portal', 'console', 'workspace'])
+      expect(processes.find((p) => p.name === name)?.env).not.toHaveProperty('GENAI_PROXY_KEY');
+  });
+
+  it('keeps a TEST Ansattporten client from .env.local for the platform login', () => {
+    const api = apiEnv({
+      ANSATTPORTEN_ISSUER: 'https://test.ansattporten.no',
+      PLATFORM_LOGIN_CLIENT_ID: 'my-test-client',
+      PLATFORM_LOGIN_CLIENT_SECRET: 'from-env-local',
+    });
+    expect(api).not.toHaveProperty('PLATFORM_LOGIN_CLIENT_ID');
+    expect(api).not.toHaveProperty('PLATFORM_LOGIN_CLIENT_SECRET');
+    expect(api).toMatchObject({ PLATFORM_LOGIN_ORIGIN: 'http://localhost:5173' });
   });
 
   it('starts the local test model only when LOCAL_MODEL_URL points to this machine', () => {
@@ -106,8 +130,8 @@ describe('dev:all', () => {
   });
 
   it('points the workspace portal link at the dev:all portal', () => {
-    expect(devProcesses({}).find((p) => p.name === 'workspace')?.env).toEqual({
-      VITE_PORTAL_URL: `http://localhost:${portOf('portal')}`,
+    expect(devProcesses({}).find((p) => p.name === 'workspace')?.env).toMatchObject({
+      VITE_PORTAL_URL: `http://portal.localhost:${portOf('portal')}`,
     });
   });
 
@@ -128,108 +152,19 @@ describe('dev:all', () => {
       ['workspace', 8103],
     ]);
     expect(byName.api?.env).toMatchObject({ GENAI_DEV_MODE: 'true', PORT: '8100' });
-    expect(byName.console?.env).toEqual({
+    expect(byName.console?.env).toMatchObject({
       GENAI_API_PORT: '8100',
       VITE_PUBLIC_API_BASE: 'http://localhost:8100',
-      VITE_ANSATTPORTEN_ISSUER: 'http://localhost:8100/mock/ansattporten',
-      VITE_OIDC_ISSUER: 'http://localhost:8100/mock/ansattporten',
     });
-    expect(byName.workspace?.env).toMatchObject({ VITE_PORTAL_URL: 'http://localhost:8101' });
+    expect(byName.api?.env).toMatchObject({
+      PLATFORM_LOGIN_ORIGIN: 'http://localhost:8101',
+      PLATFORM_APP_ORIGINS:
+        'portal=http://portal.localhost:8101,workspace=http://workspace.localhost:8103,console=http://console.localhost:8102',
+    });
+    expect(byName.workspace?.env).toMatchObject({
+      VITE_PORTAL_URL: 'http://portal.localhost:8101',
+    });
     expect(byName.portal?.args).toEqual(expect.arrayContaining(['--port', '8101']));
-  });
-
-  it('keeps a login issuer set in the environment when the API port moves', () => {
-    const portal = devProcesses({
-      GENAI_API_PORT: '8100',
-      VITE_ANSATTPORTEN_ISSUER: 'https://login.example.no',
-    }).find((p) => p.name === 'portal');
-
-    expect(portal?.env?.VITE_ANSATTPORTEN_ISSUER).toBeUndefined();
-  });
-
-  it('accepts registered mock loopback callbacks on other ports', () => {
-    const identity = readFileSync(join(repoRoot, 'apps/api/config/local/identity.yaml'), 'utf8');
-
-    expect(missingCallbacks(identity, devProcesses({}))).toEqual([]);
-    expect(
-      missingCallbacks(
-        identity,
-        devProcesses({
-          GENAI_PORTAL_PORT: '8101',
-          GENAI_CONSOLE_PORT: '8102',
-          GENAI_WORKSPACE_PORT: '8103',
-        }),
-      ),
-    ).toEqual([]);
-  });
-
-  it.each([
-    'http://localhost:5174/other',
-    'http://127.0.0.1:5174/callback',
-    'https://localhost:5174/callback',
-    'http://evil.test:5174/callback',
-    'http://localhost:70000/callback',
-    'http://localhost:5174/callback\n',
-  ])('still names a missing mock callback when only %s is registered', (uri) => {
-    const identity = JSON.stringify({
-      clients: [{ clientId: 'local-console', redirectUris: [uri] }],
-    });
-    expect(missingCallbacks(identity, devProcesses({ GENAI_CONSOLE_PORT: '8102' }))).toEqual([
-      'local-console http://localhost:8102/callback',
-    ]);
-  });
-
-  it.each(['localhost', '127.0.0.1', '[::1]'])(
-    'accepts a callback registered on %s on any other port of the same host',
-    (host) => {
-      expect(
-        mockAcceptsRedirect([`http://${host}:5174/callback`], `http://${host}:8102/callback`),
-      ).toBe(true);
-      expect(
-        mockAcceptsRedirect([`http://${host}:5174/callback`], `http://${host}:8102/other`),
-      ).toBe(false);
-    },
-  );
-
-  it('names a callback missing exactly when the mock login would refuse it', async () => {
-    const registered = [
-      'http://localhost:5174/callback',
-      'http://localhost/callback',
-      'http://127.0.0.1:5174/callback',
-      'http://[::1]:5174/callback',
-      'https://localhost:5174/callback',
-      'http://localhost:5174/other',
-      'http://evil.test:5174/callback',
-    ];
-    const requested = [
-      'http://localhost:8102/callback',
-      'http://127.0.0.1:8102/callback',
-      'http://[::1]:8102/callback',
-      'http://127.1:8102/callback',
-      'http://LOCALHOST:8102/callback',
-    ];
-    const key = await createSigningKey();
-    for (const uri of registered) {
-      const { app } = createMockAnsattporten({
-        issuer: 'http://localhost:8080/mock/ansattporten',
-        key,
-        testData: {
-          clients: [
-            { clientId: 'c', redirectUris: [uri], postLogoutRedirectUris: [], audience: 'a' },
-          ],
-        },
-      });
-      for (const redirect_uri of requested) {
-        const response = await app.request(
-          `/authorize?${new URLSearchParams({ client_id: 'c', response_type: 'code', code_challenge: 'x', code_challenge_method: 'S256', redirect_uri })}`,
-        );
-        expect({ uri, redirect_uri, accepted: mockAcceptsRedirect([uri], redirect_uri) }).toEqual({
-          uri,
-          redirect_uri,
-          accepted: response.status === 200,
-        });
-      }
-    }
   });
 
   it('prefixes every complete line and holds a partial line until it ends', () => {

@@ -67,13 +67,6 @@ param operatorSubjects string = ''
 @description('Organisation number that plays Digdir: owns the seeded services, shared services and platform tasks. Empty means Digdir.')
 param platformTenant string = ''
 
-@description('Ansattporten client ids for the three apps, and the console login settings.')
-param portalClientId string = ''
-param workspaceClientId string = ''
-param consoleClientId string = ''
-param consoleIssuer string = ansattportenIssuer
-param consoleTokenEndpoint string = ''
-
 @description('Custom hostnames: api, portal, workspace, console, and assistant for the assistant host. Empty strings use the generated Container Apps hostnames.')
 param hostnames object = { api: '', portal: '', workspace: '', console: '', assistant: '' }
 
@@ -216,8 +209,11 @@ param assistantBffEnabled bool = false
 @allowed(['none', 'hostnames', 'certificates'])
 param assistantHostnameStage string = customDomainsStage
 
-@description('genki\'s own Ansattporten client that a hosted Client without oidc logs in through (ADR 0061). Empty turns the platform login off. Its secret is platform-login-client-secret in genki\'s Key Vault.')
+@description('genki\'s own Ansattporten client that the portal, workspace, console and a hosted Client without oidc log in through (ADR 0061). Empty turns the platform login off, and the three apps cannot sign in.')
 param platformLoginClientId string = ''
+
+@description('The Key Vault secret in genki\'s vault that holds the platform login client\'s secret, so a change of client is a parameter change.')
+param platformLoginSecretName string = 'platform-login-client-secret'
 
 @description('The stage of login.apps.<dnsZoneName>, the platform login\'s host on the assistant host, as customDomainsStage.')
 @allowed(['none', 'hostnames', 'certificates'])
@@ -269,6 +265,10 @@ var assistantNames = empty(hostnames.?assistant ?? '') || empty(platformTenant)
 var servedNames = concat(hostedNames, assistantNames)
 var platformLoginOn = assistantHostEnabled && assistantBffEnabled && !empty(platformLoginClientId) && !empty(dnsZoneName)
 var platformLoginHostname = platformLoginOn ? 'login.apps.${dnsZoneName}' : ''
+var appOrigins = filter(
+  map(['portal', 'workspace', 'console'], app => empty(hostnames[?app] ?? '') ? '' : '${app}=https://${toLower(hostnames[app])}'),
+  entry => !empty(entry)
+)
 var loginNames = platformLoginOn ? [{ hostname: platformLoginHostname, tenant: '', stage: platformLoginStage }] : []
 var binderOn = assistantHostEnabled && hostnameBinderEnabled
 var keptOn = assistantHostEnabled && keepBoundDomains
@@ -560,6 +560,8 @@ module apps 'modules/containerapps.bicep' = {
     keyVaultSecretNames: keyVaultSecretNames
     bffProxyKey: assistantHostEnabled && assistantBffEnabled
     platformLoginSecret: platformLoginOn
+    platformLoginSecretName: platformLoginSecretName
+    platformAppsBff: platformLoginOn
     apiImage: apiImage
     apiRevisionSuffix: apiRevisionSuffix
     apiLiveRevision: apiLiveRevision
@@ -591,11 +593,11 @@ module apps 'modules/containerapps.bicep' = {
       ALTINN_PEOPLE_MASKINPORTEN_SCOPE: altinnPeopleMaskinportenScope
       OPERATOR_SUBJECTS: operatorSubjects
       PLATFORM_TENANT: platformTenant
-      EMPLOYEE_CLIENT_IDS: join(filter([portalClientId, workspaceClientId, consoleClientId], id => !empty(id)), ',')
       GENAI_HOSTED_HOSTNAMES: join(map(servedNames, h => '${h.hostname}=${h.tenant}'), ',')
       GENAI_ASSISTANT_HOSTNAME: assistantHostEnabled ? (hostnames.?assistant ?? '') : ''
       PLATFORM_LOGIN_CLIENT_ID: platformLoginOn ? platformLoginClientId : ''
       PLATFORM_LOGIN_HOSTNAME: platformLoginHostname
+      PLATFORM_APP_ORIGINS: platformLoginOn ? join(appOrigins, ',') : ''
       GENAI_HOSTNAME_BINDER_PRINCIPAL_ID: binderOn ? binderIdentity!.properties.principalId : ''
       GENAI_HOSTNAME_BINDER_AUDIENCE: binderOn ? hostnameBinderAudience : ''
       GENAI_HOSTNAME_BINDER_TENANT_ID: binderOn ? tenant().tenantId : ''
@@ -608,14 +610,8 @@ module apps 'modules/containerapps.bicep' = {
       GENAI_HOSTNAME_LIMIT: binderOn && hostnameLimit > 0 ? string(hostnameLimit) : ''
     }
     webSettings: {
-      ansattportenIssuer: ansattportenIssuer
       apiAudience: apiAudience
       altinnResource: altinnResource
-      portalClientId: portalClientId
-      workspaceClientId: workspaceClientId
-      consoleClientId: consoleClientId
-      consoleIssuer: consoleIssuer
-      consoleTokenEndpoint: consoleTokenEndpoint
     }
     storageAccountName: storageName
     storageShareName: infra ? storage!.outputs.shareName : 'data'

@@ -5,6 +5,7 @@ export interface BffSessionRow {
   client: string;
   expiresAt: number;
   payload: string;
+  logoutKeys?: readonly string[];
 }
 
 /** Where the BFF keeps sessions; `PostgresBffSessions` is the shared one. */
@@ -17,6 +18,10 @@ export interface BffSessionStore {
     change: (row: BffSessionRow) => Promise<BffSessionRow | undefined>,
   ): Promise<BffSessionRow | undefined>;
   delete(tenant: string, idHash: string): Promise<boolean>;
+  /** Creates the row unless one exists, and answers whether it did. */
+  claim(tenant: string, idHash: string, row: BffSessionRow): Promise<boolean>;
+  /** Deletes every session, in every tenant, that carries one of these logout keys. */
+  endByLogoutKeys(keys: readonly string[]): Promise<number>;
   seal(tenant: string, purpose: string, plaintext: string): Promise<string>;
   open(tenant: string, purpose: string, sealed: string): Promise<string | undefined>;
 }
@@ -34,6 +39,8 @@ export interface SessionPayload {
   name?: string;
   organisation?: string;
   organisations: Organisation[];
+  operator?: boolean;
+  logoutKeys?: string[];
 }
 
 export const newSessionId = () => randomBytes(32).toString('base64url');
@@ -96,6 +103,22 @@ export class InMemoryBffSessions implements BffSessionStore {
 
   async delete(tenant: string, idHash: string) {
     return this.#rows.delete(`${tenant}/${idHash}`);
+  }
+
+  async claim(tenant: string, idHash: string, row: BffSessionRow) {
+    if (await this.get(tenant, idHash)) return false;
+    await this.create(tenant, idHash, row);
+    return true;
+  }
+
+  async endByLogoutKeys(keys: readonly string[]) {
+    let ended = 0;
+    for (const [id, row] of this.#rows)
+      if (row.logoutKeys?.some((k) => keys.includes(k))) {
+        this.#rows.delete(id);
+        ended += 1;
+      }
+    return ended;
   }
 
   async seal(tenant: string, purpose: string, plaintext: string) {

@@ -366,6 +366,7 @@ export const ServiceChannels = ({
   onFrontends,
   frontend,
   listHref = `#${servicePath(service, 'channels')}`,
+  hasApp = false,
   now = () => new Date(),
 }: {
   api: ApiClient;
@@ -377,6 +378,7 @@ export const ServiceChannels = ({
   onFrontends?: (names: string[]) => void;
   frontend?: string | undefined;
   listHref?: string;
+  hasApp?: boolean;
   now?: () => Date;
 }) => {
   const t = useT();
@@ -653,7 +655,13 @@ export const ServiceChannels = ({
         ) : null}
       </div>
       {flashAlert}
-      <ServiceAddress api={api} tenant={tenant} service={service} canManage={canManage} />
+      <ServiceAddress
+        api={api}
+        tenant={tenant}
+        service={service}
+        hasApp={hasApp}
+        canManage={canManage}
+      />
       <ServiceKeys
         api={api}
         tenant={tenant}

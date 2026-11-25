@@ -8,7 +8,6 @@ export interface BrowserTarget {
   console: string;
   tenant: string;
   key: string | undefined;
-  portalClientId: string;
   out: string;
   redact(text: string): string;
 }
@@ -55,20 +54,39 @@ export const playgroundRun = (question: string) => async (page: Page) => {
   await page.waitForTimeout(2_000);
 };
 
-export const sessionFor = (
+export const signedInAs = (app: 'portal' | 'console', tenant: string, now: number) => ({
+  name: 'Smoke test',
+  organisation: tenant,
+  organisations: [{ orgNumber: tenant, name: 'Smoke test' }],
+  expiresAt: new Date(now + 3_600_000).toISOString(),
+  ...(app === 'console' ? { operator: true } : {}),
+});
+
+export const signIn = async (
+  context: Pick<BrowserContext, 'route'>,
   app: 'portal' | 'console',
+  origin: string,
   token: string,
   tenant: string,
   now: number,
-) =>
-  app === 'portal'
-    ? {
-        name: 'Smoke test',
-        organisations: [{ orgNumber: tenant, name: 'Smoke test' }],
-        token,
-        expiresAt: now + 3_600_000,
-      }
-    : { name: 'Smoke test', roles: ['GenAI.Operator'], token };
+) => {
+  await context.route(
+    (url) => url.origin === origin && url.pathname.startsWith('/api/'),
+    (route) =>
+      route.continue({
+        headers: { ...route.request().headers(), authorization: `Bearer ${token}` },
+      }),
+  );
+  await context.route(
+    (url) => url.origin === origin && url.pathname === '/auth/me',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(signedInAs(app, tenant, now)),
+      }),
+  );
+};
 
 export const openBrowser = async (target: BrowserTarget) => {
   const { chromium } = await import('playwright-core');
@@ -77,6 +95,7 @@ export const openBrowser = async (target: BrowserTarget) => {
 
   const contextFor = async (
     app: 'portal' | 'console',
+    origin: string,
     token: string | undefined,
     locale: 'nb' | 'en',
   ): Promise<BrowserContext> => {
@@ -84,16 +103,7 @@ export const openBrowser = async (target: BrowserTarget) => {
       locale: locale === 'en' ? 'en-GB' : 'nb-NO',
       viewport: { width: 1280, height: 900 },
     });
-    if (token) {
-      const storageKey = app === 'portal' ? `${target.portalClientId}.session` : 'console.session';
-      await context.addInitScript(
-        ([k, v]) => {
-          if (!sessionStorage.getItem(k as string))
-            sessionStorage.setItem(k as string, v as string);
-        },
-        [storageKey, JSON.stringify(sessionFor(app, token, target.tenant, Date.now()))],
-      );
-    }
+    if (token) await signIn(context, app, origin, token, target.tenant, Date.now());
     return context;
   };
 
@@ -167,9 +177,10 @@ export const openBrowser = async (target: BrowserTarget) => {
   ): Promise<ScreenObservation> => {
     const base = app === 'portal' ? target.portal : target.console;
     const token = options.token === 'key' ? target.key : expiredToken;
-    const context = await contextFor(app, token, options.locale ?? 'nb');
+    const origin = new URL(base).origin;
+    const context = await contextFor(app, origin, token, options.locale ?? 'nb');
     const page = await context.newPage();
-    const seen = watch(page, new URL(base).origin);
+    const seen = watch(page, origin);
     const query = app === 'portal' && options.token === 'key' ? `?org=${target.tenant}` : '';
     const name = `${screenFile(app, path)}${options.locale === 'en' ? '-en' : ''}${options.act ? '-act' : ''}`;
     try {

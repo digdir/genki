@@ -20,10 +20,9 @@ export const useSessionTimer = (
   now: () => number = Date.now,
 ) => {
   const [warnAt, setWarnAt] = useState<number>();
-  const token = session?.token;
   useEffect(() => {
     setWarnAt(undefined);
-    const expiresAt = token ? auth.expiresAt?.() : undefined;
+    const expiresAt = session ? auth.expiresAt?.() : undefined;
     if (expiresAt === undefined) return;
     let active = true;
     const renew = async () => {
@@ -40,6 +39,6 @@ export const useSessionTimer = (
       clearTimeout(warn);
       clearTimeout(end);
     };
-  }, [auth, token]);
+  }, [auth, session]);
   return warnAt;
 };

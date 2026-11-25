@@ -50,7 +50,7 @@ The narrowest credential that does the whole test is an API key with a new `test
 - Creating it requires `expiresInDays` (1 to 90) and `callsPerMinute`.
 - It still runs models only for its bound services.
 
-A non-JWT bearer token is already read as an API key (`packages/identity/src/authenticate.ts:73`), so the browser layer puts the same key into the portal's and console's session storage and the screens load with real data.
+A non-JWT bearer token is already read as an API key (`packages/identity/src/authenticate.ts:73`), so the browser layer sends the same key as a bearer token on the portal's and console's own `/api/` requests and nowhere else, and answers their `/auth/me` as signed in to the smoke tenant (on the console as an operator). Without a session cookie the BFF passes the key on to the API, so the screens load with real data (`scripts/smoke/browser.ts`). The expired-session checks do the same with a token the API refuses.
 
 The key lives in the GitHub environment `genki-test`, limited to `main`, as `SMOKE_API_KEY`. Writes go only to `smoke-*` objects, and the runner archives what it published in a `finally` step, also when checks fail.
 

@@ -15,7 +15,6 @@ import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
-import { portalClientIdOf } from './smoke/run.ts';
 
 export interface DemoStep {
   say: string;
@@ -159,34 +158,70 @@ export const languageScript = (language: string) => {
   return `Object.defineProperty(navigator,'languages',{get:()=>${scriptLiteral([tag[0], tag[1]])}});Object.defineProperty(navigator,'language',{get:()=>${scriptLiteral(tag[0])}});`;
 };
 
-const clientId = /^[\w.-]{1,128}$/;
+export interface DemoApps {
+  portal: string;
+  console: string;
+  workspace: string;
+  tenant: string;
+}
 
-export const demoSessions = (
-  key: string,
-  apps: { portal: string; console: string; portalClientId: string; tenant: string },
-  now: number,
-): Record<string, [string, string]> => {
-  if (!clientId.test(apps.portalClientId))
-    throw new Error('the portal config has a client id that is not a plain name');
-  return {
-    [new URL(apps.portal).origin]: [
-      `${apps.portalClientId}.session`,
-      JSON.stringify({
-        name: 'Demo',
-        organisations: [{ orgNumber: apps.tenant, name: 'Demo' }],
-        token: key,
-        expiresAt: now + 3_600_000,
-      }),
-    ],
-    [new URL(apps.console).origin]: [
-      'console.session',
-      JSON.stringify({ name: 'Demo', roles: ['GenAI.Operator'], token: key }),
-    ],
-  };
+const appOriginsOf = (apps: DemoApps) =>
+  [
+    [new URL(apps.portal).origin, false],
+    [new URL(apps.workspace).origin, false],
+    [new URL(apps.console).origin, true],
+  ] as const;
+
+export const demoSignIn = (apps: DemoApps, now: number) => {
+  const signedIn = (operator: boolean) =>
+    JSON.stringify({
+      name: 'Demo',
+      organisation: apps.tenant,
+      organisations: [{ orgNumber: apps.tenant, name: 'Demo' }],
+      expiresAt: new Date(now + 3_600_000).toISOString(),
+      ...(operator ? { operator: true } : {}),
+    });
+  return appOriginsOf(apps).map(([origin, operator]) => [
+    'network',
+    'route',
+    `${origin}/auth/me`,
+    '--body',
+    signedIn(operator),
+  ]);
 };
 
-export const sessionScript = (sessions: Record<string, [string, string]>) =>
-  `(()=>{const s=${scriptLiteral(sessions)}[location.origin];if(s&&!sessionStorage.getItem(s[0]))sessionStorage.setItem(s[0],s[1]);})();`;
+const headerToken = /^[A-Za-z0-9._~+/=-]{1,512}$/;
+
+export const apiKeyScript = (key: string, apps: DemoApps) => {
+  if (!headerToken.test(key))
+    throw new Error('DEMO_API_KEY must be a bearer token of letters, digits and ._~+/=-');
+  return `(()=>{const key=${scriptLiteral(key)};const origins=${scriptLiteral(appOriginsOf(apps).map(([o]) => o))};const send=window.fetch.bind(window);window.fetch=(input,init)=>{const url=new URL(input instanceof Request?input.url:String(input),location.href);if(!origins.includes(url.origin)||!url.pathname.startsWith('/api/'))return send(input,init);const headers=new Headers(input instanceof Request?input.headers:undefined);new Headers(init&&init.headers).forEach((v,k)=>headers.set(k,v));headers.set('authorization','Bearer '+key);return send(input,{...init,headers});};})();`;
+};
+
+export const browserLaunch = (
+  session: string,
+  dir: string,
+  language: string,
+  signIn?: { key: string; apps: DemoApps },
+) => {
+  const init = [join(dir, 'language.js')];
+  writeFileSync(init[0] as string, languageScript(language), { flag: 'wx', mode: 0o600 });
+  if (signIn) {
+    const script = apiKeyScript(signIn.key, signIn.apps);
+    init.push(join(dir, 'api-key.js'));
+    writeFileSync(init[1] as string, script, { flag: 'wx', mode: 0o600 });
+  }
+  return ['--session', session, ...init.flatMap((f) => ['--init-script', f]), 'open'];
+};
+
+export const signInBrowser = (apps: DemoApps, now: number, ab: (...args: string[]) => unknown) => {
+  for (const command of demoSignIn(apps, now))
+    try {
+      ab(...command);
+    } catch {
+      throw new Error(`agent-browser could not sign in to ${new URL(command[2] ?? '').origin}`);
+    }
+};
 
 export const browserCommands = [
   'find',
@@ -877,46 +912,27 @@ async function capture(
   const lines: TimedLine[] = [];
   const raw = join(out, 'raw.webm');
   try {
-    const init = [join(scripts, 'language.js')];
-    writeFileSync(init[0], languageScript(demo.language), { mode: 0o600 });
-    if (demo.signedIn && key) {
-      const bases = appBases(env);
-      const portal = bases.portal.replace(/\/$/, '');
-      const config = await fetch(`${portal}/config.js`);
-      if (!config.ok) throw new Error(`${portal}/config.js answered ${config.status}`);
-      const tenant =
-        tenantOverride ||
-        env.DEMO_TENANT ||
-        (JSON.parse(readFileSync(resolve('scripts/smoke/plan.json'), 'utf8')) as { tenant: string })
-          .tenant;
-      const file = join(scripts, 'session.js');
-      writeFileSync(
-        file,
-        sessionScript(
-          demoSessions(
+    const signIn =
+      demo.signedIn && key
+        ? {
             key,
-            {
-              portal,
-              console: bases.console,
-              portalClientId: portalClientIdOf(await config.text()),
-              tenant,
+            apps: {
+              ...appBases(env),
+              tenant:
+                tenantOverride ||
+                env.DEMO_TENANT ||
+                (
+                  JSON.parse(readFileSync(resolve('scripts/smoke/plan.json'), 'utf8')) as {
+                    tenant: string;
+                  }
+                ).tenant,
             },
-            Date.now(),
-          ),
-        ),
-        { mode: 0o600 },
-      );
-      init.push(file);
-    }
-
+          }
+        : undefined;
     quietly('close');
-    run('agent-browser', [
-      '--session',
-      session,
-      ...init.flatMap((f) => ['--init-script', f]),
-      'open',
-      demo.start,
-    ]);
+    run('agent-browser', browserLaunch(session, scripts, demo.language, signIn));
+    if (signIn) signInBrowser(signIn.apps, Date.now(), ab);
+    ab('open', demo.start);
     const [w, h] = demo.viewport ?? [1280, 720];
     ab('set', 'viewport', String(w), String(h));
     try {

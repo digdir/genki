@@ -84,4 +84,28 @@ describe('BFF sessions in Postgres', () => {
     expect(await sessions.delete(ORG_A, live)).toBe(true);
     expect(await sessions.get(ORG_A, live)).toBeUndefined();
   });
+
+  it('a back-channel logout ends the sessions carrying its key in every tenant and no others', async () => {
+    const sessions = await open();
+    const [a, b, other] = ['logout-a', 'logout-b', 'logout-other'].map(sessionIdHash) as [
+      string,
+      string,
+      string,
+    ];
+    await sessions.create(ORG_A, a, { ...row(), logoutKeys: ['sid-1', 'sub-1'] });
+    await sessions.create(ORG_B, b, { ...row(), logoutKeys: ['sid-2', 'sub-1'] });
+    await sessions.create(ORG_A, other, { ...row(), logoutKeys: ['sid-3', 'sub-3'] });
+    expect(await sessions.endByLogoutKeys(['sub-1'])).toBe(2);
+    expect(await sessions.get(ORG_A, a)).toBeUndefined();
+    expect(await sessions.get(ORG_B, b)).toBeUndefined();
+    expect(await sessions.get(ORG_A, other)).toBeDefined();
+  });
+
+  it('claims a row only once, so a logout token’s jti cannot be replayed', async () => {
+    const sessions = await open();
+    const jti = sessionIdHash('logout-jti:1');
+    expect(await sessions.claim(ORG_A, jti, row())).toBe(true);
+    expect(await sessions.claim(ORG_A, jti, row())).toBe(false);
+    expect(await (await open()).claim(ORG_A, jti, row())).toBe(false);
+  });
 });

@@ -120,7 +120,13 @@ describe('a hosted hostname entry', () => {
 });
 
 describe.skipIf(!hasAz && !process.env.CI)('hosted hostnames in the template', () => {
-  let built: { resources: Resource[]; variables?: Record<string, string> } | undefined;
+  let built:
+    | {
+        resources: Resource[];
+        variables?: Record<string, string>;
+        parameters?: Record<string, { defaultValue?: unknown }>;
+      }
+    | undefined;
   beforeAll(() => {
     built = JSON.parse(
       execFileSync('az', ['bicep', 'build', '--file', join(root, 'infra/main.bicep'), '--stdout'], {
@@ -248,8 +254,33 @@ describe.skipIf(!hasAz && !process.env.CI)('hosted hostnames in the template', (
     const values = paramValues('test');
     expect(values.platformLoginClientId?.value).toBe('dde98722-c952-4172-a5d6-10bdf721680f');
     expect(['none', 'hostnames', 'certificates']).toContain(values.platformLoginStage?.value);
-    expect(values.platformLoginClientId?.value).not.toBe(values.portalClientId?.value);
   }, 120_000);
+
+  it('signs the portal, workspace and console in through the platform login, with no Ansattporten client of their own', () => {
+    expect(built?.parameters).not.toHaveProperty('portalClientId');
+    expect(built?.parameters).not.toHaveProperty('consoleClientId');
+    const apps = module('containerapps').properties;
+    const env = apps.parameters?.identityEnv?.value as Record<string, string>;
+    expect(env.PLATFORM_APP_ORIGINS).toBe(
+      "[if(variables('platformLoginOn'), join(variables('appOrigins'), ','), '')]",
+    );
+    expect(env).not.toHaveProperty('EMPLOYEE_CLIENT_IDS');
+    expect(apps.parameters?.platformAppsBff?.value).toBe("[variables('platformLoginOn')]");
+    const web = JSON.stringify(apps.template?.variables?.webApps);
+    expect(web).not.toMatch(/OIDC_CLIENT_ID|ANSATTPORTEN_ISSUER|OIDC_ISSUER/);
+    expect(apps.template?.variables?.webProxyKeyEnv).toBe(
+      "[if(parameters('platformAppsBff'), variables('proxyKeyEnv'), createArray())]",
+    );
+  });
+
+  it('reads the platform login client’s secret from the Key Vault secret a parameter names', () => {
+    expect(built?.parameters?.platformLoginSecretName?.defaultValue).toBe(
+      'platform-login-client-secret',
+    );
+    expect(
+      module('containerapps').properties.template?.variables?.platformLoginSecretRef,
+    ).toContain("parameters('platformLoginSecretName')");
+  });
 
   it('makes a certificate only at the certificates stage, in the host’s environment, over HTTP for an apex', () => {
     const variables = module('assistant-host').properties.template?.variables ?? {};

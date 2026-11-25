@@ -4,19 +4,10 @@ import { readFileSync } from 'node:fs';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from './App';
-import { ansattportenLogin, codeChallenge, mockEntra, operatorRole } from './auth';
+import { mockEntra, operatorRole } from './auth';
 import { mockFetch } from './mock';
 
 document.getAnimations ??= () => [];
-
-const issuer = 'http://localhost:8080/mock/ansattporten';
-const resource = 'urn:altinn:resource:digdir-genai-platform';
-
-const encode = (value: unknown) =>
-  btoa(JSON.stringify(value)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
-let sentNonce: string | undefined;
-const idToken = (name: string, nonce = sentNonce) =>
-  `${encode({ alg: 'none' })}.${encode({ name, nonce })}.sig`;
 
 const notFound = () => new Response('404 Not Found', { status: 404 });
 const json = (body: unknown, status = 200) =>
@@ -31,8 +22,6 @@ const liveApi = (operator = true, extra?: Extra) => {
     calls.push({ path, ...(init ? { init } : {}) });
     const extraReply = extra?.(path, init);
     if (extraReply) return extraReply;
-    if (path === '/api/mock/ansattporten/token')
-      return json({ access_token: 'access', id_token: idToken('Ola Drift'), token_type: 'Bearer' });
     if (path === '/api/operator/tenants' && init?.method === 'POST')
       return json({ orgNumber: '974760673', name: 'Brønnøysundregistrene' });
     if (path === '/api/operator/tenants/991825827/definitions')
@@ -97,252 +86,13 @@ const liveApi = (operator = true, extra?: Extra) => {
   return { calls, fetch };
 };
 
-const memoryStorage = (): Storage => {
-  const data = new Map<string, string>();
-  return {
-    get length() {
-      return data.size;
-    },
-    clear: () => data.clear(),
-    getItem: (key) => data.get(key) ?? null,
-    key: (i) => [...data.keys()][i] ?? null,
-    removeItem: (key) => void data.delete(key),
-    setItem: (key, value) => void data.set(key, value),
-  };
-};
-
-const client = (fetch: typeof globalThis.fetch, storage = memoryStorage()) => {
-  const visited: string[] = [];
-  const auth = ansattportenLogin({
-    issuer,
-    clientId: 'local-console',
-    redirectUri: 'http://localhost:5174/callback',
-    postLogoutRedirectUri: 'http://localhost:5174/',
-    tokenEndpoint: '/api/mock/ansattporten/token',
-    apiBaseUrl: '/api',
-    audience: 'digdir:genai',
-    resource,
-    fetch,
-    storage,
-    navigate: (url) => visited.push(url),
-  });
-  return { auth, visited, storage };
-};
-
-const startLogin = async (c: ReturnType<typeof client>) => {
-  const before = c.visited.length;
-  void c.auth.login();
-  await waitFor(() => expect(c.visited.length).toBeGreaterThan(before));
-  const url = new URL(c.visited.at(-1) ?? '');
-  sentNonce = url.searchParams.get('nonce') ?? undefined;
-  return url;
-};
-
 beforeEach(() => {
   window.history.replaceState(null, '', '/');
   window.location.hash = '';
 });
 afterEach(cleanup);
 
-describe('operator login with Ansattporten', () => {
-  it('starts the code flow with PKCE, the platform audience and the Altinn resource', async () => {
-    const c = client(liveApi().fetch);
-    const url = await startLogin(c);
-
-    expect(url.origin + url.pathname).toBe(`${issuer}/authorize`);
-    const q = url.searchParams;
-    expect(q.get('client_id')).toBe('local-console');
-    expect(q.get('redirect_uri')).toBe('http://localhost:5174/callback');
-    expect(q.get('response_type')).toBe('code');
-    expect(q.get('code_challenge_method')).toBe('S256');
-    expect(q.get('resource')).toBe('digdir:genai');
-    expect(JSON.parse(q.get('authorization_details') ?? '')).toEqual([
-      { type: 'ansattporten:altinn:resource', resource },
-    ]);
-    const pending = JSON.parse(c.storage.getItem('console.login') ?? '{}') as {
-      verifier: string;
-      state: string;
-    };
-    expect(q.get('state')).toBe(pending.state);
-    expect(q.get('code_challenge')).toBe(await codeChallenge(pending.verifier));
-  });
-
-  it('exchanges the code with the verifier and opens the console for an operator', async () => {
-    const api = liveApi();
-    const c = client(api.fetch);
-    const state = (await startLogin(c)).searchParams.get('state') ?? '';
-    window.history.replaceState(null, '', `/callback?code=abc&state=${state}&iss=${issuer}`);
-
-    render(<App auth={c.auth} fetch={api.fetch} />);
-
-    expect(await screen.findByRole('heading', { level: 1, name: 'Virksomheter' })).toBeTruthy();
-    expect(screen.getByText('Ola Drift')).toBeTruthy();
-    expect(window.location.pathname).toBe('/');
-    const token = api.calls.find((call) => call.path === '/api/mock/ansattporten/token');
-    const body = new URLSearchParams(String(token?.init?.body));
-    expect(body.get('grant_type')).toBe('authorization_code');
-    expect(body.get('code_verifier')).toBeTruthy();
-    expect(body.get('client_id')).toBe('local-console');
-  });
-
-  it('refuses a person the API does not treat as an operator', async () => {
-    const api = liveApi(false);
-    const c = client(api.fetch);
-    const state = (await startLogin(c)).searchParams.get('state') ?? '';
-    window.history.replaceState(null, '', `/callback?code=abc&state=${state}`);
-
-    render(<App auth={c.auth} fetch={api.fetch} />);
-
-    expect(
-      await screen.findByRole('heading', { name: 'Du har ikke tilgang til driftskonsollet' }),
-    ).toBeTruthy();
-    expect(screen.getByText(/Du er logget inn som Ola Drift/)).toBeTruthy();
-    expect(screen.queryByRole('navigation')).toBeNull();
-  });
-
-  it('tells a user-group Entra login that the console is for operators', async () => {
-    const entraAccess = `${encode({ alg: 'none' })}.${encode({ acr: 'entraid', email: 'kari@digdir.example' })}.sig`;
-    const api = liveApi(false, (path) =>
-      path === '/api/mock/ansattporten/token'
-        ? json({
-            access_token: entraAccess,
-            id_token: idToken('Kari Bruker'),
-            token_type: 'Bearer',
-          })
-        : undefined,
-    );
-    const c = client(api.fetch);
-    const state = (await startLogin(c)).searchParams.get('state') ?? '';
-    window.history.replaceState(null, '', `/callback?code=abc&state=${state}`);
-
-    render(<App auth={c.auth} fetch={api.fetch} />);
-
-    expect(
-      await screen.findByRole('heading', { name: 'Du har ikke tilgang til driftskonsollet' }),
-    ).toBeTruthy();
-    expect(screen.getByText(/Driftskonsollet er bare for Digdirs driftsteam/)).toBeTruthy();
-    expect(screen.queryByRole('navigation')).toBeNull();
-  });
-
-  it('makes the console treat a trusted Entra login as operator and names it by email', async () => {
-    const entraAccess = `${encode({ alg: 'none' })}.${encode({ acr: 'entraid', email: 'lise@digdir.example' })}.sig`;
-    const api = liveApi(true, (path) =>
-      path === '/api/mock/ansattporten/token'
-        ? json({
-            access_token: entraAccess,
-            id_token: `${encode({ alg: 'none' })}.${encode({ acr: 'entraid', nonce: sentNonce })}.sig`,
-            token_type: 'Bearer',
-          })
-        : undefined,
-    );
-    const c = client(api.fetch);
-    const state = (await startLogin(c)).searchParams.get('state') ?? '';
-
-    const session = await c.auth.completeLogin?.(
-      new URL(`http://localhost:5174/callback?code=a&state=${state}`),
-    );
-
-    expect(session).toMatchObject({ name: 'lise@digdir.example', roles: [operatorRole] });
-    const asked = api.calls.find((call) => call.path === '/api/operator/tenants');
-    expect(new Headers(asked?.init?.headers).get('authorization')).toBe(`Bearer ${entraAccess}`);
-  });
-
-  it('rejects a callback whose state does not match', async () => {
-    const api = liveApi();
-    const c = client(api.fetch);
-    await startLogin(c);
-    window.history.replaceState(null, '', '/callback?code=abc&state=wrong');
-
-    render(<App auth={c.auth} fetch={api.fetch} />);
-
-    expect((await screen.findByRole('alert')).textContent).toMatch(/kunne ikke fullføres/);
-    expect(api.calls.some((call) => call.path === '/api/mock/ansattporten/token')).toBe(false);
-  });
-
-  it('refuses a login whose ID token nonce does not match the one it sent', async () => {
-    const api = liveApi(true, (path) =>
-      path === '/api/mock/ansattporten/token'
-        ? json({
-            access_token: 'access',
-            id_token: idToken('Ola Drift', 'other'),
-            token_type: 'Bearer',
-          })
-        : undefined,
-    );
-    const c = client(api.fetch);
-    const state = (await startLogin(c)).searchParams.get('state') ?? '';
-
-    await expect(
-      c.auth.completeLogin?.(new URL(`http://localhost:5174/callback?code=a&state=${state}`)),
-    ).rejects.toThrow(/could not be completed|kunne ikke fullføres/);
-    expect(c.auth.current()).toBeUndefined();
-  });
-
-  it('refuses a login whose ID token carries no nonce', async () => {
-    const api = liveApi(true, (path) =>
-      path === '/api/mock/ansattporten/token'
-        ? json({
-            access_token: 'access',
-            id_token: `${encode({ alg: 'none' })}.${encode({ name: 'Ola Drift' })}.sig`,
-            token_type: 'Bearer',
-          })
-        : undefined,
-    );
-    const c = client(api.fetch);
-    const state = (await startLogin(c)).searchParams.get('state') ?? '';
-
-    await expect(
-      c.auth.completeLogin?.(new URL(`http://localhost:5174/callback?code=a&state=${state}`)),
-    ).rejects.toThrow(/could not be completed|kunne ikke fullføres/);
-    expect(c.auth.current()).toBeUndefined();
-  });
-
-  it('takes the authorize and end-session endpoints from the identity provider metadata', async () => {
-    const api = liveApi();
-    const withMetadata: typeof fetch = async (input, init) =>
-      String(input) === `${issuer}/.well-known/openid-configuration`
-        ? Response.json({
-            issuer,
-            authorization_endpoint: 'https://login.example/authorize',
-            end_session_endpoint: 'https://login.example/logout',
-          })
-        : api.fetch(input, init);
-    const c = client(withMetadata);
-    const url = await startLogin(c);
-    expect(url.origin + url.pathname).toBe('https://login.example/authorize');
-
-    await c.auth.logout();
-    expect(c.visited.at(-1)).toMatch('https://login.example/logout?client_id=local-console');
-  });
-
-  it('treats a 404 from the operator routes as no operator role', async () => {
-    const api = liveApi();
-    const notOperator: typeof fetch = async (input, init) =>
-      String(input).endsWith('/operator/tenants')
-        ? new Response('Not found', { status: 404 })
-        : api.fetch(input, init);
-    const c = client(notOperator);
-    const state = (await startLogin(c)).searchParams.get('state') ?? '';
-    await c.auth.completeLogin?.(new URL(`http://localhost:5174/callback?code=a&state=${state}`));
-    expect(c.auth.current()?.roles).toEqual([]);
-  });
-
-  it('clears the session on logout and sends the browser to the end-session endpoint', async () => {
-    const api = liveApi();
-    const c = client(api.fetch);
-    const state = (await startLogin(c)).searchParams.get('state') ?? '';
-    await c.auth.completeLogin?.(new URL(`http://localhost:5174/callback?code=a&state=${state}`));
-    expect(c.auth.current()?.roles).toEqual([operatorRole]);
-
-    render(<App auth={c.auth} fetch={api.fetch} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Logg ut' }));
-
-    expect(await screen.findByRole('button', { name: 'Logg inn med Digdir-konto' })).toBeTruthy();
-    expect(c.auth.current()).toBeUndefined();
-    expect(c.storage.getItem('console.session')).toBeNull();
-    expect(c.visited.at(-1)).toMatch(`${issuer}/logout?client_id=local-console`);
-  });
-
+describe('mock mode', () => {
   it('keeps the fake login in mock mode', async () => {
     render(
       <App auth={mockEntra({ name: 'Lise Dahl', roles: [operatorRole] })} fetch={mockFetch()} />,

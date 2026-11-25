@@ -13,8 +13,12 @@ param keyVaultUri string
 param keyVaultSecretNames array
 @description('Gives the API the assistant host\'s proxy key, genai-proxy-key in Key Vault, which the BFF trusts the forwarded hostname by (ADR 0061).')
 param bffProxyKey bool = false
-@description('Reads platform-login-client-secret from genki\'s Key Vault for the API: the secret of genki\'s own login client (ADR 0061).')
+@description('Reads the Key Vault secret named by platformLoginSecretName for the API: the secret of genki\'s own login client (ADR 0061).')
 param platformLoginSecret bool = false
+@description('The Key Vault secret that holds the platform login client\'s secret.')
+param platformLoginSecretName string = 'platform-login-client-secret'
+@description('Gives the portal, workspace and console the proxy key, so their nginx sends /auth/ and /api/ through the BFF (ADR 0034, ADR 0061).')
+param platformAppsBff bool = false
 param apiImage string
 param apiRevisionSuffix string = ''
 param apiLiveRevision string = ''
@@ -215,7 +219,7 @@ var proxyKeySecret = bffProxyKey
   : []
 var proxyKeyEnv = bffProxyKey ? [{ name: 'GENAI_PROXY_KEY', secretRef: 'genai-proxy-key' }] : []
 var platformLoginSecretRef = platformLoginSecret
-  ? [{ name: 'platform-login-client-secret', keyVaultUrl: '${keyVaultUri}secrets/platform-login-client-secret', identity: identityId }]
+  ? [{ name: 'platform-login-client-secret', keyVaultUrl: '${keyVaultUri}secrets/${platformLoginSecretName}', identity: identityId }]
   : []
 var platformLoginSecretEnv = platformLoginSecret
   ? [{ name: 'PLATFORM_LOGIN_CLIENT_SECRET', secretRef: 'platform-login-client-secret' }]
@@ -586,28 +590,23 @@ resource restoreCheckJob 'Microsoft.App/jobs@2025-02-02-preview' = if (backupOn)
 var apiPublicUrl = empty(hostnames.api) ? 'https://${api.properties.configuration.ingress.fqdn}' : 'https://${hostnames.api}'
 var portalUrl = empty(hostnames.portal) ? '' : 'https://${hostnames.portal}'
 
+var webProxyKeySecret = platformAppsBff ? proxyKeySecret : []
+var webProxyKeyEnv = platformAppsBff ? proxyKeyEnv : []
+
 var webApps = [
   {
     app: 'portal'
-    env: {
-      ANSATTPORTEN_ISSUER: webSettings.ansattportenIssuer
-      OIDC_CLIENT_ID: webSettings.portalClientId
-    }
+    env: {}
   }
   {
     app: 'workspace'
     env: {
-      ANSATTPORTEN_ISSUER: webSettings.ansattportenIssuer
-      OIDC_CLIENT_ID: webSettings.workspaceClientId
       PORTAL_URL: portalUrl
     }
   }
   {
     app: 'console'
     env: {
-      OIDC_ISSUER: webSettings.consoleIssuer
-      OIDC_CLIENT_ID: webSettings.consoleClientId
-      OIDC_TOKEN_ENDPOINT: webSettings.consoleTokenEndpoint
       ENVIRONMENT: platformTier
     }
   }
@@ -635,6 +634,7 @@ resource web 'Microsoft.App/containerApps@2025-02-02-preview' = [for item in web
         customDomains: customDomains[item.app]
       }
       registries: [{ server: registryServer, identity: identityId }]
+      secrets: webProxyKeySecret
     }
     template: {
       containers: [
@@ -642,18 +642,21 @@ resource web 'Microsoft.App/containerApps@2025-02-02-preview' = [for item in web
           name: item.app
           image: appsImage
           resources: { cpu: json('0.25'), memory: '0.5Gi' }
-          env: filter(
-            concat(
-              [
-                { name: 'APP', value: item.app }
-                { name: 'API_UPSTREAM', value: 'https://${api.properties.configuration.ingress.fqdn}' }
-                { name: 'PUBLIC_API_BASE', value: apiPublicUrl }
-                { name: 'API_AUDIENCE', value: webSettings.apiAudience }
-                { name: 'ALTINN_RESOURCE', value: webSettings.altinnResource }
-              ],
-              map(items(item.env), pair => { name: pair.key, value: string(pair.value) })
+          env: concat(
+            filter(
+              concat(
+                [
+                  { name: 'APP', value: item.app }
+                  { name: 'API_UPSTREAM', value: 'https://${api.properties.configuration.ingress.fqdn}' }
+                  { name: 'PUBLIC_API_BASE', value: apiPublicUrl }
+                  { name: 'API_AUDIENCE', value: webSettings.apiAudience }
+                  { name: 'ALTINN_RESOURCE', value: webSettings.altinnResource }
+                ],
+                map(items(item.env), pair => { name: pair.key, value: string(pair.value) })
+              ),
+              pair => !empty(pair.value)
             ),
-            pair => !empty(pair.value)
+            webProxyKeyEnv
           )
           probes: [
             { type: 'Liveness', httpGet: { path: '/healthz', port: 8080 }, periodSeconds: 30 }

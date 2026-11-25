@@ -1,6 +1,6 @@
 import type { Principal } from '@genai/contracts';
 import { trustedEntraScope, type VerifiedIdentity } from '@genai/identity';
-import { isDevMode, operatorClientIds } from '@genai/composition';
+import { isDevMode, operatorClientIds, platformAppsSignIn } from '@genai/composition';
 
 type Env = Record<string, string | undefined>;
 
@@ -47,7 +47,8 @@ export const operatorSubjectProblems = (env: Env): string[] => {
   const unpinned =
     !isDevMode(env) &&
     entries.some((entry) => pairOf(entry)) &&
-    operatorClientIds(env).length === 0;
+    operatorClientIds(env).length === 0 &&
+    !platformAppsSignIn(env);
   return [
     ...(malformed.length > 0
       ? [`OPERATOR_SUBJECTS has ${malformed.length} entries without an issuer or a subject`]

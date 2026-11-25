@@ -1504,7 +1504,7 @@
             files: [
               'apps/workspace/src/App.tsx',
               'apps/workspace/src/api.ts',
-              'apps/workspace/src/oidc.ts',
+              'apps/workspace/src/bff-login.ts',
               'apps/workspace/src/Conversation.tsx',
             ],
             input: 'Employee messages',
@@ -1546,13 +1546,6 @@
                 kind: 'http',
                 target: 'http',
                 witness: { file: 'apps/workspace/src/api.ts', contains: '/api/feedback' },
-              },
-              {
-                to: 'ansattporten',
-                label: 'OIDC sign-in with authorized parties',
-                kind: 'http',
-                target: 'http',
-                witness: { file: 'apps/workspace/src/oidc.ts', contains: 'ansattporten' },
               },
             ],
             keywords: 'workspace chat employee frontend react designsystemet feedback',
@@ -1660,7 +1653,7 @@
             files: [
               'apps/portal/src/App.tsx',
               'apps/portal/src/api.ts',
-              'apps/portal/src/oidc.ts',
+              'apps/portal/src/bff-login.ts',
               'apps/portal/src/yaml.ts',
             ],
             input: 'Agency admin actions',
@@ -1690,13 +1683,6 @@
                 kind: 'http',
                 target: 'http',
                 witness: { file: 'apps/portal/src/api.ts', contains: '/api/datasets' },
-              },
-              {
-                to: 'ansattporten',
-                label: 'OIDC sign-in',
-                kind: 'http',
-                target: 'http',
-                witness: { file: 'apps/portal/src/oidc.ts', contains: 'ansattporten' },
               },
               {
                 to: 'schema-forms',
@@ -2426,6 +2412,7 @@
                   'login as a confidential client, sessions in Postgres, and a session swapped for a bearer token (ADR 0061)',
               },
               "Run genki's platform login on login.apps.\u003czone> and hand its session to a hosted hostname with a one-time code (ADR 0061)",
+              'Serve the BFF on the portal, workspace and console hostnames, so they sign in with the platform login and hold only a session cookie (ADR 0061)',
               'Run a published service over a document set, with a cost estimate, a cost cap and a retry list',
               'Keep projects of document selections, and subscriptions that run a service on new documents under a monthly cost cap',
               "Let operators set the maturity of operation kinds and the processor records of model endpoints, and refuse a service's call-operation step at publish unless both allow it (ADR 0047)",

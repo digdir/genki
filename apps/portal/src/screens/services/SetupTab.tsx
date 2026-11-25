@@ -105,7 +105,7 @@ import { useModelText } from '../../components/model-text';
 import { modelLabel } from '../../models';
 import type { Residency } from '../../types';
 import { useT, type PlainKey, type T } from '../../i18n';
-import { useUserName } from '../../Shell';
+import { useRights, useUserName } from '../../Shell';
 import { ErrorState } from '../../states';
 import { InputFieldsEditor, type InputOptionLookup } from './InputFormEditor';
 import { TableColumnsEditor, type TableSpec } from './TableOutputEditor';
@@ -113,6 +113,7 @@ import { VariantsEditor } from './VariantsEditor';
 import type { ApiClient } from '../../api';
 import { A2aChannel } from '../integrations/A2aChannel';
 import { VariantsList } from '../service/VariantsList';
+import { ServiceWebPageSection } from '../service/ServiceAddress';
 import { StrategyRow } from '../service/StrategyPanel';
 import type { SetupArea } from './setup-diff';
 import {
@@ -699,6 +700,7 @@ interface Props {
   ask?: ((question: string) => void) | undefined;
   modelNote?: ReactNode;
   inUse?: ServiceDefinition | undefined;
+  productionHasApp?: boolean;
   fileInput?: AsyncState<FileInput | undefined>;
   assistantOff?: boolean;
 }
@@ -741,11 +743,13 @@ export const SetupTab = ({
   ask,
   modelNote,
   inUse,
+  productionHasApp = false,
   fileInput = { status: 'loading' },
   assistantOff = false,
 }: Props) => {
   const t = useT();
   const userName = useUserName();
+  const canManage = useRights().has('manage-services');
   const modelList = modelCatalog ?? models;
   const [liveModels, retryModels] = useAsync(
     (signal) =>
@@ -2213,6 +2217,16 @@ export const SetupTab = ({
         case 'channels':
           return (
             <>
+              {api && tenant ? (
+                <ServiceWebPageSection
+                  api={api}
+                  tenant={tenant}
+                  service={serviceId}
+                  published={inUse !== undefined}
+                  hasApp={productionHasApp}
+                  canManage={canManage && !readOnly}
+                />
+              ) : null}
               <VariantsList
                 service={serviceId}
                 publicName={variantsOf(s)[0]?.publicName ?? ''}

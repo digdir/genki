@@ -1,6 +1,7 @@
 import {
   databaseRequirement,
   employeeClientIds,
+  platformAppsSignIn,
   flagEnvProblems,
   flagEnvRequirement,
   lockdownEntraProblems,
@@ -35,9 +36,9 @@ export const bootProblems = (env: Env): string[] => [
         'set ANSATTPORTEN_ISSUER, or MASKINPORTEN_ISSUER and MASKINPORTEN_JWKS_URI; the mock login runs only with GENAI_DEV_MODE=true',
     },
     {
-      met: !env.ANSATTPORTEN_ISSUER || employeeClientIds(env).length > 0,
+      met: !env.ANSATTPORTEN_ISSUER || employeeClientIds(env).length > 0 || platformAppsSignIn(env),
       problem:
-        'set EMPLOYEE_CLIENT_IDS, the Ansattporten clients whose logins the API accepts besides registered ones',
+        'set PLATFORM_LOGIN_CLIENT_ID and PLATFORM_APP_ORIGINS so the portal, workspace and console sign in through the platform login, or EMPLOYEE_CLIENT_IDS',
     },
     databaseRequirement(env),
     {
