@@ -180,6 +180,7 @@ export interface ClaimDeps {
   definitions: DefinitionStore;
   configEntries: ConfigEntryStore;
   locked?: boolean;
+  isPlatformOperator?: (principal: Principal) => boolean;
   reservedClientIds?: string[];
   now?: () => Date;
   newId?: () => string;
@@ -601,7 +602,9 @@ export const hostnameAdminHandlers = (deps: ClaimDeps): Record<string, AdminHand
       actor: platform
         ? String(input.by ?? actorOf(principal))
         : actorOf(principal.actor ?? principal),
-      operator: platform ? input.byOperator === true : isOperator(principal),
+      operator: platform
+        ? input.byOperator === true
+        : isOperator(principal) || deps.isPlatformOperator?.(principal) === true,
     });
     if (!result.ok) return refused(target, result.path, result.message);
     return {

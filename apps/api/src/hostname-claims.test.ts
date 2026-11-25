@@ -3,8 +3,9 @@ import { createLocalJWKSet, SignJWT } from 'jose';
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
-import { createSigningKey } from '@genai/identity';
+import { createSigningKey, trustedEntraScope } from '@genai/identity';
 import { envSecrets, InMemoryHostnameClaims, type HostnameClaim } from '@genai/kernel';
+import { tenantAccess } from './access.js';
 import { actorNames } from './actor-names.js';
 import { createAdmin } from './admin.js';
 import type { BinderTrust } from './binder-token.js';
@@ -33,6 +34,22 @@ const people: Record<string, Principal> = {
     authorizedFor: [{ org: digdir, resource, actions: ['use-services'] }],
   },
   drift: { kind: 'operator', issuer: 'test', subject: 'drift', tenant: digdir },
+  nina: {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'nina',
+    tenant: digdir,
+    scopes: [trustedEntraScope],
+    authorizedFor: [{ org: digdir, resource, actions: ['manage-services', 'use-services'] }],
+  },
+  'nina-other': {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'nina',
+    tenant: other,
+    scopes: [trustedEntraScope],
+    authorizedFor: [{ org: other, resource, actions: ['manage-services', 'use-services'] }],
+  },
   gjest: {
     kind: 'employee',
     issuer: 'test',
@@ -68,7 +85,13 @@ const hostedClient = (svc: string, hostnames: { hostname: string }[] = []) => ({
   },
 });
 
-const boot = async (options: { lockdown?: boolean; zone?: string | null } = {}) => {
+const boot = async (
+  options: {
+    lockdown?: boolean;
+    zone?: string | null;
+    isOperator?: (principal: Principal) => boolean;
+  } = {},
+) => {
   let clock = start;
   const key = await createSigningKey();
   const binder: BinderTrust = {
@@ -122,6 +145,7 @@ const boot = async (options: { lockdown?: boolean; zone?: string | null } = {}) 
     binder,
     platformLogin: { clientId: 'genki-login', audience: 'digdir:genai' },
     ...(options.lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
+    ...(options.isOperator ? { isOperator: options.isOperator } : {}),
     authenticate: async (request) => {
       const person = people[request.headers.get('authorization')?.replace(/^Bearer /, '') ?? ''];
       return person && { principal: person };
@@ -851,6 +875,60 @@ describe('a published service gets an address', () => {
 
     expect((await t.publish(service('nynorsk'), 'operator:test:drift')).ok).toBe(true);
     expect((await t.work()).map((i) => i.hostname)).toEqual([`nynorsk.apps.${zone}`]);
+  });
+
+  it('in lockdown counts a platform operator acting in their own organisation as an operator', async () => {
+    const t = await boot({
+      lockdown: true,
+      isOperator: (p) => p.kind === 'employee' && (p.scopes ?? []).includes(trustedEntraScope),
+    });
+
+    const acting = tenantAccess(people.nina as Principal, digdir, new Request('http://test'));
+    const published = await t.admin.publish(acting as Principal, {
+      definition: service('nynorsk'),
+      files,
+      reason: 'Publiserer tjenesten',
+    });
+    expect(published.ok).toBe(true);
+    expect((await t.work()).map((i) => i.hostname)).toEqual([`nynorsk.apps.${zone}`]);
+
+    expect((await t.publish(service('klarsprak'))).ok).toBe(true);
+    const given = await t.call(`/tenants/${digdir}/services/klarsprak/address`, {
+      method: 'POST',
+      as: 'nina',
+    });
+    expect(given.status).toBe(201);
+    expect(await given.json()).toMatchObject({ hostname: `klarsprak.apps.${zone}` });
+  });
+
+  it('in lockdown still refuses an address to an organisation member who is no platform operator', async () => {
+    const t = await boot({
+      lockdown: true,
+      isOperator: (p) => p.kind === 'employee' && (p.scopes ?? []).includes(trustedEntraScope),
+    });
+    expect((await t.publish(service('klarsprak'))).ok).toBe(true);
+
+    const refused = await t.call(`/tenants/${digdir}/services/klarsprak/address`, {
+      method: 'POST',
+      as: 'kari',
+    });
+
+    expect(refused.status).toBe(403);
+  });
+
+  it('in lockdown counts a platform operator as one only in the platform organisation', async () => {
+    const t = await boot({
+      lockdown: true,
+      isOperator: (p) => p.kind === 'employee' && (p.scopes ?? []).includes(trustedEntraScope),
+    });
+    expect((await t.publish(service('klarsprak', other))).ok).toBe(true);
+
+    const refused = await t.call(`/tenants/${other}/services/klarsprak/address`, {
+      method: 'POST',
+      as: 'nina-other',
+    });
+
+    expect(refused.status).toBe(403);
   });
 
   it('a service delete refused for its automatic Client names that Client by id', async () => {

@@ -4,7 +4,9 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
-  statSync,
+  closeSync,
+  fstatSync,
+  openSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -351,8 +353,13 @@ describe('demo recordings', () => {
     expect(commands.flat().join(' ')).not.toContain('k3y');
     const keyFile = join(dir, 'api-key.js');
     expect(commands[0]).toContain(keyFile);
-    expect(statSync(keyFile).mode & 0o777).toBe(0o600);
-    expect(readFileSync(keyFile, 'utf8')).toContain('k3y');
+    const fd = openSync(keyFile, 'r');
+    try {
+      expect(fstatSync(fd).mode & 0o777).toBe(0o600);
+      expect(readFileSync(fd, 'utf8')).toContain('k3y');
+    } finally {
+      closeSync(fd);
+    }
   });
 
   it('launches with no key script when the demo is not signed in', () => {
@@ -391,12 +398,12 @@ describe('demo recordings', () => {
     for (const value of hostile) {
       const commands = demoSignIn({ ...apps, tenant: value }, 0);
       expect(JSON.parse(commands[0]?.[4] ?? '').organisation).toBe(value);
-      expect(() => new Function('window', 'location', apiKeyScript(value, apps))).not.toThrow();
-      if (!/^[\x20-\x7e]*$/.test(value)) continue;
-      const { fetch, sent } = fetchThrough(apiKeyScript(value, apps));
-      await fetch('/api/x');
-      expect(sent[0]?.authorization).toBe(`Bearer ${value}`);
+      expect(() => apiKeyScript(value, apps)).toThrow('DEMO_API_KEY must be a bearer token');
     }
+    const token = 'a.b_c~d+e/f=-';
+    const { fetch, sent } = fetchThrough(apiKeyScript(token, apps));
+    await fetch('/api/x');
+    expect(sent[0]?.authorization).toBe(`Bearer ${token}`);
   });
 
   it.each(['network'])(

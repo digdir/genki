@@ -1863,6 +1863,7 @@ export const Builder = ({
       sections={only}
       readOnly={readOnly}
       inUse={publishedDefinition}
+      productionHasApp={inUseDefinition?.spec.interface?.layout !== undefined}
       fileInput={fileInput}
       {...(frontends ? { frontends } : {})}
       inputLockedIds={publishedFieldIds}
@@ -2052,6 +2053,7 @@ export const Builder = ({
                 publicName={variantsOf(service.spec)[0]?.publicName ?? ''}
                 onFrontends={setFrontends}
                 frontend={detail}
+                hasApp={inUseDefinition?.spec.interface?.layout !== undefined}
                 listHref={`#${servicePath(routeId, 'channels')}`}
               />
             )
