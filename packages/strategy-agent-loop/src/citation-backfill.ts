@@ -127,6 +127,15 @@ const declineJudged = (workspace: Workspace) => {
   return d.status === 'insufficient' || d.status === 'off-topic';
 };
 
+// Off-topic, outside the scope, or every chunk read found to support nothing.
+const nothingReadSupports = (workspace: Workspace) => {
+  const d = workspace.latestDecision();
+  if (d?.status === 'off-topic' || (d && 'reasonCode' in d && d.reasonCode === 'wrong-scope'))
+    return true;
+  const read = [...workspace.readChunkIds()];
+  return read.length > 0 && read.every((id) => workspace.nonSupporting.has(id));
+};
+
 export const settleCitations = (answer: string, workspace: Workspace): CitationSettlement => {
   if (validateCitations(answer, workspace.citationIndex).grounded)
     return { action: 'keep', reason: 'cited' };
@@ -148,9 +157,9 @@ export const settleCitations = (answer: string, workspace: Workspace): CitationS
     // A section after an opening decline adds only what is beside the question.
     if (opensWithDecline(answer)) {
       const decline = declineOnly(answer);
-      return decline === answer.trim()
-        ? { action: 'keep', reason: 'declined-after-insufficient' }
-        : { action: 'decline', text: decline };
+      if (decline === answer.trim())
+        return { action: 'keep', reason: 'declined-after-insufficient' };
+      if (nothingReadSupports(workspace)) return { action: 'decline', text: decline };
     }
     // Only mentions finding nothing: cite it as the answer it is.
   }

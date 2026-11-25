@@ -41,6 +41,14 @@ const fullAnswer = [
   '**Slik har jeg tolket spørsmålet:** Jeg fant ingen DFØ-evaluering med et eget kapittel som heter «Konklusjoner». Det nærmeste er DFØ-notat 2024:1.',
   '## Hva DFØ konkluderer med\nFunnene peker i samme retning, men DFØ har ikke nok data til å si hvor stor effekten er.',
 ].join('\n\n');
+const supportedDraft = [
+  'Jeg fant ikke tall for 2024.',
+  'For 2023 viser rapporten at kostnaden var 40 millioner kroner.',
+  'Vil du at jeg søker etter tallene for 2024?',
+].join('\n\n');
+const nothingSupports = (w: Workspace) => {
+  for (const id of w.readChunkIds()) w.nonSupporting.add(id);
+};
 const brunostDraft = `${brunostDecline}\n\n${brunostExtra}\n\n${brunostOffer}`;
 
 const judged = (w: Workspace, status: string) =>
@@ -549,6 +557,7 @@ describe('a decline after the gate judged the evidence', () => {
     const w = workspaceWith((w) => {
       readInto(w, 1, 2);
       judged(w, 'insufficient');
+      nothingSupports(w);
     });
 
     expect(settleCitations(`${brunostDecline}\n\n${brunostExtra}\n\n${offer}`, w)).toEqual({
@@ -557,10 +566,61 @@ describe('a decline after the gate judged the evidence', () => {
     });
   });
 
+  it('keeps a supported paragraph after an opening decline and cites it', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['kostnad 2024'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result(supportedDraft),
+          ],
+          read: [
+            () =>
+              readSignal('gap-remaining', {
+                supported_claims: [
+                  { claim_id: 'topic-match', support: 'explicit', chunk_ids: ['c1'] },
+                ],
+              }),
+          ],
+          synth: [() => supportedDraft.replace('40 millioner kroner.', '40 millioner kroner [1].')],
+        },
+      },
+    });
+
+    expect(out.text).toContain(
+      'For 2023 viser rapporten at kostnaden var 40 millioner kroner [1].',
+    );
+    expect(out.notices).toContainEqual({ stage: 'citations', action: 'backfill', adopted: true });
+  });
+
+  it('cuts to the decline when nothing read supports it', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      readCheck(w, 'insufficient');
+      nothingSupports(w);
+    });
+
+    expect(settleCitations(supportedDraft, w)).toEqual({
+      action: 'decline',
+      text: 'Jeg fant ikke tall for 2024.\n\nVil du at jeg søker etter tallene for 2024?',
+    });
+  });
+
+  it('cites an opening decline with an extra section when what was read supports it', () => {
+    const w = workspaceWith((w) => {
+      readInto(w, 1, 2);
+      readCheck(w, 'insufficient');
+    });
+
+    expect(settleCitations(supportedDraft, w)).toEqual({ action: 'backfill', readFirst: [] });
+  });
+
   it('cuts a decline with an extra section and no offer to its first paragraph', () => {
     const w = workspaceWith((w) => {
       readInto(w, 1, 2);
       judged(w, 'insufficient');
+      nothingSupports(w);
     });
 
     expect(settleCitations(`${brunostDecline}\n\n${brunostExtra}`, w)).toEqual({
