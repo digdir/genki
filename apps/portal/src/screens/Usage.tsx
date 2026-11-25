@@ -203,8 +203,7 @@ const UsageView = ({
 
   const pct = quota === null ? 0 : Math.round((status.used / quota) * 100);
   const forecastPct = quota === null ? 0 : Math.round((status.forecast / quota) * 100);
-  const forecastCost =
-    status.cost === null ? null : status.used ? (status.cost * status.forecast) / status.used : 0;
+  const { forecastCost } = status;
 
   const doExport = () => {
     const records: Record<string, string | number | boolean>[] =
@@ -724,7 +723,7 @@ export const Usage = ({ api, tenant, tenantName, route }: ScreenProps) => {
   const report = state.status === 'ready' ? state.data : undefined;
   const quota = report?.quota?.monthlyTokens ?? settingsQuota;
   const facts = report
-    ? quotaFacts(report, settingsQuota, tokensOf(monthUsage(report).total))
+    ? quotaFacts(report, settingsQuota, monthUsage(report).quotaTokens)
     : undefined;
   const quotaAction =
     facts && report

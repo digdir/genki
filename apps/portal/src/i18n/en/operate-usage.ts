@@ -140,6 +140,8 @@ export const usageArea = {
     trialRuns: 'Trial runs',
     trialRunsSub: 'The playground, the builder and operation tries. Counts towards the quota.',
     outsideGenki: 'Outside genki',
-    outsideGenkiSub: 'Calls straight to the AI gateway',
+    outsideGenkiSub: 'Calls straight to the AI gateway. Does not count towards the quota.',
+    internalServices: 'Internal services',
+    internalServicesSub: "The platform's own services. Counts towards the quota.",
   },
 } satisfies Translation<typeof source>;

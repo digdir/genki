@@ -53,7 +53,12 @@ import { mayGiveTestRunnerKeys, testRunnerRefusedType } from '../test-runner.js'
 import { fileInputOf } from '../runtime-documents.js';
 import type { ServiceHealth } from '../service-health.js';
 import { pausedMessage, type LifecycleView } from '../service-lifecycle.js';
-import { hidesInternalServices, isHiddenTask, shownKeys } from '../internal-services.js';
+import {
+  hidesInternalServices,
+  isHiddenTask,
+  seeingInternalServices,
+  shownKeys,
+} from '../internal-services.js';
 import { rightBeyondHolder } from '../key-policies.js';
 import { timedStep } from '../request-timing.js';
 
@@ -737,10 +742,14 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
   const withoutHiddenServiceKeys = async (tenant: string) =>
     shownKeys(deps.definitions, tenant, await deps.apiKeys.list(tenant));
 
-  const withoutHiddenTasks = async (tasks: Task[]) => {
+  const splitHiddenTasks = async (tasks: Task[]) => {
     const hidden = await Promise.all(tasks.map((t) => isHiddenTask(deps.definitions, t)));
-    return tasks.filter((_, i) => !hidden[i]);
+    return {
+      shown: tasks.filter((_, i) => !hidden[i]),
+      hidden: tasks.filter((_, i) => hidden[i]),
+    };
   };
+  const withoutHiddenTasks = async (tasks: Task[]) => (await splitHiddenTasks(tasks)).shown;
 
   const tasksOf = async (
     tenant: string,
@@ -1179,16 +1188,18 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       return at >= from.getTime() && at <= to.getTime();
     };
     const since = from.toISOString();
-    const [tasks, testRuns] = await timedStep('usageTasks', () =>
+    const [{ shown: tasks, hidden: internalRuns }, testRuns] = await timedStep('usageTasks', () =>
       Promise.all([
-        tasksSince(tenant, since, true).then((found) =>
-          found.filter(
-            (t) =>
-              within(t.createdAt) &&
-              (project === undefined || projectOf.get(t.id)?.project === project) &&
-              (environment === undefined || environmentOf(t) === environment),
-          ),
-        ),
+        seeingInternalServices(() => tasksSince(tenant, since, true))
+          .then((found) =>
+            found.filter(
+              (t) =>
+                within(t.createdAt) &&
+                (project === undefined || projectOf.get(t.id)?.project === project) &&
+                (environment === undefined || environmentOf(t) === environment),
+            ),
+          )
+          .then(splitHiddenTasks),
         !scoped
           ? tenantTestRunsSince(tenant, since).then((found) =>
               found.filter((t) => within(t.createdAt)),
@@ -1197,7 +1208,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       ]),
     );
     const usage = await timedStep('usageEvents', () =>
-      usageByTask([...tasks, ...testRuns].map((t) => t.id)),
+      usageByTask([...tasks, ...internalRuns, ...testRuns].map((t) => t.id)),
     );
     let totals = empty();
     const daily = new Map<string, Tally>();
@@ -1295,6 +1306,25 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         replaceCost(day(t.createdAt), m.model, used);
       }
     }
+    let internal = empty();
+    const dailyInternal = new Map<string, Tally>();
+    for (const t of internalRuns) {
+      const { tally, models } = taskTally(t, usage.get(t.id));
+      const date = day(t.createdAt);
+      internal = add(internal, tally);
+      bump(dailyInternal, date, tally);
+      totals = add(totals, tally);
+      bump(daily, date, tally);
+      count('', t.status === 'failed');
+      count('internal', t.status === 'failed');
+      count(`internal|${date}`, t.status === 'failed');
+      for (const m of models) {
+        const used = tallyOf(m.usage, deps.prices?.[m.model]);
+        bump(byModel, m.model, used);
+        bumpOn(dailyModel, date, m.model, used);
+        replaceCost(date, m.model, used);
+      }
+    }
     let ingestion = empty();
     for (const run of scoped ? [] : ((await deps.ingestionUsage?.(tenant)) ?? [])) {
       if (!within(run.at)) continue;
@@ -1376,6 +1406,10 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         byModel: views(dailyModel.get(d)),
         testing: usageView(dailyTesting.get(d) ?? empty()),
         ingestion: usageView(dailyIngestion.get(d) ?? empty()),
+        internal: {
+          ...usageView(dailyInternal.get(d) ?? empty()),
+          ...tallied(`internal|${d}`),
+        },
       });
     }
     const rows = <K extends string>(map: Map<string, Tally>, key: K) =>
@@ -1444,6 +1478,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       ...(environment === undefined ? {} : { environment }),
       ingestion: { usage: usageView(ingestion), byDataset: rows(byDataset, 'dataset') },
       testing: { usage: usageView(testing), byOrigin: rows(byOrigin, 'origin') },
+      internal: { usage: { ...usageView(internal), ...tallied('internal') } },
     };
   };
 

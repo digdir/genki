@@ -66,8 +66,36 @@ const answer = {
   },
 };
 
+const streamed = {
+  status: 200,
+  sse: [
+    {
+      data: {
+        id: 'c',
+        object: 'chat.completion.chunk',
+        created: 0,
+        model: 'gpt',
+        choices: [{ index: 0, delta: { content: 'Svar.' }, finish_reason: 'stop' }],
+      },
+    },
+    {
+      data: {
+        id: 'c',
+        object: 'chat.completion.chunk',
+        created: 0,
+        model: 'gpt',
+        choices: [],
+        usage: answer.json.usage,
+      },
+    },
+    { data: '[DONE]' },
+  ],
+};
+
 const boot = async () => {
-  const model = await fakeHttp(() => answer);
+  const model = await fakeHttp((body: Record<string, unknown>) =>
+    body.stream ? streamed : answer,
+  );
   servers.push(model);
   const keys = new InMemoryTenantApiKeys();
   const authenticator = createAuthenticator({ apiKeys: keys });
@@ -410,22 +438,53 @@ describe('an internal service', () => {
     expect(deletionReads).toHaveLength(1);
   });
 
-  it('stays out of the usage this month a tenant admin sees right after the test-runner key', async () => {
+  it('counts the same in the usage this month a tenant admin sees right after the test-runner key', async () => {
     const { send, run, key } = await boot();
     const runner = await key({ testRunner: true });
     await run(runner, 'smoke');
     const thisMonth = async (as: string, headers: Record<string, string> = {}) =>
       (
         (await (await send(`/tenants/${digdir}/overview`, as, { headers })).json()) as {
-          usageThisMonth?: { requests: number };
+          usageThisMonth?: { inputTokens: number; outputTokens: number };
         }
-      ).usageThisMonth?.requests;
+      ).usageThisMonth;
 
     const seenByRunner = await thisMonth(runner, portal);
     const seenByAdmin = await thisMonth('eva');
 
-    expect(seenByRunner).toBe(1);
-    expect(seenByAdmin).toBe(0);
+    expect(seenByRunner?.inputTokens).toBeGreaterThan(0);
+    expect(seenByAdmin).toEqual(seenByRunner);
+  });
+
+  it('counts its runs towards the quota and the usage totals a tenant admin sees, without naming it', async () => {
+    const { send, run, key } = await boot();
+    const runner = await key({ testRunner: true });
+    const caller = await key();
+    await run(runner, 'smoke');
+    await run(caller, 'klarsprak');
+
+    type Tokens = { inputTokens: number; outputTokens: number };
+    const usage = (await (await send(`/tenants/${digdir}/usage`, 'eva')).json()) as {
+      totals: Tokens & { runs: number };
+      daily: { internal: Tokens & { runs: number } }[];
+      byService: { service: string; usage: Tokens }[];
+      internal: { usage: Tokens & { runs: number } };
+      quota: { usedTokens: number };
+    };
+    const tokens = (u: Tokens) => u.inputTokens + u.outputTokens;
+    const [shown] = usage.byService;
+
+    expect(usage.byService.map((r) => r.service)).toEqual(['klarsprak']);
+    expect(tokens(usage.internal.usage)).toBeGreaterThan(0);
+    expect(usage.internal.usage.runs).toBe(1);
+    expect(usage.totals.runs).toBe(2);
+    expect(usage.daily.reduce((n, d) => n + tokens(d.internal), 0)).toBe(
+      tokens(usage.internal.usage),
+    );
+    expect(tokens(usage.totals)).toBe(
+      tokens(usage.internal.usage) + (shown ? tokens(shown.usage) : 0),
+    );
+    expect(usage.quota.usedTokens).toBe(tokens(usage.totals));
   });
 
   it('keeps a draft of an internal service out of the draft list for a tenant admin', async () => {

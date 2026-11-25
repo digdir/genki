@@ -81,7 +81,7 @@ export const statusArea = {
   usageParts: {
     ingestion: 'Ingestion into document collections',
     ingestionSub:
-      'Tokens used to read documents into the document collections. Counts towards the quota.',
+      'Tokens used to read documents into the document collections. Does not count towards the quota.',
   },
   account: {
     email: 'Email',

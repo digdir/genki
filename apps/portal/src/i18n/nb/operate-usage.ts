@@ -140,6 +140,8 @@ export const usageArea = {
     trialRuns: 'Prøvekjøringer',
     trialRunsSub: 'Prøveområdet, byggeren og prøving av operasjoner. Teller mot kvoten.',
     outsideGenki: 'Utenfor genki',
-    outsideGenkiSub: 'Kall rett til AI-gatewayen',
+    outsideGenkiSub: 'Kall rett til AI-gatewayen. Teller ikke mot kvoten.',
+    internalServices: 'Interne tjenester',
+    internalServicesSub: 'Plattformens egne tjenester. Teller mot kvoten.',
   }),
 } as const;
