@@ -1524,7 +1524,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     expect(location.hash).toBe('#innstillinger');
     // On «Generelt», the settings menu titled «Innstillinger» beside it (dev-innstillinger-0).
     expect(await screen.findByRole('heading', { level: 1, name: 'Generelt' })).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: 'Mine innstillinger' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Innstillinger' })).toBeTruthy();
   });
 
   // dev-innstillinger-1 to -4: the primary panel is the settings menu, each page in the main card.
@@ -1560,7 +1560,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
       );
       return onColorSchemeChange;
     };
-    const settingsNav = () => screen.getByRole('navigation', { name: 'Mine innstillinger' });
+    const settingsNav = () => screen.getByRole('navigation', { name: 'Innstillinger' });
     const go = (name: RegExp) =>
       fireEvent.click(within(settingsNav()).getByRole('button', { name }));
     beforeEach(() => kept.clear());
@@ -1570,7 +1570,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
       expect(await screen.findByRole('heading', { level: 1, name: 'Generelt' })).toBeTruthy();
       const nav = settingsNav();
       expect(
-        within(nav).getByRole('heading', { level: 2, name: 'Mine innstillinger' }),
+        within(nav).getByRole('heading', { level: 2, name: 'Innstillinger' }),
       ).toBeTruthy();
       expect(within(nav).getByRole('link', { name: 'Tilbake til trådene' })).toBeTruthy();
       const pages = within(within(nav).getByRole('list', { name: 'Sidene i innstillingene' }));

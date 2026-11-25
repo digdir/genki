@@ -105,8 +105,8 @@ export const blocksUi = {
     suggestion: 'Forslag {n}',
     addSuggestion: 'Legg til forslag',
     removeSuggestion: 'Fjern forslag {n}',
-    settingsNote: 'Notat i Mine innstillinger',
-    settingsNoteHelp: 'Står nederst i Mine innstillinger.',
+    settingsNote: 'Notat i Innstillinger',
+    settingsNoteHelp: 'Står nederst i Innstillinger.',
     collectionsTitle: 'Dokumentsamlinger',
     noCollections:
       'Tjenesten søker ikke i noen dokumentsamling ennå. Legg til en dokumentsamling i Oppsett.',
