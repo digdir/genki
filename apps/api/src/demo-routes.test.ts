@@ -30,14 +30,20 @@ interface Recording {
   failure?: { step: number };
 }
 
-const booted = async (sendRecording?: (recording: string) => Promise<void>) => {
+const booted = async (
+  sendRecording?: (recording: string) => Promise<void>,
+  wiring: { demoRecorder?: 'scheduled'; withKey?: boolean; digest?: string } = {},
+) => {
   let second = 0;
   const now = () => new Date(Date.UTC(2026, 10, 17, 10, 0, second++));
   const blobs = new InMemoryBlobStore();
   const platform = await bootPlatform({
     people: principals,
     blobStore: blobs,
-    demoRecorderKeyDigest: recorderKeyDigest(recorderKey),
+    ...(wiring.withKey === false
+      ? {}
+      : { demoRecorderKeyDigest: wiring.digest ?? recorderKeyDigest(recorderKey) }),
+    ...(wiring.demoRecorder ? { demoRecorder: wiring.demoRecorder } : {}),
     modules: [
       ...platformModules.filter((m) => m !== demosModule),
       createDemosModule({ now, ...(sendRecording ? { sendRecording } : {}) }),
@@ -704,5 +710,115 @@ describe('the demo settings', () => {
     );
 
     expect(settings.sample).toEqual({ recording: recording.id, file: 'sample.mp3' });
+  });
+});
+
+describe('the scheduled recorder', () => {
+  const scheduled = async (withKey = true, digest?: string) => {
+    const platform = await booted(undefined, {
+      demoRecorder: 'scheduled',
+      withKey,
+      ...(digest ? { digest } : {}),
+    });
+    const second = readDemo(demoYaml.replace('Prøv en tjeneste', 'Finn en tjeneste'));
+    if (!second.ok) throw new Error('fixture is invalid');
+    await platform.configEntries.append({
+      kind: demoKind,
+      scope: platformScope,
+      id: 'catalogue',
+      version: 1,
+      spec: second.spec,
+      deleted: false,
+      by: 'platform:seed',
+      at: '2026-11-17T10:00:00.000Z',
+      reason: 'demos/*.yaml in the repository',
+    });
+    const request = (demo: string) =>
+      platform.send(`/operator/demos/${demo}/recordings`, 'operator', {
+        body: {},
+        reason: reasonText,
+      });
+    return { ...platform, request };
+  };
+
+  it('queues a recording from the console when the scheduled recorder is wired with a recorder key', async () => {
+    const { request, send } = await scheduled();
+
+    const response = await request('playground');
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({ status: 'queued' });
+    expect(
+      await readJson<{ recorder: string }>(await send('/operator/demos', 'operator')),
+    ).toMatchObject({ recorder: 'scheduled' });
+    expect(
+      await readJson<{ recorder: string }>(await send('/operator/demo-settings', 'operator')),
+    ).toMatchObject({ recorder: 'scheduled' });
+  });
+
+  it('still answers 503 when the scheduled recorder is set but no recorder key is', async () => {
+    const { request, send } = await scheduled(false);
+
+    const response = await request('playground');
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ type: 'urn:genai:problem:recorder-not-set-up' });
+    expect(
+      await readJson<{ recorder: string }>(await send('/operator/demos', 'operator')),
+    ).toMatchObject({ recorder: 'workflow' });
+  });
+
+  it('still answers 503 when the recorder key digest is not a SHA-256 hex digest', async () => {
+    const { request } = await scheduled(true, recorderKeyDigest(recorderKey).toUpperCase());
+
+    const response = await request('playground');
+
+    expect(response.status).toBe(503);
+  });
+
+  it('lists the queued recordings oldest first, with only their id and demo, to the recorder key', async () => {
+    const { request, record } = await scheduled();
+    const first = await readJson<Recording>(await request('playground'));
+    const second = await readJson<Recording>(await request('catalogue'));
+
+    const listed = await record('/recorder/recordings?status=queued', { method: 'GET' });
+
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toEqual({
+      data: [
+        { id: first.id, demo: 'playground' },
+        { id: second.id, demo: 'catalogue' },
+      ],
+    });
+  });
+
+  it('leaves a recording out of the queued list once the recorder has taken it up', async () => {
+    const { request, record } = await scheduled();
+    const taken = await readJson<Recording>(await request('playground'));
+    await record('/recorder/demos/playground/recordings', {
+      json: { genkiVersion: '0.44.0', narrated: true, recording: taken.id },
+    });
+
+    const listed = await readJson<{ data: unknown[] }>(
+      await record('/recorder/recordings?status=queued', { method: 'GET' }),
+    );
+
+    expect(listed.data).toEqual([]);
+  });
+
+  it('refuses the queued list without the recorder key, an operator included, or without status=queued', async () => {
+    const { app, send, record, request } = await scheduled();
+    await request('playground');
+
+    const wrong = await app.request('/recorder/recordings?status=queued', {
+      headers: { 'x-recorder-key': 'gjettet' },
+    });
+    const operator = await send('/recorder/recordings?status=queued', 'operator', {
+      method: 'GET',
+    });
+    const unfiltered = await record('/recorder/recordings', { method: 'GET' });
+
+    expect([wrong.status, operator.status, unfiltered.status]).toEqual([401, 401, 400]);
+    expect(await wrong.json()).toMatchObject({ type: 'urn:genai:problem:recorder-key' });
   });
 });

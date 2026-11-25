@@ -69,7 +69,7 @@ export const fileTooLargeType = 'urn:genai:problem:file-too-large';
 export const recorderNotSetUpType = 'urn:genai:problem:recorder-not-set-up';
 export const recordingOpenType = 'urn:genai:problem:recording-open';
 
-export type RecorderMode = 'job' | 'workflow';
+export type RecorderMode = 'job' | 'scheduled' | 'workflow';
 
 class DemoRefused extends Error {
   constructor(
@@ -100,6 +100,16 @@ const newestFirst = (a: ConfigEntry<RecordingSpec>, b: ConfigEntry<RecordingSpec
 
 const isTrial = (r: ConfigEntry<RecordingSpec>) => r.spec.upTo !== undefined;
 
+export const recorderModeOf = (
+  sendRecording: DemosOptions['sendRecording'],
+  deps: { demoRecorder?: 'scheduled'; demoRecorderKeyDigest?: string },
+): RecorderMode =>
+  sendRecording
+    ? 'job'
+    : deps.demoRecorder === 'scheduled' && /^[0-9a-f]{64}$/.test(deps.demoRecorderKeyDigest ?? '')
+      ? 'scheduled'
+      : 'workflow';
+
 const recordingsOf = async (store: ConfigEntryStore, demo?: string) =>
   (await latestRecordings(store))
     .filter((r) => demo === undefined || r.spec.demo === demo)
@@ -118,7 +128,7 @@ const bodyOf = async (c: Context) => {
 
 export interface DemosOptions {
   now?: () => Date;
-  /** Hands a queued recording to the recorder job; without it recordings come from the workflow. */
+  /** Hands a queued recording to the recorder job; without it the scheduled workflow or nobody picks it up. */
   sendRecording?: (recording: string) => Promise<void>;
 }
 
@@ -129,7 +139,7 @@ export const createDemosModule =
     const store = deps.configEntries;
     const tenant = deps.platformTenant;
     const one = serialized();
-    const mode: RecorderMode = options.sendRecording ? 'job' : 'workflow';
+    const mode = recorderModeOf(options.sendRecording, deps);
 
     const viewer = async (c: Context, mounted: MountDeps, edit = false) => {
       const principal = await mounted.authenticate(c.req.raw);
@@ -326,8 +336,7 @@ export const createDemosModule =
             return problem(c, 400, [
               { path: 'upTo', message: `the demo has ${demo.spec.steps.length} steps` },
             ]);
-          const send = options.sendRecording;
-          if (!send)
+          if (mode === 'workflow')
             return problem(
               c,
               503,
@@ -369,7 +378,7 @@ export const createDemosModule =
                 }),
             );
             try {
-              await send(id);
+              await options.sendRecording?.(id);
             } catch {
               await one(async () => {
                 const current = await latestRecording(store, id);
@@ -507,6 +516,18 @@ export const createDemosModule =
           } catch (error) {
             return conflictOr(c, error);
           }
+        });
+
+        app.get('/recorder/recordings', async (c) => {
+          const principal = recorder(c);
+          if (!principal) return problem(c, 401, [], recorderKeyType);
+          if (c.req.query('status') !== 'queued')
+            return problem(c, 400, [{ path: 'status', message: 'status must be queued' }]);
+          const data = (await recordingsOf(store))
+            .filter((r) => r.spec.status === 'queued')
+            .reverse()
+            .map((r) => ({ id: r.id, demo: r.spec.demo }));
+          return c.json({ data });
         });
 
         app.get('/recorder/recordings/:id', async (c) => {

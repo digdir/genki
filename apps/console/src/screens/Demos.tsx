@@ -41,6 +41,7 @@ import {
   actorName,
   appLabel,
   audienceLabel,
+  canRecord,
   clock,
   Crumbs,
   demoHref,
@@ -104,11 +105,13 @@ const DemoCard = ({
   demo,
   state,
   actions,
+  recorder,
 }: {
   api: ApiClient;
   demo: Demo;
   state: DemoState;
   actions: ReturnType<typeof useActions>;
+  recorder: RecorderMode | undefined;
 }) => {
   const t = useT();
   const f = useFormat();
@@ -147,7 +150,7 @@ const DemoCard = ({
         ) : null}
         {demo.open ? (
           <Paragraph data-size="sm">
-            {progressText(demo.open, t)}{' '}
+            {progressText(demo.open, t, recorder)}{' '}
             <Link href={recordingHref(demo.open.id)}>{t('demos.followRecording')}</Link>
           </Paragraph>
         ) : null}
@@ -264,7 +267,7 @@ const Library = ({ api }: { api: ApiClient }) => {
               : t('demos.outdatedTitle', { count: outdated })}
           </Heading>
           <Paragraph>
-            {t(state.data.recorder === 'job' ? 'demos.outdatedTextJob' : 'demos.outdatedText', {
+            {t(canRecord(state.data.recorder) ? 'demos.outdatedTextJob' : 'demos.outdatedText', {
               version: state.data.genkiVersion,
             })}
           </Paragraph>
@@ -356,6 +359,7 @@ const Library = ({ api }: { api: ApiClient }) => {
                   demo={r.demo}
                   state={r.state}
                   actions={actions}
+                  recorder={state.data.recorder}
                 />
               ))}
             </ul>
@@ -439,7 +443,7 @@ const RecordActions = ({
   return (
     <div className="stack-sm demo-record-actions">
       <div className="actions-row">
-        {recorder === 'job' ? (
+        {canRecord(recorder) ? (
           <Button data-size="sm" onClick={onAsk} disabled={busy}>
             {t('demos.recordAgain')}
           </Button>
@@ -563,7 +567,7 @@ const Detail = ({ api, id }: { api: ApiClient; id: string }) => {
         <div className="stack">
           {open ? (
             <Alert data-color="info">
-              {progressText(open, t)}{' '}
+              {progressText(open, t, detail?.recorder)}{' '}
               <Link href={recordingHref(open.id)}>{t('demos.followRecording')}</Link>
             </Alert>
           ) : null}

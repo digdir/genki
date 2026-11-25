@@ -2945,6 +2945,17 @@ const AuditRecord = z
     outcome: z.enum(['applied', 'rejected']),
     target: z.string(),
     reason: z.string(),
+    flag: z
+      .object({
+        key: z.string(),
+        on: z.boolean().nullable().optional().describe('Null when the personal choice was removed'),
+        person: z
+          .object({ self: z.boolean(), name: z.string().optional() })
+          .optional()
+          .describe('Set when the change concerned one person'),
+      })
+      .optional()
+      .describe('What a feature flag change did, for platform.flag.* entries'),
   })
   .openapi('AuditRecord');
 

@@ -211,6 +211,11 @@ export const browserCommands = [
   'pushstate',
 ] as const;
 
+export const commandFlags = ['--name', '--exact', '--text', '--timeout', '--load', '--url'];
+
+const flagsAllowed = (command: string[]) =>
+  command.slice(1).every((p) => !p.startsWith('-') || commandFlags.includes(p));
+
 const retried = new Set([
   'find',
   'click',
@@ -289,6 +294,8 @@ export const parseDemo = (text: string, source = 'demo'): Demo => {
       if (name === 'open' && !isHttps(command[1]))
         fail(`${where}: open needs an https or localhost URL`);
       command.forEach((p, k) => (command[k] = String(p)));
+      if (!flagsAllowed(command as string[]))
+        fail(`${where}: takes only the flags ${commandFlags.join(', ')}`);
     });
   });
   if (problems.length) throw new Error(`${source}:\n  ${problems.join('\n  ')}`);
@@ -373,6 +380,11 @@ export const runStep = (
   pause: (ms: number) => void = sleep,
 ) => {
   for (const command of step.do ?? []) {
+    if (
+      !(browserCommands as readonly string[]).includes(command[0] ?? '') ||
+      !flagsAllowed(command)
+    )
+      throw stepFailure(index, step, command, new Error('the command is not allowed'));
     try {
       if (retried.has(command[0] ?? '')) retrying(() => browser(...command), timeoutMs, now, pause);
       else browser(...command);
@@ -493,7 +505,12 @@ export const clipFile = (dir: string, voice: string, text: string) =>
 
 type Speech = () => Promise<{ url: string; token: string }>;
 
-async function speak(text: string, demo: Demo, dir: string, speech: Speech) {
+async function speak(
+  text: string,
+  demo: Pick<Demo, 'voice' | 'language'>,
+  dir: string,
+  speech: Speech,
+) {
   const file = clipFile(dir, demo.voice, text);
   if (!cached(file)) {
     const { url, token } = await speech();
@@ -532,7 +549,10 @@ const speechOnce = (): Speech => {
   return () => (endpoint ??= speechEndpoint());
 };
 
-export const sampleLine = 'Hei! Det er denne stemmen som leser demoene i genki.';
+export const sampleLineOf = (language: string) =>
+  language.startsWith('en-')
+    ? 'Hi! This is the voice that reads the demos in genki.'
+    : 'Hei! Det er denne stemmen som leser demoene i genki.';
 
 async function voice(path: string) {
   const demo = parseDemo(readFileSync(path, 'utf8'), path);
@@ -540,8 +560,67 @@ async function voice(path: string) {
   mkdirSync(cache, { recursive: true });
   const speech = speechOnce();
   for (const step of demo.steps) await speak(step.say, demo, cache, speech);
-  await speak(sampleLine, demo, cache, speech);
+  await speak(sampleLineOf(demo.language), demo, cache, speech);
   console.log(`${basename(path)}: ${demo.steps.length} lines voiced`);
+}
+
+export interface QueuedNarration {
+  id: string;
+  demo: string;
+  voice: string;
+  language: string;
+  lines: string[];
+}
+
+export const queuedFile = () => resolve('demos/out/queued.json');
+
+const recordingId = /^[0-9a-f-]{36}$/;
+
+export const queuedOf = async (
+  api: string,
+  key: string,
+  send: typeof fetch = fetch,
+): Promise<QueuedNarration[]> => {
+  const base = api.replace(/\/$/, '');
+  const headers = { 'x-recorder-key': key };
+  const res = await send(`${base}/recorder/recordings?status=queued`, { headers });
+  if (!res.ok) throw new Error(`The queued recordings answered ${res.status}`);
+  const { data } = (await res.json()) as { data: { id: string }[] };
+  const queued: QueuedNarration[] = [];
+  for (const { id } of data.filter((r) => recordingId.test(r.id))) {
+    const one = await send(`${base}/recorder/recordings/${id}`, { headers });
+    if (!one.ok) {
+      console.error(`The recording ${id} answered ${one.status}, so it is left for the next run`);
+      continue;
+    }
+    const stored = (await one.json()) as StoredRecording & { status?: string };
+    if (stored.status !== undefined && stored.status !== 'queued') continue;
+    const demo = demoOfRecording(stored, {});
+    queued.push({
+      id,
+      demo: stored.demo,
+      voice: demo.voice,
+      language: demo.language,
+      lines: stored.upTo ? [] : demo.steps.map((s) => s.say),
+    });
+  }
+  return queued;
+};
+
+const readQueued = () =>
+  (JSON.parse(readFileSync(queuedFile(), 'utf8')) as QueuedNarration[]).filter((q) =>
+    recordingId.test(q.id),
+  );
+
+async function voiceQueued() {
+  const cache = cacheDir();
+  mkdirSync(cache, { recursive: true });
+  const speech = speechOnce();
+  for (const queued of readQueued().filter((q) => q.lines.length > 0)) {
+    for (const line of queued.lines) await speak(line, queued, cache, speech);
+    await speak(sampleLineOf(queued.language), queued, cache, speech);
+    console.log(`${queued.demo}: ${queued.lines.length} lines voiced`);
+  }
 }
 
 export interface RecordingFinish {
@@ -698,8 +777,17 @@ export async function recordDemo(
   const env = process.env;
   const key = env.DEMO_API_KEY || undefined;
   if (demo.signedIn && !key) {
-    console.log(`${name}: skipped, it needs DEMO_API_KEY to sign in`);
-    return { name, outcome: 'skipped', reason: 'needs DEMO_API_KEY to sign in' };
+    const why = 'needs DEMO_API_KEY to sign in';
+    if (reporting?.recording) {
+      const { library } = reporting;
+      const started = await library.start(name, false, reporting.recording).catch(() => undefined);
+      if (started)
+        await library.finish(started, { status: 'failed', failure: { step: 0, message: why } });
+      console.error(`${name}: failed, it ${why}`);
+      return { name, outcome: 'failed', reason: why };
+    }
+    console.log(`${name}: skipped, it ${why}`);
+    return { name, outcome: 'skipped', reason: why };
   }
   const out = resolve('demos/out', name);
   const cache = cacheDir();
@@ -884,7 +972,7 @@ async function capture(
     console.log(`${name}: no still`);
   }
   if (cached(poster)) await upload(poster, 'poster.jpg');
-  const sample = clipFile(cache, demo.voice, sampleLine);
+  const sample = clipFile(cache, demo.voice, sampleLineOf(demo.language));
   if (narrate && cached(sample)) await upload(sample, 'sample.mp3');
   await finished(duration(mp4));
   console.log(`${name}: ${mp4}`);
@@ -894,25 +982,48 @@ async function capture(
 export const parseArgs = (argv: string[]) => {
   const [first, ...rest] = argv;
   const mode =
-    first === 'check' || first === 'voice' || first === 'record' || first === 'recording'
+    first === 'check' ||
+    first === 'voice' ||
+    first === 'record' ||
+    first === 'recording' ||
+    first === 'queued'
       ? first
       : 'record';
   const args = mode === first ? rest : argv;
   const only = args.includes('--only') ? args[args.indexOf('--only') + 1] : undefined;
   const files = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--only');
-  return { mode, silent: args.includes('--silent'), only: only || undefined, files };
+  return {
+    mode,
+    silent: args.includes('--silent'),
+    queued: args.includes('--queued'),
+    only: only || undefined,
+    files,
+  };
 };
 
 async function main(argv: string[]) {
-  const { mode, silent, only, files } = parseArgs(argv);
+  const { mode, silent, queued, only, files } = parseArgs(argv);
+  if (mode === 'queued') {
+    const { DEMO_API_URL: api, DEMO_RECORDER_KEY: key } = process.env;
+    if (!api || !key) throw new Error('Set DEMO_API_URL and DEMO_RECORDER_KEY to list the queue');
+    const found = await queuedOf(api, key);
+    mkdirSync(resolve('demos/out'), { recursive: true });
+    writeFileSync(queuedFile(), JSON.stringify(found, null, 2));
+    console.log(`${found.length} queued: ${found.map((q) => q.demo).join(', ') || 'none'}`);
+    return;
+  }
+  if (mode === 'voice' && queued) return voiceQueued();
   if (mode === 'recording') {
-    const id = files[0];
-    if (!id || !/^[0-9a-f-]{36}$/.test(id)) throw new Error('recording takes a recording id');
-    const result = await recordStored(id, silent).catch((error: unknown) => {
-      console.error(error instanceof Error ? error.message : String(error));
-      return { name: id, outcome: 'failed' as const };
-    });
-    if (result.outcome === 'failed') process.exitCode = 1;
+    const ids = queued ? readQueued().map((q) => q.id) : files.slice(0, 1);
+    if (!queued && !recordingId.test(ids[0] ?? ''))
+      throw new Error('recording takes a recording id');
+    for (const id of ids) {
+      const result = await recordStored(id, silent).catch((error: unknown) => {
+        console.error(error instanceof Error ? error.message : String(error));
+        return { name: id, outcome: 'failed' as const };
+      });
+      if (result.outcome === 'failed') process.exitCode = 1;
+    }
     return;
   }
   const demos = pickDemos(resolve('demos'), only, files);

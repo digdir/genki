@@ -206,3 +206,49 @@ describe('operation descriptors', () => {
     ).toEqual({ list: ['a', 'b'], missing: 5, fixed: 'float', dollar: '$response' });
   });
 });
+
+describe('descriptor checks on adversarial input', () => {
+  const quickly = (run: () => unknown) => {
+    const started = performance.now();
+    run();
+    return performance.now() - started;
+  };
+  const withPath = (path: string) => embedYaml.replace('path: /embeddings', `path: ${path}`);
+  const withText = (text: string) =>
+    embedYaml.replace('encoding_format: float', `encoding_format: '${text}'`);
+
+  it('looks for a URL in linear time on a long run of scheme characters', () => {
+    expect(quickly(() => refused(withText('a'.repeat(100_000))))).toBeLessThan(1000);
+  });
+
+  it('reads path placeholders in linear time on a long run of opening braces', () => {
+    expect(quickly(() => refused(withPath(`/embeddings/${'{'.repeat(100_000)}`)))).toBeLessThan(
+      1000,
+    );
+  });
+
+  it('refuses the same URLs as before', () => {
+    for (const text of ['https://evil.example', '1abc://x', 'say a+b.c-d://x', 'a-://x'])
+      expect(refused(withText(text)), text).toMatch(/names no URL/);
+    for (const text of ['://x', '9://x', '+.-://x', 'a ://x', 'x:://y', 'a:/b'])
+      expect(refused(withText(text)) ?? '', text).not.toMatch(/names no URL/);
+  });
+
+  it('reads the same path placeholders as before', () => {
+    for (const path of [
+      '/embeddings/{deployment}',
+      '/embeddings/{deployment}/{x',
+      '/embeddings/a}{deployment}',
+      '/embeddings/{x',
+    ])
+      expect(refused(withPath(path)), path).toBeUndefined();
+    for (const path of [
+      '/embeddings/{x}',
+      '/embeddings/{x{deployment}',
+      '/embeddings/{x/{deployment}',
+      '/embeddings/{deployment}{a{b}',
+      '/embeddings/{steps.input}',
+    ])
+      expect(refused(withPath(path)), path).toMatch(/may only hold/);
+  });
+});

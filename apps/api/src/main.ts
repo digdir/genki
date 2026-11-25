@@ -523,6 +523,9 @@ const platform = await createPlatform({
   ...(process.env.DEMO_RECORDER_KEY_SHA256
     ? { demoRecorderKeyDigest: process.env.DEMO_RECORDER_KEY_SHA256 }
     : {}),
+  ...(process.env.GENAI_DEMO_RECORDER === 'scheduled'
+    ? { demoRecorder: 'scheduled' as const }
+    : {}),
   tracing: {
     ...(process.env.LANGFUSE_BASE_URL ? { instance: process.env.LANGFUSE_BASE_URL } : {}),
     instanceReceivesContent: process.env.LANGFUSE_INSTANCE_RECEIVES_CONTENT === 'true',

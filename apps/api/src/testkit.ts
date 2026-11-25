@@ -277,6 +277,7 @@ export interface BootOptions {
   blobStore?: BlobStore;
   fakeKey?: string;
   demoRecorderKeyDigest?: string;
+  demoRecorder?: 'scheduled';
   configEntries?: InMemoryConfigEntryStore;
   blockOrigin?: string;
   envFlags?: FlagKey[];
@@ -331,6 +332,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     ...(options.demoRecorderKeyDigest
       ? { demoRecorderKeyDigest: options.demoRecorderKeyDigest }
       : {}),
+    ...(options.demoRecorder ? { demoRecorder: options.demoRecorder } : {}),
     modules: options.modules ?? [...platformModules, onboardingModule, maskinportenClientsModule],
     policy: (options.policy ?? ((inner) => inner))(
       altinnPolicy({

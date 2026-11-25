@@ -94,12 +94,14 @@ const load = async (
 export const LiveChanges = ({
   api,
   tenant,
+  tenantName,
   limit = 5,
   filters = false,
   paged = false,
 }: {
   api: ApiClient;
   tenant: string;
+  tenantName?: string;
   limit?: number;
   filters?: boolean;
   paged?: boolean;
@@ -166,6 +168,7 @@ export const LiveChanges = ({
             ? data.datasets.get(id)?.name
             : undefined,
       (id) => data.datasets.get(id)?.fullId,
+      tenantName,
     );
     return (
       <>
