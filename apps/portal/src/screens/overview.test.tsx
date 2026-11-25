@@ -438,16 +438,15 @@ describe('Oversikt', () => {
     expectAccessible();
   });
 
-  it('marks the Dokumentsamlinger menu item with the number of document collections to follow up', async () => {
+  it('does not mark the Dokumentsamlinger menu item with a follow-up count', async () => {
     await renderAt('#/overview', withUsage(normalUsage));
 
     const menu = await screen.findByRole('navigation', { name: 'Hovedmeny' });
-    expect(
-      await within(menu).findByLabelText('2 dokumentsamlinger trenger oppfølging'),
-    ).toBeTruthy();
+    await screen.findByRole('region', { name: 'Trenger deg nå' });
+    expect(within(menu).queryByLabelText(/trenger oppfølging/)).toBeNull();
   });
 
-  it('lists a dataset without a source as needing you, as the Dokumentsamlinger filter counts it', async () => {
+  it('lists a dataset without a source as needing you', async () => {
     const withoutSource = {
       features: {
         datasets: {
@@ -485,11 +484,9 @@ describe('Oversikt', () => {
         .getByRole('link', { name: 'Se dokumentsamlingen: Arkivet' })
         .getAttribute('href'),
     ).toBe('#/datasets/999888777%2Farkiv');
-    const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
-    expect(await within(menu).findByLabelText('1 dokumentsamling trenger oppfølging')).toBeTruthy();
   });
 
-  it('lists a Digdir dataset that needs follow-up, since the Dokumentsamlinger badge counts it', async () => {
+  it('lists a Digdir dataset that needs follow-up', async () => {
     const sharedDegraded = {
       features: {
         datasets: {
@@ -526,9 +523,7 @@ describe('Oversikt', () => {
     } as Parameters<typeof mockFetch>[4];
     await renderAt('#/overview', withUsage(normalUsage, sharedDegraded));
 
-    const menu = await screen.findByRole('navigation', { name: 'Hovedmeny' });
-    expect(await within(menu).findByLabelText('1 dokumentsamling trenger oppfølging')).toBeTruthy();
-    const attention = screen.getByRole('region', { name: 'Trenger deg nå' });
+    const attention = await screen.findByRole('region', { name: 'Trenger deg nå' });
     expect(
       within(attention).getByRole('link', { name: 'Se dokumentsamlingen: Kudos' }),
     ).toBeTruthy();

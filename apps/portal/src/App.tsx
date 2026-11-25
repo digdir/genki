@@ -93,7 +93,6 @@ const Portal = ({
   const [failed, setFailed] = useState(false);
   const [unregistered, setUnregistered] = useState<Set<string>>(() => new Set());
   const [expired, setExpired] = useState(false);
-  const [followUp, setFollowUp] = useState<Record<string, number>>({});
   const [serverRights, setServerRights] = useState<Record<string, string[]>>({});
   const active = useLocale().locale;
   const locale = useRef<Locale>(active);
@@ -148,13 +147,6 @@ const Portal = ({
     return restoreUnsavedInput(store);
   }, [token]);
   const tenantKey = organisation?.orgNumber;
-  const reportFollowUp = useCallback(
-    (count: number) => {
-      if (tenantKey)
-        setFollowUp((all) => (all[tenantKey] === count ? all : { ...all, [tenantKey]: count }));
-    },
-    [tenantKey],
-  );
 
   const login = async () => {
     if (busy) return;
@@ -290,7 +282,6 @@ const Portal = ({
         />
       );
 
-    const failing = followUp[organisation.orgNumber] ?? 0;
     const reported = serverRights[organisation.orgNumber];
     const effective =
       route.segments.length === 0 ? { ...route, path: '/overview', segments: ['overview'] } : route;
@@ -313,17 +304,6 @@ const Portal = ({
           .map((o) => o.name)}
         api={api}
         onRights={reportRights}
-        onFollowUp={reportFollowUp}
-        badges={
-          failing > 0
-            ? {
-                '/datasets': {
-                  count: failing,
-                  label: t('shell.badgeIngest', { count: failing }),
-                },
-              }
-            : {}
-        }
       >
         {warnAt !== undefined ? (
           <Alert data-color="warning" data-size="sm" className="session-warning">
@@ -356,7 +336,6 @@ const Portal = ({
             tenantName={organisationName(organisation, t)}
             route={effective}
             live={live}
-            onFollowUp={reportFollowUp}
           />
         </Suspense>
       </Shell>

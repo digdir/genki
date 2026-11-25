@@ -52,10 +52,6 @@ export const shell = {
   menuProfile: 'Profile',
   menuDeveloper: 'Integrations',
   menuDataHandling: 'How data is handled',
-  badgeIngest: {
-    one: '{count} document collection needs attention',
-    other: '{count} document collections need attention',
-  },
 } satisfies Translation<typeof shellSource>;
 
 export const app = {

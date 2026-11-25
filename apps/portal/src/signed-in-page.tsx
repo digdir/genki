@@ -148,19 +148,16 @@ export const ScreenLoading = ({ route }: Pick<ScreenProps, 'route'>) => {
   );
 };
 
-export const Page = (props: ScreenProps & { onFollowUp: (count: number) => void }) => (
+export const Page = (props: ScreenProps) => (
   <Suspense fallback={<ScreenLoading route={props.route} />}>
     <Screen {...props} />
   </Suspense>
 );
 
-const Screen = ({
-  onFollowUp,
-  ...props
-}: ScreenProps & { onFollowUp: (count: number) => void }) => {
+const Screen = (props: ScreenProps) => {
   const t = useT();
   const [area = 'overview', id, sub] = props.route.segments;
-  if (area === 'overview') return <Overview {...props} onFollowUp={onFollowUp} />;
+  if (area === 'overview') return <Overview {...props} />;
   if (area === 'services') return <Services {...props} />;
   if (area === 'step-flows')
     return (

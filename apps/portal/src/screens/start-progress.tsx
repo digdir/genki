@@ -1,4 +1,4 @@
-import { CheckmarkIcon } from '@navikt/aksel-icons';
+import { CheckmarkIcon, PlusIcon } from '@navikt/aksel-icons';
 import { Heading } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import type { ApiClient, AuditRow } from '../api';
@@ -125,6 +125,7 @@ interface StepDef {
   doneAction: PlainKey;
   doneHref: string;
   right?: PortalRight;
+  creates?: boolean;
 }
 
 const steps: readonly StepDef[] = [
@@ -137,6 +138,7 @@ const steps: readonly StepDef[] = [
     doneAction: 'getStarted.datasetDone',
     doneHref: '#/datasets',
     right: 'manage-datasets',
+    creates: true,
   },
   {
     id: 'service',
@@ -147,6 +149,7 @@ const steps: readonly StepDef[] = [
     doneAction: 'getStarted.serviceDone',
     doneHref: '#/services',
     right: 'manage-services',
+    creates: true,
   },
   {
     id: 'tried',
@@ -227,9 +230,10 @@ export const StartSteps = ({
               <a
                 href={s.href}
                 className={i === next ? 'ds-button' : undefined}
-                data-variant={i === next ? 'primary' : undefined}
+                data-variant={i === next ? (s.creates ? 'secondary' : 'primary') : undefined}
                 data-size={i === next ? 'sm' : undefined}
               >
+                {i === next && s.creates ? <Icon icon={PlusIcon} /> : null}
                 {t(s.action)}
               </a>
             ) : (
