@@ -2866,6 +2866,9 @@ const Day = z.object({
   byModel: z.record(z.string(), Usage),
   testing: Usage.describe('Test-set and playground runs on this day'),
   ingestion: Usage.describe('Ingestion on this day'),
+  internal: UsageWithRuns.describe(
+    'Runs of internal services on this day, counted without naming them',
+  ),
 });
 
 const TenantUsage = z
@@ -2920,6 +2923,9 @@ const TenantUsage = z
       usage: Usage,
       byOrigin: z.array(z.object({ origin: z.string(), usage: Usage })),
     }),
+    internal: z
+      .object({ usage: UsageWithRuns })
+      .describe('Runs of internal services, which count towards the quota but are not named'),
     quota: z
       .object({
         usedTokens: z.number().int(),
@@ -2929,7 +2935,9 @@ const TenantUsage = z
         alert: z.boolean().describe('True once this month has used alertPercent of the quota'),
       })
       .optional()
-      .describe('The monthly token quota, for the calendar month, whatever days asks for'),
+      .describe(
+        'The monthly token quota for the calendar month (UTC), whatever days asks for. It counts every run but the builder assistant, internal services included, and not ingestion or the AI gateway',
+      ),
   })
   .openapi('TenantUsage');
 

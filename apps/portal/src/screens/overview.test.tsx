@@ -191,6 +191,48 @@ describe('Oversikt', () => {
     expect(await screen.findByRole('button', { name: 'Be om mer kvote' })).toBeTruthy();
   });
 
+  it('shows the same used tokens in the card as in the quota warning, the count that blocks services', async () => {
+    const counted: UsageReport = {
+      ...report({ rapportassistenten: 8_000_000 }),
+      quota: {
+        usedTokens: 9_000_000,
+        monthlyTokens: 10_000_000,
+        usedPercent: 90,
+        alertPercent: 80,
+        alert: true,
+      },
+    };
+    await renderAt(
+      '#/overview',
+      replacing(/\/settings\/effective$/, quotaSetting(10_000_000), withUsage(counted)),
+    );
+
+    const usage = await screen.findByRole('region', { name: /Bruk i/ });
+    expect(await within(usage).findByText('9 mill.')).toBeTruthy();
+    expect(screen.getByText(/9 av 10 mill. tokens er brukt i/)).toBeTruthy();
+  });
+
+  it('shows ingestion beside the quota, not as part of it', async () => {
+    const withIngestion: UsageReport = {
+      ...report({ rapportassistenten: 6_000_000 }, 2_000_000),
+      ingestion: { usage: totals(2_000_000, 0, null) },
+    };
+    withIngestion.daily = withIngestion.daily.map((d) => ({
+      ...d,
+      ingestion: totals(2_000_000, 0, null),
+    }));
+    await renderAt(
+      '#/overview',
+      replacing(/\/settings\/effective$/, quotaSetting(10_000_000), withUsage(withIngestion)),
+    );
+
+    const usage = await screen.findByRole('region', { name: /Bruk i/ });
+    expect(await within(usage).findByText('6 mill.', { selector: '.usage-used' })).toBeTruthy();
+    expect(within(usage).getByText('Innlesing i dokumentsamlinger').closest('dl')?.className).toBe(
+      'usage-facts',
+    );
+  });
+
   it('says the quota is used up when usage is past it, never that it is nearly used', async () => {
     await renderAt(
       '#/overview',

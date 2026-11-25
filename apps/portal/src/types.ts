@@ -522,6 +522,7 @@ export interface UsageReport {
     byModel?: Record<string, UsageTotals>;
     testing?: UsageTotals;
     ingestion?: UsageTotals;
+    internal?: UsageTotals;
   }[];
   byService: {
     service: string;
@@ -543,6 +544,7 @@ export interface UsageReport {
   environment?: string;
   quota?: UsageQuota;
   ingestion?: { usage: UsageTotals };
+  internal?: { usage: UsageTotals };
 }
 
 export interface UsageQuota {

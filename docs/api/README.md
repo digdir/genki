@@ -75,6 +75,10 @@ To announce one, add a line to a new dated entry below that names the operation 
 
 `npm run definitions:compat` checks every YAML or JSON file in the repository that is a service, step flow, skill or block definition (seeds, examples and fixtures) against the current schema, including the strategy, tool and guardrail settings. Models, datasets, rerankers, tools and blocks are not looked up, since each environment has its own. Give it the path to a tenant export (`GET /tenants/{tenant}/export`) or a folder of definitions to check those instead.
 
+### 2026-11-25: usage counts what the quota counts
+
+- `GET /tenants/{tenant}/usage` and `GET /tenants/{tenant}/overview` count runs of internal services in their totals for every viewer, as the monthly quota does. Where the viewer does not see internal services, `GET /tenants/{tenant}/usage` sums them under the new `internal` (and `internal` on each day) without naming them; the overview's `usageThisMonth` has them in its totals only. The quota counts neither ingestion nor the AI gateway.
+
 ### 2026-11-25: a hostname may redirect, and claims open hostnames
 
 - `GET /v1/hosts/{hostname}` answers only `{ hostname, redirectTo }` for a hostname claimed as a redirect (ADR 0062), so every other field of the answer is no longer always present. The host sends the browser to the same path on `redirectTo`. A hostname an `active` claim holds is answered like one in `GENAI_HOSTED_HOSTNAMES`.

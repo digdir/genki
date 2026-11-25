@@ -81,7 +81,8 @@ export const statusArea = {
   }),
   usageParts: defineNamespace({
     ingestion: 'Innlesing i dokumentsamlinger',
-    ingestionSub: 'Tokens brukt til å lese inn dokumenter i dokumentsamlingene. Teller mot kvoten.',
+    ingestionSub:
+      'Tokens brukt til å lese inn dokumenter i dokumentsamlingene. Teller ikke mot kvoten.',
   }),
   account: defineNamespace({
     email: 'E-post',
