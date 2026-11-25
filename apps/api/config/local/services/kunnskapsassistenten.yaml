@@ -10,6 +10,7 @@ spec:
       en: What do the annual reports say about waiting times on the phone?
   audience: [employees]
   riskClass: limited
+  languages: [nb]
   variants:
     - id: default
     - id: mini

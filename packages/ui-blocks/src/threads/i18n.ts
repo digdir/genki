@@ -2,6 +2,7 @@ import { defineCatalogue, defineNamespace, type Translation } from '@genai/i18n'
 import { defineTranslations } from '@genai/i18n/react';
 
 export const nbThreads = defineNamespace({
+  heading: 'Tråder',
   earlier: 'Tidligere tråder',
   newThread: 'Ny tråd',
   firstThread: 'Start din første tråd',
@@ -42,6 +43,7 @@ export const nbThreads = defineNamespace({
 });
 
 export const enThreads = {
+  heading: 'Threads',
   earlier: 'Earlier threads',
   newThread: 'New thread',
   firstThread: 'Start your first thread',
