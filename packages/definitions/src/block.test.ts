@@ -71,7 +71,7 @@ describe('a Block definition', () => {
   const code = {
     tier: 'code',
     builtIn: undefined,
-    code: { sha256: 'a'.repeat(64), bytes: 120, reads: ['question.text'] },
+    code: { sha256: 'a'.repeat(64), bytes: 12, reads: ['question.text'] },
   };
 
   it('takes a template only on a declarative block and code only on a code block', () => {
@@ -91,15 +91,6 @@ describe('a Block definition', () => {
 
   it('accepts a declarative block once a host draws it', () => {
     expect(errorsOf(chatBlock(declarative))).toEqual([]);
-  });
-
-  it('refuses a code block until a host draws it', () => {
-    expect(errorsOf(chatBlock(code))).toEqual([
-      {
-        path: 'spec.tier',
-        message: 'code blocks are not drawn by any host yet; only built-in blocks can be published',
-      },
-    ]);
   });
 
   it('refuses a file under block/ on anything but a code block', () => {

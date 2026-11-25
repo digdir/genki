@@ -145,9 +145,10 @@ export const profile = {
   newFeatures: 'New features',
   newFeaturesLead:
     'Try features before they are finished. Your choice applies only to you and can be changed at any time.',
-  flagBlockStudio: 'Block Studio',
-  flagBlockStudioText: "The library of design elements you build a service's look from.",
-  flagForYou: 'Use {name}',
+  flagBlockStudio: 'New design tools',
+  flagBlockStudioText:
+    "Build and edit the design elements of a service's look, with or without code.",
+  flagForYou: 'Turn on for me',
   flagForOrganisation: 'On for all of {name}',
   flagFollowOrganisation: "Follow the organisation's choice",
   flagOnForYou: 'On for you',

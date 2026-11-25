@@ -13,7 +13,7 @@ export const flagsMock = (json: (body: unknown, status?: number) => Response) =>
       by: 'operator:entra:drift',
       byName: 'Ola Drift',
       at: '2026-11-24T09:00:00Z',
-      reason: 'Laben prøver Block Studio først',
+      reason: 'Laben prøver ny utforming først',
     },
   ];
   const mine: FlagState[] = flagKeys.map((key) => ({

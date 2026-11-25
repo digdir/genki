@@ -138,9 +138,10 @@ export const profile = defineNamespace({
   newFeatures: 'Nye funksjoner',
   newFeaturesLead:
     'Prøv funksjoner før de er ferdige. Valget ditt gjelder bare deg og kan endres når som helst.',
-  flagBlockStudio: 'Block Studio',
-  flagBlockStudioText: 'Biblioteket med designelementer du kan bygge tjenestens utforming av.',
-  flagForYou: 'Bruk {name}',
+  flagBlockStudio: 'Ny utforming',
+  flagBlockStudioText:
+    'Bygg og endre designelementer til tjenestens utforming, med eller uten kode.',
+  flagForYou: 'Slå på for meg',
   flagForOrganisation: 'På for hele {name}',
   flagFollowOrganisation: 'Følg virksomhetens valg',
   flagOnForYou: 'På for deg',

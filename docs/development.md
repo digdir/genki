@@ -39,20 +39,23 @@ npm start          # setup, then API, worker, portal, console and workspace; sto
 
 `npm run dev:all` runs everything with prefixed, coloured output and refuses to start if a port is taken:
 
-| Process   | Address               | For                                                                 |
-| --------- | --------------------- | ------------------------------------------------------------------- |
-| API       | http://localhost:8080 | The platform, with database migrations and seeded definitions       |
-| Worker    | http://localhost:8081 | Durable jobs, such as runs on the knowledge database; health checks |
-| Portal    | http://localhost:5173 | Agencies: build, test and publish services, datasets and API keys   |
-| Console   | http://localhost:5174 | Digdir operators: tenants, shared services, models, platform health |
-| Workspace | http://localhost:5176 | Employees: chat with published services, with sources and approvals |
-| Model     | http://127.0.0.1:8095 | Local test model, only when `LOCAL_MODEL_URL` points there          |
+| Process   | Address               | For                                                                                              |
+| --------- | --------------------- | ------------------------------------------------------------------------------------------------ |
+| API       | http://localhost:8080 | The platform, with database migrations and seeded definitions                                    |
+| Worker    | http://localhost:8081 | Durable jobs, such as runs on the knowledge database; health checks                              |
+| Portal    | http://localhost:5173 | Agencies: build, test and publish services, datasets and API keys                                |
+| Console   | http://localhost:5174 | Digdir operators: tenants, shared services, models, platform health                              |
+| Workspace | http://localhost:5176 | Employees: chat with published services, with sources and approvals                              |
+| Model     | http://127.0.0.1:8095 | Local test model, only when `LOCAL_MODEL_URL` points there                                       |
+| Blocks    | http://localhost:8090 | The block origin code blocks are framed from (ADR 0069), served by the API on `GENAI_BLOCK_PORT` |
+
+**Code blocks locally.** In dev mode `npm start` sets `GENAI_BLOCK_ORIGIN=http://localhost:8090` and `GENAI_BLOCK_PORT=8090`, so a code block can be saved and its frame and bundle are served on port 8090 from any `localhost` page. Code blocks are behind the `blockStudio` flag too: turn it on for the whole organisation under Profil, Nye funksjoner, or with `GENAI_FLAGS=blockStudio` in `.env.local`. Turned on only for yourself, you can save code blocks, but services draw them only while it is on for the organisation. Without `GENAI_BLOCK_ORIGIN`, or with the flag off, the API refuses code blocks. Outside dev mode the origin must be `https`, on a registrable domain of its own.
 
 **Other ports.** To run a second copy next to one that already runs, give it its own compose project, Postgres port, model port and app ports:
 
 ```sh
 COMPOSE_PROJECT_NAME=genai-second GENAI_POSTGRES_PORT=8110 GENAI_KNOWLEDGE_PORT=8111 GENAI_MODEL_PORT=8104 npm run setup
-GENAI_API_PORT=8100 GENAI_WORKER_PORT=8105 GENAI_PORTAL_PORT=8101 GENAI_CONSOLE_PORT=8102 GENAI_WORKSPACE_PORT=8103 npm run dev:all
+GENAI_API_PORT=8100 GENAI_WORKER_PORT=8105 GENAI_PORTAL_PORT=8101 GENAI_CONSOLE_PORT=8102 GENAI_WORKSPACE_PORT=8103 GENAI_BLOCK_PORT=8106 npm run dev:all
 ```
 
 Setup writes the ports into the new `.env.local`, and `dev:all` points the Vite proxies and the login issuer at the moved API. The mock login accepts registered `http` loopback redirects (`localhost`, `127.0.0.1` or `[::1]`) on any port, for login and logout; every other character must match the registered URI. The default clients in `apps/api/config/local/identity.yaml` therefore work on shifted ports without changes, and `dev:all` names missing callback registrations at start. Real Ansattporten still needs the callback registered for each app's port. Stop the copy's database with `COMPOSE_PROJECT_NAME=genai-second docker compose down -v`.

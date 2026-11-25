@@ -36,6 +36,7 @@ frame="'self'"
 for url in "${ANSATTPORTEN_ISSUER:-}" "${OIDC_ISSUER:-}"; do
   case "$url" in https://*) frame="$frame $(origin "$url")" ;; esac
 done
+case "${GENAI_BLOCK_ORIGIN:-}" in https://*) frame="$frame $(origin "$GENAI_BLOCK_ORIGIN")" ;; esac
 upstream=${API_UPSTREAM%/}
 api_scheme=${upstream%%://*}
 api_rest=${upstream#*://}

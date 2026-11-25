@@ -50,6 +50,7 @@ export const defaultPorts = {
   portal: 5173,
   console: 5174,
   workspace: 5176,
+  block: 8090,
 };
 
 export const devPorts = (env: Record<string, string | undefined>) => {
@@ -63,6 +64,7 @@ export const devPorts = (env: Record<string, string | undefined>) => {
     portal: pick('GENAI_PORTAL_PORT', defaultPorts.portal),
     console: pick('GENAI_CONSOLE_PORT', defaultPorts.console),
     workspace: pick('GENAI_WORKSPACE_PORT', defaultPorts.workspace),
+    block: pick('GENAI_BLOCK_PORT', defaultPorts.block),
   };
 };
 
@@ -111,6 +113,12 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
           GENAI_DEV_MODE: 'true',
           ...(devMode ? { GENAI_ENV: 'test' } : {}),
           ...(devMode && !env.ANSATTPORTEN_ISSUER ? { GENAI_MOCK_RIGHTS: 'true' } : {}),
+          ...(devMode
+            ? {
+                GENAI_BLOCK_ORIGIN: `http://localhost:${ports.block}`,
+                GENAI_BLOCK_PORT: String(ports.block),
+              }
+            : {}),
         }),
         ...(custom ? { PORT: String(ports.api) } : {}),
       },
@@ -275,6 +283,8 @@ const main = async () => {
 
   const busy: string[] = [];
   for (const p of processes) if (await portInUse(p.port)) busy.push(`${p.name} :${p.port}`);
+  const blockPort = Number(processes.find((p) => p.name === 'api')?.env?.GENAI_BLOCK_PORT);
+  if (blockPort && (await portInUse(blockPort))) busy.push(`blocks :${blockPort}`);
   if (busy.length) {
     console.error(`Ports already in use: ${busy.join(', ')}. Stop what runs there and try again.`);
     process.exit(1);
@@ -293,7 +303,7 @@ const main = async () => {
   const run = runAll(processes, { cwd: repoRoot, colour, write: (t) => process.stdout.write(t) });
   const ports = devPorts({ ...fileEnv, ...process.env });
   console.log(
-    `API http://localhost:${ports.api}  portal http://localhost:${ports.portal}  console http://localhost:${ports.console}  workspace http://localhost:${ports.workspace}  (Ctrl-C stops all)`,
+    `API http://localhost:${ports.api}  portal http://localhost:${ports.portal}  console http://localhost:${ports.console}  workspace http://localhost:${ports.workspace}  blocks http://localhost:${ports.block}  (Ctrl-C stops all)`,
   );
   process.on('SIGINT', () => run.stop(0));
   process.on('SIGTERM', () => run.stop(0));

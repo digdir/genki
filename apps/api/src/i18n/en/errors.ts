@@ -117,6 +117,7 @@ export const catalogErrors = {
   blockRefZone: '{ref} cannot stand in {zone}; it may stand in {zones}',
   previewShowsBlock: 'a preview shows a Block',
   pinVersion: 'version is a published edition of the block',
+  shareVersion: 'version is the number of a saved edition of the block',
   pinZone: 'zone is primary, main or secondary',
   codeBlockNotDrawn:
     'code blocks are not drawn by any host yet; only built-in blocks can be published',

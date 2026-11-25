@@ -28,6 +28,7 @@ import { confirmedBy } from './governance.js';
 import { blockRefProblems } from './interface-catalogue.js';
 import { riskConfirmationProblems } from './risk-confirmation.js';
 import type { UnmaskedInputUse } from './operation-governance.js';
+import { definitionBodyLimit } from './block-bundles.js';
 import { t } from './i18n/index.js';
 import {
   type Authenticator,
@@ -155,10 +156,13 @@ const kindParam = z
   .openapi({ param: { name: 'kind', in: 'path' } });
 const idParam = z.string().openapi({ param: { name: 'id', in: 'path' } });
 
+const tooLarge = { content: problemContent, description: 'The body is over 4 MiB' };
+
 const routes = {
   validate: createRoute({
     method: 'post',
     path: '/definitions/validate',
+    middleware: [definitionBodyLimit] as const,
     summary: 'Validate a definition without saving it',
     request: { body: definitionBody },
     responses: {
@@ -180,6 +184,7 @@ const routes = {
         content: problemContent,
         description: `Not allowed for this tenant, or ${shareOperatorOnlyType}: only an operator publishes a built-in Block or shares a code Block with everyone`,
       },
+      413: tooLarge,
       422: { content: problemContent, description: 'The definition is invalid' },
     },
   }),
@@ -187,6 +192,7 @@ const routes = {
     method: 'post',
     path: '/definitions',
     summary: 'Publish a definition; the store assigns the next version',
+    middleware: [definitionBodyLimit] as const,
     request: {
       body: definitionBody,
       headers: changeReason,
@@ -206,6 +212,7 @@ const routes = {
         content: problemContent,
         description: `${draftOutdatedType}: the body's draftRevision names a draft started from an older version, and publishing it would undo newer published changes; rebase the draft first. ${serviceArchivedType}: the service is archived; restore it first`,
       },
+      413: tooLarge,
       422: { content: problemContent, description: 'The definition is invalid' },
     },
   }),
@@ -399,7 +406,7 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
     const unmasked = (await options.unmaskedInput?.(validated.definition)) ?? [];
     const unmaskedInput = unmasked.length ? { unmaskedInput: unmasked } : {};
     const errors = [
-      ...admin.check(validated.definition, read.files),
+      ...(await admin.check(validated.definition, read.files, acting ?? principal)),
       ...(await publishRefusals(store, validated.definition)),
       ...(validated.definition.kind === 'Service'
         ? await blockRefProblems(store, validated.definition)

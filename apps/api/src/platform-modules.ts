@@ -51,6 +51,7 @@ import type { TrackedWork } from './tracked-work.js';
 
 export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   platformTenant: string;
+  blockOrigin?: string;
   catalog: CatalogRegistry;
   definitions: DefinitionStore;
   plugins: PluginSchemas;

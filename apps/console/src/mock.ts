@@ -342,6 +342,27 @@ export const mockFetch = (
   let current = structuredClone(models);
   let blocks = structuredClone(exampleBlocks);
   let onboarding = structuredClone(exampleOnboarding);
+  let blockReviews = [
+    {
+      id: '6f1c2b0e-8c1a-4a55-9d0c-2f7d3c1e9a10',
+      tenant: '974760673',
+      tenantName: 'Brønnøysundregistrene',
+      block: 'figur',
+      version: 2,
+      status: 'pending',
+      requestedBy: 'Kari Nordmann',
+      requestedAt: '2026-11-20T09:30:00Z',
+      reason: 'Flere virksomheter trenger samme figur.',
+      title: { nb: 'Figur', en: 'Figure' },
+      reads: ['answer.text', 'sources.title'],
+      events: ['ask', 'notify'],
+      bytes: 412,
+      sha256: 'a'.repeat(64),
+      sourceFiles: [{ path: 'block/source/figur.ts', bytes: 96 }],
+      bundle: "genki.onRender(() => { document.body.innerHTML = '<script>alert(1)</script>'; });",
+      sources: { 'block/source/figur.ts': 'export const figur = "<script>alert(1)</script>";' },
+    },
+  ];
   const tenantValues = new Map<string, Record<string, unknown>>();
   const tenantKeys = new Map<string, TenantKey[]>([
     [
@@ -938,6 +959,26 @@ export const mockFetch = (
           ...queued,
         ],
       });
+    }
+    if (path === '/operator/block-share-requests' && method === 'GET') {
+      return json({
+        data: blockReviews.map(({ bundle: _bundle, sources: _sources, ...row }) => row),
+      });
+    }
+    const blockReview = /^\/operator\/block-share-requests\/([^/]+)(?:\/(approve|decline))?$/.exec(
+      path,
+    );
+    if (blockReview) {
+      const found = blockReviews.find((r) => r.id === blockReview[1]);
+      if (!found) return notFound();
+      if (method === 'GET' && !blockReview[2]) return json(found);
+      if (method === 'POST' && blockReview[2]) {
+        if (!reason) return needReason();
+        blockReviews = blockReviews.filter((r) => r !== found);
+        return blockReview[2] === 'approve'
+          ? json({ status: 'approved', version: found.version + 1 })
+          : json({ status: 'declined' });
+      }
     }
     const onboardingDecision = /^\/operator\/onboarding\/requests\/(\d{9})\/decision$/.exec(path);
     if (onboardingDecision && method === 'POST') {

@@ -97,12 +97,14 @@ describe('feature flags on the console', () => {
     await signedIn(mockFetch());
 
     const section = await screen.findByRole('region', { name: 'blockStudio' });
-    expect(within(section).getByText(/Block Studio, the library/)).toBeTruthy();
+    expect(
+      within(section).getByText(/New design tools: build and edit design elements/),
+    ).toBeTruthy();
     expect(within(section).getByText(/Eier: the lab\. Fjernes innen/)).toBeTruthy();
     expect(within(section).getByText('Selvbetjent')).toBeTruthy();
     const row = within(section).getByRole('row', { name: /Digitaliseringsdirektoratet/ });
     expect(within(row).getByText('På')).toBeTruthy();
-    expect(within(row).getByText('Laben prøver Block Studio først')).toBeTruthy();
+    expect(within(row).getByText('Laben prøver ny utforming først')).toBeTruthy();
   });
 
   it('switches a flag for one person in an organisation with a reason', async () => {
@@ -122,7 +124,7 @@ describe('feature flags on the console', () => {
       target: { value: 'kari' },
     });
     fireEvent.change(within(dialog).getByRole('textbox', { name: 'Begrunnelse' }), {
-      target: { value: 'Kari tester Block Studio for etaten' },
+      target: { value: 'Kari tester ny utforming for etaten' },
     });
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Lagre' }));
@@ -137,7 +139,7 @@ describe('feature flags on the console', () => {
           person: { issuer: 'ansattporten', subject: 'kari' },
           on: true,
         },
-        reason: 'Kari tester Block Studio for etaten',
+        reason: 'Kari tester ny utforming for etaten',
       },
     ]);
     expect(await screen.findByText('Lagret valget for blockStudio.')).toBeTruthy();

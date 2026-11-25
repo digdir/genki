@@ -16,6 +16,9 @@ const reason = 'Endring i testen';
 const notAdminChanges = reasonFreeWrites;
 
 const throughAdminTasks = [
+  'POST /tenants/:tenant/blocks/:id/share-requests',
+  'POST /operator/block-share-requests/:rid/approve',
+  'POST /operator/block-share-requests/:rid/decline',
   'DELETE /operator/catalog/:kind/:id',
   'DELETE /operator/datasets/:dataset/pipelines/:id',
   'POST /operator/datasets/:dataset/fields',

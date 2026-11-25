@@ -179,6 +179,9 @@ export const changes = defineNamespace({
   blockDecide: 'avgjorde forespørselen om delen',
   blockRequest: 'ba om godkjenning av delen',
   blockSettings: 'endret tilpasningene for delen',
+  blockShareRequest: 'ba om å dele designelementet med alle',
+  blockShareApprove: 'godkjente deling av designelementet med alle',
+  blockShareDecline: 'avviste deling av designelementet med alle',
   catalogDelete: 'slettet fra katalogen',
   catalogPublish: 'publiserte i katalogen',
   providerObjectIncident:

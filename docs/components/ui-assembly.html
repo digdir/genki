@@ -91,6 +91,15 @@
             <h2>Where the blocks go</h2>
             <ul>
               <li>
+                A code block (<code>code-block.tsx</code>) is an iframe from the block origin with
+                <code>sandbox="allow-scripts"</code> alone. The host takes a message only from that
+                frame's window, of the opaque origin, in the bridge's shape and within its limits
+                (<code>bridge.ts</code>), and sends it a <code>render</code> over its own channel
+                with the fields it reads. An <code>ask</code> fills the question field and the
+                person sends it. No <code>ready</code> in 5 seconds, or a frame that navigates,
+                shows a short message in its place.
+              </li>
+              <li>
                 An entry <code>block: ref</code> is drawn from the edition the interface serves with
                 it (<code>refBlocks</code>), never as a built-in block, whatever its id. It gets
                 only the fields it reads (<code>pickReads</code>): its own turn under each answer in

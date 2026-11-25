@@ -10,6 +10,7 @@ import { defineTranslations } from '@genai/i18n/react';
 import { api as enApi } from './en/api';
 import { atlas as enAtlas } from './en/atlas';
 import { audit as enAudit } from './en/audit';
+import { blockReviews as enBlockReviews } from './en/blockReviews';
 import { buildingBlocks as enBuildingBlocks } from './en/buildingBlocks';
 import { catalog as enCatalog } from './en/catalog';
 import { common as enCommon } from './en/common';
@@ -47,6 +48,7 @@ import { transfer as enTransfer } from './en/transfer';
 import { api } from './nb/api';
 import { atlas } from './nb/atlas';
 import { audit } from './nb/audit';
+import { blockReviews } from './nb/blockReviews';
 import { buildingBlocks } from './nb/buildingBlocks';
 import { catalog } from './nb/catalog';
 import { common } from './nb/common';
@@ -86,6 +88,7 @@ export const nb = defineCatalogue({
   api,
   atlas,
   audit,
+  blockReviews,
   buildingBlocks,
   catalog,
   common,
@@ -126,6 +129,7 @@ export const en = {
   api: enApi,
   atlas: enAtlas,
   audit: enAudit,
+  blockReviews: enBlockReviews,
   buildingBlocks: enBuildingBlocks,
   catalog: enCatalog,
   common: enCommon,

@@ -59,6 +59,19 @@ describe('dev:all', () => {
     expect(apiEnv({ GENAI_DEV_MODE: 'false' })).toEqual({});
   });
 
+  it('serves the block origin on its own port in dev mode, and never outside it', () => {
+    const api = (env: Record<string, string>) => devProcesses(env).find((p) => p.name === 'api');
+
+    expect(api({})?.env).toMatchObject({
+      GENAI_BLOCK_ORIGIN: 'http://localhost:8090',
+      GENAI_BLOCK_PORT: '8090',
+    });
+    expect(api({ GENAI_BLOCK_PORT: '8190' })?.env).toMatchObject({
+      GENAI_BLOCK_ORIGIN: 'http://localhost:8190',
+    });
+    expect(api({ GENAI_DEV_MODE: 'false' })?.env).not.toHaveProperty('GENAI_BLOCK_ORIGIN');
+  });
+
   it('starts the worker beside the API, so runs on the knowledge database have someone to work them', () => {
     const worker = devProcesses({}).find((p) => p.name === 'worker');
     expect(worker).toMatchObject({

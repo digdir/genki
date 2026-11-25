@@ -7,7 +7,8 @@ export interface FlagSpec {
 
 export const flags = {
   blockStudio: {
-    description: 'Block Studio, the library of interface blocks in the portal',
+    description:
+      'New design tools: build and edit design elements in the portal, with or without code',
     owner: 'the lab',
     removeBy: '2027-02-28',
     selfService: true,

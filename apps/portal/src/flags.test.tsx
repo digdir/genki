@@ -72,7 +72,7 @@ describe('feature flags in the portal', () => {
 
     const region = await newFeatures();
     expect(await within(region).findByText('På for hele virksomheten')).toBeTruthy();
-    expect(within(region).getByRole('switch', { name: 'Bruk Block Studio' })).toHaveProperty(
+    expect(within(region).getByRole('switch', { name: 'Slå på for meg' })).toHaveProperty(
       'checked',
       true,
     );
@@ -83,7 +83,7 @@ describe('feature flags in the portal', () => {
     const region = await newFeatures();
 
     await act(async () => {
-      fireEvent.click(within(region).getByRole('switch', { name: 'Bruk Block Studio' }));
+      fireEvent.click(within(region).getByRole('switch', { name: 'Slå på for meg' }));
     });
 
     expect(await within(region).findByText('På for deg')).toBeTruthy();
@@ -99,7 +99,7 @@ describe('feature flags in the portal', () => {
     await within(region).findByText('På for hele virksomheten');
 
     await act(async () => {
-      fireEvent.click(within(region).getByRole('switch', { name: 'Bruk Block Studio' }));
+      fireEvent.click(within(region).getByRole('switch', { name: 'Slå på for meg' }));
     });
     expect(await within(region).findByText('Av for deg')).toBeTruthy();
     await act(async () => {
@@ -119,7 +119,7 @@ describe('feature flags in the portal', () => {
     });
     expect(within(region).getByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
     fireEvent.change(within(region).getByRole('textbox', { name: 'Begrunnelse' }), {
-      target: { value: 'Hele etaten skal prøve Block Studio' },
+      target: { value: 'Hele etaten skal prøve ny utforming' },
     });
     await act(async () => {
       fireEvent.click(within(region).getByRole('button', { name: 'Lagre' }));
@@ -138,7 +138,7 @@ describe('feature flags in the portal', () => {
     render(<App auth={auth} fetch={withFlags({})} />);
 
     const region = await newFeatures();
-    expect(within(region).getByRole('switch', { name: 'Bruk Block Studio' })).toBeTruthy();
+    expect(within(region).getByRole('switch', { name: 'Slå på for meg' })).toBeTruthy();
     expect(within(region).queryByRole('switch', { name: /hele/ })).toBeNull();
   });
 });

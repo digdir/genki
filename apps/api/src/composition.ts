@@ -248,8 +248,10 @@ import { locationOf } from './residency.js';
 import { retiredModelMessage, serviceHealth, type ServiceModels } from './service-health.js';
 import { serviceDrafts } from './service-drafts.js';
 import { resolveInterfaceBlocks } from './interface-blocks.js';
+import { codeBlockProblems } from './block-bundles.js';
 import { blockFrameUrl } from './block-origin.js';
 import { blockCatalogueModule } from './block-catalogue.js';
+import { blockReviewsModule, createBlockReviewsModule } from './block-reviews.js';
 import { serviceSchemaOf } from './service-schema.js';
 import { problem } from './http.js';
 
@@ -318,7 +320,7 @@ import { projectsModule } from './project-routes.js';
 import { resultReviewsModule } from './result-reviews.js';
 import { tenantRunCancelModule } from './tenant-run-cancel.js';
 import { userPreferencesModule } from './user-preferences.js';
-import { featureFlagsModule } from './feature-flags.js';
+import { featureFlagsModule, onForTenant } from './feature-flags.js';
 import { projectTasks } from './project-usage.js';
 import { governanceModule } from './governance.js';
 import { serviceTemplateModule } from './service-template.js';
@@ -423,6 +425,7 @@ import {
 export const platformModules: PlatformModuleFactory[] = [
   buildingBlocksModule,
   blockUsageModule,
+  blockReviewsModule,
   blockCatalogueModule,
   skillsModule,
   playgroundModule,
@@ -576,6 +579,7 @@ export interface PlatformInput {
   clients?: ClientStore;
   reservedClientIds?: string[];
   hosting?: HostingRules;
+  blockOrigin?: string | undefined;
   hostnames?: Omit<HostnameSetup, 'claims'> & { claims?: HostnameClaimStore };
   binder?: BinderTrust;
   documentFileOrigins?: readonly string[];
@@ -1823,6 +1827,8 @@ export const createPlatform = async (input: PlatformInput) => {
         if (archived) return archived;
         const problems = await checkBeforePublish(args[0], args[1]);
         if (problems) return { ok: false, errors: problems };
+        const code = codeBlockProblems(args[0], args[3] ?? {}, input.blockOrigin);
+        if (code.length > 0) return { ok: false, errors: code };
         const result = await store.publish(...args);
         if (result.ok) {
           await resync();
@@ -2288,15 +2294,17 @@ export const createPlatform = async (input: PlatformInput) => {
     ...builtinPlugins(blocks, describeEngines(knowledgeAdapters, writerAdapters)),
   ])
     if (!pluginRegistry.get(plugin.manifest.id)) pluginRegistry.register(plugin);
+  const flags = createFlags({ store: configurables.store, envOn: input.envFlags ?? [] });
   const moduleDeps: ModuleDeps = {
     platformTenant,
+    ...(input.blockOrigin ? { blockOrigin: input.blockOrigin } : {}),
     ...(input.logger ? { logger: input.logger } : {}),
     catalog: config.catalog,
     definitions,
     plugins,
     settings,
     configEntries: configurables.store,
-    flags: createFlags({ store: configurables.store, envOn: input.envFlags ?? [] }),
+    flags,
     models,
     knowledge,
     writers,
@@ -2403,12 +2411,18 @@ export const createPlatform = async (input: PlatformInput) => {
     secretNames: (tenant) => vault.names(tenant),
   });
   const configuredDiagnostics = createDiagnosticsModule({ rerank });
+  const clock = input.now;
+  const configuredReviews = clock
+    ? createBlockReviewsModule({ now: () => new Date(clock()) })
+    : blockReviewsModule;
   modules = (input.modules ?? platformModules).map((create) =>
     (create === buildingBlocksModule
       ? configuredBlocks
       : create === diagnosticsModule
         ? configuredDiagnostics
-        : create)(moduleDeps),
+        : create === blockReviewsModule
+          ? configuredReviews
+          : create)(moduleDeps),
   );
   const keyPolicies =
     input.keyPolicies ??
@@ -2735,7 +2749,9 @@ export const createPlatform = async (input: PlatformInput) => {
             definitions,
             tenant,
             shown.layout,
-            blockFrameUrl,
+            blockFrameUrl(
+              (await onForTenant(flags, tenant, 'blockStudio')) ? input.blockOrigin : undefined,
+            ),
             async (publisher) =>
               (await directory.list()).find((t) => t.orgNumber === publisher)?.name,
           );
@@ -2978,6 +2994,8 @@ export const createPlatform = async (input: PlatformInput) => {
     drafts,
     modules,
     evalSlots: caseSlots,
+    blockOrigin: input.blockOrigin,
+    flags,
     sync: resync,
     mount,
   };

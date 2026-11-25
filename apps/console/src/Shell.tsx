@@ -3,6 +3,8 @@ import { Alert, Badge, Button, Popover, SkipLink } from '@digdir/designsystemet-
 import { LanguageChoice } from '@genai/i18n/react';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useT, type PlainKey, type T } from './i18n';
+import type { FlagKey } from '@genai/contracts/flags';
+import { WhenFlag } from './flags';
 import { useSupport } from './support';
 import { SupportDialog } from './support-dialog';
 import { minutesLeft } from './ui';
@@ -20,6 +22,7 @@ interface NavItem {
   path: string;
   label: PlainKey;
   note?: PlainKey;
+  flag?: FlagKey;
 }
 
 export const navigation: NavGroup[] = [
@@ -41,6 +44,7 @@ export const navigation: NavGroup[] = [
       { path: '/flags', label: 'shell.pageFlags' },
       { path: '/catalog', label: 'shell.pageCatalog' },
       { path: '/building-blocks', label: 'shell.pageBuildingBlocks' },
+      { path: '/block-reviews', label: 'shell.pageBlockReviews', flag: 'blockStudio' },
       { path: '/search-engines', label: 'shell.pageSearchEngines' },
       { path: '/state-register', label: 'shell.pageStateRegister' },
       { path: '/shared-services', label: 'shell.pageSharedServices' },
@@ -312,7 +316,7 @@ export const Shell = ({
                   {group.items.map((item) => {
                     const current = isCurrent(item, path);
                     const badge = badgeFor(item.path, badges, t);
-                    return (
+                    const link = (
                       <li key={item.label}>
                         <a
                           href={`#${item.path}`}
@@ -334,6 +338,13 @@ export const Shell = ({
                         </a>
                         {item.note ? <span className="nav-note">{t(item.note)}</span> : null}
                       </li>
+                    );
+                    return item.flag ? (
+                      <WhenFlag key={item.label} flag={item.flag}>
+                        {link}
+                      </WhenFlag>
+                    ) : (
+                      link
                     );
                   })}
                 </ul>

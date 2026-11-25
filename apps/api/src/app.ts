@@ -12,7 +12,7 @@ import { refuseWritesToArchived } from './archived-services.js';
 import { publicSkipped, skippedEntries, type SkippedSource } from './catalog-health.js';
 import { requireChangeReason } from './change-reason.js';
 import { rememberActorNames, type ActorNames } from './actor-names.js';
-import { createAdmin, type Admin, type ModelAdmin } from './admin.js';
+import { createAdmin, type Admin, type AdminOptions, type ModelAdmin } from './admin.js';
 import { acceptDecodedIds } from './decoded-ids.js';
 import { registerDefinitionRoutes, type DefinitionsApiOptions } from './definitions.js';
 import {
@@ -147,6 +147,8 @@ export type PlatformOptions = Authentication & {
   tenantGate?: MiddlewareHandler;
   registered?: (tenant: string) => Promise<boolean>;
   lifecycle?: PlatformApiOptions['lifecycle'];
+  blockOrigin?: string | undefined;
+  flags?: AdminOptions['flags'];
   models?: ModelAdmin;
   drafts?: Pick<ServiceDrafts, 'outdated' | 'followPublish'>;
   environments?: DefinitionsApiOptions['environments'];
@@ -294,6 +296,8 @@ export const createApp = (version: string, options: AppOptions = {}) => {
         ...(options.platform.now ? { now: options.platform.now } : {}),
         ...(options.platform.names ? { names: options.platform.names } : {}),
         ...(options.platform.lifecycle ? { lifecycle: options.platform.lifecycle } : {}),
+        ...(options.platform.blockOrigin ? { blockOrigin: options.platform.blockOrigin } : {}),
+        ...(options.platform.flags ? { flags: options.platform.flags } : {}),
       });
     const access = options.platform.access ?? tenantAccess(admin);
     if (options.platform.lifecycle)

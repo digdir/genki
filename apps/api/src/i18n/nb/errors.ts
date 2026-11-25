@@ -115,6 +115,7 @@ export const catalogErrors = defineNamespace({
   blockRefZone: '{ref} kan ikke stå i {zone}; den kan stå i {zones}',
   previewShowsBlock: 'en forhåndsvisning viser en Block',
   pinVersion: 'version er en publisert utgave av blokken',
+  shareVersion: 'version er nummeret på en lagret utgave av designelementet',
   pinZone: 'zone er primary, main eller secondary',
   codeBlockNotDrawn: 'ingen vert tegner kodeblokker ennå; bare innebygde blokker kan publiseres',
   declarativeBlockNotDrawn:
