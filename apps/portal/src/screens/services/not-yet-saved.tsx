@@ -144,6 +144,8 @@ export const MoreSources = ({ service, readOnly }: { service: string; readOnly: 
           <div className="area-search-row">
             <Input
               type="url"
+              // «Kommer»: pages are not saved anywhere yet, so the field and its button are off.
+              disabled
               placeholder="https://"
               aria-labelledby={`${id}-web-label`}
               aria-describedby={`${id}-web-help${invalid ? ` ${id}-web-error` : ''}`}
@@ -159,7 +161,7 @@ export const MoreSources = ({ service, readOnly }: { service: string; readOnly: 
                 addPage();
               }}
             />
-            <Button variant="secondary" data-size="sm" onClick={addPage}>
+            <Button variant="secondary" data-size="sm" disabled onClick={addPage}>
               <Icon icon={GlobeIcon} />
               {t('setupList.webPagesAdd')}
             </Button>
@@ -186,15 +188,18 @@ export const MoreSources = ({ service, readOnly }: { service: string; readOnly: 
           readOnly={readOnly}
         />
         {readOnly ? null : (
-          <FileUpload className="own-documents-drop" data-color="accent">
+          // «Kommer»: documents are not saved anywhere yet, so the drop zone is read-only and off.
+          <FileUpload>
             <Paragraph data-size="sm" data-field="description">
               {t('setupList.ownDocumentsDrop')}
             </Paragraph>
-            <Button asChild variant="secondary" data-size="sm">
+            <Button asChild variant="secondary" data-size="sm" aria-disabled>
               <span>{t('setupList.ownDocumentsPick')}</span>
             </Button>
             <input
               type="file"
+              disabled
+              readOnly
               multiple
               accept=".pdf,.doc,.docx,.txt,.md"
               aria-labelledby={`${id}-docs-label`}
@@ -208,7 +213,6 @@ export const MoreSources = ({ service, readOnly }: { service: string; readOnly: 
           </FileUpload>
         )}
       </Part>
-      <p className="meta">{t('setupList.notSavedYet')}</p>
     </>
   );
 };

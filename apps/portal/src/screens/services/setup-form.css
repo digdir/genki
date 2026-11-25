@@ -154,14 +154,6 @@
   gap: 16px;
 }
 
-.own-documents-drop {
-  background: var(--ds-color-accent-surface-tinted);
-}
-
-.own-documents-drop:hover {
-  background: var(--ds-color-accent-surface-hover);
-}
-
 /* On a narrow page the chat goes under the form, at its own height. */
 @container page (max-width: 899px) {
   .setup-form-layout[data-with-chat] {
