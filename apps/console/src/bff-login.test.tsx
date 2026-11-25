@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { bffLogin } from './bff-login';
@@ -142,8 +142,11 @@ describe('signing in through the platform login', () => {
     open(p);
     await screen.findByRole('heading', { level: 1, name: 'Virksomheter' });
 
-    const apiCalls = p.calls.filter((call) => call.url.startsWith('/api/'));
-    expect(apiCalls.length).toBeGreaterThan(0);
+    const apiCalls = await waitFor(() => {
+      const calls = p.calls.filter((call) => call.url.startsWith('/api/'));
+      expect(calls.length).toBeGreaterThan(0);
+      return calls;
+    });
     for (const call of apiCalls) {
       const headers = new Headers(call.init?.headers);
       expect(headers.get('genai-csrf')).toBe('1');
