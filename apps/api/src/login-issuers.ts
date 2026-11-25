@@ -23,6 +23,7 @@ export interface LoginIssuerOptions {
   registeredClients: RegisteredClients;
   platformLoginClients?: readonly string[];
   platformLoginKey?: Uint8Array;
+  platformAppSession?: () => boolean;
   trustedEntra?: TrustedEntra;
   fetch?: typeof fetch;
   onKeysNotFetched?: (fields: {
@@ -58,6 +59,7 @@ export const loginIssuers = async ({
   registeredClients,
   platformLoginClients = [],
   platformLoginKey,
+  platformAppSession,
   trustedEntra,
   fetch: fetchFn = fetch,
   onKeysNotFetched,
@@ -78,6 +80,7 @@ export const loginIssuers = async ({
       registeredClients,
       platformLoginClients,
       ...(platformLoginKey ? { platformLoginKey } : {}),
+      ...(platformAppSession ? { platformAppSession } : {}),
       ...(trustedEntra ? { trustedEntra } : {}),
     });
   }
@@ -104,6 +107,7 @@ export const loginIssuers = async ({
     registeredClients,
     platformLoginClients,
     ...(platformLoginKey ? { platformLoginKey } : {}),
+    ...(platformAppSession ? { platformAppSession } : {}),
     ...(trustedEntra ? { trustedEntra } : {}),
   });
   return { trusted, mock, mockIssuer: issuer };

@@ -90,7 +90,7 @@ const Portal = ({
   const organisation = session
     ? (session.organisations.find((o) => o.orgNumber === orgParam) ?? picked)
     : undefined;
-  const [busy, setBusy] = useState(() => auth.callbackPending?.() ?? false);
+  const [busy, setBusy] = useState(() => !session && auth.restore !== undefined);
   const [failed, setFailed] = useState(false);
   const [unregistered, setUnregistered] = useState<Set<string>>(() => new Set());
   const [expired, setExpired] = useState(false);
@@ -138,15 +138,14 @@ const Portal = ({
       void auth.logout().then(() => setSession(undefined));
     },
   );
-  const token = session?.token;
   useEffect(() => {
-    if (!token) return;
+    if (!session) return;
     const store = inputStore();
     const hash = pendingInputHash(store);
     if (hash === undefined) return;
     if (hash && hash !== window.location.hash) navigate(hash.replace(/^#/, ''));
     return restoreUnsavedInput(store);
-  }, [token]);
+  }, [session]);
   const tenantKey = organisation?.orgNumber;
 
   const login = async () => {
@@ -165,13 +164,15 @@ const Portal = ({
   };
 
   useEffect(() => {
-    if (!auth.callbackPending?.()) return;
+    if (!auth.restore || auth.current()) return;
     let active = true;
-    auth.login().then(
+    auth.restore().then(
       (s) => {
         if (!active) return;
-        setSession(s);
-        setOrganisation(chosen(s, parseRoute(window.location.hash).query.get('org')));
+        if (s) {
+          setSession(s);
+          setOrganisation(chosen(s, parseRoute(window.location.hash).query.get('org')));
+        }
         setBusy(false);
       },
       () => {
@@ -202,7 +203,7 @@ const Portal = ({
 
   useEffect(() => {
     setServerRights({});
-  }, [token]);
+  }, [session]);
 
   useEffect(() => {
     if (!live || !tenantKey) return;
@@ -212,7 +213,7 @@ const Portal = ({
       () => undefined,
     );
     return () => controller.abort();
-  }, [api, live, tenantKey, token]);
+  }, [api, live, tenantKey, session]);
 
   const routePath = route.path;
   const [rightsKey, setRightsKey] = useState('');
@@ -222,13 +223,13 @@ const Portal = ({
   );
   useEffect(() => {
     const rights = new Set(rightsKey.split(' '));
-    if (tenantKey && token) prefetchPath(routePath, api, tenantKey, live, rights);
-  }, [routePath, api, tenantKey, token, live, rightsKey]);
+    if (tenantKey && session) prefetchPath(routePath, api, tenantKey, live, rights);
+  }, [routePath, api, tenantKey, session, live, rightsKey]);
   useEffect(() => {
-    if (!tenantKey || !token) return;
+    if (!tenantKey || !session) return;
     const rights = new Set(rightsKey.split(' '));
     return prefetchOnIntent(document, (path) => prefetchPath(path, api, tenantKey, live, rights));
-  }, [api, tenantKey, token, live, rightsKey]);
+  }, [api, tenantKey, session, live, rightsKey]);
 
   save.current = (next) => {
     locale.current = next ?? negotiate(languages) ?? 'nb';

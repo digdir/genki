@@ -109,7 +109,6 @@ export const main = async () => {
   if (accepted.some((a) => a.proposal.action === 'screen'))
     try {
       const { openBrowser } = await import('./browser.ts');
-      const { portalClientIdOf } = await import('./run.ts');
       const portal = (env.SMOKE_PORTAL_URL || 'https://portal.genki-test.digdir.cloud').replace(
         /\/$/,
         '',
@@ -122,9 +121,6 @@ export const main = async () => {
         ),
         tenant: plan.tenant,
         key,
-        portalClientId: portalClientIdOf(
-          (await call(`${portal}/config.js`, { timeout: freeTimeout })).text,
-        ),
         out: join(out, 'extra'),
         redact,
       });

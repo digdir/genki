@@ -35,6 +35,7 @@ export const shell = defineNamespace({
   logout: 'Logg ut',
   login: 'Logg inn',
   loggedOut: 'Du er logget ut.',
+  notLoggedIn: 'Du er ikke logget inn.',
   sessionExpired: 'Økten din er utløpt. Logg inn igjen for å fortsette.',
   sessionEnding:
     'Økten din utløper klokka {time}. Logg inn på nytt nå, så fyller vi inn igjen det du har skrevet.',

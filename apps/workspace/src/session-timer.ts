@@ -20,16 +20,16 @@ export const useSessionTimer = (
   now: () => number = Date.now,
 ) => {
   const [warnAt, setWarnAt] = useState<number>();
-  const token = session?.token;
   useEffect(() => {
     setWarnAt(undefined);
-    const expiresAt = token ? auth.expiresAt?.() : undefined;
+    const expiresAt = session ? auth.expiresAt?.() : undefined;
     if (expiresAt === undefined) return;
     let active = true;
     const renew = async () => {
       const renewed = await auth.refresh?.().catch(() => undefined);
       if (!active) return;
-      if (renewed) onRenewed(renewed);
+      const renewedUntil = auth.expiresAt?.();
+      if (renewed && renewedUntil !== undefined && renewedUntil > expiresAt) onRenewed(renewed);
       else setWarnAt(expiresAt);
     };
     const lifetime = expiresAt - now();
@@ -40,6 +40,6 @@ export const useSessionTimer = (
       clearTimeout(warn);
       clearTimeout(end);
     };
-  }, [auth, token]);
+  }, [auth, session]);
   return warnAt;
 };

@@ -6,15 +6,15 @@ export const renewBeforeMs = 60_000;
 
 export const useSessionRenewal = (
   auth: AuthClient,
-  token: string | undefined,
+  session: OperatorSession | undefined,
   onRenewed: (session: OperatorSession) => void,
   onExpired: () => void,
   now: () => number = Date.now,
 ) => {
   const handlers = useRef({ onRenewed, onExpired });
   handlers.current = { onRenewed, onExpired };
+  const expiresAt = session ? auth.expiresAt?.() : undefined;
   useEffect(() => {
-    const expiresAt = token ? auth.expiresAt?.() : undefined;
     if (expiresAt === undefined || !auth.renew) return;
     let active = true;
     const renew = async (last: boolean) => {
@@ -34,5 +34,5 @@ export const useSessionRenewal = (
       clearTimeout(early);
       clearTimeout(end);
     };
-  }, [auth, token, now]);
+  }, [auth, expiresAt, now]);
 };

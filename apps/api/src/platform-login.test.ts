@@ -87,4 +87,62 @@ describe('the platform login settings', () => {
     };
     expect(() => platformLoginFrom(env, 'digdir:genai')).toThrow('32 bytes');
   });
+
+  const login = {
+    PLATFORM_LOGIN_CLIENT_ID: 'c',
+    PLATFORM_LOGIN_HOSTNAME: 'login.apps.genki-test.digdir.cloud',
+  };
+
+  it('gives the portal, workspace and console the origins in PLATFORM_APP_ORIGINS', () => {
+    const settings = platformLoginFrom(
+      {
+        ...login,
+        PLATFORM_APP_ORIGINS:
+          'portal=https://portal.genki-test.digdir.cloud, console=https://Console.genki-test.digdir.cloud/',
+      },
+      'digdir:genai',
+    );
+    expect(settings?.origin).toBe('https://login.apps.genki-test.digdir.cloud');
+    expect(settings?.apps).toEqual([
+      {
+        app: 'portal',
+        hostname: 'portal.genki-test.digdir.cloud',
+        origin: 'https://portal.genki-test.digdir.cloud',
+      },
+      {
+        app: 'console',
+        hostname: 'console.genki-test.digdir.cloud',
+        origin: 'https://console.genki-test.digdir.cloud',
+      },
+    ]);
+  });
+
+  it.each([
+    ['an http origin', 'portal=http://portal.example.no'],
+    ['an origin with a path', 'portal=https://portal.example.no/app'],
+    ['an unknown app', 'admin=https://admin.example.no'],
+    ['an app twice', 'portal=https://a.example.no,portal=https://b.example.no'],
+    ['two apps on one hostname', 'portal=https://a.example.no,console=https://a.example.no'],
+    ['an app on the login host', 'portal=https://login.apps.genki-test.digdir.cloud'],
+    ['http on localhost outside dev mode', 'portal=http://portal.localhost:5173'],
+  ])('refuses PLATFORM_APP_ORIGINS with %s', (_, value) => {
+    expect(() =>
+      platformLoginFrom({ ...login, PLATFORM_APP_ORIGINS: value }, 'digdir:genai'),
+    ).toThrow('PLATFORM_APP_ORIGINS');
+  });
+
+  it('takes http origins on localhost and a localhost login host only in dev mode', () => {
+    const local = {
+      PLATFORM_LOGIN_CLIENT_ID: 'c',
+      PLATFORM_LOGIN_HOSTNAME: 'localhost',
+      PLATFORM_LOGIN_ORIGIN: 'http://localhost:5173',
+      PLATFORM_APP_ORIGINS: 'portal=http://portal.localhost:5173',
+    };
+    expect(platformLoginFrom({ ...local, GENAI_DEV_MODE: 'true' }, 'digdir:genai')).toMatchObject({
+      hostname: 'localhost',
+      origin: 'http://localhost:5173',
+      apps: [{ app: 'portal', origin: 'http://portal.localhost:5173' }],
+    });
+    expect(platformLoginFrom(local, 'digdir:genai')).toBeUndefined();
+  });
 });

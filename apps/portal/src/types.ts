@@ -60,7 +60,7 @@ export interface Session {
   name: string;
   email?: string;
   organisations: Organisation[];
-  token: string;
+  token?: string;
 }
 
 export type TaskStatus = 'running' | 'interrupted' | 'completed' | 'failed' | 'cancelled';

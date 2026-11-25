@@ -440,32 +440,29 @@ describe('shell', () => {
   );
 });
 
-describe('login through Ansattporten in live mode', () => {
-  const callbackClient = (): AuthClient => {
+describe('login through the platform login in live mode', () => {
+  const signedInClient = (): AuthClient => {
     let session: Session | undefined;
-    let pending = true;
     return {
       current: () => session,
-      callbackPending: () => pending,
-      login: async () => {
-        pending = false;
+      restore: async () => {
         session = {
           name: 'Ingrid Berg',
           organisations: [
             { orgNumber: '405003309', name: 'Testdepartementet', actions: ['read', 'write'] },
           ],
-          token: 'access',
         };
         return session;
       },
+      login: () => Promise.reject(new Error('unused')),
       logout: async () => {
         session = undefined;
       },
     };
   };
 
-  it('finishes the login on return and shows the person and organisation from the token', async () => {
-    render(<App auth={callbackClient()} fetch={mockFetch()} live />);
+  it('reads the signed-in person and organisation from the session on start', async () => {
+    render(<App auth={signedInClient()} fetch={mockFetch()} live />);
 
     expect(await screen.findByText('Testdepartementet')).toBeTruthy();
     go('#/profile');
@@ -516,7 +513,7 @@ describe('login through Ansattporten in live mode', () => {
   });
 
   it('returns to the start page after Logg ut', async () => {
-    render(<App auth={callbackClient()} fetch={mockFetch()} live />);
+    render(<App auth={signedInClient()} fetch={mockFetch()} live />);
     await screen.findByRole('button', { name: 'Brukermeny for Ingrid Berg, Testdepartementet' });
 
     await waitFor(() => {

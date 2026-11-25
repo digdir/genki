@@ -678,32 +678,39 @@ const Root = ({
   const { locale } = useLocale();
   const [session, setSession] = useState<Session | undefined>(auth.current());
   const [failed, setFailed] = useState(false);
-  const [loggedOut, setLoggedOut] = useState<false | 'self' | 'expired'>(false);
+  const [loggedOut, setLoggedOut] = useState<false | 'self' | 'expired' | 'never'>(false);
+  const [checking, setChecking] = useState(Boolean(auth.restore));
   const [attempt, setAttempt] = useState(0);
   const f = useFormat();
   const warnAt = useSessionTimer(auth, session, setSession, () => logout('expired'));
-  const token = session?.token;
+  const signedIn = session !== undefined;
   useEffect(() => {
-    if (!token) return;
+    if (!signedIn) return;
     const store = inputStore();
     const hash = pendingInputHash(store);
     if (hash === undefined) return;
     if (hash && hash !== window.location.hash) window.location.hash = hash;
     return restoreUnsavedInput(store);
-  }, [token]);
+  }, [signedIn]);
 
   useEffect(() => {
     if (session || loggedOut) return;
     let active = true;
     setFailed(false);
-    auth.login().then(
-      (s) => active && setSession(s),
+    const signIn = checking && auth.restore ? auth.restore() : auth.login();
+    signIn.then(
+      (s) => {
+        if (!active) return;
+        setChecking(false);
+        if (s) setSession(s);
+        else setLoggedOut('never');
+      },
       () => active && setFailed(true),
     );
     return () => {
       active = false;
     };
-  }, [auth, session, loggedOut, attempt]);
+  }, [auth, session, loggedOut, attempt, checking]);
 
   const logout = (why: 'self' | 'expired') => {
     if (why === 'expired') saveUnsavedInput(inputStore());
@@ -746,7 +753,9 @@ const Root = ({
     <main id="hovedinnhold" className="login" lang={locale}>
       {loggedOut ? (
         <div className="empty">
-          <Paragraph className="empty-title">{t('shell.loggedOut')}</Paragraph>
+          <Paragraph className="empty-title">
+            {t(loggedOut === 'never' ? 'shell.notLoggedIn' : 'shell.loggedOut')}
+          </Paragraph>
           {loggedOut === 'expired' ? (
             <Paragraph data-size="sm" className="subtle-sm">
               {t('shell.sessionExpired')}

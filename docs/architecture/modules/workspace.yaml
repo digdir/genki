@@ -18,7 +18,7 @@ responsibilities:
 files:
   - apps/workspace/src/App.tsx
   - apps/workspace/src/api.ts
-  - apps/workspace/src/oidc.ts
+  - apps/workspace/src/bff-login.ts
   - apps/workspace/src/Conversation.tsx
 input: Employee messages
 output: Chat requests, feedback
@@ -54,11 +54,4 @@ edges:
     witness:
       file: apps/workspace/src/api.ts
       contains: /api/feedback
-  - to: ansattporten
-    label: OIDC sign-in with authorized parties
-    kind: http
-    target: http
-    witness:
-      file: apps/workspace/src/oidc.ts
-      contains: ansattporten
 keywords: workspace chat employee frontend react designsystemet feedback

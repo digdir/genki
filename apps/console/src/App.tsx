@@ -73,10 +73,11 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
   const [session, setSession] = useState<OperatorSession | undefined>(auth.current());
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | undefined>();
-  const [completing, setCompleting] = useState(
-    () => Boolean(auth.completeLogin) && window.location.pathname === '/callback',
+  const [restoring, setRestoring] = useState(() => Boolean(auth.restore));
+  const restored = useRef<Promise<OperatorSession | undefined> | undefined>(undefined);
+  const [notOperator] = useState(
+    () => new URLSearchParams(window.location.search).get('signin') === 'not-operator',
   );
-  const callback = useRef<Promise<OperatorSession> | undefined>(undefined);
   const [badges, setBadges] = useState<NavBadges>({});
   const [queued, setQueued] = useState<number | undefined>();
   const [decided, setDecided] = useState(0);
@@ -91,23 +92,9 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     setSession(undefined);
   }, [auth]);
   const api = useMemo(() => {
-    const retry = (input: RequestInfo | URL, init: RequestInit | undefined, token: string) => {
-      const headers = new Headers(init?.headers);
-      headers.set('authorization', `Bearer ${token}`);
-      return send(input, { ...init, headers });
-    };
     const watched: typeof fetch = async (input, init) => {
       const response = await send(input, init);
-      const before = auth.current();
-      if (response.status !== 401 || !before) return response;
-      const sent = new Headers(init?.headers).get('authorization');
-      const renewed = sent === `Bearer ${before.token}` ? await auth.renew?.() : before;
-      if (renewed) {
-        if (renewed !== before) setSession(renewed);
-        const retried = await retry(input, init, renewed.token);
-        if (retried.status !== 401) return retried;
-      }
-      endSession();
+      if (response.status === 401 && auth.current()) endSession();
       return response;
     };
     return createApiClient({
@@ -120,40 +107,45 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     });
   }, [auth, send, baseUrl, live, endSession]);
   const authorized = Boolean(session?.roles.includes(operatorRole));
-  const token = session?.token;
-  useSessionRenewal(auth, token, setSession, endSession);
+  const signedIn = Boolean(session);
+  useSessionRenewal(auth, session, setSession, endSession);
 
   useEffect(() => {
-    if (!token) return;
+    if (!signedIn) return;
     const store = inputStore();
     const saved = pendingInputHash(store);
     if (saved === undefined) return;
     if (saved && saved !== window.location.hash) navigate(saved.replace(/^#/, ''));
     return restoreUnsavedInput(store);
-  }, [token]);
+  }, [signedIn]);
 
   useEffect(() => {
-    if (!completing || !auth.completeLogin) return;
-    callback.current ??= auth.completeLogin(new URL(window.location.href));
+    if (!notOperator) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('signin');
+    window.history.replaceState(null, '', url);
+  }, [notOperator]);
+
+  useEffect(() => {
+    if (!restoring || !auth.restore) return;
+    restored.current ??= auth.restore();
     let active = true;
-    callback.current.then(
+    restored.current.then(
       (next) => {
         if (!active) return;
-        window.history.replaceState(null, '', '/#/tenants');
         setSession(next);
-        setCompleting(false);
+        setRestoring(false);
       },
       (error: unknown) => {
         if (!active) return;
-        window.history.replaceState(null, '', '/');
         setFailed(error instanceof LoginError ? error.message : tRef.current('api.loginFailed'));
-        setCompleting(false);
+        setRestoring(false);
       },
     );
     return () => {
       active = false;
     };
-  }, [auth, completing]);
+  }, [auth, restoring]);
 
   useEffect(() => {
     if (!authorized) return;
@@ -207,12 +199,30 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     void auth.logout().then(() => setSession(undefined));
   };
 
-  if (completing)
+  if (restoring)
     return (
       <main className="login" id="hovedinnhold">
-        <Loading label={t('shell.completingLogin')} />
+        <Loading label={t('shell.checkingLogin')} />
       </main>
     );
+
+  const refusal = (text: string) => (
+    <main className="refusal" id="hovedinnhold">
+      <img src="/emblem-felleslosning.svg" alt="" width={48} height={48} />
+      <div className="refusal-text">
+        <Heading level={1} data-size="lg">
+          {t('shell.refusedTitle')}
+        </Heading>
+        <Paragraph data-size="lg">{text}</Paragraph>
+      </div>
+      <Paragraph>{t('shell.refusedHelp')}</Paragraph>
+      <Button variant="secondary" className="align-start" onClick={logout}>
+        {t('shell.logout')}
+      </Button>
+    </main>
+  );
+
+  if (!session && notOperator) return refusal(t('shell.refusedNotOperator'));
 
   if (!session && expired)
     return (
@@ -252,22 +262,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
       </main>
     );
 
-  if (!authorized)
-    return (
-      <main className="refusal" id="hovedinnhold">
-        <img src="/emblem-felleslosning.svg" alt="" width={48} height={48} />
-        <div className="refusal-text">
-          <Heading level={1} data-size="lg">
-            {t('shell.refusedTitle')}
-          </Heading>
-          <Paragraph data-size="lg">{t('shell.refusedText', { name: session.name })}</Paragraph>
-        </div>
-        <Paragraph>{t('shell.refusedHelp')}</Paragraph>
-        <Button variant="secondary" className="align-start" onClick={logout}>
-          {t('shell.logout')}
-        </Button>
-      </main>
-    );
+  if (!authorized) return refusal(t('shell.refusedText', { name: session.name }));
 
   const { path, params } = splitRoute(hash);
   const current = path === '/' ? '/tenants' : path;

@@ -10,7 +10,7 @@ export interface Organisation {
 export interface Session {
   name: string;
   organisations: Organisation[];
-  token: string;
+  token?: string;
 }
 
 export type InputKind =

@@ -320,6 +320,7 @@ export const createWorkspaceApi = ({
     return {
       accept: 'application/json',
       'accept-language': locale(),
+      'genai-csrf': '1',
       ...extra,
       ...(bearer ? { authorization: `Bearer ${bearer}` } : {}),
     };
@@ -349,7 +350,7 @@ export const createWorkspaceApi = ({
   return {
     lockdown: async (signal) => {
       const response = await send(`${baseUrl}/health`, {
-        headers: { accept: 'application/json' },
+        headers: { accept: 'application/json', 'genai-csrf': '1' },
         ...(signal ? { signal } : {}),
       });
       const body = (await readJson(response)) as { lockdown?: unknown } | undefined;
