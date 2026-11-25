@@ -3167,7 +3167,16 @@ const operationsRoutes: RouteConfig[] = [
     responses: {
       200: json(
         z.object({
-          data: z.array(QuotaRequest.extend({ tenant: z.string(), tenantName: z.string() })),
+          data: z.array(
+            QuotaRequest.extend({
+              tenant: z.string(),
+              tenantName: z.string(),
+              quota: z
+                .object({ usedTokens: z.number().int(), monthlyTokens: z.number().int() })
+                .optional()
+                .describe("The tenant's use this calendar month and its current monthly quota"),
+            }),
+          ),
         }),
         'Requests',
       ),
@@ -3179,7 +3188,7 @@ const operationsRoutes: RouteConfig[] = [
     method: 'post',
     path: '/operator/quota-requests/{tenant}/{id}/decision',
     summary:
-      'Approve or reject a quota request; the quota itself is changed with usage.monthlyTokens in a support session',
+      "Approve or reject a quota request; approving sets the tenant's usage.monthlyTokens to the amount asked for, audited in the tenant's log",
     description: described(operator, audited),
     request: {
       params: z.object({ tenant, id: pathParam('id', '7d4c1b3e-1f0a-4e2b-9c8d-5a6b7c8d9e0f') }),
@@ -3188,7 +3197,7 @@ const operationsRoutes: RouteConfig[] = [
     },
     responses: {
       200: json(QuotaRequest, 'Decided'),
-      400: problem('Invalid decision or missing change reason'),
+      400: problem('Invalid decision, missing change reason, or a quota the setting refuses'),
       404: problem('No such request'),
       409: problem(`${quotaRequestDecidedType}: the request is already decided`),
       ...operatorOnly,

@@ -27,8 +27,8 @@ interface Request {
   tenant?: string;
 }
 
-const boot = async () => {
-  const booted = await bootPlatform({ people });
+const boot = async (services: string[] = []) => {
+  const booted = await bootPlatform({ people, services });
   await booted.platform.directory.add(
     { orgNumber: other, name: 'Testetaten', status: 'active' },
     'test',
@@ -125,6 +125,75 @@ describe('quota requests', () => {
       'platform.quota.decide',
       'applied',
     ]);
+  });
+
+  it("raises the organisation's monthly tokens when an operator approves a quota request", async () => {
+    const { ask, decide, settings, admin } = await boot();
+    const { id } = await readJson<Request>(await ask(digdir, 'kari', 80_000_000));
+
+    await decide(digdir, id, 'approved', 'Godkjent etter samtale');
+
+    expect(settings.tenant(digdir).values['usage.monthlyTokens']).toBe(80_000_000);
+    expect(
+      (await admin.audit(digdir))
+        .filter((e) => e.action === 'platform.setting.set')
+        .map((e) => [e.outcome, e.target, e.reason, e.actor]),
+    ).toEqual([
+      ['applied', 'setting:usage.monthlyTokens', 'Godkjent etter samtale', 'operator:test:drift'],
+    ]);
+  });
+
+  it('leaves the quota unchanged when a request is rejected', async () => {
+    const { ask, decide, settings, admin } = await boot();
+    const { id } = await readJson<Request>(await ask(digdir, 'kari', 80_000_000));
+
+    const rejected = await decide(digdir, id, 'rejected', 'Ikke nå, ta det opp i januar');
+
+    expect(await readJson(rejected)).toMatchObject({ state: 'rejected' });
+    expect(settings.tenant(digdir).values['usage.monthlyTokens']).toBeUndefined();
+    expect((await admin.audit(digdir)).map((e) => e.action)).not.toContain('platform.setting.set');
+  });
+
+  it('lets no organisation admin raise its own quota by deciding its own request', async () => {
+    const { ask, send, settings } = await boot();
+    const { id } = await readJson<Request>(await ask(digdir, 'kari', 80_000_000));
+
+    const decided = await send(`/operator/quota-requests/${digdir}/${id}/decision`, 'kari', {
+      body: { decision: 'approved' },
+      reason: 'Godkjenner selv',
+    });
+
+    expect(decided.status).toBe(403);
+    expect(settings.tenant(digdir).values['usage.monthlyTokens']).toBeUndefined();
+  });
+
+  it("shows operators each organisation's use this month against its current quota", async () => {
+    const { ask, send } = await boot();
+    await ask(digdir, 'kari', 80_000_000);
+
+    const queue = await readJson<{ data: (Request & { quota?: unknown })[] }>(
+      await send('/operator/quota-requests', 'drift'),
+    );
+
+    expect(queue.data).toMatchObject([
+      { tenant: digdir, quota: { usedTokens: 0, monthlyTokens: 50_000_000 } },
+    ]);
+  });
+
+  it("lists each organisation's quota and its tokens this month on the operator tenant list, as quota enforcement counts them", async () => {
+    const { ask, decide, send, platform } = await boot(['skrivehjelp']);
+    const { id } = await readJson<Request>(await ask(digdir, 'kari', 80_000_000));
+    await decide(digdir, id, 'approved');
+
+    const tenants = await readJson<{
+      data: { orgNumber: string; usedTokens?: number; monthlyTokens?: number }[];
+    }>(await send('/operator/tenants', 'drift'));
+    const enforced = await platform.quota(digdir);
+
+    expect(tenants.data.find((t) => t.orgNumber === digdir)).toMatchObject({
+      usedTokens: enforced.usedTokens,
+      monthlyTokens: 80_000_000,
+    });
   });
 
   it('says in bokmål that a decided request is already approved', async () => {

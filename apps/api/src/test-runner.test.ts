@@ -221,6 +221,7 @@ const boot = async ({
       tenantGate: platform.tenantGate,
       registered: platform.registered,
       caller: platform.caller,
+      tenantQuota: platform.quota,
       tasks: kernelTaskReader(platform.kernel, {
         kind: 'operator',
         issuer: 'platform',
@@ -798,6 +799,21 @@ describe('a test-runner key on operator routes', () => {
     const key = await testRunnerKey();
 
     expect((await send('/operator/tenants', key)).status).toBe(200);
+  });
+
+  it("leaves each organisation's token counts out of GET /operator/tenants, as usage is not for the key", async () => {
+    const { send, testRunnerKey } = await boot();
+    const key = await testRunnerKey();
+
+    const asKey = (await (await send('/operator/tenants', key)).json()) as {
+      data: Record<string, unknown>[];
+    };
+    const asOperator = (await (await send('/operator/tenants', 'ola')).json()) as {
+      data: Record<string, unknown>[];
+    };
+
+    expect(asOperator.data[0]).toHaveProperty('monthlyTokens');
+    expect(asKey.data.some((t) => 'usedTokens' in t || 'monthlyTokens' in t)).toBe(false);
   });
 
   it.each([

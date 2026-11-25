@@ -1222,3 +1222,19 @@ export interface FlagChange {
   person?: { issuer: string; subject: string };
   on: boolean | null;
 }
+
+export type QuotaRequestState = 'pending' | 'approved' | 'rejected';
+
+export interface QuotaRequestRow {
+  id: string;
+  tenant: string;
+  tenantName: string;
+  monthlyTokens: number;
+  reason: string;
+  requestedBy: string;
+  requestedByName?: string;
+  requestedAt: string;
+  state: QuotaRequestState;
+  decision?: { by: string; byName?: string; at: string; reason: string };
+  quota?: { usedTokens: number; monthlyTokens: number };
+}

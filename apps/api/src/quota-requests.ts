@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { enterTenant } from './access.js';
 import { actorOf, AdminRefused, refusedBy, routeOnlyActions } from './admin.js';
 import { appendVersion, serialized, type ConfigEntry } from './config-store.js';
+import { quotaSettingKey } from './playground.js';
 import {
   actorNameOf,
   changeReasonOf,
@@ -180,14 +181,27 @@ export const createQuotaRequestsModule =
         if (!filter.success) return invalid(c, filter.error.issues);
         const state = filter.data;
         const names = await mounted.admin.tenantNames();
+        const requests = (await list()).filter((r) => !state || r.request.state === state);
+        const quotas = new Map(
+          await Promise.all(
+            [...new Set(requests.map((r) => r.tenant))].map(
+              async (tenant) =>
+                [tenant, await deps.quota?.(tenant).catch(() => undefined)] as const,
+            ),
+          ),
+        );
         return c.json({
-          data: (await list())
-            .filter((r) => !state || r.request.state === state)
-            .map(({ tenant, request }) => ({
+          data: requests.map(({ tenant, request }) => {
+            const quota = quotas.get(tenant);
+            return {
               ...request,
               tenant,
               tenantName: names.get(tenant) ?? tenant,
-            })),
+              ...(quota
+                ? { quota: { usedTokens: quota.usedTokens, monthlyTokens: quota.monthlyTokens } }
+                : {}),
+            };
+          }),
         });
       });
 
@@ -240,6 +254,16 @@ export const createQuotaRequestsModule =
             'platform.quota.decide',
             { tenant, reason, id, decision: decided.state },
             async () => {
+              if (decided.state === 'approved') {
+                const raised = await mounted.admin.setTenantSetting(
+                  { ...principal, tenant, actor: principal },
+                  tenant,
+                  quotaSettingKey,
+                  decided.monthlyTokens,
+                  reason,
+                );
+                if (!raised.ok) throw new AdminRefused(raised.errors, raised.task);
+              }
               await save(tenant, decided, actorOf(principal), reason);
               return { value: decided, target: `quota-request:${tenant}/${id}` };
             },

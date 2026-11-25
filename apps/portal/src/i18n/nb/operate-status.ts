@@ -54,6 +54,8 @@ export const statusArea = {
       'Det venter allerede en forespørsel om mer kvote. Digdir må svare på den før dere kan sende en ny.',
     doneTitle: 'Forespørselen er sendt til Digdir.',
     doneText: 'Den står også i Logg, Endringer.',
+    approved: 'Digdir godkjente {amount} mill. tokens per måned {when}.',
+    rejected: 'Digdir avslo forespørselen {when}: {reason}',
     pending: 'Venter på svar fra Digdir om {amount} mill. tokens per måned, sendt {when}.',
     overviewText:
       '{used} av {quota} mill. tokens er brukt i {month}, og {forecast} mill. er ventet ved månedsslutt. Ved full kvote svarer tjenestene med feil til 1. {next}.',

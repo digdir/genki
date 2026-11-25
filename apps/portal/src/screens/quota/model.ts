@@ -51,3 +51,8 @@ export const requestedTokens = (quota: number, choice: AmountChoice | undefined)
 
 export const pendingRequest = (requests: readonly QuotaRequestView[]) =>
   requests.find((r) => r.state === 'pending');
+
+export const latestDecision = (requests: readonly QuotaRequestView[]) => {
+  const latest = requests[0];
+  return latest?.decision && latest.state !== 'pending' ? latest : undefined;
+};

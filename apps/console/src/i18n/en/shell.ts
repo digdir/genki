@@ -7,6 +7,7 @@ export const shell = {
   groupSupport: 'Support',
   pageQueue: 'For processing',
   pageTenants: 'Organisations',
+  pageQuotaRequests: 'Quota requests',
   pageOnboarding: 'Onboarding',
   pageModels: 'Models',
   pageCatalog: 'Endpoints and prices',
@@ -54,6 +55,10 @@ export const shell = {
   extendCta: 'Extend by {minutes} minutes',
   opensInNewTab: ' (opens in a new tab)',
   badgeQueue: '{count} awaiting a decision',
+  badgeQuotaRequests: {
+    one: '{count} quota request waiting',
+    other: '{count} quota requests waiting',
+  },
   badgeOperations: '{count} failures',
   completingLogin: 'Completing the sign-in',
   loggedOutTitle: 'You are signed out',

@@ -17,6 +17,7 @@ import { PlatformSecrets } from './screens/PlatformSecrets';
 import { FlagsProvider } from './flags';
 import { Policies } from './screens/Policies';
 import { pendingCount, Queue } from './screens/Queue';
+import { QuotaRequests } from './screens/QuotaRequests';
 import { Quality } from './screens/Quality';
 import { Settings } from './screens/Settings';
 import { SharedServices } from './screens/SharedServices';
@@ -78,6 +79,8 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
   const [badges, setBadges] = useState<NavBadges>({});
   const [queued, setQueued] = useState<number | undefined>();
   const [decided, setDecided] = useState(0);
+  const [quotaPending, setQuotaPending] = useState<number | undefined>();
+  const [quotaDecided, setQuotaDecided] = useState(0);
   const [expired, setExpired] = useState(false);
   const hash = useHashRoute();
   const endSession = useCallback(() => {
@@ -171,6 +174,18 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     });
     return () => controller.abort();
   }, [api, authorized, decided]);
+
+  useEffect(() => {
+    if (!authorized) return;
+    const controller = new AbortController();
+    api.quotaRequests(controller.signal, 'pending').then(
+      (rows) => {
+        if (!controller.signal.aborted) setQuotaPending(rows.length);
+      },
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, [api, authorized, quotaDecided]);
 
   const login = async () => {
     if (busy) return;
@@ -271,6 +286,13 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
         onDecided={() => setDecided((n) => n + 1)}
       />
     ),
+    '/quota-requests': () => (
+      <QuotaRequests
+        api={api}
+        tenant={params.get('tenant') ?? undefined}
+        onDecided={() => setQuotaDecided((n) => n + 1)}
+      />
+    ),
     '/tenants/services': () => (
       <TenantServices
         api={api}
@@ -336,7 +358,11 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
         <Shell
           session={session}
           path={current}
-          badges={queued === undefined ? badges : { ...badges, queue: queued }}
+          badges={{
+            ...badges,
+            ...(queued === undefined ? {} : { queue: queued }),
+            ...(quotaPending === undefined ? {} : { quotaRequests: quotaPending }),
+          }}
           onLogout={logout}
           health={api.health}
           readOnlyInLockdown={api.readOnlyInLockdown}
