@@ -760,4 +760,30 @@ describe('a remote PDF genki serves', () => {
     }
     expect(asked).toEqual([]);
   });
+
+  it('still serves a remote PDF the record lists at exactly 50 MiB', async () => {
+    const atCap = 'https://kilde.example/dokument/4716/filer/full.pdf';
+    const withAtCap = documentReply([
+      {
+        doc_num: '4716',
+        title: 'Full rapport',
+        url: 'https://kilde.example/dokument/4716',
+        files: [{ url: atCap, mimetype: 'application/pdf', size: 50 * 1024 * 1024 }],
+      },
+    ]);
+    const { asked, fetcher } = source(pdfBytes);
+    const { app } = await setup(withAtCap, remote(fetcher));
+    const asking = `${fileOf('4716')}?file=${encodeURIComponent(atCap)}`;
+
+    const probe = await app.request(asking, {
+      headers: { authorization: 'Bearer kari', accept: 'application/json' },
+    });
+    const res = await get(app, asking);
+
+    expect(probe.status).toBe(200);
+    expect(await probe.json()).toMatchObject({ kind: 'served' });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('application/pdf');
+    expect(asked.map((a) => a.url)).toEqual([atCap]);
+  });
 });
