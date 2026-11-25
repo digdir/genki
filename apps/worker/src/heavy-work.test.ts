@@ -483,9 +483,9 @@ describe("a run's closing VACUUM keeps search fast (#983)", () => {
       const slow = server({
         vacuum: vi.fn(
           (_g: string, options: { onBackend?: (pid: number) => void }) =>
-            new Promise<void>((resolve) => {
+            new Promise<undefined>((resolve) => {
               options.onBackend?.(4242);
-              finish = resolve;
+              finish = () => resolve(undefined);
             }),
         ),
         progress: vi.fn(async () => ({ phase: 'vacuuming indexes', blocks: '120/900' })),
@@ -536,7 +536,7 @@ describe('a VACUUM that outlives its worker (issue 948)', () => {
     const slow = server({
       vacuum: vi.fn(
         (_g: string, options: { onBackend?: (pid: number) => void }) =>
-          new Promise<void>((_resolve, reject) => {
+          new Promise<undefined>((_resolve, reject) => {
             options.onBackend?.(4242);
             fail = reject;
           }),
