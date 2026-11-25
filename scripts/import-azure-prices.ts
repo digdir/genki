@@ -29,6 +29,8 @@ export interface Price {
   outputPerThousand: number;
 }
 
+export type UnitPriced = Record<string, Record<string, number>>;
+
 export type Match = { ok: true; price: Price; meters: string[] } | { ok: false; reason: string };
 
 interface Meter {
@@ -334,21 +336,32 @@ export const listedModels = (list: string | undefined): ModelRef[] =>
       return { id: id as string, ...(family ? { family } : {}) };
     });
 
-const existingPrices = (): Record<string, Price> => {
+const existingPrices = (): Record<string, Price | UnitPriced> => {
   if (!existsSync(pricesFile)) return {};
-  const raw = parse(readFileSync(pricesFile, 'utf8')) as { models?: Record<string, Price> } | null;
+  const raw = parse(readFileSync(pricesFile, 'utf8')) as {
+    models?: Record<string, Price | UnitPriced>;
+  } | null;
   return raw?.models ?? {};
 };
 
-export const renderPrices = (prices: Record<string, Price>, date: string) =>
+const flow = (value: unknown): string =>
+  typeof value === 'object' && value !== null
+    ? `{ ${Object.entries(value)
+        .map(([k, v]) => `${k}: ${flow(v)}`)
+        .join(', ')} }`
+    : String(value);
+
+export const renderPrices = (prices: Record<string, Price | UnitPriced>, date: string) =>
   [
     `# Azure Retail Prices API (prices.azure.com), NOK per 1,000 tokens, GlobalStandard, Sweden Central, ${date}`,
     'models:',
     ...Object.keys(prices)
       .sort()
       .map((id) => {
-        const p = prices[id] as Price;
-        return `  ${id}: { inputPerThousand: ${p.inputPerThousand}, outputPerThousand: ${p.outputPerThousand} }`;
+        const p = prices[id] as Price | UnitPriced;
+        return 'inputPerThousand' in p
+          ? `  ${id}: { inputPerThousand: ${p.inputPerThousand}, outputPerThousand: ${p.outputPerThousand} }`
+          : `  ${id}: ${flow(p)}`;
       }),
     '',
   ].join('\n');
@@ -365,7 +378,7 @@ const main = async () => {
     models.set(m.id, { ...models.get(m.id), ...m });
   const table = priceTable(await fetchItems());
   const previous = existingPrices();
-  const prices: Record<string, Price> = {};
+  const prices: Record<string, Price | UnitPriced> = {};
   const unmatched: string[] = [];
   for (const model of [...models.values()].sort((a, b) => a.id.localeCompare(b.id))) {
     const match = matchModel(model, table);

@@ -136,4 +136,13 @@ describe('Azure price import', () => {
       ].join('\n'),
     );
   });
+
+  it('writes a hand-entered unit price as it was entered', () => {
+    expect(
+      renderPrices(
+        { 'foundry-claude/claude-opus-5-5': { chat: { 'input-token': 0.00003708 } } },
+        '2026-11-25',
+      ),
+    ).toContain('  foundry-claude/claude-opus-5-5: { chat: { input-token: 0.00003708 } }');
+  });
 });
