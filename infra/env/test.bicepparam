@@ -24,8 +24,8 @@ param workerRevisionsMode = 'Multiple'
 // The workflows pass an unset variable as an empty value, which the default does not cover.
 var knowledgeStage = readEnvironmentVariable('KNOWLEDGE_SERVER_STAGE', '')
 param knowledgeServerStage = empty(knowledgeStage) ? 'none' : knowledgeStage
-param knowledgePostgresSkuName = 'Standard_D2ds_v5'
-param knowledgePostgresSkuTier = 'GeneralPurpose'
+param knowledgePostgresSkuName = 'Standard_E4ds_v5'
+param knowledgePostgresSkuTier = 'MemoryOptimized'
 param knowledgePostgresStorageSizeGB = 128
 // Raised to P30 by hand when the Kudos fill ran out of disk burst on 2026-11-14 (issue 599), and set here so infra
 // leaves it there. The tier test steps down to waits for a week of Kudos searches; see infra/README.md, "Disk tier".
