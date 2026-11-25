@@ -167,10 +167,10 @@ If the shell cannot write to `/proc/1/fd/1`, lower the rule's threshold instead,
 
 `infra/modules/budget.bicep`, with the alerts' email group:
 
-| Budget                | Covers                                                                                                                                                                           | Amount a month | Emails at                             |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------------------------------------- |
-| `budget-genki-infra`  | the environment's resource group (`rg-genki-test-weu`): Postgres, Container Apps, monitoring, registry, storage, backups. The knowledge server (D2ds_v5) is about 1,600 kr of it | 5,000 kr       | 80 % and 100 % actual, 100 % forecast |
-| `budget-genki-models` | `modelsBudgetResourceGroup` (`rg-genki-test-swc`): Foundry                                                                                                                       | 8,000 kr       | 80 % and 100 % actual, 100 % forecast |
+| Budget                | Covers                                                                                                                                                                                                   | Amount a month | Emails at                             |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------------------------------------- |
+| `budget-genki-infra`  | the environment's resource group (`rg-genki-test-weu`): Postgres, Container Apps, monitoring, registry, storage, backups. The knowledge server's compute (E4ds_v5) is about 4,100 kr of it at list price | 5,000 kr       | 80 % and 100 % actual, 100 % forecast |
+| `budget-genki-models` | `modelsBudgetResourceGroup` (`rg-genki-test-swc`): Foundry                                                                                                                                               | 8,000 kr       | 80 % and 100 % actual, 100 % forecast |
 
 They replace `budget-genki`, which was made by hand on the subscription and has been deleted. Raise `modelsBudgetAmount` for a while before a planned embedding fill. A budget only mails; it stops nothing. Azure's cost data lags up to a day, and spend through the AI gateway is outside the subscription, so no Azure budget sees it.
 
