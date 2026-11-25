@@ -1,11 +1,6 @@
 import type { ClientView } from '../../types';
 
-/**
- * The address people open a published service at: the hostname of a hosted
- * Client for the service, the one for production first. Undefined when the
- * service has no hosted Client, as a new service has until a hostname is
- * added for it.
- */
+/** The hosted address of a service, production first; undefined when it has none. */
 export const serviceAddress = (
   clients: readonly ClientView[],
   service: string,
