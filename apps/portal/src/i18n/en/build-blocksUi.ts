@@ -105,8 +105,8 @@ export const blocksUi = {
     suggestion: 'Suggestion {n}',
     addSuggestion: 'Add a suggestion',
     removeSuggestion: 'Remove suggestion {n}',
-    settingsNote: 'Note in My settings',
-    settingsNoteHelp: 'Shown at the foot of My settings.',
+    settingsNote: 'Note in Settings',
+    settingsNoteHelp: 'Shown at the foot of Settings.',
     collectionsTitle: 'Document collections',
     noCollections:
       'The service searches no document collection yet. Add a document collection under Setup.',

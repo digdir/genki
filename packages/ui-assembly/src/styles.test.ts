@@ -84,6 +84,12 @@ describe('the assembly’s styles', () => {
     expect(flat).not.toMatch(/\.uia-(welcome|suggestions)[^{]*\{[^}]*visibility: hidden/);
   });
 
+  it('keep the front page group in the middle of the room when the service has no suggestions', () => {
+    expect(flat).toMatch(
+      /\.uia-chat\[data-start\] > \.uia-composer:not\(:has\(~ \.uia-suggestions\)\) \{[^}]*margin-block-end: auto/,
+    );
+  });
+
   it('sit in one layer after Designsystemet’s, so a host’s own CSS wins', () => {
     expect(
       css.trim().startsWith('@layer ds.theme, ds.base, ds.components, genai.components;'),

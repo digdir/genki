@@ -118,8 +118,10 @@ const oneColumnTicks = {
   inlineSize: '100%',
 } as CSSProperties;
 
-// The next look's threads: 220 wide, at most 400 (kunnskapsassistenten#263, #264).
-const threadsWidth = { width: 220, minWidth: 220, maxWidth: 400 };
+// The next look's threads and its settings menu: 252 wide, the board's 220 and a size-8 more so
+// a title and a page's line fit; the threads at most 400 (kunnskapsassistenten#263, #264).
+const sideWidth = 252;
+const threadsWidth = { width: sideWidth, minWidth: sideWidth, maxWidth: 400 };
 const filterWidth = 280;
 
 // The next look's footnote marks at 16 px (dev-kilder-hoyre), and the question a lighter grey.
@@ -402,6 +404,10 @@ export const AssistantView = ({
   // The dev boards' look, the layout's `next`: cards, every panel titled, the thread's title as
   // the `h1`, and the reader at the primary panel's foot with the profile menu.
   const next = a.look === 'next';
+  // The reader's profile menu: always in the next look. In the classic one too when the host has
+  // entries of its own for it, or signs out and there is no thread list to name the reader under.
+  const readerMenu =
+    next || !!a.profile?.menu?.extra?.length || (!threadsOn && !!a.profile?.signOut);
   // The document stands where the conversation was, with Dokumentvisning beside Chat in «Innhold».
   const chatHidden = a.documentOverChat && !!a.openDoc;
 
@@ -822,7 +828,7 @@ export const AssistantView = ({
       // Under the panel's title «Tråder» in the next look, which has the reader in the panel's foot.
       {...(next ? { headingLevel: 3 as const } : {})}
       foot={
-        a.profile?.signedInAs && !next ? (
+        a.profile?.signedInAs && !readerMenu ? (
           <SignedIn
             name={a.profile.signedInAs}
             {...(a.profile.signOut
@@ -845,10 +851,10 @@ export const AssistantView = ({
     />
   );
 
-  // ── The reader in the next look: the profile button at the primary panel's foot, which opens
-  // the profile menu, «Innstillinger» first. Only with a name to show; without one, the links. ──
+  // ── The reader with its profile menu (`readerMenu`): the profile button at the primary panel's
+  // foot, which opens the menu, «Innstillinger» first. Only with a name to show. ──
   const profile: ShellProfileProps | undefined =
-    next && a.profile?.signedInAs
+    readerMenu && a.profile?.signedInAs
       ? {
           name: a.profile.signedInAs,
           organisation: a.profile.organisation,
@@ -904,8 +910,10 @@ export const AssistantView = ({
       />
     ) : undefined;
 
-  // The next look's sizes: threads 220 (dev-navbar), tools 482 (dev-kilder-hoyre at 1440).
-  const nextPrimary: Partial<ShellPanel> = next ? { size: threadsWidth, ...profileFoot } : {};
+  // The next look's sizes: threads 252 (dev-navbar's 220 + 32), tools 482 (dev-kilder-hoyre at 1440).
+  const nextPrimary: Partial<ShellPanel> = next
+    ? { size: threadsWidth, ...profileFoot }
+    : profileFoot;
   const threadsTitle = next ? { title: t('builder.threads') } : {};
 
   const threadsAndFilter = phrase(t, [t('builder.threads'), t('builder.filter')]);
@@ -1034,8 +1042,8 @@ export const AssistantView = ({
       ),
       foot,
       ...nextPrimary,
-      // The menu alone is 220 wide; the threads' card keeps its dragged width for the way back.
-      size: { width: 220, minWidth: 220, maxWidth: 220 },
+      // The menu alone is as wide as the threads start; their card keeps its dragged width for the way back.
+      size: { width: sideWidth, minWidth: sideWidth, maxWidth: sideWidth },
     };
 
   // ── The secondary panel's tools, in the catalogue's order ──

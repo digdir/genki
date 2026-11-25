@@ -74,7 +74,7 @@ describe('the Tekster panel', () => {
     type('Navn', 'Byggehjelpen');
     fireEvent.click(screen.getByRole('button', { name: 'Legg til forslag' }));
     type('Forslag 1', 'Trenger jeg søknad?');
-    type('Notat i Mine innstillinger', 'Valgene huskes her.');
+    type('Notat i Innstillinger', 'Valgene huskes her.');
     expect(profile()).toEqual({
       assistantName: 'Byggehjelpen',
       suggestions: ['Trenger jeg søknad?'],
@@ -82,7 +82,7 @@ describe('the Tekster panel', () => {
     });
     type('Navn', '');
     fireEvent.click(screen.getByRole('button', { name: 'Fjern forslag 1' }));
-    type('Notat i Mine innstillinger', '');
+    type('Notat i Innstillinger', '');
     expect(profile()).toBeNull();
   });
 

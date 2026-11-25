@@ -1524,7 +1524,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     expect(location.hash).toBe('#innstillinger');
     // On «Generelt», the settings menu titled «Innstillinger» beside it (dev-innstillinger-0).
     expect(await screen.findByRole('heading', { level: 1, name: 'Generelt' })).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: 'Mine innstillinger' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Innstillinger' })).toBeTruthy();
   });
 
   // dev-innstillinger-1 to -4: the primary panel is the settings menu, each page in the main card.
@@ -1560,7 +1560,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
       );
       return onColorSchemeChange;
     };
-    const settingsNav = () => screen.getByRole('navigation', { name: 'Mine innstillinger' });
+    const settingsNav = () => screen.getByRole('navigation', { name: 'Innstillinger' });
     const go = (name: RegExp) =>
       fireEvent.click(within(settingsNav()).getByRole('button', { name }));
     beforeEach(() => kept.clear());
@@ -1569,9 +1569,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
       drawSettings();
       expect(await screen.findByRole('heading', { level: 1, name: 'Generelt' })).toBeTruthy();
       const nav = settingsNav();
-      expect(
-        within(nav).getByRole('heading', { level: 2, name: 'Mine innstillinger' }),
-      ).toBeTruthy();
+      expect(within(nav).getByRole('heading', { level: 2, name: 'Innstillinger' })).toBeTruthy();
       expect(within(nav).getByRole('link', { name: 'Tilbake til trådene' })).toBeTruthy();
       const pages = within(within(nav).getByRole('list', { name: 'Sidene i innstillingene' }));
       expect(pages.getAllByRole('button').map((page) => page.getAttribute('aria-current'))).toEqual(
@@ -1583,7 +1581,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
       expect(within(nav).getByRole('button', { name: 'Kari Marie Nordmann' })).toBeTruthy();
     });
 
-    it('draws the settings menu at the board’s 220 when opened from a thread, not as wide as the threads and their filter, and keeps no width for it', async () => {
+    it('draws the settings menu 252 wide, as the threads start, when opened from a thread, not as wide as the threads and their filter, and keeps no width for it', async () => {
       render(
         <Assistant
           api={fakeApi().api}
@@ -1601,14 +1599,14 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
         document
           .querySelector<HTMLElement>('.uib-shell')
           ?.style.getPropertyValue('--uib-shell-primary-width');
-      // The threads with the filter's panel in their card, 220 + 280 (kunnskapsassistenten#263).
-      expect(width()).toBe('500px');
+      // The threads with the filter's panel in their card, 252 + 280 (kunnskapsassistenten#263).
+      expect(width()).toBe('532px');
       fireEvent.click(
         within(menu() as HTMLElement).getByRole('link', { name: 'Innstillinger', hidden: true }),
       );
       expect(await screen.findByRole('heading', { level: 1, name: 'Generelt' })).toBeTruthy();
-      // dev-innstillinger-1: the menu alone, 220 at 1720, with no filter column beside it.
-      expect(width()).toBe('220px');
+      // dev-innstillinger-1: the menu alone, the board's 220 + 32, with no filter column beside it.
+      expect(width()).toBe('252px');
       expect(screen.queryByRole('region', { name: 'Filter for tråden' })).toBeNull();
       // The reader dragged nothing, so the host keeps no width for the next visit.
       expect((kept.get('layout') as { widths?: object } | undefined)?.widths ?? {}).toEqual({});
@@ -2253,7 +2251,7 @@ describe('the filter in the next look (dev-filter-panel)', () => {
     ).toBeTruthy();
   });
 
-  // kunnskapsassistenten#263 and #264: the filter 280 wide by standard, the threads 220 to 400.
+  // kunnskapsassistenten#263 and #264: the filter 280 wide by standard, the threads 252 to 400.
   describe('the threads’ and the filter’s widths', () => {
     const drawWidths = (flags: string[] = [], layout = nextLayout) => {
       const kept = new Map<string, unknown>([['flags', flags]]);
@@ -2289,24 +2287,24 @@ describe('the filter in the next look (dev-filter-panel)', () => {
         ?.style.getPropertyValue('--genai-filter-checkboxes-columns');
     const shown = () => within(filterPanel()).findByRole('checkbox', { name: /^Årsrapport/ });
 
-    it('draws the filter 280 wide with its ticks in one column, and the threads 220 beside it', async () => {
+    it('draws the filter 280 wide with its ticks in one column, and the threads 252 beside it', async () => {
       drawWidths();
       await shown();
       expect(card()?.style.getPropertyValue('--uib-shell-lead-width')).toBe('calc(100% - 280px)');
       expect(columns()).toBe('1');
-      expect(edge().getAttribute('aria-valuenow')).toBe('500');
+      expect(edge().getAttribute('aria-valuenow')).toBe('532');
     });
 
-    it('lets the reader widen the threads from 220 to 400, the filter staying 280', async () => {
+    it('lets the reader widen the threads from 252 to 400, the filter staying 280', async () => {
       drawWidths();
       await shown();
-      expect(edge().getAttribute('aria-valuemin')).toBe('500');
+      expect(edge().getAttribute('aria-valuemin')).toBe('532');
       fireEvent.keyDown(edge(), { key: 'End' });
       expect(edge().getAttribute('aria-valuenow')).toBe('680');
       fireEvent.keyDown(edge(), { key: 'ArrowRight', shiftKey: true });
       expect(edge().getAttribute('aria-valuenow')).toBe('680');
       fireEvent.keyDown(edge(), { key: 'Home' });
-      expect(edge().getAttribute('aria-valuenow')).toBe('500');
+      expect(edge().getAttribute('aria-valuenow')).toBe('532');
       expect(card()?.style.getPropertyValue('--uib-shell-lead-width')).toBe('calc(100% - 280px)');
     });
 
@@ -2314,10 +2312,10 @@ describe('the filter in the next look (dev-filter-panel)', () => {
       drawWidths(['compact-filter']);
       await shown();
       expect(card()?.style.getPropertyValue('--uib-shell-lead-width')).toBe('calc(100% - 280px)');
-      expect(edge().getAttribute('aria-valuenow')).toBe('500');
+      expect(edge().getAttribute('aria-valuenow')).toBe('532');
     });
 
-    it('keeps the threads alone between 220 and 400 where there is no filter beside them', async () => {
+    it('keeps the threads alone between 252 and 400 where there is no filter beside them', async () => {
       const zones = nextLayout.zones;
       drawWidths([], {
         ...nextLayout,
@@ -2326,8 +2324,8 @@ describe('the filter in the next look (dev-filter-panel)', () => {
       const threads = await screen.findByRole('separator', {
         name: /^Endre bredde på tidligere samtaler/,
       });
-      expect(threads.getAttribute('aria-valuenow')).toBe('220');
-      expect(threads.getAttribute('aria-valuemin')).toBe('220');
+      expect(threads.getAttribute('aria-valuenow')).toBe('252');
+      expect(threads.getAttribute('aria-valuemin')).toBe('252');
       fireEvent.keyDown(threads, { key: 'End' });
       expect(threads.getAttribute('aria-valuenow')).toBe('400');
     });

@@ -83,12 +83,14 @@
   }
 
   /* The front page: greeting, field and suggestions as one group in the middle of the room, the
-     disclaimer alone at the foot. */
+     disclaimer alone at the foot. The group's last part, the suggestions or else the field, takes
+     the room under it, so the group stays in the middle without suggestions too. */
   .uia-chat[data-start] .uia-composer {
     margin-block-start: 0;
   }
 
-  .uia-chat[data-start] .uia-suggestions {
+  .uia-chat[data-start] .uia-suggestions,
+  .uia-chat[data-start] > .uia-composer:not(:has(~ .uia-suggestions)) {
     margin-block-end: auto;
     padding-block-end: var(--genai-assembly-room-inset, var(--ds-size-3));
   }
