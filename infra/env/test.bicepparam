@@ -125,6 +125,7 @@ param platformLoginStage = 'certificates'
 
 param alertsEnabled = true
 param alertEmails = readEnvironmentVariable('ALERT_EMAILS', '')
+param alertMailMaxSeverity = 1
 param healthCheckFrequencySeconds = 300
 // Off until the deploy identity may write a rule scoped to the subscription (infra/README.md, "Backups").
 param serviceHealthAlertEnabled = false

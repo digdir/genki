@@ -182,15 +182,19 @@ param healthCheckFrequencySeconds int = 300
 
 param alertThresholds object = {
   errorRatePercent: 5
-  errorRateMinRequests: 20
+  errorRateMinRequests: 100
+  errorMinFailures: 10
   latencySeconds: 5
-  latencyMinRequests: 50
+  latencyMinRequests: 100
   modelFailures: 5
   queueWaitMinutes: 30
   workerFailures: 3
   altinnFailures: 3
   loginKeyFailures: 1
+  doclingKills: 3
 }
+
+param alertMailMaxSeverity int = 4
 
 @description('Deploys the generic assistant host (ADR 0061) in its own environment, with its own identity and Key Vault (ADR 0062).')
 param assistantHostEnabled bool = false
@@ -674,6 +678,7 @@ module alerts 'modules/alerts.bicep' = if (alertsEnabled && infra) {
     postgresUserConnections: postgresConnections.maxConnections[postgresSkuName] - postgresConnections.reservedConnections
     backupJobName: apps.outputs.platformBackupJobName
     serviceHealthAlert: serviceHealthAlertEnabled
+    mailMaxSeverity: alertMailMaxSeverity
   }
 }
 
@@ -682,6 +687,7 @@ var budgetNotifications = [
   { threshold: 100, type: 'Actual' }
   { threshold: 100, type: 'Forecasted' }
 ]
+var infraBudgetNotifications = filter(budgetNotifications, n => n.type == 'Actual')
 module infraBudget 'modules/budget.bicep' = if (alertsEnabled && infra && infraBudgetAmount > 0) {
   name: 'budget-infra'
   params: {
@@ -689,7 +695,7 @@ module infraBudget 'modules/budget.bicep' = if (alertsEnabled && infra && infraB
     amount: infraBudgetAmount
     startDate: budgetStartDate
     actionGroupId: alertsEnabled && infra ? alerts!.outputs.actionGroupId : ''
-    notifications: budgetNotifications
+    notifications: infraBudgetNotifications
   }
 }
 

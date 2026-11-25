@@ -74,6 +74,13 @@ describe.skipIf(!hasAz && !process.env.CI)('backups and alerts in the template',
   };
   const inner = (name: string) => list(module(name).properties.template?.resources ?? []);
   const text = (value: unknown) => JSON.stringify(value);
+  const logRule = (key: string) =>
+    (
+      (module('alerts').properties.template?.variables ?? {}).appLogAlerts as Record<
+        string,
+        unknown
+      >[]
+    ).find((r) => r.key === key);
 
   it('runs test’s platform server on B2s with 35 days of restore and a Sunday 02:00 UTC window', () => {
     expect(setting(test, 'postgresSkuName')).toBe('Standard_B2s');
@@ -235,7 +242,7 @@ describe.skipIf(!hasAz && !process.env.CI)('backups and alerts in the template',
     expect(logRules).not.toContain('"state-register"');
     expect(logRules).not.toContain('job queue error');
     expect(logRules).toContain('queue stats');
-    expect(logRules).toContain('iff(failures >= {2} or stale > 0 or waiting > 0, 1, 0)');
+    expect(logRules).toContain('iff(failures >= {3} or stale > 0 or waiting > 0, 1, 0)');
     expect(text(main.parameters.alertThresholds?.defaultValue)).toContain('"workerFailures":3');
     const variables = module('alerts').properties.template?.variables ?? {};
     expect(logRules).toContain("Path != ''/health''");
@@ -247,13 +254,14 @@ describe.skipIf(!hasAz && !process.env.CI)('backups and alerts in the template',
       expect(slow).not.toContain(`"${route}"`);
   });
 
-  it('alerts on any catalog entry skipped by the API or the worker within 15 minutes', () => {
-    const rules = (module('alerts').properties.template?.variables ?? {}).appLogAlerts as Record<
-      string,
-      unknown
-    >[];
-    const rule = rules.find((r) => r.key === 'catalog-skipped');
-    expect(rule).toMatchObject({ window: 'PT15M', aggregation: 'Count', threshold: 1 });
+  it('raises a Sev3 alert on any catalog entry skipped by the API or the worker within 15 minutes', () => {
+    const rule = logRule('catalog-skipped');
+    expect(rule).toMatchObject({
+      severity: 3,
+      window: 'PT15M',
+      aggregation: 'Count',
+      threshold: 1,
+    });
     expect(String(rule?.query)).toContain("Log has ''catalog entry skipped''");
     expect(String(rule?.query)).not.toMatch(/[,|]\s*(kind|id)\s*=/);
     expect(String(rule?.query)).toContain('{0}');
@@ -283,7 +291,7 @@ describe.skipIf(!hasAz && !process.env.CI)('backups and alerts in the template',
     );
   });
 
-  it('budgets 5,000 kr for infrastructure and 8,000 kr for models in test, each at 80 % and 100 % actual and 100 % forecast', () => {
+  it('budgets 5,000 kr for infrastructure at 80 % and 100 % actual, and 8,000 kr for models with a 100 % forecast too', () => {
     expect(setting(test, 'infraBudgetAmount')).toBe(5000);
     expect(setting(test, 'modelsBudgetAmount')).toBe(8000);
     expect(main.variables.budgetNotifications).toEqual([
@@ -291,10 +299,72 @@ describe.skipIf(!hasAz && !process.env.CI)('backups and alerts in the template',
       { threshold: 100, type: 'Actual' },
       { threshold: 100, type: 'Forecasted' },
     ]);
-    for (const budget of ['budget-infra', 'budget-models'])
-      expect(module(budget).properties.parameters?.notifications).toEqual({
-        value: "[variables('budgetNotifications')]",
-      });
+    expect(main.variables.infraBudgetNotifications).toBe(
+      "[filter(variables('budgetNotifications'), lambda('n', equals(lambdaVariables('n').type, 'Actual')))]",
+    );
+    expect(module('budget-infra').properties.parameters?.notifications).toEqual({
+      value: "[variables('infraBudgetNotifications')]",
+    });
+    expect(module('budget-models').properties.parameters?.notifications).toEqual({
+      value: "[variables('budgetNotifications')]",
+    });
     expect(text(module('budget-models').condition)).toContain('modelsBudgetResourceGroup');
+  });
+
+  it('mails only Sev0 and Sev1 alerts in test, and every severity where the environment does not set it', () => {
+    expect(setting(test, 'alertMailMaxSeverity')).toBe(1);
+    expect(setting(prod, 'alertMailMaxSeverity')).toBe(4);
+    expect(module('alerts').properties.parameters?.mailMaxSeverity).toEqual({
+      value: "[parameters('alertMailMaxSeverity')]",
+    });
+    const rules = inner('alerts').filter((r) =>
+      ['Microsoft.Insights/metricAlerts', 'Microsoft.Insights/scheduledQueryRules'].includes(
+        r.type,
+      ),
+    );
+    expect(rules.length).toBeGreaterThan(0);
+    for (const rule of rules)
+      expect(text(rule.properties.actions)).toContain("parameters('mailMaxSeverity')");
+  });
+
+  it('keeps api-down, db-down and login-keys at Sev1 so they still mail in test', () => {
+    for (const name of ['-api-down', '-db-down']) {
+      const alert = inner('alerts').find((r) => text(r.name).includes(name));
+      expect(alert?.properties.severity).toBe(1);
+    }
+    expect(logRule('login-keys')?.severity).toBe(1);
+  });
+
+  it('fires api-errors only with at least 100 requests and 10 failures in 30 minutes', () => {
+    const rule = logRule('api-errors');
+    expect(rule?.window).toBe('PT30M');
+    expect(String(rule?.query)).toContain('where total >= {1} and failed >= {2}');
+    expect(text(main.parameters.alertThresholds?.defaultValue)).toContain(
+      '"errorRateMinRequests":100,"errorMinFailures":10',
+    );
+  });
+
+  it('raises api-latency as Sev3 when 2 of 3 half hours with at least 100 requests are slow', () => {
+    const rule = logRule('api-latency');
+    expect(rule).toMatchObject({
+      severity: 3,
+      window: 'PT30M',
+      periods: { numberOfEvaluationPeriods: 3, minFailingPeriodsToAlert: 2 },
+    });
+    expect(String(rule?.query)).toContain('by TimeGenerated = bin_at(TimeGenerated, 30m, now())');
+    expect(text(main.parameters.alertThresholds?.defaultValue)).toContain(
+      '"latencyMinRequests":100',
+    );
+  });
+
+  it('leaves the bulk knowledge.convert queue out of the worker-jobs wait check', () => {
+    const rule = logRule('worker-jobs');
+    expect(String(rule?.query)).toContain(
+      'mv-expand q = entry.queues | where tostring(q.queue) !in ({1})',
+    );
+    expect(String(rule?.query)).not.toContain('entry.oldestQueuedSeconds');
+    expect(text((module('alerts').properties.template?.variables ?? {}).bulkQueues)).toBe(
+      '["knowledge.convert"]',
+    );
   });
 });
