@@ -274,7 +274,7 @@ export const demosMock = (
       if (!reason) return needReason();
       const demo = demos.find((d) => d.id === decodeURIComponent(request[1] ?? ''));
       if (!demo) return problem(404, 'about:blank', 'Not found');
-      if (settings.recorder !== 'job')
+      if (settings.recorder === 'workflow')
         return problem(503, 'urn:genai:problem:recorder-not-set-up', 'no recorder job');
       if (own(demo.id).some(isOpen))
         return problem(409, 'urn:genai:problem:recording-open', 'not finished', 'recording');

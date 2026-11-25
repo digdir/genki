@@ -31,9 +31,9 @@ interface Sent {
   body: Record<string, unknown>;
 }
 
-const studio = (recorder: 'job' | 'workflow' = 'job') => {
+const studio = (recorder: 'job' | 'scheduled' | 'workflow' = 'job', data = exampleDemoData()) => {
   const routes = demosMock(
-    exampleDemoData(),
+    data,
     'operator:Lise Dahl',
     () => new Date('2026-11-18T10:00:00Z'),
     recorder,
@@ -352,6 +352,141 @@ describe('the demo settings', () => {
     expect(
       (screen.getByRole('button', { name: 'Lagre innstillingene' }) as HTMLButtonElement).disabled,
     ).toBe(true);
+  });
+});
+
+describe('the scheduled recorder', () => {
+  it('lets a recording be queued and says the recorder picks it up within about five minutes', async () => {
+    const { api } = studio('scheduled');
+    const { unmount } = render(<Demos api={api} demo="portal-tour" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Ta opp på nytt' }));
+    await confirmWithReason('Start opptaket');
+    await waitFor(() => expect(window.location.hash).toMatch(/recording=/));
+    unmount();
+    render(<Demos api={api} demo="portal-tour" />);
+
+    expect(
+      await screen.findByText(
+        /Venter på opptakeren, som henter opptaket innen om lag fem minutter/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Opptak gjøres med arbeidsflyten demos i GitHub/)).toBeNull();
+  });
+
+  it('tells the person following a queued recording that the recorder looks every five minutes', async () => {
+    const { api } = studio('scheduled');
+    const started = await api.requestRecording('portal-tour', 'ny versjon av portalen');
+    const stillQueued = { ...api, recording: () => Promise.resolve(started) };
+    render(<Demos api={stillQueued} params={new URLSearchParams(`recording=${started.id}`)} />);
+
+    expect(
+      await screen.findByText(/Opptakeren ser etter nye opptak hvert femte minutt/),
+    ).toBeTruthy();
+  });
+
+  it('lets a step be tried in the editor where the scheduled recorder records', async () => {
+    const { api } = studio('scheduled');
+    render(<Demos api={api} params={new URLSearchParams('edit=portal-tour')} />);
+
+    const tries = await screen.findAllByRole('button', { name: 'Prøv dette steget' });
+
+    expect(tries.every((b) => !(b as HTMLButtonElement).disabled)).toBe(true);
+    expect(screen.queryByText(/Prøving krever opptak fra konsollet/)).toBeNull();
+  });
+
+  it('names the demo-recorder workflow in the settings', async () => {
+    const { api } = studio('scheduled');
+    render(<Demos api={api} params={new URLSearchParams('settings=1')} />);
+
+    expect(
+      await screen.findByText(/Opptakene gjøres av arbeidsflyten demo-recorder i GitHub/),
+    ).toBeTruthy();
+  });
+});
+
+describe('choosing a voice', () => {
+  const options = (select: HTMLElement) =>
+    within(select)
+      .getAllByRole('option')
+      .map((o) => [(o as HTMLOptionElement).value, o.textContent]);
+
+  it('lists the known voices by name, language and gender, and the language follows the voice', async () => {
+    const { api, writes } = studio();
+    render(<Demos api={api} params={new URLSearchParams('edit=portal-tour')} />);
+
+    const voice = await screen.findByLabelText('Stemme');
+    expect(options(voice)).toHaveLength(9);
+    expect(options(voice)[0]).toEqual(['nb-NO-PernilleNeural', 'Pernille (norsk bokmål, kvinne)']);
+    expect(options(voice)).toEqual(
+      expect.arrayContaining([
+        ['nb-NO-PernilleNeural', 'Pernille (norsk bokmål, kvinne)'],
+        ['nb-NO-FinnNeural', 'Finn (norsk bokmål, mann)'],
+        ['en-GB-RyanNeural', 'Ryan (britisk engelsk, mann)'],
+      ]),
+    );
+    fireEvent.change(voice, { target: { value: 'en-GB-SoniaNeural' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre' }));
+    await confirmWithReason('Lagre', 'engelsk stemme for besøket');
+
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0]?.body).toMatchObject({ voice: 'en-GB-SoniaNeural', language: 'en-GB' });
+  });
+
+  it('shows a stored voice outside the list as its id and keeps it and the language on save', async () => {
+    const data = exampleDemoData();
+    data.demos = data.demos.map((d) =>
+      d.id === 'portal-tour' ? { ...d, voice: 'de-DE-KatjaNeural', language: 'de-DE' } : d,
+    );
+    const { api, writes } = studio('job', data);
+    render(<Demos api={api} params={new URLSearchParams('edit=portal-tour')} />);
+
+    const voice = (await screen.findByLabelText('Stemme')) as HTMLSelectElement;
+    expect(voice.value).toBe('de-DE-KatjaNeural');
+    expect(options(voice)[0]).toEqual(['de-DE-KatjaNeural', 'de-DE-KatjaNeural']);
+    fireEvent.change((await screen.findAllByLabelText('Fortelling'))[0] as HTMLElement, {
+      target: { value: 'Eine kurze Einleitung.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre' }));
+    await confirmWithReason('Lagre', 'kortere åpning i steg en');
+
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0]?.body).toMatchObject({ voice: 'de-DE-KatjaNeural', language: 'de-DE' });
+  });
+
+  it('lets a stored voice outside the list be chosen again after picking another, with its language', async () => {
+    const data = exampleDemoData();
+    data.demos = data.demos.map((d) =>
+      d.id === 'portal-tour' ? { ...d, voice: 'de-DE-KatjaNeural', language: 'de-DE' } : d,
+    );
+    const { api, writes } = studio('job', data);
+    render(<Demos api={api} params={new URLSearchParams('edit=portal-tour')} />);
+
+    const voice = await screen.findByLabelText('Stemme');
+    fireEvent.change(voice, { target: { value: 'en-GB-RyanNeural' } });
+    fireEvent.change(voice, { target: { value: 'de-DE-KatjaNeural' } });
+    fireEvent.change((await screen.findAllByLabelText('Fortelling'))[0] as HTMLElement, {
+      target: { value: 'Eine kurze Einleitung.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre' }));
+    await confirmWithReason('Lagre', 'kortere åpning i steg en');
+
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0]?.body).toMatchObject({ voice: 'de-DE-KatjaNeural', language: 'de-DE' });
+  });
+
+  it('picks the default voice in the settings from the same list', async () => {
+    const { api, writes } = studio();
+    render(<Demos api={api} params={new URLSearchParams('settings=1')} />);
+
+    fireEvent.change(await screen.findByLabelText('Standardstemme'), {
+      target: { value: 'nb-NO-FinnNeural' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre innstillingene' }));
+    await confirmWithReason('Lagre innstillingene', 'mannsstemme som standard');
+
+    expect(await screen.findByText('Innstillingene er lagret.')).toBeTruthy();
+    expect(writes()).toMatchObject([{ body: { voice: 'nb-NO-FinnNeural' } }]);
   });
 });
 

@@ -114,7 +114,11 @@ const Running = ({
         </Heading>
         <p className="intro">
           {recording.status === 'queued'
-            ? t('demos.recordingQueuedText')
+            ? t(
+                demo?.recorder === 'scheduled'
+                  ? 'demos.recordingQueuedTextScheduled'
+                  : 'demos.recordingQueuedText',
+              )
             : t('demos.recordingProgress', { done, steps: recording.steps })}
         </p>
       </div>

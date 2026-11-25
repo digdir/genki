@@ -104,7 +104,7 @@ export type DemoApp = 'portal' | 'console' | 'workspace';
 export type DemoAudience = 'municipality' | 'state-agency' | 'internal';
 
 export type RecordingStatus = 'queued' | 'running' | 'recorded' | 'failed' | 'cancelled';
-export type RecorderMode = 'job' | 'workflow';
+export type RecorderMode = 'job' | 'scheduled' | 'workflow';
 
 export interface DemoRecording {
   id: string;

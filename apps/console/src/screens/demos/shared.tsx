@@ -7,6 +7,7 @@ import {
   type DemoApp,
   type DemoAudience,
   type DemoRecording,
+  type RecorderMode,
 } from '../../api';
 import { useT, type PlainKey } from '../../i18n';
 import { DialogError, useFlash } from '../../ui';
@@ -63,6 +64,9 @@ export const stepsDone = (recording: Pick<DemoRecording, 'files'>) =>
       return found ? [Number(found[1])] : [];
     }),
   );
+
+export const canRecord = (recorder: RecorderMode | undefined) =>
+  recorder === 'job' || recorder === 'scheduled';
 
 export const isOpen = (recording: Pick<DemoRecording, 'status'>) =>
   recording.status === 'queued' || recording.status === 'running';
@@ -130,9 +134,13 @@ export const RecordingTag = () => {
   );
 };
 
-export const progressText = (recording: DemoRecording, t: ReturnType<typeof useT>) =>
+export const progressText = (
+  recording: DemoRecording,
+  t: ReturnType<typeof useT>,
+  recorder?: RecorderMode,
+) =>
   recording.status === 'queued'
-    ? t('demos.recordingQueued')
+    ? t(recorder === 'scheduled' ? 'demos.recordingQueuedScheduled' : 'demos.recordingQueued')
     : t('demos.recordingProgress', { done: stepsDone(recording), steps: recording.steps });
 
 export const Crumbs = ({ title, href }: { title?: string | undefined; href?: string }) => {

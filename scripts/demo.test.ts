@@ -17,7 +17,9 @@ import {
   parseArgs,
   parseDemo,
   pickDemos,
+  queuedOf,
   recordDemo,
+  sampleLineOf,
   RecordingOpen,
   posterArgs,
   readyFailure,
@@ -144,6 +146,20 @@ describe('demo recordings', () => {
       expect(() => parseDemo(minimal(`  - say: Hei\n    do:\n      - [${command}]\n`))).toThrow(
         /is not one of/,
       );
+  });
+
+  it('refuses a flag in a command outside the flags the demos use', () => {
+    expect(() => parseDemo(minimal('  - say: Hei\n    do:\n      - [wait, --fn, "1"]\n'))).toThrow(
+      /takes only the flags/,
+    );
+  });
+
+  it('runs no stored command with a flag outside the list, before touching the browser', () => {
+    const calls: string[][] = [];
+    const step = { say: 'Hei', do: [['find', 'role', 'link', 'click', '--args', '--no-sandbox']] };
+
+    expect(() => runStep(step, 0, (...args) => calls.push(args))).toThrow(StepFailure);
+    expect(calls).toEqual([]);
   });
 
   it('accepts numbers in a command and passes them on as text', () => {
@@ -344,17 +360,25 @@ describe('demo recordings', () => {
     expect(parseArgs(['demos/a.yaml'])).toEqual({
       mode: 'record',
       silent: false,
+      queued: false,
       only: undefined,
       files: ['demos/a.yaml'],
     });
     expect(parseArgs(['record', '--silent', '--only', 'a'])).toEqual({
       mode: 'record',
       silent: true,
+      queued: false,
       only: 'a',
       files: [],
     });
     expect(parseArgs(['record', '--only', ''])).toMatchObject({ only: undefined, files: [] });
     expect(parseArgs(['check'])).toMatchObject({ mode: 'check', files: [] });
+    expect(parseArgs(['queued'])).toMatchObject({ mode: 'queued', files: [] });
+    expect(parseArgs(['recording', '--queued'])).toMatchObject({
+      mode: 'recording',
+      queued: true,
+      files: [],
+    });
   });
 });
 
@@ -489,6 +513,122 @@ describe('reporting to the demo library', () => {
       viewport: [1440, 900],
       steps: [{ say: 'En.' }],
     });
+  });
+
+  it('lists the queued recordings with the recorder key and the lines each needs voiced, none for a trial', async () => {
+    const full = '11111111-1111-4111-8111-111111111111';
+    const trial = '22222222-2222-4222-8222-222222222222';
+    const spec = {
+      title: 'T',
+      language: 'en-GB',
+      voice: 'en-GB-SoniaNeural',
+      app: 'portal',
+      path: '/#/',
+      steps: [{ say: 'One.' }, { say: 'Two.' }],
+    };
+    const keys: string[] = [];
+    const send = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      keys.push((init?.headers as Record<string, string>)['x-recorder-key'] ?? '');
+      if (url.endsWith('/recorder/recordings?status=queued'))
+        return Response.json({
+          data: [
+            { id: full, demo: 'tour' },
+            { id: trial, demo: 'try' },
+            { id: '../demos', demo: 'x' },
+          ],
+        });
+      const id = url.split('/').at(-1);
+      return Response.json({
+        id,
+        demo: id === full ? 'tour' : 'try',
+        ...(id === trial ? { upTo: 1 } : {}),
+        demoSpec: spec,
+        settings: { viewport: [1280, 720], tenant: null },
+      });
+    }) as typeof fetch;
+
+    const queued = await queuedOf('https://api.example/', 'nøkkel', send);
+
+    expect(queued).toEqual([
+      {
+        id: full,
+        demo: 'tour',
+        voice: 'en-GB-SoniaNeural',
+        language: 'en-GB',
+        lines: ['One.', 'Two.'],
+      },
+      { id: trial, demo: 'try', voice: 'en-GB-SoniaNeural', language: 'en-GB', lines: [] },
+    ]);
+    expect(keys).toEqual(['nøkkel', 'nøkkel', 'nøkkel']);
+  });
+
+  it('leaves out a queued recording that cannot be read or is no longer queued, and keeps the rest', async () => {
+    const ok = '11111111-1111-4111-8111-111111111111';
+    const gone = '22222222-2222-4222-8222-222222222222';
+    const taken = '33333333-3333-4333-8333-333333333333';
+    const send = (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('status=queued'))
+        return Response.json({ data: [{ id: gone }, { id: taken }, { id: ok }] });
+      if (url.endsWith(gone)) return new Response('{}', { status: 404 });
+      return Response.json({
+        id: url.split('/').at(-1),
+        demo: 'tour',
+        status: url.endsWith(taken) ? 'running' : 'queued',
+        demoSpec: {
+          title: 'T',
+          language: 'nb-NO',
+          voice: 'nb-NO-FinnNeural',
+          app: 'portal',
+          path: '/',
+          steps: [{ say: 'En.' }],
+        },
+        settings: { viewport: [1280, 720], tenant: null },
+      });
+    }) as typeof fetch;
+
+    const queued = await queuedOf('https://api.example', 'k', send);
+
+    expect(queued.map((q) => q.id)).toEqual([ok]);
+  });
+
+  it('finishes a queued recording that needs a sign-in key it does not have as failed, so it leaves the queue', async () => {
+    const saved = process.env.DEMO_API_KEY;
+    delete process.env.DEMO_API_KEY;
+    const finished: unknown[] = [];
+    const library = {
+      start: (_name: string, narrated: boolean, recording?: string) =>
+        Promise.resolve(narrated ? 'unexpected' : (recording ?? 'none')),
+      upload: () => Promise.reject(new Error('no upload expected')),
+      finish: (id: string, body: unknown) => Promise.resolve(void finished.push([id, body])),
+    };
+    try {
+      const demo = parseDemo(minimal('  - say: Hei\n').replace('steps:', 'signedIn: true\nsteps:'));
+
+      const result = await recordDemo(demo, 'signed', false, { library, recording: 'q1' });
+
+      expect(result).toMatchObject({ outcome: 'failed' });
+      expect(finished).toEqual([
+        [
+          'q1',
+          { status: 'failed', failure: { step: 0, message: 'needs DEMO_API_KEY to sign in' } },
+        ],
+      ]);
+    } finally {
+      if (saved !== undefined) process.env.DEMO_API_KEY = saved;
+    }
+  });
+
+  it('reads the voice sample in the language of the voice', () => {
+    expect(sampleLineOf('en-GB')).toMatch(/^Hi!/);
+    expect(sampleLineOf('nb-NO')).toMatch(/^Hei!/);
+  });
+
+  it('stops when the queue answers with an error, so nothing is recorded from a half list', async () => {
+    const send = (async () => new Response('{}', { status: 401 })) as typeof fetch;
+
+    await expect(queuedOf('https://api.example', 'k', send)).rejects.toThrow(/answered 401/);
   });
 
   it('asks the managed identity for a speech token', () => {
