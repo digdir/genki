@@ -882,10 +882,9 @@
 }
 
 .area-instr-improve {
-  margin-left: auto;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 8px;
 }
 

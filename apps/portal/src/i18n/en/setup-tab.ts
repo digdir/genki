@@ -180,7 +180,6 @@ export const setup = {
   instructionsLabel: 'Instructions for the service',
   instructionsHelp:
     'Write as if to a new colleague: what the job is, tone and language, what to do when unsure, and what never to do.',
-  characters: { one: '{count} character', other: '{count} characters' },
   examples: 'Examples of a good result',
   exampleIn: 'In:',
   exampleOut: 'Out:',
