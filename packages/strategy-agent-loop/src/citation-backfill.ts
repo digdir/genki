@@ -40,8 +40,9 @@ const refusalPatterns = [
   /\b(could not|couldn't|did not|didn't) find\b/,
 ];
 
-// «Kudos har ingen oppskrift på …», but not «… har ingen anbefalinger om X, men peker på Y».
-const hasNoOpening = /^[^ ]+( [^ ]+)? har (ingen|ikke|ikkje)(?![\p{L}\p{N}])/u;
+// «Kildene har ingen …» declines; «Elevkurset har ingen egenandel» and «…, men …» answer.
+const hasNoOpening =
+  /^(kildene|kilden|kjeldene|kjelda|dokumentene|dokumentet|dokumenta|materialet|the sources|the source|the documents|the document|the material)( (i|in) [^ ]+)? (har (ingen|ikke|ikkje)|have no|has no)(?![\p{L}\p{N}])/u;
 const butWord = /(?<![\p{L}\p{N}])men(?![\p{L}\p{N}])/u;
 
 const opensWithHasNo = (normalized: string) => {

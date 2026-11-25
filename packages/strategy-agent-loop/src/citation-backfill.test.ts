@@ -32,7 +32,7 @@ const readInto = (w: Workspace, ...ns: number[]) => {
 const decline = 'Kildene i Kudos dekker ikke dette. Vil du at jeg søker etter noe annet?';
 
 const brunostDecline =
-  'Kudos har ingen oppskrift på tradisjonell brunost. Dokumentene her er offentlige rapporter.';
+  'Kildene i Kudos har ingen oppskrift på tradisjonell brunost. Dokumentene her er offentlige rapporter.';
 const brunostExtra =
   'Rapporten «Gjennomgang av geiteholdet i Norge» forteller hva brunost lages av:\n\n- **Råvarer:** Brunost lages av myse, melk og fløte.';
 const brunostOffer = 'Jeg kan søke i Kudos etter mer om seterkultur.';
@@ -463,7 +463,7 @@ describe('a decline after the gate judged the evidence', () => {
     });
   });
 
-  it('cuts a decline with an extra section to the decline and its offer, with no citations, as in case 024', async () => {
+  it('cuts a decline with an extra section to the decline and its offer, with no citations', async () => {
     const out = await run({
       scripts: {
         primary: {
@@ -626,9 +626,11 @@ describe('recognising a refusal', () => {
     'Basert på den gitte konteksten, er det ingen eksplisitt informasjon om dette.',
     'Jeg har dessverre ikke klart å finne spesifikk informasjon om dette.',
     'Rapporten foreligger ikke i kunnskapsbasen.',
-    'Kudos har ingen oppskrift på tradisjonell brunost.',
-    'Kudos har ikke noe om billettpriser.',
-    'Kudos har ikkje noko om dette.',
+    'Kildene i Kudos har ingen oppskrift på tradisjonell brunost.',
+    'Dokumentene har ikke noe om billettpriser.',
+    'Kjeldene har ikkje noko om dette.',
+    'Materialet har ingen tall for 2028.',
+    'The sources have no figures for 2028.',
     'Kildene har ingen tall for 2028.',
   ])('treats "%s" as a refusal', (text) => {
     expect(soundsLikeRefusal(text)).toBe(true);
@@ -638,6 +640,10 @@ describe('recognising a refusal', () => {
     'Kommunene dekker reiseutgiftene når elever deltar på Statpeds elevkurs.',
     'NHH fikk en samlet realnedgang på 40 millioner kroner over to år.',
     'Rapporten har ingen anbefalinger om X, men peker på Y.',
+    'Elevkurset har ingen egenandel.',
+    'Nei, kommunen har ikke plikt til å dekke reisen.',
+    'Norge har ikke ratifisert konvensjonen.',
+    'Kildene har ingen anbefalinger om X, men peker på Y.',
     'Statpeds elevkurs for 2025 har ingen egenandel. Kommunene dekker reisen.',
   ])('treats "%s" as an answer', (text) => {
     expect(soundsLikeRefusal(text)).toBe(false);

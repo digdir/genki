@@ -52,12 +52,12 @@ describe('answer cleanup on adversarial input', () => {
     expect(quickly(() => soundsLikeRefusal('kan ikkje '.repeat(30_000)))).toBeLessThan(1000);
     expect(quickly(() => soundsLikeRefusal(`har ${'ikkje '.repeat(30_000)}`))).toBeLessThan(1000);
     expect(soundsLikeRefusal('Eg fann ikkje noko om dette.')).toBe(true);
-    expect(quickly(() => soundsLikeRefusal('kudos '.repeat(30_000)))).toBeLessThan(1000);
-    expect(quickly(() => soundsLikeRefusal(`kudos ${'har '.repeat(30_000)}`))).toBeLessThan(1000);
+    expect(quickly(() => soundsLikeRefusal('kildene i '.repeat(30_000)))).toBeLessThan(1000);
+    expect(quickly(() => soundsLikeRefusal(`kildene ${'har '.repeat(30_000)}`))).toBeLessThan(1000);
     expect(
-      quickly(() => soundsLikeRefusal(`kudos har ingen ${'men '.repeat(30_000)}`)),
+      quickly(() => soundsLikeRefusal(`kildene har ingen ${'men '.repeat(30_000)}`)),
     ).toBeLessThan(1000);
-    expect(soundsLikeRefusal('Kudos har ingen oppskrift på brunost.')).toBe(true);
+    expect(soundsLikeRefusal('Kildene har ingen oppskrift på brunost.')).toBe(true);
   });
 
   it('cuts a decline to its first paragraph and offer in linear time', () => {
