@@ -182,14 +182,6 @@ const inBatches = async (
 
 const timedOut = /statement timeout|timed out|took longer than/i;
 
-/** The organisations and years detected in `query`, as words: a narrower metadata search than the query itself. */
-const detectedWords = (query: string, detections: Detection[]) =>
-  [
-    ...new Set(
-      detections.flatMap((d) => (d.kind !== 'rule' && d.queries.includes(query) ? d.values : [])),
-    ),
-  ].join(' ');
-
 const rerankText = (
   chunk: Chunk,
   content: string | undefined,
@@ -295,9 +287,16 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
   const detect = async (
     queries: string[],
     note: Note,
-  ): Promise<{ filter?: FilterSet; detections: Detection[]; error?: string }> => {
+  ): Promise<{
+    filter?: FilterSet;
+    detections: Detection[];
+    narrower: Map<string, string>;
+    error?: string;
+  }> => {
     const detections: Detection[] = [];
-    if (!config.autoFilter.enabled || queries.length === 0) return { detections };
+    // Per query, the organisations and years named in it alone: the words a timed-out metadata leg retries with.
+    const narrower = new Map<string, string>();
+    if (!config.autoFilter.enabled || queries.length === 0) return { detections, narrower };
     try {
       const filter: FilterSet = {};
       const offer = (
@@ -352,8 +351,24 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
           config.autoFilter.aliases,
         );
         for (const org of orgs) offer('organisation', org.field, org.values, org.queries);
+        for (const query of queries) {
+          const own = detectOrganisations(
+            [query],
+            facets,
+            orgFields,
+            config.autoFilter.minValueLength,
+            config.autoFilter.aliases,
+          ).flatMap((o) => o.values);
+          if (own.length > 0) narrower.set(query, [...new Set(own)].join(' '));
+        }
       }
       const years = orgsAndYears ? detectYears(queries) : [];
+      if (orgsAndYears)
+        for (const query of queries) {
+          const own = detectYears([query]);
+          if (own.length > 0)
+            narrower.set(query, [narrower.get(query), ...own].filter(Boolean).join(' '));
+        }
       if (years.length > 0)
         offer(
           'year',
@@ -363,9 +378,11 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
         );
       const ruled = await detectFromRules(config.autoFilter.rules, queries, input.model);
       for (const [field, value] of Object.entries(ruled)) offer('rule', field, value, queries);
-      return Object.keys(filter).length > 0 ? { filter, detections } : { detections };
+      return Object.keys(filter).length > 0
+        ? { filter, detections, narrower }
+        : { detections, narrower };
     } catch (error) {
-      return { detections, error: messageOf(error) };
+      return { detections, narrower, error: messageOf(error) };
     }
   };
 
@@ -373,7 +390,7 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
     queries: string[],
     filters: Record<string, FilterValue> | undefined,
     note: Note,
-    detections: Detection[],
+    narrower: Map<string, string>,
   ) => {
     const base = (query: string, profile: string): SearchRequest => ({
       query,
@@ -398,21 +415,21 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
       const warning = results[i]?.warning;
       if (request.profile !== knowledgeProfiles.metadata || !warning || !timedOut.test(warning))
         return [];
-      const query = detectedWords(request.query, detections);
+      const query = narrower.get(request.query);
       return query && query !== request.query ? [{ i, request: { ...request, query } }] : [];
     });
     if (retries.length > 0) {
+      // Two queries naming the same organisation and year share one search; the legs share its filters and limit.
+      const unique = [...new Map(retries.map((r) => [r.request.query, r.request])).values()];
       // An engine throws when every search in a batch fails; the first try's hits and warnings then stand.
-      const again = await inBatches(
-        knowledge,
-        retries.map((r) => r.request),
-        config.batchSize,
-        note,
-      ).catch((): SearchResult[] => []);
-      retries.forEach(({ i }, j) => {
-        const result = again[j];
+      const again = await inBatches(knowledge, unique, config.batchSize, note).catch(
+        (): SearchResult[] => [],
+      );
+      const byQuery = new Map(unique.map((r, j) => [r.query, again[j]]));
+      for (const { i, request } of retries) {
+        const result = byQuery.get(request.query);
         if (result && !result.warning) results[i] = result;
-      });
+      }
       note('retried a timed-out metadata leg once with the detected organisation and year');
     }
     const strategyOf = (i: number) => plan[i]?.group ?? 'doc-title';
@@ -659,7 +676,7 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
     const effective = toInput(mergeTyped(explicit, detected.filter ?? {}));
     const strategies = async (filters: Record<string, FilterValue> | undefined) => {
       try {
-        return await runStrategies(queries, filters, note, detected.detections);
+        return await runStrategies(queries, filters, note, detected.narrower);
       } catch (error) {
         throw withDetections(error, detected.detections);
       }

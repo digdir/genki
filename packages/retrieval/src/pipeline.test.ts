@@ -809,6 +809,41 @@ describe('retrieval pipeline', () => {
       expect(result.trace.expansion.warnings).toContain(`metadata search: ${timeout}`);
     });
 
+    it('retries each timed-out metadata leg with the organisation and year of its own query', async () => {
+      const k = knowledgeStub(() => [], {
+        fail: (r) => (r.profile === 'metadata' ? timeout : undefined),
+      });
+
+      await retrieve({
+        knowledge: k.port,
+        queries: ['Digdir årsverk og stillinger 2022', 'Digdir lønn og stillinger 2023'],
+        facetCache: new FacetCache(),
+      });
+
+      expect(searched(k)[1]).toEqual(['metadata:Digdir 2022', 'metadata:Digdir 2023']);
+    });
+
+    it('sends one retry for timed-out metadata legs that name the same organisation and year', async () => {
+      const k = knowledgeStub(
+        (r) => (r.profile === 'metadata' && r.query === 'Digdir 2022' ? ['c1'] : []),
+        {
+          fail: (r) =>
+            r.profile === 'metadata' && r.query !== 'Digdir 2022' ? timeout : undefined,
+        },
+      );
+
+      const result = await retrieve({
+        knowledge: k.port,
+        queries: ['Digdir årsverk og stillinger 2022', 'Digdir lønn og stillinger 2022'],
+        facetCache: new FacetCache(),
+      });
+
+      expect(searched(k)[1]).toEqual(['metadata:Digdir 2022']);
+      expect(
+        result.trace.expansion.warnings.filter((w) => w.startsWith('metadata search:')),
+      ).toEqual([]);
+    });
+
     it('keeps the other legs and the first warning when the metadata retry throws', async () => {
       const k = knowledgeStub(() => ['c4'], {
         fail: (r) => (r.profile === 'metadata' ? timeout : undefined),
