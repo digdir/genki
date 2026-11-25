@@ -844,6 +844,7 @@ const read = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> =>
         source = {
           document: docNum,
           chunkRange: plan.selected,
+          requestedRange: plan.requested,
           ...(chunkRange ? {} : { defaultRange: true }),
         };
       }
