@@ -1,3 +1,4 @@
+import { withFlagDetails } from './flag-audit.js';
 import { isHiddenAuditTarget } from './internal-services.js';
 import { refusedAsArchived, serviceArchived, serviceArchivedType } from './archived-services.js';
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
@@ -1390,9 +1391,10 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const names = await options.names?.namesOf(
       entries.filter((e) => e.actor.startsWith('employee:')).map((e) => e.actor),
     );
+    const detailed = await withFlagDetails(entries, { events: admin.events, names: options.names });
     return c.json(
       {
-        data: entries.map((e) => {
+        data: detailed.map((e) => {
           const actorName = e.actor.startsWith('employee:') ? names?.get(e.actor) : undefined;
           return actorName ? { ...e, actorName } : e;
         }),

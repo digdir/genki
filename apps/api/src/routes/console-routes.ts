@@ -18,6 +18,7 @@ import type { Residency } from '@genai/port-model';
 import type { Context, Env, Hono, Schema } from 'hono';
 import { z } from 'zod';
 import type { ActorNames } from '../actor-names.js';
+import { withFlagDetails } from '../flag-audit.js';
 import { actorOf, type Admin, type AdminHandler, type SupportSession } from '../admin.js';
 import { blockUsage } from '../block-usage.js';
 import { orgNumberValid } from '../extensions.js';
@@ -94,7 +95,7 @@ export interface ConsoleDeps {
 }
 
 export interface ConsoleRouteDeps extends ConsoleDeps {
-  admin: Pick<Admin, 'perform'> & Partial<Pick<Admin, 'audit'>>;
+  admin: Pick<Admin, 'perform'> & Partial<Pick<Admin, 'audit' | 'events'>>;
   authenticate(request: Request): Promise<Principal | undefined>;
   platformTenant?: string;
 }
@@ -720,7 +721,10 @@ export const registerConsoleRoutes = <E extends Env, S extends Schema, B extends
     if (who.response) return who.response;
     const read = deps.admin.audit;
     if (!read) return problem(c, 404, 'Not found');
-    const entries = (await read()).sort((a, b) => b.at.localeCompare(a.at));
+    const entries = await withFlagDetails(
+      (await read()).sort((a, b) => b.at.localeCompare(a.at)),
+      { events: deps.admin.events, names: deps.names },
+    );
     const names = (await deps.names?.namesOf(entries.map((e) => e.actor))) ?? new Map();
     const data = entries.map((e) => {
       const actorName = names.get(e.actor);

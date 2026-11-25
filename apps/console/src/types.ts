@@ -234,6 +234,7 @@ export interface AuditEntry {
   actorOrg?: string;
   tenantName?: string;
   actionLabel?: string;
+  flag?: { key: string; on?: boolean | null; person?: { self: boolean; name?: string } };
 }
 
 export interface SettingInfo {

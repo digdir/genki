@@ -76,6 +76,7 @@ export interface AuditRow {
   outcome: 'applied' | 'rejected';
   target: string;
   reason: string;
+  flag?: { key: string; on?: boolean | null; person?: { self: boolean; name?: string } };
 }
 
 export interface ConfigEntry {

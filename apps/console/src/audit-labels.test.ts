@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { translator } from './i18n';
-import { labelOf } from './screens/Audit';
+import { labelOf, targetTextOf } from './screens/Audit';
 import type { AuditEntry } from './types';
 
 const entry = (action: string, target = ''): AuditEntry => ({
@@ -93,4 +93,52 @@ describe('audit labels', () => {
       expect(revoke).not.toBe(labelOf(entry('platform.tools.approve'), t));
     },
   );
+});
+
+describe('feature flag audit rows', () => {
+  const nb = translator('nb');
+  const en = translator('en');
+  const flagEntry = (action: string, flag?: AuditEntry['flag'], target = 'flag:blockStudio') => ({
+    ...entry(action, target),
+    ...(flag ? { flag } : {}),
+  });
+
+  it.each([
+    [true, 'Slo på funksjon', 'Switched a feature on'],
+    [false, 'Slo av funksjon', 'Switched a feature off'],
+    [null, 'Fjernet valg for funksjon', 'Removed a feature choice'],
+    [undefined, 'Endret funksjon', 'Changed a feature'],
+  ] as const)('says what a flag change did when on is %s', (on, nbText, enText) => {
+    const e = flagEntry(
+      'platform.flag.tenant',
+      on === undefined ? undefined : { key: 'blockStudio', on },
+    );
+    expect(labelOf(e, nb)).toBe(nbText);
+    expect(labelOf(e, en)).toBe(enText);
+  });
+
+  it('shows the feature key and the person, never the raw entry id', () => {
+    const target = 'flag:blockStudio:person:https://test.ansattporten.no:kari@digdir.no';
+    const own = flagEntry(
+      'platform.flag.person',
+      { key: 'blockStudio', on: true, person: { self: true } },
+      target,
+    );
+    const other = flagEntry(
+      'platform.flag.person',
+      { key: 'blockStudio', on: true, person: { self: false, name: 'Ingrid Berg' } },
+      target,
+    );
+    const unnamed = flagEntry(
+      'platform.flag.person',
+      { key: 'blockStudio', on: true, person: { self: false } },
+      target,
+    );
+    const old = flagEntry('platform.flag.person', undefined, target);
+
+    expect(targetTextOf(own, nb)).toBe('blockStudio for seg selv');
+    expect(targetTextOf(other, nb)).toBe('blockStudio for Ingrid Berg');
+    expect(targetTextOf(unnamed, nb)).toBe('blockStudio');
+    expect(targetTextOf(old, nb)).toBe('blockStudio');
+  });
 });

@@ -157,3 +157,77 @@ describe('service copies and tool withdrawals', () => {
     expect(areaOf('platform.tools.revoke')).toBe(areaOf('platform.tools.approve'));
   });
 });
+
+describe('feature flag changes', () => {
+  const nb = translator('nb');
+  const en = translator('en');
+  const personTarget = 'flag:blockStudio:person:https://test.ansattporten.no:kari@digdir.no';
+  const flagRow = (
+    action: 'platform.flag.person' | 'platform.flag.tenant',
+    flag?: AuditRow['flag'],
+    target = action === 'platform.flag.person' ? personTarget : 'flag:blockStudio',
+  ): AuditRow => ({ ...row(action, target), ...(flag ? { flag } : {}) });
+  const sentence = (entry: AuditRow, t = nb) => changeText(entry, t, 'Digdir');
+
+  it('says switched on for oneself when a person turned the feature on for themselves', () => {
+    const entry = flagRow('platform.flag.person', {
+      key: 'blockStudio',
+      on: true,
+      person: { self: true },
+    });
+    expect(sentence(entry)).toBe('slo på «Block Studio» for seg selv');
+    expect(sentence(entry, en)).toBe('switched on «Block Studio» for themselves');
+  });
+
+  it('says switched off for the whole organisation by name on a tenant switch', () => {
+    const entry = flagRow('platform.flag.tenant', { key: 'blockStudio', on: false });
+    expect(sentence(entry)).toBe('slo av «Block Studio» for hele Digdir');
+    expect(sentence(entry, en)).toBe('switched off «Block Studio» for all of Digdir');
+  });
+
+  it('says the person followed the organisation when a personal choice is removed', () => {
+    const entry = flagRow('platform.flag.person', {
+      key: 'blockStudio',
+      on: null,
+      person: { self: true },
+    });
+    expect(sentence(entry)).toBe('fulgte virksomhetens valg for «Block Studio»');
+  });
+
+  it('names the other person when someone changed another person’s setting', () => {
+    const entry = flagRow('platform.flag.person', {
+      key: 'blockStudio',
+      on: true,
+      person: { self: false, name: 'Ingrid Berg' },
+    });
+    expect(sentence(entry)).toBe('slo på «Block Studio» for Ingrid Berg');
+  });
+
+  it('leaves the person out when another person’s name is not known', () => {
+    const entry = flagRow('platform.flag.person', {
+      key: 'blockStudio',
+      on: true,
+      person: { self: false },
+    });
+    expect(sentence(entry)).toBe('slo på «Block Studio»');
+  });
+
+  it('reads an old flag entry without on or off as a neutral change that still names the feature', () => {
+    expect(sentence(flagRow('platform.flag.tenant'))).toBe('endret «Block Studio» for hele Digdir');
+    expect(sentence(flagRow('platform.flag.person'))).toBe('endret «Block Studio»');
+  });
+
+  it('never shows the raw flag entry id or the issuer', () => {
+    for (const entry of [
+      flagRow('platform.flag.person'),
+      flagRow('platform.flag.person', { key: 'blockStudio', on: true, person: { self: true } }),
+      flagRow('platform.flag.tenant', { key: 'blockStudio', on: false }),
+    ])
+      for (const t of [nb, en]) expect(sentence(entry, t)).not.toMatch(/ansattporten|flag:|@|:/);
+  });
+
+  it('falls back to the feature key when the feature has no name in the catalogue', () => {
+    const entry = flagRow('platform.flag.tenant', { key: 'newThing', on: true }, 'flag:newThing');
+    expect(sentence(entry)).toBe('slo på «newThing» for hele Digdir');
+  });
+});
