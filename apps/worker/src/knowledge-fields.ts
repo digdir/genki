@@ -1,5 +1,6 @@
 import { knowledgeFieldsQueue, queueWork, type fieldFills } from '@genai/jobs';
 import {
+  kudosDocumentTypeFields,
   kudosLinkAndAbbreviationFields,
   kudosOrgNumberFields,
   kudosReportKeyFields,
@@ -18,6 +19,7 @@ const fills: Record<(typeof fieldFills)[number], (doc: StoredDocument) => FieldF
   'kudos-org-numbers': (doc) => ({ fields: kudosOrgNumberFields(doc) }),
   'kudos-links-and-abbreviations': kudosLinkAndAbbreviationFields,
   'kudos-report-keys': (doc) => ({ fields: kudosReportKeyFields(doc) }),
+  'kudos-document-types': (doc) => ({ fields: kudosDocumentTypeFields(doc) }),
 };
 
 /** `knowledge.fields`: new fields on a dataset's stored documents, nothing embedded (ADR 0042). */

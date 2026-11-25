@@ -416,6 +416,7 @@ export const sourceRecord = (c: Chunk): SourceRecord => ({
   ...(c.version === undefined ? {} : { version: c.version }),
   ...(c.publishedAt === undefined ? {} : { publishedAt: c.publishedAt }),
   ...(c.publisher === undefined ? {} : { publisher: c.publisher }),
+  ...(c.documentType === undefined ? {} : { documentType: c.documentType }),
 });
 
 const blank = (text: string | undefined) => !text || text.trim().length === 0;

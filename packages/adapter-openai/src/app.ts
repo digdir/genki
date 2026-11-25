@@ -166,6 +166,7 @@ export interface StoredSource {
   version?: string;
   published_at?: string;
   publisher?: string;
+  document_type?: string;
 }
 
 export interface AskConversations {
@@ -1400,6 +1401,7 @@ const storedSource = (s: OwuiSource): StoredSource => ({
   ...(s.version === undefined ? {} : { version: s.version }),
   ...(s.published_at === undefined ? {} : { published_at: s.published_at }),
   ...(s.publisher === undefined ? {} : { publisher: s.publisher }),
+  ...(s.document_type === undefined ? {} : { document_type: s.document_type }),
 });
 
 export const datasetOf = (d: ServiceDataset) => ({
@@ -1630,6 +1632,7 @@ const toolResult: JSONSchema = {
             type: 'string',
             description: 'The publishing organisation, several joined with a comma, when known.',
           },
+          document_type: { type: 'string', description: 'The document type, when known.' },
         },
       },
     },

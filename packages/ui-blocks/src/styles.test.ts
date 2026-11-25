@@ -75,6 +75,8 @@ const accentPins = [
   '--genai-sources-ex-number-color',
   '--genai-sources-ex-number-current-background',
   '--genai-sources-ex-number-current-color',
+  '--genai-sources-cited-background',
+  '--genai-sources-cited-color',
 ];
 // The disclaimer is grey in kunnskapsassistenten whatever the host's family.
 const neutralPins = ['--genai-sources-disclaimer-color'];
@@ -209,7 +211,7 @@ describe('the lint', () => {
 describe('the Sources styles', () => {
   const flat = sheets.find((sheet) => sheet.path === 'sources/sources.css')?.flat ?? '';
 
-  it('follow the host’s colour family, but for the thirteen deliberate pins', () => {
+  it('follow the host’s colour family, but for the fifteen deliberate pins', () => {
     const uses = genaiUses(flat);
     const pinned = uses
       .filter((use) =>

@@ -1313,6 +1313,7 @@ const PlaygroundResult = z
         version: z.union([z.string(), z.number()]).optional(),
         publishedAt: z.string().optional(),
         publisher: z.string().optional(),
+        documentType: z.string().optional(),
         score: z.number().optional(),
       }),
     ),

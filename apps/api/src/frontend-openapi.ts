@@ -223,6 +223,12 @@ const Source = z
       .describe(
         "The organisation that published the document, several joined with a comma. Present only when the document's fields name one; on Kudos, the publisher, or the owners when Kudos lists none.",
       ),
+    document_type: z
+      .string()
+      .optional()
+      .describe(
+        "The document's type, such as «Årsrapport»: its `document_type` field. Present only when the document's fields name one; on Kudos stored in the knowledge database, the type Kudos gives.",
+      ),
   })
   .passthrough()
   .openapi('Source');

@@ -447,6 +447,7 @@ export const sourceRecord = (c: FlowChunk) => ({
   ...(c.document === undefined ? {} : { document: c.document }),
   ...(c.position === undefined ? {} : { position: c.position }),
   ...(c.publisher === undefined ? {} : { publisher: c.publisher }),
+  ...(c.documentType === undefined ? {} : { documentType: c.documentType }),
 });
 
 export const answerBlock: Block<z.infer<typeof answerInput>, Record<string, never>> = {

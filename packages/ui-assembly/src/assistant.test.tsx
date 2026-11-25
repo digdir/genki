@@ -4387,6 +4387,27 @@ describe('Kilder in the next look', () => {
     expect(screen.getByRole('list', { name: 'Utdrag i svaret' })).toBeTruthy();
   });
 
+  it('opens the tool panel 482 px wide in the next look, as dev-kilder-hoyre draws it', async () => {
+    drawStored('knowledge-assistant-next');
+    await showKilder();
+    const edge = screen.getByRole('separator', { name: 'Endre bredde på verktøypanelet' });
+    expect(edge.getAttribute('aria-valuenow')).toBe('482');
+  });
+
+  it('fills the footnote of an excerpt opened from its card in Kilder, as one followed from the answer', async () => {
+    drawStored('knowledge-assistant-next');
+    await showKilder();
+    const cards = await screen.findByRole('list', { name: 'Utdrag i svaret' });
+    const mark = screen.getByRole('link', { name: 'Fotnote 1: Tildelingsbrev 2022' });
+    expect(mark.getAttribute('aria-current')).toBeNull();
+
+    fireEvent.click(
+      within(cards).getByRole('button', { name: 'Fotnote 1: Utdrag, Tildelingsbrev 2022' }),
+    );
+    await screen.findByText('1 av 1');
+    await waitFor(() => expect(mark.getAttribute('aria-current')).toBe('true'));
+  });
+
   it('folds the sources the answer read but did not cite under «Andre kilder som ble lest (N)» when it cites documents', async () => {
     drawStored('knowledge-assistant-next', false);
     await showKilder();

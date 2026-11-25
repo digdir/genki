@@ -296,6 +296,7 @@ const kudosStoredFields = [
   'file_sha256',
   'publish_date',
   'type',
+  'document_type',
   'language',
   'concerned_years',
   'report',
@@ -402,6 +403,12 @@ export const kudosReportFields = (
   };
 };
 
+/** The type KUDOS gives a record, «Årsrapport», as `document_type`, which a source names. */
+const kudosDocumentType = (record: Record<string, unknown>) => {
+  const type = typeof record.type === 'string' ? record.type.trim() : '';
+  return type ? { document_type: type } : {};
+};
+
 const reportFieldNames = ['report'] as const;
 
 type StoredKudos = { id: string; record: Record<string, unknown>; fields: Record<string, unknown> };
@@ -459,6 +466,12 @@ export const kudosReportKeyFields = (doc: StoredKudos): Record<string, unknown> 
   return refilled(doc.fields, reportFieldNames, kudosReportFields(doc.record));
 };
 
+/** `kudos-document-types`: `document_type` as an ingest writes it now, from the stored record. */
+export const kudosDocumentTypeFields = (doc: StoredKudos): Record<string, unknown> => {
+  if (!kudosRoles.some((role) => Array.isArray(doc.record[role]))) return doc.fields;
+  return refilled(doc.fields, ['document_type'], kudosDocumentType(doc.record));
+};
+
 export const prepareKudosDoc = (
   doc: ReturnType<typeof fillInKudosFields> & Record<string, unknown>,
   totalChunks: number,
@@ -474,6 +487,7 @@ export const prepareKudosDoc = (
     ...doc,
     ...kudosOrgFields(doc),
     ...kudosReportFields(doc),
+    ...kudosDocumentType(doc),
     files,
     file_sha256: [...new Set(files.flatMap((f) => (f.sha256 ? [f.sha256] : [])))],
     total_chunks: totalChunks,

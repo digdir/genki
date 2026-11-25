@@ -16,6 +16,7 @@ export interface FlowChunk {
   version?: string;
   publishedAt?: string;
   publisher?: string;
+  documentType?: string;
   score?: number;
   rerankScore?: number;
 }

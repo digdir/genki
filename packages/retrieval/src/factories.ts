@@ -55,6 +55,8 @@ export interface RetrievedSummary {
   publishedAt?: string;
   /** The organisation that published the document, several joined with a comma. */
   publisher?: string;
+  /** The document's type, «Årsrapport», as its fields name it. */
+  documentType?: string;
   /** Hits on the same page of other records of this report, left out for this one (issue 677). */
   copies?: { chunkId: string; document?: string }[];
 }
@@ -154,6 +156,12 @@ const publisherOf = (fields: Record<string, unknown>) => {
   return names.length ? names.join(', ') : undefined;
 };
 
+/** The document's type, «Årsrapport», from `document_type`; a loader's `type` is not one. */
+const documentTypeOf = (fields: Record<string, unknown>) => {
+  const value = joined(fields, 'document_type');
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+};
+
 const versionOf = (fields: Record<string, unknown>) => {
   const value = joined(fields, 'document_version') ?? joined(fields, 'version');
   return typeof value === 'string' && value.trim()
@@ -206,6 +214,7 @@ const describe = (
     ...optional('version', versionOf(base.fields)),
     ...optional('publishedAt', publishedAtOf(base.fields)),
     ...optional('publisher', publisherOf(base.fields)),
+    ...optional('documentType', documentTypeOf(base.fields)),
   };
 };
 

@@ -30,6 +30,7 @@ export const fieldFills = [
   'kudos-org-numbers',
   'kudos-links-and-abbreviations',
   'kudos-report-keys',
+  'kudos-document-types',
 ] as const;
 /** A dataset whose stored documents get new fields, without re-chunking or embedding. */
 const fieldsPayload = z.strictObject({ tenant, dataset: id, fill: z.enum(fieldFills) });

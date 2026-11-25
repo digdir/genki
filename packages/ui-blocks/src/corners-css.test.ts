@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-// One corner, Designsystemet's xl, for the assistant's surfaces (kunnskapsassistenten#266).
+// Designsystemet's xl for the assistant's surfaces (kunnskapsassistenten#266), but `designed`.
 const sheets = readdirSync(import.meta.dirname, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .flatMap((dir) =>
@@ -23,8 +23,19 @@ const corners = sheets.flatMap(({ name, css }) =>
     ...css.matchAll(
       /(--dsc-[a-z-]*border-radius|border(?:-[a-z]+)*-radius)\s*:\s*(var\(--genai-[a-z-]+, var\(--ds-border-radius-([a-z]+)\)\)|[^;]+)/g,
     ),
-  ].map((found) => ({ sheet: name, property: found[1], token: found[3] ?? found[2]?.trim() })),
+  ].map((found) => ({
+    sheet: name,
+    property: found[1],
+    value: found[2] ?? '',
+    token: found[3] ?? found[2]?.trim(),
+  })),
 );
+
+// Kilder's excerpt cards and an excerpt's text, at the corners dev-kilder-hoyre draws them.
+const designed: Record<string, string> = {
+  '--genai-sources-ex-card-radius': 'lg',
+  '--genai-sources-ex-text-border-radius': 'md',
+};
 
 // The marks in running text, the highlighter's corner.
 const marks = [
@@ -34,9 +45,14 @@ const marks = [
 ];
 
 describe('the corners of the blocks', () => {
-  it('are xl on every surface and control, round only where round is meant', () => {
+  it('are xl on every surface and control, round only where round is meant, but Kilder’s excerpts', () => {
     expect(corners.length).toBeGreaterThan(0);
-    const others = corners.filter(({ token }) => !['xl', 'full', 'inherit'].includes(token ?? ''));
+    const css = sheets.map((sheet) => sheet.css).join(' ');
+    for (const [name, token] of Object.entries(designed))
+      expect(css).toContain(`var(${name}, var(--ds-border-radius-${token}))`);
+    const others = corners
+      .filter(({ token }) => !['xl', 'full', 'inherit'].includes(token ?? ''))
+      .filter(({ value }) => !Object.keys(designed).some((name) => value.includes(name)));
     const allowed = sheets.flatMap(({ css }) =>
       marks.filter((mark) => css.includes(`var(${mark}, var(--ds-border-radius-sm))`)),
     );
@@ -45,7 +61,7 @@ describe('the corners of the blocks', () => {
     expect(others).toHaveLength(marks.length);
   });
 
-  it('give Designsystemet’s cards, buttons, fields and toggle groups in the blocks the xl corner', () => {
+  it('give Designsystemet’s cards, buttons, fields and toggle groups in the blocks their corner', () => {
     const css = sheets.map((sheet) => sheet.css).join(' ');
     for (const [rule, declaration] of [
       [
@@ -90,7 +106,7 @@ describe('the corners of the blocks', () => {
       ],
       [
         '.uib-sources-ex-card {',
-        '--dsc-card-border-radius: var(--genai-sources-ex-card-radius, var(--ds-border-radius-xl))',
+        '--dsc-card-border-radius: var(--genai-sources-ex-card-radius, var(--ds-border-radius-lg))',
       ],
       [
         '.uib-sources-search .ds-input {',

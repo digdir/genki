@@ -3538,6 +3538,7 @@ const ToolResult = z
           version: z.string().optional(),
           published_at: z.string().optional(),
           publisher: z.string().optional(),
+          document_type: z.string().optional(),
         }),
       )
       .optional(),

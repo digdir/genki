@@ -708,6 +708,21 @@ describe('/api/tools', () => {
     });
   });
 
+  it("a tool call's document link names its document type", async () => {
+    const first = records[0] as SourceRecord;
+    first.documentType = 'Årsrapport';
+    try {
+      const response = await setup().post('/api/tools/call/kunnskapsassistenten__default', {
+        query: 'tildelingsbrev',
+      });
+      const { sources } = (await response.json()) as { sources: { document_type?: string }[] };
+
+      expect(sources.map((s) => s.document_type)).toEqual(['Årsrapport', undefined]);
+    } finally {
+      delete first.documentType;
+    }
+  });
+
   it("a tool call's document link names its publisher", async () => {
     const first = records[0] as SourceRecord;
     first.publisher = 'Justis- og beredskapsdepartementet';
@@ -1162,6 +1177,16 @@ describe('sources people can open', () => {
     ]);
 
     expect(bundle.sources[0]).toMatchObject({ version: '3', published_at: '2025-01-15' });
+  });
+
+  it("an answer's source names its document type", () => {
+    const bundle = citationBundle([
+      { chunkId: 'c1', text: 'Tekst', url: 'https://x.no/a', documentType: 'Årsrapport' },
+      { chunkId: 'c2', text: 'Tekst', url: 'https://x.no/b' },
+    ]);
+
+    expect(bundle.sources[0]).toMatchObject({ document_type: 'Årsrapport' });
+    expect(bundle.sources[1]).not.toHaveProperty('document_type');
   });
 
   it("an answer's source names its publisher", () => {
