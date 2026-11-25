@@ -80,11 +80,13 @@ afterEach(() => {
 });
 
 describe('the assistant host', () => {
-  it('draws the service’s name and menu, and a sign-in button', async () => {
+  it('draws only the service’s name above the sign-in, and the service’s menu under the button', async () => {
     draw('/', genki({ '/api/v1/hosts/ka.example.no': () => json(view) }));
 
     const name = await screen.findByRole('link', { name: 'Klarspråkassistenten' });
     expect(name.getAttribute('href')).toBe('/');
+    expect(screen.getByRole('banner').textContent).toBe('Klarspråkassistenten');
+    expect(screen.queryByRole('group', { name: 'Språk / Language' })).toBeNull();
     const menu = screen.getByRole('navigation', { name: 'Meny' });
     expect(menu.querySelector('a[href="/om"]')?.textContent).toBe('Om');
     const help = screen.getByRole('link', { name: 'Hjelp' });
@@ -252,7 +254,7 @@ describe('the assistant host', () => {
     expect(body.get('code_verifier')).toBe('v1');
     expect(body.get('redirect_uri')).toBe('https://ka.example.no/auth/callback');
     expect(asked).toContain(`/api/v1/models Bearer ${token}`);
-    expect(screen.getByRole('button', { name: 'Logg ut' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Kari Nordmann' })).toBeTruthy();
     expect(at.storage.getItem('assistant.klarsprak-host.login')).toBeNull();
   });
 
@@ -350,8 +352,9 @@ describe('the assistant host', () => {
     expect(asked.every((a) => a.headers.get('authorization') === null)).toBe(true);
     expect(asked.some((a) => a.url.includes('openid-configuration'))).toBe(false);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Logg ut' }));
-    expect(went).toEqual(['/auth/logout']);
+    const menu = document.querySelector<HTMLElement>('.uib-shell-profile-menu');
+    expect(menu?.querySelector('a[href="/auth/logout"]')?.textContent).toBe('Logg ut');
+    expect(went).toEqual([]);
   });
 
   const nextLayout = {
@@ -512,7 +515,7 @@ describe('the assistant host', () => {
     history.replaceState(null, '', '/');
   });
 
-  it('keeps the host header for a layout that does not draw the reader', async () => {
+  it('puts the host’s menu and «Logg ut» in the profile menu of a classic layout too, with no host header', async () => {
     const fetcher = signedIn({
       version: 1,
       zones: { primary: [], main: [{ block: 'chat' }], secondary: [] },
@@ -523,9 +526,24 @@ describe('the assistant host', () => {
       </LocaleProvider>,
     );
 
-    expect(await screen.findByRole('button', { name: 'Logg ut' })).toBeTruthy();
-    expect(screen.getByRole('banner')).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Kari Nordmann' })).toBeTruthy();
+    expect(menuEntries()).toEqual(['Om', 'Hjelp', 'Logg ut']);
+    expect(screen.queryByRole('banner')).toBeNull();
     expect(screen.getAllByRole('main')).toHaveLength(1);
+  });
+
+  it('offers «Logg ut» in the message when the assistant cannot load, the one way out', async () => {
+    const fetcher = signedIn(nextLayout, {
+      '/api/v1/models/klarsprak__default/interface': () => json({}, 500),
+    });
+    render(
+      <LocaleProvider preference="nb">
+        <App hostname="ka.example.no" path="/" signIn={browser().signIn} fetcher={fetcher} />
+      </LocaleProvider>,
+    );
+
+    expect(await screen.findByText('Assistenten kunne ikke lastes. Prøv igjen om litt.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Logg ut' })).toBeTruthy();
   });
 
   it('shows the service’s icon in the browser tab', async () => {

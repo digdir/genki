@@ -18,13 +18,9 @@ body {
   flex-direction: column;
 }
 
-.ah-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--ds-size-4);
-  padding: var(--ds-size-3) var(--ds-size-6);
-  border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+/* The service's name in the corner, on the page's own ground: the assistant has the focus. */
+.ah-top {
+  padding: var(--ds-size-4) var(--ds-size-6);
 }
 
 .ah-name {
@@ -36,23 +32,11 @@ body {
 .ah-menu {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: var(--ds-size-4);
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-.ah-language {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  column-gap: var(--ds-size-3);
-  margin-inline-start: auto;
-}
-
-.ah-language > legend {
-  float: inline-start;
-  margin-inline-end: var(--ds-size-2);
 }
 
 .ah-main {
@@ -109,6 +93,28 @@ body {
   }
 }
 
+/* Sign-in in the middle of the window, as a login page. */
+.ah-signin-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-size-4);
+}
+
 .ah-signin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ds-size-6);
   max-width: 36rem;
+  text-align: center;
+}
+
+.ah-failed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ds-size-3);
 }

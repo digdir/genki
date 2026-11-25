@@ -65,7 +65,7 @@ ADR 0033 lets a service-group login through only a client listed in `LOCKDOWN_SE
 - **`spec.interface` gains `menu` and `pages`,** beside `layout` (ADR 0065) and `theme` (ADR 0063), within ADR 0065's 256 KiB for the whole interface. `menu` is a list of at most 12 items, each a label and either `page: <id>` or an `https` link. `pages` is a list of at most 12 pages, each an id, a title and a body in Markdown.
 - **Texts are in each of the service's languages,** one string or `{ nb, en }` as ADR 0065 has them for the profile, so the host follows the person's language.
 - **Markdown is drawn without HTML.** Raw HTML is dropped, links are `https` or `mailto` only, and images and embeds are drawn as links. A page is at most 32 KiB and all pages 128 KiB.
-- **The host adds** a link to the settings block when the layout has it, the language choice, and «Logg ut».
+- **The host draws no bar of its own.** Before login it shows the service's name in the corner, the sign-in in the middle of the window and the menu under it, in the browser's language. Once the person is signed in, the menu, «Innstillinger» when the layout has the settings block, and «Logg ut» are in the assistant's profile menu (in the classic look with a thread list and no menu, «Logg ut» stays under the thread list), and the language is chosen under «Innstillinger». When the assistant cannot load, the message offers «Logg ut» (amended 2026-11-25).
 
 ### Thread continuity when a frontend moves to the host
 

@@ -1,6 +1,6 @@
 import { Alert, Button, Heading, Link, Paragraph, Spinner } from '@digdir/designsystemet-react';
 import type { Locale } from '@genai/i18n';
-import { LanguageChoice, useLocale } from '@genai/i18n/react';
+import { useLocale } from '@genai/i18n/react';
 import {
   Assistant,
   browserStorage,
@@ -11,7 +11,6 @@ import {
   type AssistantProfile,
 } from '@genai/ui-assembly';
 import { Markdown } from '@genai/ui-blocks';
-import { lookOf, type AssistantLayout } from '@genai/ui-blocks/builder';
 import { ArrowLeftIcon, ExternalLinkIcon, FileTextIcon } from '@navikt/aksel-icons';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
@@ -78,45 +77,14 @@ const useLoaded = <T,>(load: () => Promise<T | undefined>, deps: readonly unknow
   return state;
 };
 
-const Header = ({
-  host,
-  session,
-  onSignOut,
-}: {
-  host: HostView;
-  session: Session | undefined;
-  onSignOut: () => void;
-}) => {
-  const t = useT();
+/** The service's name in the corner, a way home and nothing else: the choices are the assistant's. */
+const ServiceName = ({ host }: { host: HostView }) => {
   const { locale } = useLocale();
   return (
-    <header className="ah-header">
+    <header className="ah-top">
       <a className="ah-name" href="/">
         {textIn(host.name, locale)}
       </a>
-      {host.menu.length > 0 ? (
-        <nav aria-label={t('host.menu')}>
-          <ul className="ah-menu">
-            {host.menu.map((item) => (
-              <li key={'page' in item ? `page:${item.page}` : `href:${item.href}`}>
-                {'page' in item ? (
-                  <a href={`/${item.page}`}>{textIn(item.label, locale)}</a>
-                ) : (
-                  <a href={item.href} target="_blank" rel="noopener noreferrer">
-                    {textIn(item.label, locale)}
-                  </a>
-                )}
-              </li>
-            ))}
-          </ul>
-        </nav>
-      ) : null}
-      <LanguageChoice className="ah-language" />
-      {session ? (
-        <Button variant="tertiary" data-size="sm" onClick={onSignOut}>
-          {t('host.signOut')}
-        </Button>
-      ) : null}
     </header>
   );
 };
@@ -153,9 +121,6 @@ const PageView = ({ fetcher, host, id }: { fetcher: typeof fetch; host: HostView
   );
 };
 
-// Signed in is enough: a login with no name still gets the reader, named by its organisation.
-const drawsReader = (layout: AssistantLayout) => lookOf(layout) === 'next';
-
 const profileMenu = (host: HostView, locale: Locale): AssistantProfile['menu'] => ({
   extra: host.menu.map((item) =>
     'page' in item
@@ -178,15 +143,15 @@ const AssistantPane = ({
   fetcher,
   host,
   session,
-  header,
   signOut,
+  onSignOut,
   files,
 }: {
   fetcher: typeof fetch;
   host: HostView;
   session: Session;
-  header: ReactNode;
   signOut: { href: string; onSignOut?: () => void };
+  onSignOut: () => void;
   files: boolean;
 }) => {
   const t = useT();
@@ -227,18 +192,26 @@ const AssistantPane = ({
   const storage = useMemo(() => browserStorage(`assistant.${host.service}.`), [host.service]);
   const alone = (content: ReactNode) => (
     <>
-      {header}
+      <ServiceName host={host} />
       <main className="ah-main" id="main">
         {content}
       </main>
     </>
   );
   if (layout.kind === 'loading') return alone(<Spinner aria-label={t('host.loading')} />);
-  if (layout.kind === 'failed') return alone(<Alert data-color="danger">{t('host.failed')}</Alert>);
+  // The one way out when the assistant cannot load, since its own «Logg ut» is in it.
+  if (layout.kind === 'failed')
+    return alone(
+      <Alert data-color="danger" className="ah-failed">
+        <Paragraph>{t('host.failed')}</Paragraph>
+        <Button variant="secondary" data-size="sm" onClick={onSignOut}>
+          {t('host.signOut')}
+        </Button>
+      </Alert>,
+    );
   if (!shown || !api) return alone(<Paragraph>{t('host.noLayout')}</Paragraph>);
   return (
     <>
-      {drawsReader(shown) ? null : header}
       <div className="ah-assistant">
         <Assistant
           api={api}
@@ -266,19 +239,46 @@ const AssistantPane = ({
   );
 };
 
-const SignIn = ({ onSignIn }: { onSignIn: (() => void) | undefined }) => {
+/** The service's own pages and links, under the sign-in, since nothing else shows them before it. */
+const HostMenu = ({ host }: { host: HostView }) => {
   const t = useT();
-  return onSignIn ? (
+  const { locale } = useLocale();
+  if (host.menu.length === 0) return null;
+  return (
+    <nav aria-label={t('host.menu')}>
+      <ul className="ah-menu">
+        {host.menu.map((item) => (
+          <li key={'page' in item ? `page:${item.page}` : `href:${item.href}`}>
+            {'page' in item ? (
+              <a href={`/${item.page}`}>{textIn(item.label, locale)}</a>
+            ) : (
+              <a href={item.href} target="_blank" rel="noopener noreferrer">
+                {textIn(item.label, locale)}
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+};
+
+const SignIn = ({ host, onSignIn }: { host: HostView; onSignIn: (() => void) | undefined }) => {
+  const t = useT();
+  return (
     <div className="ah-signin">
-      <Button onClick={onSignIn}>{t('host.signIn')}</Button>
+      {onSignIn ? (
+        <Button onClick={onSignIn}>{t('host.signIn')}</Button>
+      ) : (
+        <Alert data-color="info">
+          <Heading level={2} data-size="xs">
+            {t('host.signInUnavailable')}
+          </Heading>
+          {host.menu.length > 0 ? <Paragraph>{t('host.signInUnavailableDetail')}</Paragraph> : null}
+        </Alert>
+      )}
+      <HostMenu host={host} />
     </div>
-  ) : (
-    <Alert data-color="info" className="ah-signin">
-      <Heading level={2} data-size="xs">
-        {t('host.signInUnavailable')}
-      </Heading>
-      <Paragraph>{t('host.signInUnavailableDetail')}</Paragraph>
-    </Alert>
   );
 };
 
@@ -411,7 +411,6 @@ export const App = ({
     setSession(undefined);
     void login?.signOut();
   };
-  const header = <Header host={view} session={session} onSignOut={signOut} />;
   if (onPage) return <PageView fetcher={fetcher} host={view} id={pageId} />;
   if (session)
     return (
@@ -419,17 +418,17 @@ export const App = ({
         fetcher={fetcher}
         host={view}
         session={session}
-        header={header}
         signOut={signOutLink}
+        onSignOut={signOut}
         files={viaBff}
       />
     );
   return (
     <>
-      {header}
-      <main className="ah-main" id="main">
+      <ServiceName host={view} />
+      <main className="ah-main ah-signin-main" id="main">
         {signInFailed ? <Alert data-color="danger">{t('host.signInFailed')}</Alert> : null}
-        <SignIn onSignIn={startSignIn} />
+        <SignIn host={view} onSignIn={startSignIn} />
       </main>
     </>
   );

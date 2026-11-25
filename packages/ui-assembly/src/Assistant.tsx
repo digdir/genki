@@ -402,6 +402,10 @@ export const AssistantView = ({
   // The dev boards' look, the layout's `next`: cards, every panel titled, the thread's title as
   // the `h1`, and the reader at the primary panel's foot with the profile menu.
   const next = a.look === 'next';
+  // The reader's profile menu: always in the next look. In the classic one too when the host has
+  // entries of its own for it, or signs out and there is no thread list to name the reader under.
+  const readerMenu =
+    next || !!a.profile?.menu?.extra?.length || (!threadsOn && !!a.profile?.signOut);
   // The document stands where the conversation was, with Dokumentvisning beside Chat in «Innhold».
   const chatHidden = a.documentOverChat && !!a.openDoc;
 
@@ -822,7 +826,7 @@ export const AssistantView = ({
       // Under the panel's title «Tråder» in the next look, which has the reader in the panel's foot.
       {...(next ? { headingLevel: 3 as const } : {})}
       foot={
-        a.profile?.signedInAs && !next ? (
+        a.profile?.signedInAs && !readerMenu ? (
           <SignedIn
             name={a.profile.signedInAs}
             {...(a.profile.signOut
@@ -845,10 +849,10 @@ export const AssistantView = ({
     />
   );
 
-  // ── The reader in the next look: the profile button at the primary panel's foot, which opens
-  // the profile menu, «Innstillinger» first. Only with a name to show; without one, the links. ──
+  // ── The reader with its profile menu (`readerMenu`): the profile button at the primary panel's
+  // foot, which opens the menu, «Innstillinger» first. Only with a name to show. ──
   const profile: ShellProfileProps | undefined =
-    next && a.profile?.signedInAs
+    readerMenu && a.profile?.signedInAs
       ? {
           name: a.profile.signedInAs,
           organisation: a.profile.organisation,
@@ -905,7 +909,9 @@ export const AssistantView = ({
     ) : undefined;
 
   // The next look's sizes, the dev-navbar board's at 1720: threads 220, tools 380.
-  const nextPrimary: Partial<ShellPanel> = next ? { size: threadsWidth, ...profileFoot } : {};
+  const nextPrimary: Partial<ShellPanel> = next
+    ? { size: threadsWidth, ...profileFoot }
+    : profileFoot;
   const threadsTitle = next ? { title: t('builder.threads') } : {};
 
   const threadsAndFilter = phrase(t, [t('builder.threads'), t('builder.filter')]);
