@@ -62,6 +62,7 @@ jobs:
         with:
           name: demo-voice
           path: demos/out/.voice/*.mp3
+          include-hidden-files: true
           retention-days: 1
 
   record:

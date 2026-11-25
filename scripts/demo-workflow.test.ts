@@ -45,6 +45,14 @@ describe('the demos workflow', () => {
     expect(download).toMatchObject({ if: "needs.voice.result == 'success'" });
   });
 
+  it('uploads the voiced clips from the hidden .voice folder and downloads them where recording looks', () => {
+    const upload = voice.steps.find((s) => s.with?.name === 'demo-voice');
+    const download = record.steps.find((s) => s.with?.name === 'demo-voice');
+    expect(upload?.with?.path).toBe('demos/out/.voice/*.mp3');
+    expect(upload?.with?.['include-hidden-files']).toBe(true);
+    expect(download?.with?.path).toBe('demos/out/.voice');
+  });
+
   it('skips every voice step when no speech resource is set', () => {
     for (const step of voice.steps) expect(step.if).toMatch(/^vars\.SPEECH_RESOURCE [!=]= ''$/);
   });
