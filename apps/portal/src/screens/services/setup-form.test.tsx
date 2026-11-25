@@ -56,9 +56,7 @@ describe('the new Oppsett as one form', () => {
     let top = 240;
     const real = HTMLElement.prototype.getBoundingClientRect;
     HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
-      return this.classList.contains('setup-form-layout')
-        ? ({ top } as DOMRect)
-        : real.call(this);
+      return this.classList.contains('setup-form-layout') ? ({ top } as DOMRect) : real.call(this);
     };
     try {
       form();
