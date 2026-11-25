@@ -714,6 +714,7 @@ export const demoErrors = {
   demoStepCount: 'the demo has {steps} steps',
   recordedByWorkflow: 'recordings are made by the demos workflow',
   recordingNotQueued: 'the recording could not be queued',
+  statusMustBeQueued: 'status must be queued',
 } satisfies Translation<typeof source.demoErrors>;
 
 export const hostnameErrors = {

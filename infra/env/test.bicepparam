@@ -77,6 +77,9 @@ param appEnv = {
   GATEWAY_USAGE_APP_SCOPE: 'api://3eca282e-8b4d-49d6-991f-79849dffd652/.default'
   // The sites whose cited PDFs the API serves in Dokumentvisning (ADR 0066, infra/README.md).
   GENAI_DOCUMENT_FILE_ORIGINS: 'https://kudos.dfo.no'
+  // The demo-recorder workflow records what the console queues (ADR 0059).
+  GENAI_DEMO_RECORDER: 'scheduled'
+  DEMO_RECORDER_KEY_SHA256: readEnvironmentVariable('DEMO_RECORDER_KEY_SHA256', '')
 }
 
 // What issue 464 turns when genki-test becomes production; the resource names stay genai-test-*.

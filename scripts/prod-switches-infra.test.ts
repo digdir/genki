@@ -102,6 +102,15 @@ describe.skipIf(!hasAz && !process.env.CI)('the production switches in the templ
       expect(Object.keys(values.appEnv as object).filter((k) => switches.includes(k))).toEqual([]);
   });
 
+  it('wires the scheduled demo recorder in genki-test only, with the key digest from the deploy', () => {
+    const testEnv = test.appEnv as Record<string, unknown>;
+    expect(testEnv.GENAI_DEMO_RECORDER).toBe('scheduled');
+    expect(testEnv).toHaveProperty('DEMO_RECORDER_KEY_SHA256');
+    const prodEnv = prod.appEnv as Record<string, unknown>;
+    expect(prodEnv).not.toHaveProperty('GENAI_DEMO_RECORDER');
+    expect(prodEnv).not.toHaveProperty('DEMO_RECORDER_KEY_SHA256');
+  });
+
   it('lists Kudos for cited PDFs in test and prod, in a form the API reads entry by entry', () => {
     for (const values of [test, prod]) {
       const listed = String((values.appEnv as Record<string, unknown>).GENAI_DOCUMENT_FILE_ORIGINS);

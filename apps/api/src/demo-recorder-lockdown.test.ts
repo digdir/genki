@@ -154,6 +154,18 @@ describe('the recorder routes in the locked test environment', () => {
     expect(await recordings()).toBe(1);
   });
 
+  it('list the queued recordings with the recorder key and no bearer token, and nothing without it', async () => {
+    const { app } = await boot();
+
+    const listed = await app.request('/recorder/recordings?status=queued', {
+      headers: { 'x-recorder-key': recorderKey },
+    });
+    const without = await app.request('/recorder/recordings?status=queued');
+
+    expect([listed.status, without.status]).toEqual([200, 401]);
+    expect(await listed.json()).toEqual({ data: [] });
+  });
+
   it('refuse a recorder call without the key or with a wrong key', async () => {
     const { start, recordings } = await boot();
 

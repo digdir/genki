@@ -77,8 +77,10 @@ const Recording = z
   .openapi('DemoRecording');
 
 const recorder = z
-  .enum(['job', 'workflow'])
-  .describe('job: the console can start recordings; workflow: they come from the demos workflow');
+  .enum(['job', 'scheduled', 'workflow'])
+  .describe(
+    'job: a recorder job takes a queued recording at once; scheduled: the demo-recorder workflow picks it up within minutes; workflow: recordings come only from the hand-run demos workflow',
+  );
 
 const Settings = demoSettings
   .extend({
@@ -179,13 +181,13 @@ export const demoRoutes: RouteConfig[] = [
       body: { required: false, content: { 'application/json': { schema: recordingRequest } } },
     },
     responses: {
-      202: json(Recording, 'Queued for the recorder job'),
+      202: json(Recording, 'Queued for the recorder'),
       400: problem('Invalid body, upTo past the last step, or missing reason'),
       ...viewerOnly,
       404: problem('No such demo'),
       409: problem('urn:genai:problem:recording-open: the demo has a recording that has not ended'),
       503: problem(
-        'urn:genai:problem:recorder-not-set-up: no recorder job here; record with the demos workflow',
+        'urn:genai:problem:recorder-not-set-up: no recorder here; record with the demos workflow',
       ),
     },
   }),
@@ -259,6 +261,25 @@ export const demoRoutes: RouteConfig[] = [
       },
       ...viewerOnly,
       404: problem('No such recording or file'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/recorder/recordings',
+    summary: 'The queued recordings, oldest first, by id and demo (the recorder only)',
+    request: {
+      query: z.object({
+        status: z.enum(['queued']).openapi({ param: { name: 'status', in: 'query' } }),
+      }),
+      headers: recorderKey,
+    },
+    responses: {
+      200: json(
+        z.object({ data: z.array(z.object({ id: z.string(), demo: z.string() })) }),
+        'Queued recordings',
+      ),
+      400: problem('status is not queued'),
+      ...recorderOnly,
     },
   }),
   createRoute({

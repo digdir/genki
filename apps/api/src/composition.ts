@@ -557,6 +557,7 @@ export interface PlatformInput {
   /** The platform's version (APP_VERSION), recorded as the commit of eval runs it starts. */
   appVersion?: string;
   demoRecorderKeyDigest?: string;
+  demoRecorder?: 'scheduled';
   /** Tenants' Langfuse connections: Digdir's instance and whether it may receive content. */
   tracing?: TracingOptions;
   /** Every trace sent to a tenant's sink, until its delete is confirmed. */
@@ -2312,6 +2313,7 @@ export const createPlatform = async (input: PlatformInput) => {
     evalCapability: evalCapability.descriptor.id,
     ...(input.appVersion ? { appVersion: input.appVersion } : {}),
     ...(input.demoRecorderKeyDigest ? { demoRecorderKeyDigest: input.demoRecorderKeyDigest } : {}),
+    ...(input.demoRecorder ? { demoRecorder: input.demoRecorder } : {}),
     tenantSecrets,
     traceSinks,
     sinkLabels: sinkLabelService,

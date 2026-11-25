@@ -720,6 +720,7 @@ export const demoErrors = defineNamespace({
   demoStepCount: 'demoen har {steps} steg',
   recordedByWorkflow: 'opptakene gjøres av arbeidsflyten demos',
   recordingNotQueued: 'opptaket kunne ikke settes i kø',
+  statusMustBeQueued: 'status må være queued',
 });
 
 export const hostnameErrors = defineNamespace({

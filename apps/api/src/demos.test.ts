@@ -1,8 +1,11 @@
 import { join } from 'node:path';
+import { demoVoices } from '@genai/contracts';
 import { describe, expect, it } from 'vitest';
 import { InMemoryConfigEntryStore, platformScope } from './config-store.js';
 import {
   demoKind,
+  demoSettings,
+  defaultDemoSettings,
   isRecorderKey,
   stepsDone,
   readDemo,
@@ -59,6 +62,17 @@ describe('demo records', () => {
   it('refuses a command outside the browser command allowlist', () => {
     const read = readDemo(
       yaml('  - say: Les en hemmelighet.\n    do:\n      - [eval, document.cookie]\n'),
+    );
+
+    expect(read.ok).toBe(false);
+    expect(read.ok ? [] : read.errors.map((e) => e.path)).toEqual(['steps.1.do.0']);
+  });
+
+  it('refuses a flag in a command outside the flags the demos use', () => {
+    const read = readDemo(
+      yaml(
+        '  - say: Bytt nettleser.\n    do:\n      - [open, https://portal.example, --executable-path, /bin/sh]\n',
+      ),
     );
 
     expect(read.ok).toBe(false);
@@ -123,5 +137,24 @@ describe('demo records', () => {
     expect(
       stepsDone({ files: [file('step-1.png'), file('step-3.png'), file('failed-step-4.png')] }),
     ).toBe(3);
+  });
+});
+
+describe('demo voices', () => {
+  it('accepts every voice in the console list, in a demo and as the default voice', () => {
+    for (const voice of demoVoices) {
+      const read = readDemo(yaml().replace('nb-NO-PernilleNeural', voice.id));
+      expect(read.ok).toBe(true);
+      expect(demoSettings.safeParse({ ...defaultDemoSettings, voice: voice.id }).success).toBe(
+        true,
+      );
+      expect(voice.id.startsWith(`${voice.language}-`)).toBe(true);
+    }
+  });
+
+  it('still accepts a voice name that is not in the console list', () => {
+    const read = readDemo(yaml().replace('nb-NO-PernilleNeural', 'de-DE-KatjaNeural'));
+
+    expect(read.ok && read.spec.voice).toBe('de-DE-KatjaNeural');
   });
 });
