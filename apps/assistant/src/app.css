@@ -116,13 +116,16 @@ body {
   inline-size: min(100%, 448px);
 }
 
-/* The service's corners, xl, as the assistant's cards and the pages; Card's own is smaller. */
+/* The service's corners, xl, as the assistant's cards and the pages; Card's own is smaller. No
+   line round it: the white on the light blue is the edge. */
 .ah-signin-card {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
+  text-align: center;
   gap: var(--ds-size-4);
   padding: var(--ds-size-10);
+  border: 0;
   border-radius: var(--ds-border-radius-xl);
 }
 
@@ -134,12 +137,7 @@ body {
 }
 
 .ah-signin-button {
-  align-self: flex-end;
   margin-block-start: var(--ds-size-4);
-}
-
-.ah-signin .ah-menu {
-  justify-content: flex-end;
 }
 
 .ah-failed {
