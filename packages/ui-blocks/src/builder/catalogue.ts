@@ -118,7 +118,8 @@ export const blockCatalogue: readonly BlockSpec[] = [
   {
     id: 'projects',
     zones: ['primary'],
-    order: { primary: 0 },
+    // Last in Venstre, under Innstillinger, while it is «kommer».
+    order: { primary: 4 },
     members: [],
     needs: ['genki:projects'],
     covers: ['organise-work'],
