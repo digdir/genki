@@ -184,6 +184,56 @@ export const blockRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/blocks/import',
+    summary:
+      "Turn a design's HTML into a proposed first edition of the organisation's declarative block. A design that needs code is refused for now. Nothing the design points to is fetched, and nothing is saved. Only while blockStudio is on for the caller. Needs manage-services",
+    request: {
+      params: z.object({ tenant }),
+      body: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: z.object({
+              html: z.string().openapi({ description: 'The design as HTML text, at most 512 KiB' }),
+              id: z
+                .string()
+                .regex(/^[a-z0-9][a-z0-9-]{0,62}$/)
+                .openapi({ example: 'kildekort' }),
+              title: z.string().optional(),
+            }),
+          },
+        },
+      },
+    },
+    responses: {
+      200: json(
+        z.object({
+          tier: z.enum(['declarative']),
+          definition: z.record(z.string(), z.unknown()),
+          files: z.record(z.string(), z.string()),
+          report: z.array(
+            z.object({
+              kind: z.enum(['converted', 'dropped', 'text', 'data']),
+              code: z.string(),
+              where: z.string(),
+              message: z.string(),
+            }),
+          ),
+        }),
+        'The proposed block, valid as it stands, and what the import did',
+      ),
+      403: problem('Missing manage-services'),
+      404: problem(
+        'Not signed in, blockStudio is off for the caller, or the tenant is not reachable for the caller',
+      ),
+      413: problem('The body is larger than 1 MiB'),
+      422: problem(
+        'The html, id or title is missing or malformed, or the design is larger than 512 KiB, empty, needs code, or is not valid as a block',
+      ),
+    },
+  }),
+  createRoute({
     method: 'put',
     path: '/tenants/{tenant}/services/{id}/draft/blocks/{publisher}/{blockId}',
     summary:

@@ -1,0 +1,23 @@
+{
+  "name": "@genai/block-import",
+  "version": "0.0.0",
+  "description": "Turns a design's HTML into a proposed declarative Block (ADR 0067)",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@genai/contracts": "0.0.0",
+    "@genai/definitions": "0.0.0",
+    "parse5": "8.1.1"
+  }
+}
