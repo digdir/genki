@@ -122,7 +122,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: |
           python3 -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check -c docker/docling/requirements.txt starlette httpx python-multipart
+          sed -e '/--hash=/d' -e 's/ \\$//' docker/docling/requirements.txt > "$RUNNER_TEMP/constraints.txt"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check -c "$RUNNER_TEMP/constraints.txt" starlette httpx python-multipart
       - working-directory: docker/docling
         run: '"$RUNNER_TEMP/venv/bin/python" -m unittest test_busy'
 
