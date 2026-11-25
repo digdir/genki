@@ -1,4 +1,5 @@
 import { XMarkIcon } from '@navikt/aksel-icons';
+import { datasetsOfDefinition } from '@genai/ui-blocks/builder';
 import {
   Alert,
   Button,
@@ -146,7 +147,8 @@ export const withDraftService = (
     inUse: false,
     setup: {
       model,
-      datasets: [],
+      // The playground applies these over the draft: an empty list would search nothing.
+      datasets: datasetsOfDefinition(draft.definition),
       skills: [],
       blocks: options.defaultBlocks ?? [],
       output: record(spec.output).kind === 'fields' ? ('fields' as const) : ('text' as const),
@@ -451,8 +453,10 @@ export const PlaygroundPanel = ({
     const draft = draftRef.current;
     if (!hasDraft || !draft || setup.service?.id !== name || setup.service.version !== 'draft')
       return setup;
+    // The draft's datasets as it is now: the full layout offers no way to change them.
     return {
       ...setup,
+      datasets: datasetsOfDefinition(draft.definition),
       service: {
         ...setup.service,
         definition: draft.definition,
