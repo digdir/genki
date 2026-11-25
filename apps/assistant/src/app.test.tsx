@@ -292,6 +292,47 @@ describe('the assistant host', () => {
     expect(screen.queryByRole('button', { name: 'Logg ut' })).toBeNull();
   });
 
+  it('sends a visitor on a redirect hostname to the same path on the hostname it names', async () => {
+    const went: string[] = [];
+    render(
+      <LocaleProvider preference="nb">
+        <App
+          hostname="qa.example.no"
+          path="/sider/om?q=1"
+          signIn={browser().signIn}
+          navigate={(to) => went.push(to)}
+          fetcher={genki({
+            '/api/v1/hosts/qa.example.no': () =>
+              json({ hostname: 'qa.example.no', redirectTo: 'ka.example.no' }),
+          })}
+        />
+      </LocaleProvider>,
+    );
+
+    await vi.waitFor(() => expect(went).toEqual(['https://ka.example.no/sider/om?q=1']));
+  });
+
+  it('never follows a redirect to something that is not a hostname', async () => {
+    const went: string[] = [];
+    render(
+      <LocaleProvider preference="nb">
+        <App
+          hostname="qa.example.no"
+          path="//evil.example/x"
+          signIn={browser().signIn}
+          navigate={(to) => went.push(to)}
+          fetcher={genki({
+            '/api/v1/hosts/qa.example.no': () =>
+              json({ hostname: 'qa.example.no', redirectTo: 'evil.example/x?' }),
+          })}
+        />
+      </LocaleProvider>,
+    );
+
+    await screen.findByText('Her er det ingen assistent.');
+    expect(went).toEqual([]);
+  });
+
   it('signs in through the host’s BFF when it serves one, and comes back to the same address', async () => {
     const went: string[] = [];
     const asked: string[] = [];

@@ -114,7 +114,7 @@ import {
 } from '@genai/providers-mcp-client';
 import type { RegisteredAgent } from '@genai/strategy-remote';
 import { checkFlow } from '@genai/strategy-step-flow';
-import type { Admin } from './admin.js';
+import { platformActor, type Admin } from './admin.js';
 import {
   capabilityModes,
   configKeyAllows,
@@ -134,6 +134,7 @@ import {
   admitConfined,
   clientCors,
   frontendAdminHandlers,
+  notifyingClients,
   registerFrontendRoutes,
   type PlatformEndpoints,
 } from './frontends.js';
@@ -335,6 +336,20 @@ import { skillsModule } from './skills.js';
 import { createKeyPoliciesModule } from './key-policies.js';
 import { maskinportenClientsModule } from './maskinporten-clients.js';
 import { defaultReservedDomains, registerHostRoutes, type HostingRules } from './hosts.js';
+import {
+  defaultHostnameLimit,
+  defaultReservedLabels,
+  hostnameAdminHandlers,
+  registerHostnameRoutes,
+  releaseClientClaims,
+  releaseEnvironmentClaims,
+  serviceAddressAction,
+  type ClaimDeps,
+  type HostnameSetup,
+  wantsAutoAddress,
+} from './hostname-claims.js';
+import type { BinderTrust } from './binder-token.js';
+import { InMemoryHostnameClaims, type HostnameClaimStore } from '@genai/kernel';
 import {
   blockRefProblems,
   hostedByGenki,
@@ -556,6 +571,8 @@ export interface PlatformInput {
   clients?: ClientStore;
   reservedClientIds?: string[];
   hosting?: HostingRules;
+  hostnames?: Omit<HostnameSetup, 'claims'> & { claims?: HostnameClaimStore };
+  binder?: BinderTrust;
   documentFileOrigins?: readonly string[];
   platformLogin?: { clientId: string; audience: string };
   webhookDeliveries?: WebhookDeliveryStore;
@@ -1228,11 +1245,37 @@ export const createPlatform = async (input: PlatformInput) => {
     },
   };
   const taskStore = input.tasks ?? new InMemoryTaskStore();
-  const clients = input.clients ?? new InMemoryClients();
-  const hosting: HostingRules = input.hosting ?? {
-    hostnames: new Map(),
-    reservedDomains: defaultReservedDomains,
+  const hostnameClaims =
+    input.hostnames?.claims ?? input.hosting?.claims ?? new InMemoryHostnameClaims();
+  const hostnameSetup: HostnameSetup = {
+    target: {},
+    limit: defaultHostnameLimit,
+    reservedLabels: defaultReservedLabels,
+    ...input.hostnames,
+    claims: hostnameClaims as HostnameClaimStore,
   };
+  const hosting: HostingRules = {
+    ...(input.hosting ?? { hostnames: new Map(), reservedDomains: defaultReservedDomains }),
+    claims: hostnameSetup.claims,
+  };
+  const claimHooks: { admin?: Admin } = {};
+  const claimClock = input.now ? { now: () => new Date(input.now?.() ?? 0) } : {};
+  const clients: ClientStore = notifyingClients(input.clients ?? new InMemoryClients(), {
+    saved: (client, before) =>
+      before?.spec.hosted === true && client.spec.hosted !== true
+        ? releaseClientClaims(
+            { setup: hostnameSetup, ...claimClock },
+            client.metadata.tenant,
+            client.metadata.id,
+          )
+        : undefined,
+    removed: (client) =>
+      releaseClientClaims(
+        { setup: hostnameSetup, ...claimClock },
+        client.metadata.tenant,
+        client.metadata.id,
+      ),
+  });
   const webhooks = createWebhooks({
     clients,
     secrets: vault.resolver(input.secrets),
@@ -1776,7 +1819,10 @@ export const createPlatform = async (input: PlatformInput) => {
         const problems = await checkBeforePublish(args[0], args[1]);
         if (problems) return { ok: false, errors: problems };
         const result = await store.publish(...args);
-        if (result.ok) await resync();
+        if (result.ok) {
+          await resync();
+          await addressOnPublish(result.version.definition, args[1]);
+        }
         return result;
       },
     },
@@ -1789,6 +1835,40 @@ export const createPlatform = async (input: PlatformInput) => {
         ),
     },
   );
+
+  const claimDeps = (): ClaimDeps => ({
+    setup: hostnameSetup,
+    rules: hosting,
+    clients,
+    definitions,
+    configEntries,
+    locked: input.lockdown !== undefined,
+    ...(input.reservedClientIds ? { reservedClientIds: input.reservedClientIds } : {}),
+    ...(input.now ? { now: () => new Date(input.now?.() ?? 0) } : {}),
+  });
+  async function addressOnPublish(definition: { kind: string; metadata: unknown }, by: string) {
+    if (definition.kind !== 'Service' || !hostnameSetup.zone) return;
+    const { tenant, id } = definition.metadata as { tenant: string; id: string };
+    const operator = by.startsWith('operator:');
+    try {
+      const admin = claimHooks.admin;
+      if (!admin || !(await wantsAutoAddress(claimDeps(), tenant, id, { operator }))) return;
+      const result = await admin.perform(platformActor('hostnames', tenant), serviceAddressAction, {
+        tenant,
+        service: id,
+        by,
+        byOperator: operator,
+        reason: 'Adresse ved publisering',
+      });
+      if (!result.ok) input.logger?.('service address not assigned', { tenant, service: id });
+    } catch (error) {
+      input.logger?.('service address failed', {
+        tenant,
+        service: id,
+        error: error instanceof Error ? error.name : 'unknown',
+      });
+    }
+  }
 
   const pin = async (compiled: CompiledCapability, version: number) => {
     const found = await store.get('Service', compiled.service.tenant, compiled.service.id, version);
@@ -1949,6 +2029,16 @@ export const createPlatform = async (input: PlatformInput) => {
   const testRunnerOperator = input.isOperator
     ? platformOperator(input.isOperator, platformTenant)
     : undefined;
+  const claimedOrigin = async (tenant: string, client: string, origin: string) => {
+    const hostname = /^https:\/\/([^/:]+)$/.exec(origin)?.[1];
+    const claim = hostname ? await hostnameClaims.holder(hostname) : undefined;
+    return (
+      claim?.state === 'active' &&
+      claim.tenant === tenant &&
+      claim.client === client &&
+      !claim.redirectTo
+    );
+  };
   const callers = new WeakMap<Request, Promise<Caller | undefined>>();
   const callerOf = (request: Request) => {
     const known = callers.get(request);
@@ -1963,7 +2053,9 @@ export const createPlatform = async (input: PlatformInput) => {
         ...authenticated,
         principal: testRunnerView(origin, request, testRunnersAllowed),
       };
-      return (await admitConfined(clients, request, caller.principal)) ? caller : undefined;
+      return (await admitConfined(clients, request, caller.principal, claimedOrigin))
+        ? caller
+        : undefined;
     })();
     callers.set(request, found);
     return found;
@@ -2347,6 +2439,7 @@ export const createPlatform = async (input: PlatformInput) => {
       testRunnerKeys: testRunnersAllowed,
       ...(testRunnerOperator ? { isOperator: testRunnerOperator } : {}),
     }),
+    ...hostnameAdminHandlers(claimDeps()),
     ...frontendAdminHandlers({
       clients,
       definitions,
@@ -2358,6 +2451,19 @@ export const createPlatform = async (input: PlatformInput) => {
     ...config.extensions,
     ...Object.fromEntries(modules.flatMap((m) => Object.entries(m.handlers ?? {}))),
   };
+  const removeEnvironment = extensions['platform.service.environments.remove'];
+  if (removeEnvironment)
+    extensions['platform.service.environments.remove'] = async (input, principal) => {
+      const outcome = await removeEnvironment(input, principal);
+      if (outcome.ok)
+        await releaseEnvironmentClaims(
+          { setup: hostnameSetup, ...claimClock },
+          String(input.tenant),
+          String(input.id),
+          String(input.environment),
+        );
+      return outcome;
+    };
 
   const mount = <E extends Env, S extends Schema, B extends string>(
     app: Hono<E, S, B>,
@@ -2422,6 +2528,7 @@ export const createPlatform = async (input: PlatformInput) => {
       });
     if (admin) {
       adminRef = admin;
+      claimHooks.admin = admin;
       const authenticate = async (request: Request) => (await callerOf(request))?.principal;
       registerPortalRoutes(app, {
         admin,
@@ -2490,6 +2597,12 @@ export const createPlatform = async (input: PlatformInput) => {
         names: actorNames(configEntries),
         ...(input.lockdown ? { lockdown: input.lockdown } : {}),
         ...(input.endpoints ? { endpoints: input.endpoints } : {}),
+      });
+      registerHostnameRoutes(app, {
+        ...claimDeps(),
+        admin,
+        authenticate,
+        ...(input.binder ? { binder: input.binder } : {}),
       });
       const mountDeps = { ...moduleDeps, admin, authenticate, access: tenantAccess(admin) };
       for (const m of modules) m.mount(app, mountDeps);

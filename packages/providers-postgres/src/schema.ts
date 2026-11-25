@@ -58,6 +58,7 @@ const tenantTables = [
   'provider_objects',
   'bff_sessions',
   'request_leases',
+  'hostname_claims',
 ];
 
 const publishedTables = { definition_versions: 'tenant', config_entries: 'scope' };
@@ -105,6 +106,9 @@ const definerFunctions = [
   'platform_usage_unassigned(timestamptz, timestamptz)',
   'pending_trace_deletes(integer)',
   'due_provider_objects(timestamptz, integer)',
+  'hostname_claims_in(text[], integer)',
+  'find_hostname_claim(text)',
+  'hostname_claim_holder(text)',
 ];
 
 const platformAccess = `coalesce(current_setting('app.platform_access', true), '') <> ''`;
@@ -841,6 +845,60 @@ const migrations: string[] = [
        perform require_platform_access();
        return query select * from provider_objects
          where state = 'open' and delete_by <= before order by delete_by limit max_rows;
+     end $$`,
+  `create table if not exists hostname_claims (
+     id text primary key,
+     tenant text not null,
+     client text not null,
+     service text not null,
+     hostname text not null,
+     environment text,
+     redirect_to text,
+     apex boolean not null,
+     assigned boolean not null,
+     zone text,
+     record_name text,
+     token text not null,
+     state text not null check (state in ('pending-dns', 'binding', 'active', 'failed', 'lapsed', 'removing', 'removed')),
+     step text not null check (step in ('add', 'certificate', 'enable', 'unbind', 'done')),
+     failure text,
+     message text,
+     certificate_id text,
+     dns_check jsonb,
+     missing_since timestamptz,
+     state_since timestamptz not null,
+     created_at timestamptz not null,
+     created_by text not null,
+     updated_at timestamptz not null,
+     version integer not null
+   )`,
+  `create unique index if not exists hostname_claims_held on hostname_claims (hostname)
+     where state in ('binding', 'active', 'removing')`,
+  `create index if not exists hostname_claims_tenant on hostname_claims (tenant, created_at)`,
+  `create index if not exists hostname_claims_state on hostname_claims (state, updated_at)`,
+  ...tenantIsolation('hostname_claims'),
+  `create or replace function hostname_claims_in(p_states text[], max_rows integer)
+     returns setof hostname_claims
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select * from hostname_claims
+         where state = any(p_states) order by updated_at, id limit max_rows;
+     end $$`,
+  `create or replace function find_hostname_claim(p_id text)
+     returns setof hostname_claims
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select * from hostname_claims where id = p_id;
+     end $$`,
+  `create or replace function hostname_claim_holder(p_hostname text)
+     returns setof hostname_claims
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select * from hostname_claims
+         where hostname = p_hostname and state in ('binding', 'active', 'removing');
      end $$`,
   `create table if not exists config_entries (
      kind text not null,

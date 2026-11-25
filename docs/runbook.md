@@ -228,6 +228,17 @@ From a nightly copy, when the server and its backups are gone: download the newe
 
 `.github/workflows/platform-restore-drill.yml` runs on the first day of each quarter and on demand (`gh workflow run platform-restore-drill.yml`), in test only, in a concurrency group of its own. It restores the platform server as of 10 minutes earlier to `genai-<env>-pg-restore-drill`, writes how long it took to the run's summary, runs the job `genai-<env>-pg-restore-check`, which counts the rows of every table on both servers and fails when a table is missing or the restored server is empty, and deletes the restored server even when a step failed. A drill costs about 5 kr. By hand in the same quarter: restore one uploaded file from the share backup and compare its checksum, and recover a throwaway Key Vault secret. Write the times into issue #44; the target is met while restore plus repointing stays under 4 hours.
 
+## Hostname claims
+
+A service owner's address is a claim (ADR 0062). Read it with `GET /tenants/{tenant}/services/{service}/hostnames`; every change is in the audit log under `platform.client.hostnames.*` and `platform.service.address`.
+
+- **Stuck in `pending-dns`:** the `dns_check` column of the claim's row in `hostname_claims` shows which of the challenge, `asuid` and target records the worker saw at `checkedAt`. The worker asks the zone's own name servers, so a record the owner has just made counts at the next run (every 5 minutes). After 7 days the claim fails with `expired`, and the owner claims again.
+- **Stuck in `binding`:** the binder reports each step's result, and the `message` column of the claim's row holds the status and code of Azure's last answer; tenants do not see it. A failure it keeps reporting for 48 hours is unbound when it got past `add`, then ends `failed` with `bind_failed: <step>`; the owner claims again once the cause is fixed. A claim the binder never reports on stays in `binding`: check that the binder runs, and that the API has `GENAI_HOSTNAME_BINDER_PRINCIPAL_ID`, `GENAI_HOSTNAME_BINDER_TENANT_ID` (both GUIDs) and `GENAI_HOSTNAME_BINDER_AUDIENCE`. Without them `/internal/hostnames/*` answers `404` to the binder too.
+- **Stuck in `removing`:** the name stays held until the unbind succeeds, however long that takes; the `message` column holds the status and code of the last failure.
+- **`failed` with `not_verified`:** another claim holds the name. An operator finds the holder in the `hostname_claims` table.
+- **`lapsed`:** the owner's records have been gone 7 days in a row, so the name is no longer served. Putting the records back does not reopen it; the owner claims it again, with new records. 30 days after it lapsed it is unbound.
+- **No address at first publish:** `GENAI_DNS_ZONE` is unset, the production version has no `interface.layout`, the service had an assigned name before, a hosted Client of the service has a hostname from the parameter file already, or, in lockdown, the publisher was not an operator. `POST /tenants/{tenant}/services/{service}/address` gives one on request, under the same conditions except the first.
+
 ## Moving a team's domain to genki
 
 How a service that runs its own frontend today moves its existing hostname to genki's assistant host (ADR 0061), with Kunnskapsassistenten's `qa.kunnskap.digdir.cloud` as the worked example. How hosted hostnames work in the template is in [infra/README.md](../infra/README.md#hosted-hostnames).

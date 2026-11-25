@@ -155,8 +155,13 @@ describe('hosted clients', () => {
     ]);
   });
 
+  it('lets a hosted client wait without hostnames for its claimed address to bind', () => {
+    const checked = checkClient(hosted({ hostnames: [], oidc: undefined }), []);
+    expect(checked.ok).toBe(true);
+    expect(checked.ok && checked.definition.spec.allowedOrigins).toEqual([]);
+  });
+
   it.each([
-    ['a hosted client without hostnames', { hostnames: [] }],
     ['a hosted server client', { kind: 'server' as const, oidc: undefined }],
     ['hostnames on a client that is not hosted', { hosted: false }],
     [

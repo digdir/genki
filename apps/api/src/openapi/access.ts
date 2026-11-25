@@ -186,6 +186,26 @@ const WebhookDelivery = z
   })
   .openapi('WebhookDelivery');
 
+export const HostnameClaimView = z
+  .object({
+    id: z.string().nullable(),
+    hostname: z.string(),
+    client: z.string(),
+    environment: z.string().nullable(),
+    redirectTo: z.string().nullable(),
+    apex: z.boolean(),
+    assigned: z.boolean().describe('A name genki assigned under apps. in its own zone'),
+    managed: z.boolean().describe('Opened by the platform in GENAI_HOSTED_HOSTNAMES, not claimed'),
+    state: z.enum(['pending-dns', 'binding', 'active', 'failed', 'lapsed', 'removing', 'removed']),
+    failure: z.string().nullable(),
+    records: z.array(
+      z.object({ type: z.enum(['TXT', 'CNAME', 'A']), name: z.string(), value: z.string() }),
+    ),
+    checkedAt: z.string().nullable(),
+    createdAt: z.string().nullable(),
+  })
+  .openapi('HostnameClaim');
+
 const Client = z
   .object({
     definition: clientDefinition,
@@ -1216,39 +1236,156 @@ export const accessRoutes: RouteConfig[] = [
   }),
   createRoute({
     method: 'get',
+    path: '/tenants/{tenant}/clients/{client}/hostnames',
+    summary:
+      "A hosted client's hostnames with their state, the DNS records they need and when they were last checked",
+    request: { params: z.object({ tenant, client: pathParam('client', 'klarsprak-host') }) },
+    responses: {
+      200: json(z.object({ hostnames: z.array(HostnameClaimView) }), 'Hostnames'),
+      401: unauthorized,
+      404: problem('No such hosted client, or not a member of this tenant'),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/clients/{client}/hostnames',
+    summary:
+      'Claim a hostname for a hosted client, for an environment or as a redirect to another of its hostnames (manage-services, audited)',
+    description:
+      'Answers a token of its own and the three DNS records to create. The first claim whose records verify takes the name; every other claim on it ends `failed` with `not_verified`. Names under genki’s zones, `azurecontainerapps.io`, `GENAI_RESERVED_DOMAINS`, names the platform opens itself, IP addresses, wildcards and names over 253 characters get 400 `hostname_not_allowed`. At most 4 hostnames per client, 20 per organisation and 5 waiting for DNS (`hostname_limit`). The reason comes in `change-reason` or `reason`.',
+    request: {
+      params: z.object({ tenant, client: pathParam('client', 'klarsprak-host') }),
+      body: body(
+        z.object({
+          hostname: z.string(),
+          environment: z.string().optional(),
+          redirectTo: z.string().optional(),
+          apex: z.boolean().optional(),
+          reason: z.string().optional(),
+        }),
+      ),
+    },
+    responses: {
+      201: json(HostnameClaimView, 'Claimed, waiting for DNS'),
+      400: invalid,
+      401: unauthorized,
+      403: forbidden,
+      404: problem('No such hosted client, or not a member of this tenant'),
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/tenants/{tenant}/clients/{client}/hostnames/{hostname}',
+    summary:
+      'Remove a claimed hostname: it stops being served at once and is unbound (manage-services, audited)',
+    request: {
+      params: z.object({
+        tenant,
+        client: pathParam('client', 'klarsprak-host'),
+        hostname: pathParam('hostname', 'ka.example.no'),
+      }),
+      headers: reason,
+    },
+    responses: {
+      200: json(HostnameClaimView, 'Removing, or removed when it was never bound'),
+      400: problem('Missing or short change-reason'),
+      401: unauthorized,
+      403: forbidden,
+      404: problem('No such hostname, or not a member of this tenant'),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/internal/hostnames/{id}/result',
+    summary:
+      "The hostname binder reports one step's result (the binder's Entra workload identity only; 404 for anyone else)",
+    request: {
+      params: z.object({ id: pathParam('id', '6f1c1c3e-0d7a-4a5e-9b8e-1c2d3e4f5a6b') }),
+      body: body(
+        z.object({
+          step: z.enum(['add', 'certificate', 'enable', 'unbind', 'done']),
+          ok: z.boolean(),
+          message: z.string().optional(),
+          certificateId: z.string().optional(),
+        }),
+      ),
+    },
+    responses: {
+      200: json(z.object({ state: z.string(), step: z.string() }), 'The claim after the result'),
+      400: invalid,
+      404: problem('Not the binder, or no claim in binding or removing'),
+      409: problem('step_mismatch: the claim is at another step'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/internal/hostnames/work',
+    summary:
+      "The claims the hostname binder applies to Azure (the binder's Entra workload identity only; 404 for anyone else)",
+    responses: {
+      200: json(
+        z.object({
+          items: z.array(
+            z.object({
+              id: z.string(),
+              hostname: z.string(),
+              apex: z.boolean(),
+              action: z.enum(['bind', 'remove']),
+              step: z.enum(['add', 'certificate', 'enable', 'unbind', 'done']),
+              zone: z.string().optional(),
+              recordName: z.string().optional(),
+            }),
+          ),
+        }),
+        'Work',
+      ),
+      404: problem('Not the binder'),
+    },
+  }),
+  createRoute({
+    method: 'get',
     path: '/v1/hosts/{hostname}',
     summary:
       "What genki's assistant host draws on a hostname before anyone logs in (public, cached 60 seconds)",
     request: { params: z.object({ hostname: pathParam('hostname', 'kunnskap.digdir.cloud') }) },
     responses: {
       200: json(
-        z.object({
-          hostname: z.string(),
-          tenant: z.string(),
-          service: z.string(),
-          environment: z.string(),
-          name: z.unknown(),
-          login: z.object({
-            issuer: z.string().nullable(),
-            clientId: z.string(),
-            audience: z.string(),
-            altinnResource: z.string().nullable(),
-          }),
-          languages: z
-            .array(z.enum(['nb', 'en']))
+        z.union([
+          z
+            .object({ hostname: z.string(), redirectTo: z.string() })
             .describe(
-              "The service's languages the host's own words come in, in the service's order; bokmål when none do",
+              'A redirect hostname: the host sends visitors to the same path on redirectTo',
             ),
-          theme: z
-            .null()
-            .describe("Designsystemet's default (Digdir) theme, until a service's own is built"),
-          icon: z
-            .string()
-            .nullable()
-            .describe("The service's icon for the browser tab, a base64 PNG or SVG data: address"),
-          menu: z.array(z.record(z.string(), z.unknown())),
-          pages: z.array(z.object({ id: z.string(), title: z.unknown() })),
-        }),
+          z.object({
+            hostname: z.string(),
+            tenant: z.string(),
+            service: z.string(),
+            environment: z.string(),
+            name: z.unknown(),
+            login: z.object({
+              issuer: z.string().nullable(),
+              clientId: z.string(),
+              audience: z.string(),
+              altinnResource: z.string().nullable(),
+            }),
+            languages: z
+              .array(z.enum(['nb', 'en']))
+              .describe(
+                "The service's languages the host's own words come in, in the service's order; bokmål when none do",
+              ),
+            theme: z
+              .null()
+              .describe("Designsystemet's default (Digdir) theme, until a service's own is built"),
+            icon: z
+              .string()
+              .nullable()
+              .describe(
+                "The service's icon for the browser tab, a base64 PNG or SVG data: address",
+              ),
+            menu: z.array(z.record(z.string(), z.unknown())),
+            pages: z.array(z.object({ id: z.string(), title: z.unknown() })),
+          }),
+        ]),
         'The hosted service',
       ),
       404: problem('urn:genai:problem:host-not-found: the hostname is not active'),
@@ -1286,6 +1423,50 @@ export const accessRoutes: RouteConfig[] = [
       401: unauthorized,
       403: forbidden,
       404: problem('No such client, or not a member of this tenant'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/services/{service}/hostnames',
+    summary:
+      "The addresses of a service's hosted clients: genki's assigned name, own domains and names the platform opened, with their state and records",
+    request: { params: z.object({ tenant, service: pathParam('service', 'klarsprak') }) },
+    responses: {
+      200: json(
+        z.object({
+          client: z.string().nullable().describe('The hosted client own domains are claimed for'),
+          hostnames: z.array(HostnameClaimView),
+          assigns: z.boolean().describe('Whether the platform assigns names under apps.'),
+          target: z.object({
+            fqdn: z.string().optional(),
+            verificationId: z.string().optional(),
+            staticIp: z.string().optional(),
+          }),
+        }),
+        'Addresses',
+      ),
+      401: unauthorized,
+      404: notMember,
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/services/{service}/address',
+    summary:
+      "Give a published service with an assistant interface genki's name for it, <label>.apps.<zone>, and a hosted client if it has none (manage-services, audited; in lockdown a new hosted client needs an operator)",
+    request: {
+      params: z.object({ tenant, service: pathParam('service', 'klarsprak') }),
+      headers: reason,
+      body: body(z.object({}), false),
+    },
+    responses: {
+      201: json(HostnameClaimView, 'Binding'),
+      400: problem(
+        'no_zone, not_published, no_interface, has_address, hostname_limit, no free name, or a missing change-reason',
+      ),
+      401: unauthorized,
+      403: forbidden,
+      404: notMember,
     },
   }),
   createRoute({

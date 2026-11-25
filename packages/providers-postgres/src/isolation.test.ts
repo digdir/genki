@@ -49,6 +49,13 @@ const tenantRows: Record<string, (tenant: string, key: string) => [string, unkno
     `insert into tenants (org_number, created_by) values ($1, $2)`,
     [tenant, key],
   ],
+  hostname_claims: (tenant, key) => [
+    `insert into hostname_claims (id, tenant, client, service, hostname, apex, assigned, token,
+       state, step, state_since, created_at, created_by, updated_at, version)
+     values ($2, $1, 'c', 's', $2 || '.example.no', false, false, 't', 'active', 'done',
+       now(), now(), 'test', now(), 1)`,
+    [tenant, key],
+  ],
   conversations: (tenant, key) => [
     `insert into conversations (id, tenant, owner_hash, agent_id, created, body)
      values ($2, $1, 'h', 'a', 0, '\\x00')`,
@@ -412,6 +419,9 @@ describe('cross-tenant definer functions', () => {
     'platform_clients()',
     'platform_tenants()',
     `find_ingestion_execution('ingestion_executions-${ORG_A}')`,
+    `hostname_claims_in(array['active'], 10)`,
+    `find_hostname_claim('hostname_claims-${ORG_A}')`,
+    `hostname_claim_holder('hostname_claims-${ORG_A}.example.no')`,
   ];
 
   it.each(definers)('refuses %s without an explicit platform access purpose', async (call) => {

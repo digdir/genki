@@ -533,106 +533,126 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "hostname": {
-                      "type": "string"
-                    },
-                    "tenant": {
-                      "type": "string"
-                    },
-                    "service": {
-                      "type": "string"
-                    },
-                    "environment": {
-                      "type": "string"
-                    },
-                    "name": {},
-                    "login": {
+                  "anyOf": [
+                    {
                       "type": "object",
                       "properties": {
-                        "issuer": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
-                        "clientId": {
+                        "hostname": {
                           "type": "string"
                         },
-                        "audience": {
+                        "redirectTo": {
                           "type": "string"
-                        },
-                        "altinnResource": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
                         }
                       },
                       "required": [
-                        "issuer",
-                        "clientId",
-                        "audience",
-                        "altinnResource"
-                      ]
-                    },
-                    "languages": {
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "enum": [
-                          "nb",
-                          "en"
-                        ]
-                      },
-                      "description": "The service's languages the host's own words come in, in the service's order; bokmål when none do"
-                    },
-                    "theme": {
-                      "type": "null",
-                      "description": "Designsystemet's default (Digdir) theme, until a service's own is built"
-                    },
-                    "icon": {
-                      "type": [
-                        "string",
-                        "null"
+                        "hostname",
+                        "redirectTo"
                       ],
-                      "description": "The service's icon for the browser tab, a base64 PNG or SVG data: address"
+                      "description": "A redirect hostname: the host sends visitors to the same path on redirectTo"
                     },
-                    "menu": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "additionalProperties": {}
-                      }
-                    },
-                    "pages": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "title": {}
+                    {
+                      "type": "object",
+                      "properties": {
+                        "hostname": {
+                          "type": "string"
                         },
-                        "required": [
-                          "id"
-                        ]
-                      }
+                        "tenant": {
+                          "type": "string"
+                        },
+                        "service": {
+                          "type": "string"
+                        },
+                        "environment": {
+                          "type": "string"
+                        },
+                        "name": {},
+                        "login": {
+                          "type": "object",
+                          "properties": {
+                            "issuer": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "clientId": {
+                              "type": "string"
+                            },
+                            "audience": {
+                              "type": "string"
+                            },
+                            "altinnResource": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "issuer",
+                            "clientId",
+                            "audience",
+                            "altinnResource"
+                          ]
+                        },
+                        "languages": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "nb",
+                              "en"
+                            ]
+                          },
+                          "description": "The service's languages the host's own words come in, in the service's order; bokmål when none do"
+                        },
+                        "theme": {
+                          "type": "null",
+                          "description": "Designsystemet's default (Digdir) theme, until a service's own is built"
+                        },
+                        "icon": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "The service's icon for the browser tab, a base64 PNG or SVG data: address"
+                        },
+                        "menu": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": {}
+                          }
+                        },
+                        "pages": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "title": {}
+                            },
+                            "required": [
+                              "id"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "hostname",
+                        "tenant",
+                        "service",
+                        "environment",
+                        "login",
+                        "languages",
+                        "theme",
+                        "icon",
+                        "menu",
+                        "pages"
+                      ]
                     }
-                  },
-                  "required": [
-                    "hostname",
-                    "tenant",
-                    "service",
-                    "environment",
-                    "login",
-                    "languages",
-                    "theme",
-                    "icon",
-                    "menu",
-                    "pages"
                   ]
                 }
               }

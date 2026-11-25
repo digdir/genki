@@ -41,7 +41,7 @@ export type ApiTag = (typeof apiTags)[number]['name'];
 const rules: [RegExp, ApiTag][] = [
   [/^\/(health|up|openapi\.json|reference)(\/|$)|^\/schemas(\/|$)/, 'Platform'],
   [/^\/(v1|api|a2a)(\/|$)/, 'Frontend'],
-  [/^\/(operator|support-sessions|recorder)(\/|$)/, 'Operations'],
+  [/^\/(operator|support-sessions|recorder|internal)(\/|$)/, 'Operations'],
   [/^\/mock\/|^\/onboarding\/|^\/me$/, 'Access and extensions'],
   [/^\/(eval-tasks|eval-runs|testcase-candidates|tasks)\//, 'Work and quality'],
   [/^\/models$/, 'Datasets and knowledge'],

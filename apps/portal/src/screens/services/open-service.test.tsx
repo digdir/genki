@@ -5,7 +5,7 @@ import { App } from '../../App';
 import { mockAnsattporten } from '../../auth';
 import { mockFetch } from '../../mock';
 import { kari } from '../../test-utils';
-import type { ClientSpec, ClientView } from '../../types';
+import type { ClientSpec, ClientView, HostnameView } from '../../types';
 import { serviceAddress } from '../service/service-address';
 
 afterEach(cleanup);
@@ -29,11 +29,15 @@ const client = (id: string, spec: Partial<ClientSpec>): ClientView => ({
   deliveries: [],
 });
 
-const withClients = (clients: ClientView[]) => {
+const withClients = (clients: ClientView[], claimed: HostnameView[] = []) => {
   const base = mockFetch();
   const answered = { clients: false };
   const fetch: typeof globalThis.fetch = async (input, init) => {
     const url = String(input);
+    if ((init?.method ?? 'GET') === 'GET' && /\/services\/[^/]+\/hostnames$/.test(url))
+      return new Response(JSON.stringify({ client: null, hostnames: claimed, assigns: true }), {
+        headers: { 'content-type': 'application/json' },
+      });
     if ((init?.method ?? 'GET') === 'GET' && /\/clients\?service=/.test(url)) {
       answered.clients = true;
       return new Response(JSON.stringify({ clients, endpoints: {}, oidc: {} }), {
@@ -127,6 +131,40 @@ describe('Åpne tjenesten in the service header', () => {
     expect(link.getAttribute('href')).toBe('https://rapport.apps.genki-test.digdir.cloud/');
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.getAttribute('rel')).toContain('noopener');
+  }, 30000);
+
+  it('opens an active claimed domain, which no client lists', async () => {
+    const auth = mockAnsattporten(kari);
+    await auth.login();
+    window.location.hash = '#/services/rapportassistenten';
+    const { fetch } = withClients(
+      [client('rapportassistenten-host', { hosted: true, hostnames: [] })],
+      [
+        {
+          id: 'krav-1',
+          hostname: 'rapport.example.no',
+          client: 'rapportassistenten-host',
+          environment: 'prod',
+          redirectTo: null,
+          apex: false,
+          assigned: false,
+          managed: false,
+          state: 'active',
+          failure: null,
+          records: [],
+          checkedAt: null,
+          createdAt: '2026-11-25T10:00:00Z',
+        },
+      ],
+    );
+    render(<App auth={auth} fetch={fetch} live />);
+    await waitFor(() => expect(header()?.textContent).toMatch(/Publiser/), { timeout: 15000 });
+    const link = await screen.findByRole(
+      'link',
+      { name: /^Åpne tjenesten ?\(åpnes i ny fane\)$/ },
+      { timeout: 5000 },
+    );
+    expect(link.getAttribute('href')).toBe('https://rapport.example.no/');
   }, 30000);
 
   it('is also shown on the I bruk edition of a published service', async () => {

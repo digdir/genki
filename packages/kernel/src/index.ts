@@ -63,6 +63,7 @@ export {
 } from './retention.js';
 export * from './media.js';
 export * from './provider-objects.js';
+export * from './hostname-claims.js';
 export {
   chatShape,
   decideShape,

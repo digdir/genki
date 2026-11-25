@@ -456,6 +456,37 @@ export interface ClientsView {
   oidc: { issuer?: string; audience?: string; altinnResource?: string };
 }
 
+export type HostnameState =
+  'pending-dns' | 'binding' | 'active' | 'failed' | 'lapsed' | 'removing' | 'removed';
+
+export interface DnsRecordView {
+  type: 'TXT' | 'CNAME' | 'A';
+  name: string;
+  value: string;
+}
+
+export interface HostnameView {
+  id: string | null;
+  hostname: string;
+  client: string;
+  environment: string | null;
+  redirectTo: string | null;
+  apex: boolean;
+  assigned: boolean;
+  managed: boolean;
+  state: HostnameState;
+  failure: string | null;
+  records: DnsRecordView[];
+  checkedAt: string | null;
+  createdAt: string | null;
+}
+
+export interface ServiceHostnamesView {
+  client: string | null;
+  hostnames: HostnameView[];
+  assigns: boolean;
+}
+
 export interface ServiceKeyView extends ApiKeyView {
   service: string | null;
   client: string | null;

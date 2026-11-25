@@ -73,6 +73,17 @@ const found = async <T>(response: Response): Promise<T | undefined> => {
   return (await response.json()) as T;
 };
 
+const redirectLabel = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+export const redirectAddress = (answer: unknown, path: string): string | undefined => {
+  const to = (answer as { redirectTo?: unknown } | undefined)?.redirectTo;
+  if (typeof to !== 'string' || to.length > 253) return undefined;
+  const labels = to.split('.');
+  if (labels.length < 2 || !labels.every((l) => redirectLabel.test(l))) return undefined;
+  const rest = path.startsWith('/') && !path.startsWith('//') ? path : '/';
+  return `https://${to}${rest}`;
+};
+
 export const loadHost = async (fetcher: typeof fetch, hostname: string) =>
   found<HostView>(await fetcher(`/api/v1/hosts/${encodeURIComponent(hostname)}`));
 

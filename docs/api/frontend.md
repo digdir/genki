@@ -25,9 +25,17 @@ The rules for these routes are in the [Frontend contract](../frontend-contract.m
 
 genki's assistant host draws a service on a hostname of its own (ADR 0061). It needs no credential to start:
 
-1. `GET /v1/hosts/{hostname}`: the tenant, service, environment, name, menu and page titles, and `login` with `issuer`, `clientId`, `audience` and `altinnResource` (for a Client without `oidc`, genki's platform login client and the API audience). Any hostname that is not active, including one opened to another tenant, gets `404` with `urn:genai:problem:host-not-found`. Cached 60 seconds.
+1. `GET /v1/hosts/{hostname}`: the tenant, service, environment, name, menu and page titles, and `login` with `issuer`, `clientId`, `audience` and `altinnResource` (for a Client without `oidc`, genki's platform login client and the API audience). Any hostname that is not active, including one opened to another tenant, gets `404` with `urn:genai:problem:host-not-found`. Cached 60 seconds. A hostname claimed as a redirect answers only `{ hostname, redirectTo }`; the host then sends the browser to the same path on `redirectTo`.
 2. `GET /v1/hosts/{hostname}/pages/{id}`: a page's title and Markdown body.
 3. After login with the named client: `GET /v1/models`, then `GET /v1/models/{id}/interface` for the layout, then the sequence above.
+
+## Addresses for a hosted service
+
+A hostname is opened by an operator's parameter file or by a claim of the service owner (ADR 0062). A claim is served, and a signed-in page on it admitted, only while it is `active`.
+
+- `GET /tenants/{tenant}/services/{service}/hostnames`: the service's addresses with their state (`pending-dns`, `binding`, `active`, `failed`, `lapsed`, `removing`, `removed`) and, for an own domain, the three DNS records it needs.
+- `POST /tenants/{tenant}/services/{service}/address` gives a published service with an assistant interface genki's name for it, `<label>.apps.<zone>`, where the label is the service id, or `<label>-2` and on when that is taken. The first publish does this by itself.
+- `POST /tenants/{tenant}/clients/{client}/hostnames` with `{ hostname, environment | redirectTo, reason }` claims an own domain for a hosted Client; `DELETE .../hostnames/{hostname}` removes it. Both need `manage-services`.
 
 ## On genki's assistant host
 
