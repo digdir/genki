@@ -161,7 +161,7 @@ describe('the read check after a cut read', () => {
   });
 
   it('a read the character budget cut with no room for one more chunk finalizes as before', async () => {
-    // 1,500 characters a chunk and 6,700 to read: the budget cuts 0–16 to 0–3, and 700 are left.
+    // 1,500 characters a chunk and 6,700 to read: the budget cuts 0–16 to 1–4, and 700 are left.
     const long = new Map(
       [...report].map(([id, c]) => [id, { ...c, content: 'x'.repeat(1500) }] as const),
     );
@@ -183,7 +183,7 @@ describe('the read check after a cut read', () => {
     expect(shadowGates(out)[0]).toMatchObject({ status: 'sufficient', strategy: 'finalize' });
   });
 
-  it('a cut read with no round left to read the rest finalizes as before', async () => {
+  it('a cut read with only one round left finalizes as before', async () => {
     const r = searching(case014(1.78));
     const out = await run({
       retrieval: r.impl,
@@ -193,6 +193,45 @@ describe('the read check after a cut read', () => {
 
     expect(out.notices.filter((n) => n.stage === 'exhausted')).toEqual([]);
     expect(shadowGates(out)[0]).toMatchObject({ status: 'sufficient', strategy: 'finalize' });
+  });
+
+  it('a cut read with two rounds left reads the rest', async () => {
+    const r = searching(case014(1.78));
+    await run({
+      retrieval: r.impl,
+      config: { ...withBudget({}), strategy: { ...withBudget({}).strategy, maxIterations: 5 } },
+      scripts: { primary: { loop: readThenLeftOut, read: [supportFound] } },
+    });
+
+    expect(ranges(r)).toEqual([
+      ['dA', 0, 9],
+      ['dA', 10, 16],
+    ]);
+  });
+
+  it('a read-more hint after a read check that found a gap in a cut read does not name the left-out range', async () => {
+    const r = searching(case014(1.78));
+    const out = await run({
+      retrieval: r.impl,
+      config: withBudget({}),
+      scripts: {
+        primary: {
+          loop: [
+            readThenLeftOut[0] as Script['loop'][number],
+            readThenLeftOut[1] as Script['loop'][number],
+            () => result('', [call('generate_response', { query: 'x' })]),
+            () => result('Ferdig.'),
+          ],
+          read: [() => readSignal('gap-remaining')],
+          synth: [() => 'Svar fra sammendraget [1].'],
+          sufficiency: [() => decision('insufficient', 'read-more')],
+        },
+      },
+    });
+
+    const hint = toolMessages(out.loops[3]).join('\n');
+    expect(hint).toContain('Read more from the current result set');
+    expect(hint).not.toContain('read_chunks {"doc_num":"dA","chunk_range":{"from":10,"to":16}}');
   });
 
   it('an answer written after a cut read that says it found nothing still gets its citations added', async () => {
