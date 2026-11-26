@@ -6,7 +6,7 @@
     <title>Answer actions · Components</title>
     <meta
       name="description"
-      content="What a reader can do with a finished answer: copy it with its sources, copy the link to its thread, and say whether it was useful."
+      content="What a reader can do with a finished answer: say whether it was useful, and copy it, with or without its sources, or the link to its thread."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -34,12 +34,15 @@
               ><span class="badge">Main area</span>
             </div>
             <p class="summary">
-              What a reader can do with a finished answer: copy it with its sources, copy the link
-              to its thread, and say whether it was useful.
+              What a reader can do with a finished answer: say whether it was useful, and copy it,
+              with or without its sources, or the link to its thread.
             </p>
             <dl class="facts">
               <dt>UI name</dt>
-              <dd>«Kopier svaret», «Kopier lenke til tråden», «Var svaret nyttig?»</dd>
+              <dd>
+                «Kopier» with «Kun svaret», «Svaret med kildeliste» and «Lenke til tråden»; «Nyttig»
+                and «Ikke nyttig»
+              </dd>
               <dt>Sits in</dt>
               <dd>The last row of the answer</dd>
               <dt>Issue</dt>
@@ -83,26 +86,30 @@
             <h2>Variants</h2>
             <ul>
               <li>
-                <strong>Copy</strong>, as in kunnskapsassistenten: «Kopier svaret» and «Kopier lenke
-                til tråden», with when the answer came at the far end.
+                <strong>Copy</strong>: one «Kopier» button, Designsystemet's Dropdown, with «Kun
+                svaret» (the words as drawn, no footnotes), «Svaret med kildeliste» (the answer and
+                its reference list as markdown) and «Lenke til tråden». The link is left out where
+                the app has no link to give.
               </li>
               <li>
-                <strong>Feedback</strong>, after genki's workspace: «Var svaret nyttig?» with «Ja»
-                and «Nei», which send the rating on the click, then optional reasons for a no, a
-                comment, «Send» and «Hopp over». Off unless the app asks for it with
-                <code>feedback</code>: kunnskapsassistenten took the feedback under each answer out
-                on 6 October 2026, because it adds a lot of noise under every answer, and has it to
-                be rethought.
+                <strong>Feedback</strong>, after genki's workspace: a thumb up, «Nyttig», and a
+                thumb down, «Ikke nyttig», first in the row as icons, which send the rating on the
+                click; then, under the row, optional reasons for a no, a comment, «Send» and «Hopp
+                over». Off unless the app asks for it with <code>feedback</code>:
+                kunnskapsassistenten took the feedback under each answer out on 6 October 2026,
+                because it adds a lot of noise under every answer, and has it to be rethought.
               </li>
-              <li><strong>Both</strong>, the copy row first and the feedback under a rule.</li>
+              <li><strong>Both</strong>, in one row: the thumbs, then «Kopier».</li>
             </ul>
             <p>
-              Each copy button is drawn only when the app passes its event, the feedback only when
-              it also passes <code>feedback</code>, and the block draws nothing when it has none.
+              «Kopier» is drawn when the app passes a copy event, each answer choice only with its
+              event, the feedback only when it also passes <code>feedback</code>, and the block
+              draws nothing when it has none.
             </p>
             <p>
-              The answer block's <code>answerCopy</code> gives the text for «Kopier svaret» with its
-              reference list, and the count for the receipt.
+              The answer block's <code>answerCopy</code> gives the text: without sources for «Kun
+              svaret», and with <code>format: 'markdown'</code> the answer's markdown and its
+              reference list for «Svaret med kildeliste», with the count for the receipt.
             </p>
           </div>
           <div>
@@ -110,14 +117,11 @@
             <p>The block raises events. The app copies, sends, and passes back what happened.</p>
             <ul>
               <li>
-                <code>onCopyAnswer</code> and <code>onCopyLink</code>: the reader asked to copy.
-                <code>copied</code> is the receipt: <code>{ kind: 'answer', sources }</code>,
-                <code>{ kind: 'link' }</code> or <code>{ kind: 'failed' }</code>. A new object for
-                each copy; the receipt clears itself after four seconds.
-              </li>
-              <li>
-                <code>linkOnlyHere</code>: the link opens the thread only for this person, in this
-                browser, and the block says so.
+                <code>onCopyAnswer</code>, <code>onCopyWithSources</code> and
+                <code>onCopyLink</code>: the reader asked to copy. <code>copied</code> is the
+                receipt: <code>{ kind: 'answer', sources }</code>, <code>{ kind: 'link' }</code> or
+                <code>{ kind: 'failed' }</code>. A new object for each copy; the receipt clears
+                itself after four seconds.
               </li>
               <li>
                 <code>feedback</code> and <code>onFeedback</code>: the form, off by default, and
@@ -129,8 +133,8 @@
                 <code>'failed'</code>. The form scrolls into sight once when the person opens it.
               </li>
               <li>
-                <code>actions</code>: the app's own buttons after the copy buttons.
-                <code>end</code>: what sits at the far end, such as when the answer came.
+                <code>actions</code>: the app's own buttons after «Kopier». <code>end</code>: what
+                sits at the far end of the row.
               </li>
               <li>
                 <code>color</code>: Designsystemet's <code>data-color</code>. Neutral unless given,
@@ -190,31 +194,6 @@
                   <td>what sits at the far end of the row</td>
                 </tr>
                 <tr>
-                  <td><code>--genai-answer-actions-feedback-border-color</code></td>
-                  <td><code>--ds-color-neutral-border-subtle</code></td>
-                  <td>the rule above the feedback</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-answer-actions-feedback-border-width</code></td>
-                  <td><code>--ds-border-width-default</code></td>
-                  <td>the rule above the feedback</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-answer-actions-feedback-gap</code></td>
-                  <td><code>--ds-size-2</code></td>
-                  <td>space between the question, the form and the status</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-answer-actions-feedback-padding-block-start</code></td>
-                  <td><code>--ds-size-2</code></td>
-                  <td>space under the rule</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-answer-actions-feedback-row-gap</code></td>
-                  <td><code>--ds-size-2</code></td>
-                  <td>space between the question and «Ja» and «Nei»</td>
-                </tr>
-                <tr>
                   <td><code>--genai-answer-actions-font-family</code></td>
                   <td><code>--ds-font-family</code></td>
                   <td>the block's font</td>
@@ -252,17 +231,7 @@
                 <tr>
                   <td><code>--genai-answer-actions-gap</code></td>
                   <td><code>--ds-size-2</code></td>
-                  <td>space between the copy row and the feedback</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-answer-actions-question-color</code></td>
-                  <td><code>--ds-color-neutral-text-subtle</code></td>
-                  <td>«Var svaret nyttig?»</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-answer-actions-question-font-size</code></td>
-                  <td><code>--ds-font-size-2</code></td>
-                  <td>«Var svaret nyttig?»</td>
+                  <td>space between the row and the form under it</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-actions-reasons-gap</code></td>
@@ -290,7 +259,12 @@
                 <tr>
                   <td><code>--genai-answer-actions-row-gap</code></td>
                   <td><code>--ds-size-2</code></td>
-                  <td>space between the copy buttons</td>
+                  <td>space between the thumbs, «Kopier» and the app's actions</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-thumbs-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>space between the thumb up and the thumb down</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-actions-status-color</code></td>
@@ -310,15 +284,15 @@
             <ul>
               <li>
                 An answer must not leave the service without where it came from. In
-                kunnskapsassistenten, «Kopier svaret» copies the answer with its numbers and the
-                sources under it, and the receipt counts them: «Svaret og 3 kilder er kopiert.».
-                What goes on the clipboard is the app's; the block shows the count it gets.
+                kunnskapsassistenten, «Svaret med kildeliste» copies the answer with its numbers and
+                the sources under it, and the receipt counts them: «Svaret og 3 kilder er kopiert.».
+                «Kun svaret» is there for a reader who wants the words alone. What goes on the
+                clipboard is the app's; the block shows the count it gets.
               </li>
               <li>
                 In kunnskapsassistenten, a thread's link opens it only in the browser it was made in
-                (kunnskapsassistenten#119). The limit is the button's description, not its name, so
-                the row keeps its height; the tooltip, the description and the receipt say the same
-                sentence.
+                (kunnskapsassistenten#119). The block no longer says so: the link is meant to be
+                shared, and opening it for colleagues in the same organisation is genki#1045.
               </li>
               <li>
                 The receipt is a polite live region that is always in the page, even empty. A region
@@ -343,13 +317,15 @@
             <h2>What is built</h2>
             <ul>
               <li>
-                Designsystemet <code>Button</code>s, tertiary and small, with the clipboard icons,
-                as in kunnskapsassistenten. <code>Tooltip</code> for the link's limit.
+                Designsystemet's <code>Dropdown</code> for «Kopier», a tertiary small trigger with
+                its choices as buttons, not <code>role="menu"</code>. A choice closes the menu
+                before the app copies. «Lenke til tråden» is left out where the app gives no link.
               </li>
               <li>
-                Feedback after the workspace: «Ja» and «Nei» are toggle buttons with
-                <code>aria-pressed</code>, a <code>Fieldset</code> of <code>Chip</code> checkboxes
-                for a no, a <code>Textarea</code> with its count, and a status line.
+                Feedback after the workspace: the thumbs are icon toggle buttons named «Nyttig» and
+                «Ikke nyttig», with a <code>Tooltip</code> and <code>aria-pressed</code>, the icon
+                filled when chosen; a <code>Fieldset</code> of <code>Chip</code> checkboxes for a
+                no, a <code>Textarea</code> with its count, and a status line.
               </li>
               <li>
                 A click on a thumb sends the rating at once and opens the optional form; the status

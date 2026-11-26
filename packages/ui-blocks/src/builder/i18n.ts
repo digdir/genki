@@ -39,7 +39,7 @@ export const nbBuilder = defineNamespace({
   chatDisclaimerHelp:
     'Under feltet: «Assistenten kan gjøre feil. Husk å sjekke viktig informasjon.», med assistentens navn',
   chatCopy: 'Kopier',
-  chatCopyHelp: 'Kopier svaret med kildene, og lenken til samtalen',
+  chatCopyHelp: 'Kopier svaret, med eller uten kildene, og lenken til samtalen',
   chatFeedback: 'Tilbakemelding',
   chatFeedbackHelp: 'Tommel opp eller ned på hvert svar',
   chatVariantPicker: 'Velg variant',
@@ -145,7 +145,7 @@ export const enBuilder = {
   chatDisclaimerHelp:
     'Under the field: “The assistant can make mistakes. Remember to check important information.”, with the assistant’s name',
   chatCopy: 'Copy',
-  chatCopyHelp: 'Copy the answer with its sources, and the link to the conversation',
+  chatCopyHelp: 'Copy the answer, with or without its sources, and the link to the conversation',
   chatFeedback: 'Feedback',
   chatFeedbackHelp: 'Thumbs up or down on each answer',
   chatVariantPicker: 'Pick a variant',

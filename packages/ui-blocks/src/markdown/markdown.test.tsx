@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { Markdown, blocksOf, visibleText } from './Markdown.js';
+import { Markdown, blocksOf, inlineText, visibleText } from './Markdown.js';
 import { findHits } from './textSearch.js';
 
 afterEach(cleanup);
@@ -442,5 +442,15 @@ describe('Markdown headings and list items on adversarial input', () => {
     const line = `1.${tabs}x\r`;
     expect(quickly(() => blocksOf(line))).toBeLessThan(1000);
     expect(blocksOf(line)).toEqual([{ kind: 'paragraph', lines: [line] }]);
+  });
+
+  it('reads a line in linear time on a long run of open brackets', () => {
+    const line = '[1'.repeat(100_000);
+    expect(quickly(() => inlineText(line))).toBeLessThan(1000);
+  });
+
+  it('ends a link’s words at an open bracket, so `[a [b](…)` links only «b»', () => {
+    render(<Markdown text="Se [a [b](https://example.org)." />);
+    expect(screen.getByRole('link', { name: 'b' })).toBeTruthy();
   });
 });
