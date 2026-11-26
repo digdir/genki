@@ -62,7 +62,10 @@ const strings = (node: unknown, path: string[] = []): [string, string][] =>
 const withoutPlaceholders = (text: string) =>
   externalTerms.reduce(
     (rest, term) => rest.replaceAll(term, ''),
-    text.replace(/\{[^{}]*\}/gu, '').replace(/<\/?[a-z]+>/giu, ''),
+    text
+      .replace(/\{[^{}]*\}/gu, '')
+      .replaceAll('<', ' ')
+      .replaceAll('>', ' '),
   );
 
 const covers = (exception: Exception, key: string) =>

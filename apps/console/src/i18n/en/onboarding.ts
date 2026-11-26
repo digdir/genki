@@ -11,7 +11,7 @@ export const onboarding = {
   reasonShort: 'Write a reason of at least {min} characters. It is now {n}.',
   registerTitle: 'Register organisation',
   registerIntro:
-    'The organisation is shown under Organisations straight away. The registration is logged in Audit.',
+    'The organisation is shown under Organisations straight away. The registration is logged in Log.',
   orgnr: 'Organisation number',
   nameFull: 'Name of the organisation',
   reason: 'Reason',
@@ -42,7 +42,7 @@ export const onboarding = {
   dialogIntro:
     'For organisations Digdir takes in directly, without a request from the portal. Requests normally come through For processing.',
   name: 'Name',
-  reasonHint: 'At least 10 characters. Logged in Audit.',
+  reasonHint: 'At least 10 characters. Logged in Log.',
   callContent: 'The content of the call',
   reasonHeader: 'The reason is sent in the change-reason header.',
   introRegisterOnly: 'Register new organisations that will use the platform.',
@@ -52,7 +52,7 @@ export const onboarding = {
   title: 'Onboarding',
   loading: 'Loading organisations in onboarding',
   registeredFlash: '{name} has been registered and is shown under Organisations.',
-  registeredLogged: '{name} has been registered. The decision is logged in Audit.',
+  registeredLogged: '{name} has been registered. The decision is logged in Log.',
   emptyTitle: 'No organisations in onboarding',
   emptyText:
     'When Digdir approves an access request in <link>For processing</link>, the organisation appears here until it is under way.',

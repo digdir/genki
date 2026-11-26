@@ -9,8 +9,7 @@ export const onboarding = defineNamespace({
   nameMissing: 'Skriv navnet på virksomheten.',
   reasonShort: 'Skriv en begrunnelse på minst {min} tegn. Nå er det {n}.',
   registerTitle: 'Registrer virksomhet',
-  registerIntro:
-    'Virksomheten vises under Virksomheter med en gang. Registreringen logges i Revisjon.',
+  registerIntro: 'Virksomheten vises under Virksomheter med en gang. Registreringen logges i Logg.',
   orgnr: 'Org.nr.',
   nameFull: 'Navn på virksomheten',
   reason: 'Begrunnelse',
@@ -41,7 +40,7 @@ export const onboarding = defineNamespace({
   dialogIntro:
     'For virksomheter Digdir tar inn direkte, uten forespørsel fra portalen. Vanligvis kommer forespørslene gjennom Til behandling.',
   name: 'Navn',
-  reasonHint: 'Minst 10 tegn. Logges i Revisjon.',
+  reasonHint: 'Minst 10 tegn. Logges i Logg.',
   callContent: 'Innholdet i kallet',
   reasonHeader: 'Begrunnelsen sendes i headeren change-reason.',
   introRegisterOnly: 'Registrer nye virksomheter som skal bruke plattformen.',
@@ -51,7 +50,7 @@ export const onboarding = defineNamespace({
   title: 'Oppstart',
   loading: 'Henter virksomheter i oppstart',
   registeredFlash: '{name} er registrert og vises under Virksomheter.',
-  registeredLogged: '{name} er registrert. Beslutningen er logget i Revisjon.',
+  registeredLogged: '{name} er registrert. Beslutningen er logget i Logg.',
   emptyTitle: 'Ingen virksomheter i oppstart',
   emptyText:
     'Når Digdir godkjenner en tilgangsforespørsel i <link>Til behandling</link>, vises virksomheten her til den er i gang.',
