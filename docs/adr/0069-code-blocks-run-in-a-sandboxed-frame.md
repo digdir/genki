@@ -54,7 +54,7 @@ ADR 0067 reserved a `code` tier for interface blocks: a built bundle an organisa
 - **For the caller.** While it is off for the caller, validate, preview, import and publish refuse `tier: code` at `spec.tier`; the block list and detail leave out code editions and `review`; pinning a code edition answers `404`; and every share-request route, the operator's too, answers `404` like an unknown route (`requireFlag`).
 - **For the organisation.** A service draws a code block only while the flag is on for the service's organisation, by the tenant's choice or `GENAI_FLAGS`, not one person's, so the interface carries no frame address otherwise. An operator approves a share request only while the flag is on for the block's whole organisation (`409` otherwise).
 - **The block origin is not behind the flag.** It serves an edition to anyone who has its address, as before; only the gated routes hand addresses out.
-- **The console's «Designelementer til gjennomgang»** is in the menu and at its address only while the flag is on for the operator.
+- **The console's «Designelementer til gjennomgang»** is a tab under Katalog and at its address only while the flag is on for the operator.
 
 ## Why
 

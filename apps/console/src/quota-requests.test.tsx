@@ -96,23 +96,32 @@ describe('quota requests in the console', () => {
     ).toBeTruthy();
   });
 
-  it('shows the number of pending quota requests as a badge on the menu item', async () => {
-    await signedIn('#/tenants');
+  it('reaches the quota requests from a tab under Til behandling', async () => {
+    await signedIn('#/quota-requests');
 
     const menu = screen.getByRole('navigation', { name: 'Konsollmeny' });
-
     expect(
-      (await within(menu).findByRole('link', { name: /1 kvoteforespørsel venter/ })).getAttribute(
-        'href',
-      ),
-    ).toBe('#/quota-requests');
+      within(menu)
+        .getByRole('link', { name: /^Til behandling/ })
+        .getAttribute('aria-current'),
+    ).toBe('page');
+    const tabs = screen.getByRole('navigation', { name: 'Sider i Til behandling' });
+    expect(within(tabs).getByRole('link', { name: 'Kvote' }).getAttribute('aria-current')).toBe(
+      'page',
+    );
   });
 
-  it('approves a request with the change reason and clears the badge', async () => {
+  it('approves a request with the change reason and counts one less on Til behandling', async () => {
     const { fetch, sent } = recording();
     await signedIn('#/quota-requests', fetch);
     const menu = screen.getByRole('navigation', { name: 'Konsollmeny' });
-    await within(menu).findByRole('link', { name: /1 kvoteforespørsel venter/ });
+    const waiting = () =>
+      Number(
+        /, (\d+) venter/.exec(
+          within(menu).getByRole('link', { name: /^Til behandling/ }).textContent ?? '',
+        )?.[1] ?? 0,
+      );
+    await waitFor(() => expect(waiting()).toBe(6));
 
     const dialog = await decide(
       'Godkjenn kvoteforespørselen fra Eksempeldirektoratet',
@@ -130,9 +139,7 @@ describe('quota requests in the console', () => {
         reason: 'Godkjent etter samtale med Bjørn',
       },
     ]);
-    await waitFor(() =>
-      expect(within(menu).getByRole('link', { name: 'Kvoteforespørsler' })).toBeTruthy(),
-    );
+    await waitFor(() => expect(waiting()).toBe(5));
   });
 
   it('rejects a request with the change reason', async () => {

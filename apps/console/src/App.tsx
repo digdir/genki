@@ -29,7 +29,7 @@ import { Tenants } from './screens/Tenants';
 import { SearchEngines } from './screens/SearchEngines';
 import { Schemas } from './screens/Schemas';
 import { Tracing } from './screens/Tracing';
-import { allPages, Shell, type NavBadges } from './Shell';
+import { Shell } from './Shell';
 import { EmptyState, Loading } from './states';
 import { ContentReasonProvider } from './content-reason';
 import { definitionKindOfParam } from './definition-kinds';
@@ -78,7 +78,6 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
   const [notOperator] = useState(
     () => new URLSearchParams(window.location.search).get('signin') === 'not-operator',
   );
-  const [badges, setBadges] = useState<NavBadges>({});
   const [queued, setQueued] = useState<number | undefined>();
   const [decided, setDecided] = useState(0);
   const [quotaPending, setQuotaPending] = useState<number | undefined>();
@@ -106,6 +105,10 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
       settingsGrid: !live,
     });
   }, [auth, send, baseUrl, live, endSession]);
+  const search = useMemo(
+    () => ({ tenants: api.listTenants, services: api.tenantDefinitions }),
+    [api],
+  );
   const authorized = Boolean(session?.roles.includes(operatorRole));
   const signedIn = Boolean(session);
   useSessionRenewal(auth, session, setSession, endSession);
@@ -146,18 +149,6 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
       active = false;
     };
   }, [auth, restoring]);
-
-  useEffect(() => {
-    if (!authorized) return;
-    const controller = new AbortController();
-    api.operations(controller.signal).then(
-      (operations) => {
-        if (!controller.signal.aborted) setBadges({ operations: operations.triggers.length });
-      },
-      () => undefined,
-    );
-    return () => controller.abort();
-  }, [api, authorized]);
 
   useEffect(() => {
     if (!authorized) return;
@@ -272,7 +263,6 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
         <Atlas api={api} />
       </Suspense>
     );
-  const page = allPages.find((p) => p.path === current);
   const notFound = (
     <EmptyState title={t('shell.notFound')}>
       <Paragraph>{t('shell.notFoundHelp')}</Paragraph>
@@ -365,18 +355,18 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
           session={session}
           path={current}
           badges={{
-            ...badges,
             ...(queued === undefined ? {} : { queue: queued }),
             ...(quotaPending === undefined ? {} : { quotaRequests: quotaPending }),
           }}
           onLogout={logout}
+          search={search}
           health={api.health}
           readOnlyInLockdown={api.readOnlyInLockdown}
         >
           {render ? (
             render()
           ) : (
-            <EmptyState title={page ? t(page.label) : t('shell.notFound')}>
+            <EmptyState title={t('shell.notFound')}>
               <Paragraph>{t('shell.notFoundHelp')}</Paragraph>
             </EmptyState>
           )}

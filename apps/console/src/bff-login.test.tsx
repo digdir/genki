@@ -159,7 +159,8 @@ describe('signing in through the platform login', () => {
     open(p);
     await screen.findByRole('heading', { level: 1, name: 'Virksomheter' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Logg ut' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Brukermeny for / }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Logg ut' }));
 
     expect(p.visited).toEqual(['/auth/logout']);
   });

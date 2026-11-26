@@ -32,5 +32,5 @@ steps:
     hold: 1.5
   - say: Hver endring her krever en begrunnelse, og havner i revisjonsloggen. Slik ser dere i ettertid hvem som endret hva, og hvorfor.
     do:
-      - [find, role, link, hover, --name, Revisjon]
+      - [find, role, link, hover, --name, Logg]
     hold: 2
