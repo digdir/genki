@@ -121,8 +121,7 @@ import { setAt } from '../../definition-path';
 import { checkFlowInputs } from '../../data/flow-inputs';
 import { hasOperationSteps, operationKindsIn } from '../../data/step-operations';
 import { PublishedTest } from '../service/PublishedTest';
-import { serviceAddress } from '../service/service-address';
-import { activeAddress } from '../service/ServiceAddress';
+import { useServiceAddress } from '../service/service-address';
 import { DraftOutdated, type ConflictPick } from './DraftOutdated';
 import { VersionsTab, type VersionItem } from './VersionsTab';
 import { YamlTab } from './YamlTab';
@@ -975,29 +974,14 @@ export const Builder = ({
     [api, tenant, id, draftBar, liveVersion?.version, pointerRound],
     { keepPreviousFor: id },
   );
-  const [hostedClients] = useAsync(
-    async (signal) =>
-      (draftBar && liveVersion) || (live && !isNew && showsInUse)
-        ? api.listClients(tenant, id, signal).catch(() => undefined)
-        : undefined,
-    [api, tenant, id, draftBar, Boolean(liveVersion), live, isNew, showsInUse],
-    { keepPreviousFor: id },
+  const { address, known: addressKnown } = useServiceAddress(
+    api,
+    tenant,
+    id,
+    Boolean((draftBar && liveVersion) || (live && !isNew && showsInUse)),
   );
-  const [claimedHostnames] = useAsync(
-    async (signal) =>
-      (draftBar && liveVersion) || (live && !isNew && showsInUse)
-        ? api.serviceHostnames(tenant, id, signal).catch(() => undefined)
-        : undefined,
-    [api, tenant, id, draftBar, Boolean(liveVersion), live, isNew, showsInUse],
-    { keepPreviousFor: id },
-  );
-  const address =
-    (claimedHostnames.status === 'ready'
-      ? activeAddress(claimedHostnames.data?.hostnames ?? [])
-      : undefined) ??
-    (hostedClients.status === 'ready'
-      ? serviceAddress(hostedClients.data?.clients ?? [], id)
-      : undefined);
+  // A published service whose address sources both answered without one.
+  const noAddress = !address && addressKnown && !archived;
   const inUseVersion =
     pointers.status === 'ready'
       ? (pointers.data?.environments?.find((e) => e.name === productionEnvironment)?.version ??
@@ -2593,6 +2577,13 @@ export const Builder = ({
                     <span className="visually-hidden"> {t('edition.opensInNewTab')}</span>
                   </a>
                 </Button>
+              ) : noAddress ? (
+                <Link
+                  className="meta service-no-address"
+                  href={`#${servicePath(routeId, 'setup', '/channels')}`}
+                >
+                  {t('edition.noAddress')}
+                </Link>
               ) : null}
               {fresh ? (
                 <Button asChild variant="secondary" data-size="sm">
