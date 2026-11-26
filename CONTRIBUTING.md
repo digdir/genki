@@ -61,6 +61,10 @@ The pull request says how risky it is and how to undo it.
 - **Sensitive:** auth, identity, tenancy, the model gate, personal data handling, migrations, `infra/`, `.github/` or the `Dockerfile`. These also get the security review in [.github/review-security.md](.github/review-security.md), and the maintainers are told in the lab's Slack channel for sensitive changes before the merge. No approval is required.
 - **Undo** says whether a revert is enough, or which data or infra step it needs.
 
+### Dependency updates
+
+Renovate opens updates every Monday, once a release is three days old; security fixes come at any time. Patch, minor, digest and lock file updates merge themselves through the merge queue when the checks pass. Majors, GitHub Actions and the Docling image's Python packages wait for a maintainer: tick them on the [Dependency Dashboard](https://github.com/digdir/genki/issues/213), or review the pull request.
+
 ### Automated review
 
 Every pull request from this repository gets one review by a model when it opens, following [REVIEW.md](REVIEW.md) and the procedure in [.claude/skills/review-change/SKILL.md](.claude/skills/review-change/SKILL.md). It never approves, blocks or merges.
