@@ -381,29 +381,6 @@
   margin: 0;
 }
 
-/* «Tekster»: a text and what goes with it, side by side where there is room. */
-.blocks-texts-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: var(--ds-size-2);
-}
-
-.blocks-texts-row > .ds-field {
-  flex: 1 1 12rem;
-}
-
-/* Every suggestion over its remove button, however wide the button's label. */
-.blocks-texts-suggestion {
-  flex-direction: column;
-  align-items: start;
-}
-
-.blocks-texts-suggestion > .ds-field {
-  flex: none;
-  align-self: stretch;
-}
-
 .coming-name {
   display: inline-flex;
   align-items: center;

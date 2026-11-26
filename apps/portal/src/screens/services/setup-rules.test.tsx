@@ -7,21 +7,6 @@ import { logTimelines } from '../../data/log';
 import { exampleDatasets, exampleOrganisations, exampleServices, mockFetch } from '../../mock';
 import type { ModelOption } from '../../types';
 
-vi.mock('../service/sections', async (original) => {
-  const real = await original<typeof import('../service/sections')>();
-  return {
-    ...real,
-    locate: (...args: Parameters<typeof real.locate>) =>
-      args[1][2] === 'settings'
-        ? {
-            section: 'setup' as const,
-            detail: 'limits',
-            redirect: real.servicePath(args[0], 'setup', '/limits'),
-          }
-        : real.locate(...args),
-  };
-});
-
 document.getAnimations ??= () => [];
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {

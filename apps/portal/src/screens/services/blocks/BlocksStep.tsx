@@ -108,7 +108,6 @@ export const useBlocksState = (
       setState((s) => fitService(ids.reduce(turnOn, s), offered).state);
       setTemplate(undefined);
     },
-    // The words are the service's, not a template's: the template stays chosen.
   };
 };
 

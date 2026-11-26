@@ -48,15 +48,6 @@ describe('the Grensesnitt tab’s stylesheet', () => {
     );
   });
 
-  it('puts every suggestion in «Tekster» over its remove button, however wide the label', () => {
-    expect(rule('.blocks-texts-suggestion')).toBe('flex-direction: column; align-items: start;');
-    expect(rule('.blocks-texts-suggestion > .ds-field')).toBe('flex: none; align-self: stretch;');
-    // As specific as the rows' own rules, so they win only after them.
-    expect(css.indexOf('.blocks-texts-suggestion {')).toBeGreaterThan(
-      css.indexOf('.blocks-texts-row > .ds-field {'),
-    );
-  });
-
   it('gives the builder and its preview the whole column, not the service page’s narrower padded body', () => {
     expect(rule('.service-body.service-interface:has(.blocks-split, .blocks-fullscreen)')).toBe(
       'max-width: none; padding-inline: 0;',

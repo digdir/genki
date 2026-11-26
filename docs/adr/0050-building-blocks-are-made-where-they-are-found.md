@@ -8,7 +8,7 @@ Builds on ADR 0031, ADR 0037, ADR 0047 and ADR 0048. Where things sit in Integra
 
 A step flow is a reusable part that several services may pin (ADR 0031), but the portal treats it as part of one service.
 
-- Its editor opens from Oppsett → Arbeidsmåte inside a service, from a placeholder in Integrasjoner, or from the hidden route `#/step-flows`. Opening it highlights Tjenester in the menu.
+- Its editor opens from Avansert → Arbeidsmåte inside a service, from a placeholder in Integrasjoner, or from the hidden route `#/step-flows`. Opening it highlights Tjenester in the menu.
 - The editor shows "I tjenesten" tabs and a service breadcrumb when no service is involved, and loses the service when opened from one.
 - Katalog lists step flows but does not open them. It also lists step types such as `call-operation@1` as step flows.
 - The flow picker is a native select, so typing a name jumps to another flow. A new flow cannot be named outside YAML.
