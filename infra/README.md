@@ -402,7 +402,7 @@ genki-test runs the assistant host with its BFF (`assistantHostEnabled`, `assist
 7. **Stages** (a pull request each, then its deploy). Move the `kunnskap` entry and `assistantHostnameStage` to `hostnames`, then to `certificates`. After the second, `https://kunnskap.apps.genki-test.digdir.cloud/` signs people in.
 8. **Who gets in.** An Entra login in the operator groups passes on any Client; anyone else needs an Entra group in `SERVICE_ENTRA_GROUPS` (GitHub variable `SERVICE_ENTRA_GROUPS` in the test environment, then **deploy**), which a hosted Client in the platform tenant admits.
 
-Kunnskapsassistenten's own `qa.kunnskap.digdir.cloud` follows later, with the steps in [docs/runbook.md](../docs/runbook.md#moving-a-teams-domain-to-genki): lower the TTLs, add `{ hostname: 'qa.kunnskap.digdir.cloud', tenant: '991825827', stage: 'none' }`, put `TXT asuid.qa` with `assistantHost.verificationId` in the `kunnskap.digdir.cloud` zone, take the name off `ka-app`, point `CNAME qa` at the host, and move the entry through the stages; add the hostname and its URIs to the Client and the Ansattporten client as in steps 4 and 5.
+Kunnskapsassistenten's own `qa.kunnskap.digdir.cloud` follows later, with the steps in [docs/runbook.md](../docs/runbook.md#moving-a-teams-domain-to-genki): lower the TTLs, after the move in #464, add `{ hostname: 'qa.kunnskap.digdir.cloud', tenant: '991825827', stage: 'none' }`, put `TXT asuid.qa` with `assistantHost.verificationId` in the `kunnskap.digdir.cloud` zone, take the name off `ka-app`, point `CNAME qa` at the host, and move the entry through the stages; add the hostname and its URIs to the Client and the Ansattporten client as in steps 4 and 5.
 
 ### Platform login
 
@@ -427,12 +427,12 @@ The portal, workspace and console, and a hosted Client without its own `oidc`, l
 3. **Deploy** (Azure), as in step 2 of "Turning on the assistant host". It writes `CNAME` and `TXT asuid` for `login.apps` in genki's zone (in `apps.<zone>` while the binder is on) and gives the API `PLATFORM_LOGIN_CLIENT_ID`, `PLATFORM_LOGIN_HOSTNAME` and the secret.
 4. **Stages** (a pull request each, then its deploy). Move `platformLoginStage` to `hostnames`, then to `certificates`. After the second, `https://login.apps.genki-test.digdir.cloud/auth/logged-out` answers a signed-out page.
 
-**A service moves to the platform login** (genki, an operator in lockdown, since only an operator changes the client id of a hosted Client). Take its hosted Client, remove `oidc`, and save it:
+**A service moves to the platform login** (genki, an operator in lockdown, since only an operator changes the client id of a hosted Client). Take its hosted Client in the platform organisation (`PLATFORM_TENANT`: `312521172` until the move in #464, then `991825827`), remove `oidc`, and save it:
 
 ```sh
-curl -fsS "$API/tenants/991825827/clients?service=kunnskapsassistenten" -H "authorization: Bearer $GENKI_TOKEN" |
+curl -fsS "$API/tenants/$PLATFORM_TENANT/clients?service=kunnskapsassistenten" -H "authorization: Bearer $GENKI_TOKEN" |
   jq '.clients[0].definition | del(.spec.oidc)' > shared.json
-curl -fsS -X PUT "$API/tenants/991825827/clients/$(jq -r .metadata.id shared.json)" -H "authorization: Bearer $GENKI_TOKEN" \
+curl -fsS -X PUT "$API/tenants/$PLATFORM_TENANT/clients/$(jq -r .metadata.id shared.json)" -H "authorization: Bearer $GENKI_TOKEN" \
   -H 'content-type: application/json' -H 'change-reason: Kunnskapsassistenten logger inn med genkis felles innlogging' -d @shared.json
 ```
 
