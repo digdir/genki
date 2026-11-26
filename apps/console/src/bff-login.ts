@@ -61,7 +61,10 @@ export const bffLogin = (options: BffLoginOptions): AuthClient => {
     },
     renew: async () => keep(await read().catch(() => undefined)),
     login: () => {
-      options.navigate(`/auth/login?next=${encodeURIComponent(options.here())}`);
+      const lang = options.locale?.();
+      options.navigate(
+        `/auth/login?next=${encodeURIComponent(options.here())}${lang ? `&lang=${lang}` : ''}`,
+      );
       return new Promise<OperatorSession>(() => undefined);
     },
     logout: async () => {

@@ -52,7 +52,7 @@ const cases = [
   },
 ];
 
-const platform = () => {
+const platform = (publishedRun = true) => {
   const asked: URLSearchParams[] = [];
   const fetch: typeof globalThis.fetch = async (input) => {
     const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -75,6 +75,15 @@ const platform = () => {
         judges: ['judge:criteria@2+foundry-openai/gpt-4.1'],
       });
       const baseline = q.get('baseline') ?? 'published';
+      if (baseline === 'published' && !publishedRun)
+        return new Response(
+          JSON.stringify({
+            title: 'No baseline',
+            status: 404,
+            errors: [{ path: 'baseline', message: 'no completed run of the published version' }],
+          }),
+          { status: 404, headers: { 'content-type': 'application/problem+json' } },
+        );
       return new Response(
         JSON.stringify({
           testSet: 'kjerne',
@@ -98,6 +107,25 @@ const platform = () => {
 };
 
 describe('comparing two versions on Kvalitet', () => {
+  it('lists the cases of a test edition run, with no error, when the published version has no completed run', async () => {
+    const { api } = platform(false);
+    const draft = { ...run('d1', 7, 0.9, '2026-11-18T10:00:00Z'), version: 'draft' as const };
+    render(
+      <CasesSection
+        api={api}
+        tenant={tenant}
+        serviceId="rapport"
+        run={draft}
+        runs={[draft]}
+        setName="Kjernespørsmål"
+      />,
+    );
+
+    const table = await screen.findByRole('table');
+    await waitFor(() => expect(within(table).getAllByRole('row')).toHaveLength(4));
+    expect(screen.queryByText(/Klarte ikke å hente sakene/)).toBeNull();
+  });
+
   it('counts better, same and worse in B and lists the worse cases before the better ones', async () => {
     const { api, asked } = platform();
     render(

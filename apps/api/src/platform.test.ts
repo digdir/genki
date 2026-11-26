@@ -926,4 +926,26 @@ describe('the signed-in person', () => {
     expect(await body(await send('/me', 'kari'))).toMatchObject({ email: 'kari@digdir.no' });
     expect(await body(await send('/me', 'ola'))).not.toHaveProperty('email');
   });
+
+  it('answers /me with where the rights come from only when Entra ID groups give them', async () => {
+    const { store, admin, settings } = setup();
+    const kari: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir };
+    const me = async (rightsFromEntraGroups: boolean) =>
+      body<Record<string, unknown>>(
+        await createApp('test', {
+          platform: {
+            store,
+            plugins,
+            settings,
+            admin,
+            auth: { authenticate: async () => kari },
+            tasks: { task: async () => undefined, events: async () => [] },
+            rightsFromEntraGroups,
+          },
+        }).request('/me', { headers: { authorization: 'Bearer kari' } }),
+      );
+
+    expect(await me(true)).toMatchObject({ rightsFrom: 'entra-groups' });
+    expect(await me(false)).not.toHaveProperty('rightsFrom');
+  });
 });

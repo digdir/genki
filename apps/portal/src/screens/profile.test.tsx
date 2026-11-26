@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
 import { mockFetch } from '../mock';
-import { renderAt } from '../test-utils';
+import { entraGroupsFetch, renderAt } from '../test-utils';
 import type { Organisation } from '../types';
 
 const openProfileAs = async (organisation: Organisation) => {
@@ -39,6 +39,15 @@ describe('Profil', () => {
         'Gitt i Altinn for Testetaten. Det er tilgangsstyreren deres som endrer dem.',
       ),
     ).toBeTruthy();
+  });
+
+  it('says the rights come from Entra ID groups, not Altinn, when the groups give them', async () => {
+    await renderAt('#/profile', entraGroupsFetch());
+
+    expect(
+      await screen.findByText('Gitt av gruppene dine i Entra ID for Testetaten.'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Altinn/)).toBeNull();
   });
 
   it('shows the organisation number once when the organisation has no name', async () => {

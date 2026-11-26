@@ -47,6 +47,7 @@ export const Profile = ({
   const t = useT();
   const [me] = useAsync((signal) => api.me(signal), [api]);
   const email = me.status === 'ready' ? me.data.email : undefined;
+  const fromGroups = me.status === 'ready' && me.data.rightsFrom === 'entra-groups';
   const name = useUserName();
   const { rights } = useRights();
   const themeName = useId();
@@ -83,7 +84,13 @@ export const Profile = ({
         <Heading level={2} data-size="xs" id="rights-h">
           {t('shell.yourRights')}
         </Heading>
-        <p className="meta">{t('profile.rightsLead', { name: tenantName })}</p>
+        {me.status === 'loading' ? null : (
+          <p className="meta">
+            {t(fromGroups ? 'profile.rightsLeadGroups' : 'profile.rightsLead', {
+              name: tenantName,
+            })}
+          </p>
+        )}
         {rights.length > 0 ? (
           <ul className="profile-rights">
             {rights.map((r) => (

@@ -5,7 +5,7 @@
   <img src="docs/images/genki.png" alt="Genki" width="520">
 </picture>
 
-[![Status: under development](https://img.shields.io/badge/status-under%20development-E5AA20)](#status)
+[![Status: exploration, not in production](https://img.shields.io/badge/status-exploration%2C%20not%20in%20production-E5AA20)](#status)
 [![CI](https://img.shields.io/github/actions/workflow/status/digdir/genki/ci.yml?branch=main&label=ci)](https://github.com/digdir/genki/actions/workflows/ci.yml?query=branch%3Amain)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/digdir/genki/badge)](https://scorecard.dev/viewer/?uri=github.com/digdir/genki)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16298/badge)](https://www.bestpractices.dev/projects/16298)
@@ -20,16 +20,16 @@
 </div>
 
 > [!NOTE]
-> **Under development, not in production.** A test environment runs in Azure against Ansattporten TEST and Altinn tt02. Locally, Ansattporten and Altinn are mocked in development mode unless you configure the real ones. See [Status](#status) before you rely on it.
+> **An exploration (proof of concept), not in production.** It is intended as a joint national solution for stat and kommune, together with KS and KS Digital, not only from Digdir. There is one test environment in Azure; locally, login and rights are mocked. See [Status](#status) before you rely on it.
 
-Genki is a shared platform for generative AI services in the Norwegian public sector, from Digdir. An agency describes a service in a short definition: what it is for, which documents it may search, which model answers, and where people can reach it. The platform runs it, with sources, access control, cost tracking and quality checks built in.
+This repository explores shared building blocks for generative AI in the Norwegian public sector. An organisation describes a service in a short definition: what it is for, which documents it may search, which model answers, and where people can reach it. The platform runs it, with sources, access control, cost tracking and quality checks.
 
-It provides:
+It has:
 
 - **A headless API** that runs every service the same way, whether it is called as an OpenAI-compatible model, an MCP tool, an A2A agent or over REST
-- **Three web apps** on that API: the **portal**, where an organisation builds, tests and publishes services; the **workspace**, where employees use them; and the **console**, where Digdir runs the platform
+- **Web apps on that API**: the **portal**, where an organisation builds, tests and publishes services; the **console**, where the platform's operators run it; and a **hosted assistant** that draws a service's own assistant on a hostname of its own ([ADR 0061](docs/adr/0061-genki-hosts-a-services-assistant.md))
 - **Definitions instead of code**: a service, variant, prompt, dataset or guardrail is versioned configuration, and every change is audited with who made it and why
-- **Datasets and ingestion** on Typesense, pgvector, Postgres, HTTP or MCP, with a port for reranking and no reranker built in yet
+- **Datasets and ingestion** on a Postgres knowledge server with pgvector ([ADR 0042](docs/adr/0042-the-knowledge-database.md)), or on another source over HTTP or MCP
 - **Quality checks**: test sets, judges and publishing gates, plus a parity harness that compares answers with [digdir-headless-rag](https://github.com/digdir/digdir-headless-rag)
 
 ## Quickstart
@@ -39,10 +39,10 @@ You need [mise](https://mise.jdx.dev) and a running Docker. No secrets.
 ```sh
 git clone https://github.com/digdir/genki.git && cd genki
 mise trust && mise install   # Node 24, pinned in mise.toml
-npm start                    # Postgres in Docker, then the API and the three apps
+npm start                    # Postgres in Docker, then the API, the worker and the apps
 ```
 
-Open the workspace at <http://localhost:5176>, log in as **Kari Testansatt** and pick **Lokal testchat**. [Run it locally](#run-it-locally) has the details.
+Open the portal at <http://localhost:5173>, log in as **Kari Testansatt**, open **Tjenester** and try **Lokal testchat**. [Run it locally](#run-it-locally) has the details.
 
 ## About the name
 
@@ -74,6 +74,7 @@ Open the workspace at <http://localhost:5176>, log in as **Kari Testansatt** and
 | [`docs/run-your-own-frontend.md`](docs/run-your-own-frontend.md)             | A frontend your team runs itself, registered in genki, with Ansattporten login                                                                                                       |
 | [`docs/frontend-contract.md`](docs/frontend-contract.md)                     | Every field and rule a frontend relies on                                                                                                                                            |
 | [`docs/bring-your-own-logic.md`](docs/bring-your-own-logic.md)               | A tool step or a whole engine you run yourself                                                                                                                                       |
+| [`apps/admin-mcp`](apps/admin-mcp/README.md)                                 | An MCP server that lets a coding agent work on services through the API, as you                                                                                                      |
 | [`docs/architecture/system-atlas.html`](docs/architecture/system-atlas.html) | Every module, what it does and what it talks to. Open it locally in a browser                                                                                                        |
 | [`docs/adr/`](docs/adr/)                                                     | Architecture decisions. Start with [0001](docs/adr/0001-foundations.md), [0023](docs/adr/0023-extension-model.md) and [0031](docs/adr/0031-services-variants-and-ways-of-working.md) |
 | [`docs/security/`](docs/security/README.md)                                  | Reporting a vulnerability, what genki protects, what operators must configure, key rotation and hardening                                                                            |
@@ -84,13 +85,12 @@ Open the workspace at <http://localhost:5176>, log in as **Kari Testansatt** and
 
 ## Repository layout
 
-- **`apps/`**: the API, the worker, the portal, the workspace, the console, `docs` (the documentation site), and `parity` (compares answers with headless-rag)
+- **`apps/`**: the API, the worker, the portal, the console, the hosted assistant (`assistant`), the MCP server for coding agents (`admin-mcp`), `docs` (the documentation site), and `parity` (compares answers with headless-rag). `workspace` is being retired, replaced by each service's own hosted assistant ([ADR 0061](docs/adr/0061-genki-hosts-a-services-assistant.md))
 - **`apps/api/config/local/`**: the definitions the API publishes at startup: services, flows, models, prices, datasets, test persons. Services in `dev-services/` are published only in development mode
 - **`packages/`**: the kernel, definitions, ports, providers, strategies, channel adapters and platform services, each behind a contract ([layout](docs/development.md#repository-layout))
 - **`docs/`**: the API guides, frontend contract, ADRs and the System Atlas
 - **`infra/`**: the Azure setup for the test environment
 - **`scripts/`**: setup, running everything locally, and building the atlas
-- **`mise.toml`**: the pinned Node version
 
 ---
 
@@ -98,81 +98,32 @@ Open the workspace at <http://localhost:5176>, log in as **Kari Testansatt** and
 
 You need [mise](https://mise.jdx.dev) and Docker. No secrets are needed to get a working stack: login, rights and a test model are all local.
 
-### 1. Install Node
-
 ```sh
-mise trust
-mise install
-```
-
-This installs Node 24, pinned in `mise.toml`. Run `mise trust` once per clone: without it, mise ignores `mise.toml` and you get whatever Node is on your `PATH`, and setup stops if that is older than 24.
-
-### 2. Start it
-
-```sh
+mise trust     # once per clone: without it, mise ignores mise.toml
+mise install   # Node 24, pinned in mise.toml
 npm start
 ```
 
-**Docker must be running** before you start, or setup stops at Postgres. If a port is already taken, `dev:all` refuses to start and names the port; [docs/development.md](docs/development.md) shows how to move every port.
+**Docker must be running**, or setup stops at Postgres. `npm start` runs `npm run setup` (dependencies, Postgres with pgvector and the knowledge server in Docker, and a `.env.local` with a local database, generated keys and the local test model), then `npm run dev:all` (the API, the worker and the apps in one terminal). If a port is taken, it names the port; [docs/development.md](docs/development.md) shows how to move every port.
+
+| Address                           | App           | For                                                                       |
+| --------------------------------- | ------------- | ------------------------------------------------------------------------- |
+| <http://localhost:5173>           | Portal        | Organisations: build, test and publish services                           |
+| <http://localhost:5174>           | Console       | Operators: tenants, models, shared services                               |
+| <http://localhost:5176>           | Workspace     | Being retired, replaced by each service's own hosted assistant (ADR 0061) |
+| <http://localhost:8080/reference> | API reference | Developers: every operation, searchable                                   |
 
 <details>
-<summary><strong>What npm start does</strong></summary>
+<summary><strong>Log in and try a service</strong></summary>
 
-This runs two steps, which you can also run on their own:
+Each app sends you to a mock Ansattporten with a list of test persons. **Kari Testansatt** has every right in Digdir; the other test persons and what they may do are in `apps/api/config/local/identity.yaml` and [docs/development.md](docs/development.md). The mock login only exists in development mode (`GENAI_DEV_MODE=true`), which `npm start` turns on.
 
-1. `npm run setup` installs dependencies, starts Postgres (with pgvector) in Docker on `127.0.0.1:55432` and the knowledge server on `127.0.0.1:55433`, creates `.env.local` with a local database, generated keys and the local test model, and sets up the knowledge server. It is safe to run again: in an existing `.env.local` it only adds the knowledge settings that are absent, and names the other settings it lacks.
-2. `npm run dev:all` starts the API, the worker, portal, console and workspace in one terminal, with prefixed output. At startup the API runs database migrations and publishes the definitions in `apps/api/config/local`.
-
-</details>
-
-### 3. Open the apps
-
-| Address                           | App           | For                                                   |
-| --------------------------------- | ------------- | ----------------------------------------------------- |
-| <http://localhost:5176>           | Workspace     | Employees: chat with published services, with sources |
-| <http://localhost:5173>           | Portal        | Organisations: build, test and publish services       |
-| <http://localhost:5174>           | Console       | Digdir operators: tenants, models, shared services    |
-| <http://localhost:8080/reference> | API reference | Developers: every operation, searchable               |
-
-### Next steps
-
-<details>
-<summary><strong>4. Log in</strong></summary>
-
-Each app sends you to a mock Ansattporten with a list of test persons. Pick one:
-
-| Person          | Use it for                                    |
-| --------------- | --------------------------------------------- |
-| Kari Testansatt | Every right in Digdir: start here             |
-| Ola Drift       | Platform operator, for the console            |
-| Ingrid Berg     | Limited rights: use services, datasets, usage |
-| Erik Larsen     | Rights in other organisations                 |
-| Hensynsløs Måke | No access                                     |
-
-Rights come from a mock Altinn. The test persons are in `apps/api/config/local/identity.yaml`.
-
-The mock login only exists in development mode (`GENAI_DEV_MODE=true`), which `npm start` turns on. Without it, the API refuses to start until a real database, login provider and Altinn are configured.
+In the portal, open **Tjenester** (Services) and try **Lokal testchat**. It answers with what you wrote. That is on purpose: the local test model echoes, so you can try login and chat without a real model or any cost. Choose **Ny tjeneste** (New service) to build your own: describe what it is for, pick a model, try it, and publish it. Publishing gives it a version number and records who published it and why.
 
 </details>
 
 <details>
-<summary><strong>5. Ask something</strong></summary>
-
-In the workspace, pick **Lokal testchat** and write a message. It answers with what you wrote. That is on purpose: the local test model echoes, so you can try login, chat, conversations and feedback without a real model or any cost.
-
-</details>
-
-<details>
-<summary><strong>6. Build a service</strong></summary>
-
-In the portal, open **Tjenester** (Services) and choose **Ny tjeneste** (New service). Describe what the service is for, pick a model, try it in the playground, and publish it. Publishing gives it a version number and records who published it and why. It then shows up in the workspace for the people it is offered to.
-
-On a fresh clone the only model is the local echo model, so every answer repeats the question. That is enough to try the whole path from draft to published service.
-
-</details>
-
-<details>
-<summary><strong>7. Call it from your own code</strong></summary>
+<summary><strong>Call it from your own code</strong></summary>
 
 Everything the apps do goes through the same API. Setup put an API key in `.env.local` as `DEV_API_KEY`:
 
@@ -187,34 +138,16 @@ See [Build on it](#build-on-it) for the other channels.
 </details>
 
 <details>
-<summary><strong>8. Add real models and search</strong></summary>
+<summary><strong>Add real models and search</strong></summary>
 
-The example services, such as Kunnskapsassistenten, Klarspråk and Nynorsk, need real models and search. Without those settings they are skipped and logged at startup, so **Lokal testchat** is the only service until you add them.
-
-| Works on a fresh clone, no secrets                           | Needs settings in `.env.local`                      |
-| ------------------------------------------------------------ | --------------------------------------------------- |
-| Login with test persons, rights, portal, console, workspace  | Real models: `FOUNDRY_OPENAI_*`, `FOUNDRY_CLAUDE_*` |
-| Postgres storage, migrations, API keys, conversations, audit |                                                     |
-| Lokal testchat, and your own services on the local model     | Langfuse, Maskinporten, real Altinn                 |
-
-Every setting is listed in [`.env.example`](.env.example), with what happens when it is empty. Restart after you change `.env.local`.
+The example services, such as Kunnskapsassistenten, Klarspråk and Nynorsk, need real models (`FOUNDRY_OPENAI_*`, `FOUNDRY_CLAUDE_*` in `.env.local`) and a filled dataset. Without them they are skipped and logged at startup, so **Lokal testchat** is the only service until you add them. Every setting is listed in [`.env.example`](.env.example), with what happens when it is empty. Restart after you change `.env.local`.
 
 </details>
 
 <details>
-<summary><strong>9. Stop it</strong></summary>
+<summary><strong>Stop it</strong></summary>
 
-Press Ctrl-C in the terminal running `npm start`. That stops the API and the apps. Postgres keeps running in Docker and keeps your data, so starting again picks up where you left off. To stop Postgres too:
-
-```sh
-docker compose down
-```
-
-To throw the database away as well and start from nothing:
-
-```sh
-docker compose down -v
-```
+Press Ctrl-C in the terminal running `npm start`. Postgres and the knowledge server keep running in Docker and keep your data. `docker compose down` stops them, and `docker compose down -v` throws the data away as well.
 
 </details>
 
@@ -229,22 +162,22 @@ docker compose down -v
   </picture>
 </p>
 
-| Part            | Role                                                                                                                                                          |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Definitions** | What each service is, in versioned configuration. Every change is audited with who made it and why.                                                           |
-| **Channels**    | Turn each protocol into one kind of request. A service exposed on several channels behaves the same on all of them.                                           |
-| **Kernel**      | Runs the published version of a service. Every call is a task with an append-only log, and access, quotas and budgets are enforced there.                     |
-| **Backends**    | Models, search engines and tools sit behind ports, so a provider can be swapped in configuration.                                                             |
-| **Tenants**     | Organisations. Rights come from Altinn, and data is isolated with row-level security in Postgres ([ADR 0022](docs/adr/0022-tenant-isolation-in-postgres.md)). |
+| Part            | Role                                                                                                                                                                               |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Definitions** | What each service is, in versioned configuration. Every change is audited with who made it and why.                                                                                |
+| **Channels**    | Turn each protocol into one kind of request. A service exposed on several channels behaves the same on all of them.                                                                |
+| **Kernel**      | Runs the published version of a service. Every call is a task with an append-only log, and access, quotas and budgets are enforced there.                                          |
+| **Backends**    | Models, search engines and tools sit behind ports, so a provider can be swapped in configuration.                                                                                  |
+| **Tenants**     | Organisations. Rights come from Altinn or from Entra groups, and data is isolated with row-level security in Postgres ([ADR 0022](docs/adr/0022-tenant-isolation-in-postgres.md)). |
 
 ### How you use it
 
-Digdir runs the platform and chooses the models. Your organisation adds its data and builds services. People and systems use the services wherever you offer them, and their feedback goes into the next version.
+The platform's operators choose the models. Your organisation adds its data and builds services. People and systems use the services wherever you offer them, and their feedback goes into the next version.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/how-you-use-it-dark.svg">
-    <img src="docs/images/how-you-use-it.svg" alt="Three rows. Digdir, in the console: approves organisations, chooses models and prices, runs the platform. Your organisation, in the portal or through the API: 1 add data, 2 build a service, 3 test, 4 publish, 5 offer it, 6 follow up, then improve and publish a new version. Users and systems: employees in the workspace, your own frontend, and AI tools and agents, who send feedback back" width="100%">
+    <img src="docs/images/how-you-use-it.svg" alt="Three rows. Platform operators, in the console: approve organisations, choose models and prices, run the platform. Your organisation, in the portal or through the API: 1 add data, 2 build a service, 3 test, 4 publish, 5 offer it, 6 follow up, then improve and publish a new version. Users and systems: employees in the service's own assistant, your own frontend, and AI tools and agents, who send feedback back" width="100%">
   </picture>
 </p>
 
@@ -268,24 +201,11 @@ In the portal, each variant shows its way of working as plain steps, so a servic
 
 ### From draft to answer
 
-A service is drafted and tested in the portal, then published as a numbered version. Once published, employees use it in the workspace, and every answer is marked as made with AI, with numbered sources and a way to give feedback:
-
-<p align="center">
-  <img src="docs/images/workspace-answer.png" alt="An answer in the workspace: the question, an answer marked Svar laget med KI, two numbered sources, and Ja and Nei buttons for feedback" width="640">
-</p>
-
-Publishing checks the definition against the catalogues. These are refused:
-
-- unknown models
-- a model outside the service's data residency
-- a strategy configuration its schema refuses
-- duplicate public names
-
-Every published version is kept, with who changed it and why.
+A service is drafted and tested in the portal, then published as a numbered version. Publishing checks the definition against the catalogues and refuses unknown models, a model outside the service's data residency, a strategy configuration its schema refuses, and duplicate public names. Every published version is kept, with who changed it and why.
 
 ### A service, abridged
 
-Kunnskapsassistenten answers questions with sources from public reports in Kudos. It is one example service, defined like any other in [`apps/api/config/local/services`](apps/api/config/local/services/). Shortened here; the full definition also has example questions, accepted input and retrieval settings:
+Kunnskapsassistenten answers questions with sources from public reports in Kudos. It is one example service, defined like any other in [`apps/api/config/local/services`](apps/api/config/local/services/). Shortened here; the full definition also has example questions, accepted input, retrieval settings, a tool and the layout of its assistant:
 
 ```yaml
 apiVersion: genai/v1
@@ -308,7 +228,7 @@ spec:
   strategy:
     id: agent-loop
     version: 1
-    config: { budget: { searches: 4, reads: 6, readChars: 12000 }, temperature: 0.3 }
+    config: { budget: { searches: 4, reads: 6, readChars: 24000 }, temperature: 0.3 }
   knowledge:
     datasets: [{ dataset: digdir/kudos }]
   model: { primary: foundry-openai/gpt-5.6-terra, residency: global }
@@ -341,7 +261,7 @@ Three variants, one service:
 
 ## Build on it
 
-The platform is headless: the portal, console and workspace are clients of the same API you can use.
+The platform is headless: the portal, console and hosted assistant are clients of the same API you can use.
 
 ```mermaid
 %%{init: {'sequence': {'mirrorActors': false}}}%%
@@ -369,7 +289,7 @@ sequenceDiagram
 Authentication:
 
 - **A system** sends an API key as `X-API-Key` or `Authorization: Bearer`. Keys are made in the portal, under **Tilgang** (Access). A Maskinporten token works instead of a key when Maskinporten is configured.
-- **A person** signs in with Ansattporten, and their rights come from Altinn for each organisation.
+- **A person** signs in with Ansattporten. Their rights come from Altinn for each organisation, or, where Altinn is off, from the Entra groups they are in.
 
 Details are in [docs/api/README.md](docs/api/README.md).
 
@@ -389,7 +309,7 @@ Details are in [docs/api/README.md](docs/api/README.md).
 npm run check
 ```
 
-This runs prettier, eslint, the type check, dependency boundaries, the apps' size budgets and every test. Docker must be running: the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers. Run a part with `npx vitest run <paths>`. Tests never call real models; the live suites skip themselves unless their settings are set.
+This runs prettier, eslint, the type check, dependency boundaries, the apps' size budgets, the API and definition compatibility checks and every test. Docker must be running: the database suites start containers with Testcontainers. Run a part with `npx vitest run <paths>`. Tests never call real models; the live suites skip themselves unless their settings are set.
 
 CI runs the same check, a secret scan with gitleaks and a Docker image build.
 
@@ -401,14 +321,13 @@ Definitions live in the database once published. The files in `apps/api/config/l
 
 ### Deployment
 
-The test environment in Azure (`genki.digdir.cloud`, formerly `genki-test.digdir.cloud`) is deployed from `main` by running the `deploy` workflow by hand (`gh workflow run deploy.yml`), using [`infra/`](infra/README.md). Production is not set up yet.
+The test environment in Azure is deployed from `main` by running the `deploy` workflow by hand (`gh workflow run deploy.yml`), using [`infra/`](infra/README.md). There is no production environment.
 
 ### Troubleshooting
 
 - **Setup says Node is too old.** Run `mise trust` in the repository, then `mise install`. An untrusted `mise.toml` is ignored without an error.
 - **Setup stops at "Starting Postgres".** Docker is not running, or port 55432 is taken. Start Docker, or move the port as shown in [docs/development.md](docs/development.md).
 - **"Ports already in use".** Another copy, or something else, holds one of the app ports. Stop it, or give this copy its own ports.
-- **"Login will fail: add these callbacks".** You moved an app to a port the mock login does not know. Add the callback it names to `apps/api/config/local/identity.yaml`.
 - **The API refuses to start and names missing settings.** It is not in development mode. `npm start` turns it on; to run the API alone with `npm run dev`, add `GENAI_DEV_MODE=true` to `.env.local`.
 - **Only Lokal testchat shows up.** The other services need model and search settings. The API log names each service it skipped and why.
 
@@ -416,13 +335,16 @@ The test environment in Azure (`genki.digdir.cloud`, formerly `genki-test.digdir
 
 ## Status
 
+An exploration (proof of concept), not a production service.
+
 | Area                       | Where it stands                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Running**                | A test environment in Azure, deployed from `main` by hand. Production is not set up yet.                                                                                                                                                                                                                                                                                                                                        |
-| **Login and rights**       | The test environment uses Ansattporten TEST, Maskinporten and Altinn tt02, with each person's rights from the Altinn decision point. Locally they are mocked in development mode unless configured.                                                                                                                                                                                                                             |
+| **Running**                | One test environment in Azure, on `genki.digdir.cloud` (`portal.`, `console.` and `api.`), deployed from `main` by hand. No production environment.                                                                                                                                                                                                                                                                             |
+| **Login and rights**       | The test environment signs in through Ansattporten with an Entra ID login, and rights come from Entra groups in Digdir (991825827). Altinn rights are off there for now. Locally, login and rights are mocked in development mode.                                                                                                                                                                                              |
+| **Hosted assistants**      | Kunnskapsassistenten runs as a hosted assistant on `kunnskap.apps.genki.digdir.cloud` ([ADR 0061](docs/adr/0061-genki-hosts-a-services-assistant.md), proposed).                                                                                                                                                                                                                                                                |
+| **Search**                 | Datasets such as Kudos are on genki's own knowledge server, Postgres with pgvector ([ADR 0042](docs/adr/0042-the-knowledge-database.md), proposed).                                                                                                                                                                                                                                                                             |
 | **Replacing headless-rag** | Every capability of [digdir-headless-rag](https://github.com/digdir/digdir-headless-rag) is covered or a written difference in [ADR 0017](docs/adr/0017-parity-scope-and-intentional-divergences.md). On a draft test set nobody has reviewed yet, the judge score shows no significant difference (platform minus headless-rag: -0.03, 95% CI -0.09 to 0.03; [report](apps/parity/reports/rerun-citations/quality-report.md)). |
-| **Kudos search**           | Runs on genki's knowledge database ([ADR 0042](docs/adr/0042-the-knowledge-database.md)); genki no longer reads the shared Typesense server.                                                                                                                                                                                                                                                                                    |
-| **Decisions**              | Each [ADR](docs/adr/) says whether it is built, and names what is missing if not.                                                                                                                                                                                                                                                                                                                                               |
+| **Decisions**              | Each [ADR](docs/adr/)'s status line says what is built and what is missing.                                                                                                                                                                                                                                                                                                                                                     |
 
 ---
 
@@ -439,5 +361,5 @@ Everyone taking part follows the [Code of Conduct](https://github.com/digdir/.gi
 ---
 
 <p align="center">
-  Made by <a href="https://www.digdir.no">Digdir</a>, the Norwegian Digitalisation Agency, for the Norwegian public sector.
+  Started by <a href="https://www.digdir.no">Digdir</a>, the Norwegian Digitalisation Agency. Intended as a joint solution for stat and kommune, together with KS and KS Digital.
 </p>

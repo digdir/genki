@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { negotiate } from '@genai/i18n';
+import { isLocale, negotiate, type Locale } from '@genai/i18n';
 import {
   AuthenticationError,
   isHostname,
@@ -113,6 +113,7 @@ interface Login {
   verifier: string;
   next: string;
   at: number;
+  lang?: Locale;
 }
 
 interface PlatformPending {
@@ -121,6 +122,7 @@ interface PlatformPending {
   verifier: string;
   binding: string;
   at: number;
+  lang?: Locale;
 }
 
 interface HandoffPending {
@@ -259,8 +261,9 @@ const page = (
   words: (say: Say) => { title: string; text: string },
   cookies: string[] = [],
   status = 200,
+  chosen?: Locale,
 ) => {
-  const lang = negotiate(request.headers.get('accept-language')) ?? 'nb';
+  const lang = chosen ?? negotiate(request.headers.get('accept-language')) ?? 'nb';
   const { title, text } = words(translatorFor(lang));
   const body = `<!doctype html><html lang="${lang}"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title><h1>${title}</h1><p>${text}</p></html>`;
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8', ...noStore });
@@ -275,7 +278,7 @@ const signedOutPage = (request: Request, cookies: string[] = []) =>
     cookies,
   );
 
-const noAccessPage = (request: Request, host: Host, cookies: string[]) =>
+const noAccessPage = (request: Request, host: Host, cookies: string[], lang?: Locale) =>
   page(
     request,
     (say) =>
@@ -284,7 +287,13 @@ const noAccessPage = (request: Request, host: Host, cookies: string[]) =>
         : { title: say('problems.serviceLocked'), text: say('problems.serviceLockedDetail') },
     cookies,
     403,
+    lang,
   );
+
+const chosenLocale = (request: Request) => {
+  const lang = new URL(request.url).searchParams.get('lang');
+  return isLocale(lang) ? lang : undefined;
+};
 
 const refusedLogin = (error: unknown) =>
   error instanceof AuthenticationError && error.code === 'entra_not_trusted';
@@ -509,6 +518,8 @@ export const createBff = (deps: BffDeps) => {
     const start = new URL(`${loginOrigin()}/auth/login`);
     start.searchParams.set('host', host.hostname);
     start.searchParams.set('binding', bindingOf(bind));
+    const lang = chosenLocale(request);
+    if (lang) start.searchParams.set('lang', lang);
     return redirect(start.toString(), [cookie(handoffCookie, sealed, loginMs / 1000)]);
   };
 
@@ -518,12 +529,14 @@ export const createBff = (deps: BffDeps) => {
     if (host.platform) return handoffLogin(request, host);
     const oidcSettings = host.client?.spec.oidc;
     if (!host.client || !oidcSettings) return notFound();
+    const lang = chosenLocale(request);
     const pending: Login = {
       state: randomValue(),
       nonce: randomValue(),
       verifier: randomValue(),
       next: safeReturn(new URL(request.url).searchParams.get('next')),
       at: now(),
+      ...(lang ? { lang } : {}),
     };
     const sealed = await deps.sessions.seal(
       host.tenant,
@@ -662,7 +675,13 @@ export const createBff = (deps: BffDeps) => {
       pending.verifier,
       pending.nonce,
     );
-    if (payload === 'refused') return noAccessPage(request, host, [clear]);
+    if (payload === 'refused')
+      return noAccessPage(
+        request,
+        host,
+        [clear],
+        isLocale(pending.lang) ? pending.lang : undefined,
+      );
     if (!payload) return back();
     return redirect(pending.next, [await startSession(request, host, payload), clear]);
   };
@@ -684,12 +703,14 @@ export const createBff = (deps: BffDeps) => {
     if (!host || !deps.issuer || !platformLogin) return notFound();
     if (!opaque.test(binding) || !ready(host))
       return problem(404, 'bff-not-configured', t('problems.bffNotConfigured'));
+    const lang = chosenLocale(request);
     const pending: PlatformPending = {
       state: randomValue(),
       nonce: randomValue(),
       verifier: randomValue(),
       binding,
       at: now(),
+      ...(lang ? { lang } : {}),
     };
     const sealed = await deps.sessions.seal(
       host.tenant,
@@ -750,7 +771,13 @@ export const createBff = (deps: BffDeps) => {
       pending.verifier,
       pending.nonce,
     );
-    if (session === 'refused') return noAccessPage(request, host, [clear]);
+    if (session === 'refused')
+      return noAccessPage(
+        request,
+        host,
+        [clear],
+        isLocale(pending.lang) ? pending.lang : undefined,
+      );
     if (!session) return refused('login', host);
     if (host.app === 'console' && session.operator !== true) {
       log('bff platform login refused', { reason: 'not-operator', hostname: host.hostname });

@@ -5,7 +5,13 @@ import { App } from '../App';
 import { mockAnsattporten, type AuthClient } from '../auth';
 import { mockFetch } from '../mock';
 import type { AccessMockOptions } from '../mock/access';
-import { expectAccessible, failingFetch, heldFetch, renderAt } from '../test-utils';
+import {
+  entraGroupsFetch,
+  expectAccessible,
+  failingFetch,
+  heldFetch,
+  renderAt,
+} from '../test-utils';
 
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
@@ -174,6 +180,14 @@ describe('Tilgang: personer', () => {
     expect(screen.queryByText(/Altinn/)).toBeNull();
     expect(screen.queryByRole('link', { name: /Altinn/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Gi en kollega tilgang' })).toBeNull();
+  });
+
+  it('never blames Altinn when the people list fails and Entra groups give the rights', async () => {
+    await renderAt('#/access', entraGroupsFetch(withAccess({ altinn: 'down' })));
+    expect(
+      await screen.findByRole('heading', { name: 'Hvem som har tilgang, bestemmes i Entra ID.' }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Altinn/)).toBeNull();
   });
 });
 

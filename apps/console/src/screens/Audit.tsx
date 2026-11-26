@@ -33,6 +33,7 @@ export const actionKey: Record<string, PlainKey> = {
   'platform.default.set': 'audit.actionDefaultSet',
   'platform.tenant.import': 'audit.actionTenantImport',
   'platform.tenant.create': 'audit.actionTenantCreate',
+  'platform.tenant.move': 'audit.actionTenantMove',
   'platform.content.read': 'audit.actionContentRead',
   'platform.content.reason': 'audit.actionContentReason',
   'platform.models.refresh': 'audit.actionModelsRefresh',

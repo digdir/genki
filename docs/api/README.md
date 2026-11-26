@@ -75,6 +75,11 @@ To announce one, add a line to a new dated entry below that names the operation 
 
 `npm run definitions:compat` checks every YAML or JSON file in the repository that is a service, step flow, skill or block definition (seeds, examples and fixtures) against the current schema, including the strategy, tool and guardrail settings. Models, datasets, rerankers, tools and blocks are not looked up, since each environment has its own. Give it the path to a tenant export (`GET /tenants/{tenant}/export`) or a folder of definitions to check those instead.
 
+### 2026-11-26: where rights come from, and the language of the no-access page
+
+- `GET /me` has `rightsFrom: entra-groups` when Entra ID groups give the rights instead of Altinn.
+- `GET /auth/login` takes an optional `lang` (`nb` or `en`) for the page that says a login has no access.
+
 ### 2026-11-26: no Altinn resource without Altinn
 
 - `GET /v1/hosts/{hostname}` answers `login.altinnResource: null`, and `GET /tenants/{tenant}/clients` leaves `oidc.altinnResource` out, when rights come only from Entra groups (no `ALTINN_PDP_URL`), so a login asks for no `authorization_details`.

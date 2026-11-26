@@ -371,7 +371,7 @@ describe('the assistant host', () => {
     expect(went).toEqual([]);
   });
 
-  it('signs in through the host’s BFF when it serves one, and comes back to the same address', async () => {
+  it('signs in through the host’s BFF when it serves one, and comes back to the same address in the same language', async () => {
     const went: string[] = [];
     const asked: string[] = [];
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
@@ -395,7 +395,7 @@ describe('the assistant host', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Logg inn' }));
 
-    expect(went).toEqual(['/auth/login?next=%2F%3Fq%3D1']);
+    expect(went).toEqual(['/auth/login?next=%2F%3Fq%3D1&lang=nb']);
     expect(asked).toEqual([]);
   });
 

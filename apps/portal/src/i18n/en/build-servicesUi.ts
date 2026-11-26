@@ -135,6 +135,9 @@ export const servicesUi = {
     refusedByGates:
       'The quality requirements stopped the publishing. Run the test sets on the test edition first.',
     notAcceptedShort: 'The platform did not accept the test edition:',
+    archivedId:
+      'The id is used by an archived service. Choose another id, or restore the archived service.',
+    archivedIdOpen: 'Open the archived service {id}',
     changeFirstVersion: 'First edition of the service',
     changeDraft: 'Changes in the draft that are not published',
     changeForm: 'Changes made in the form',

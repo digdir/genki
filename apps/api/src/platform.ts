@@ -85,6 +85,7 @@ export interface PlatformApiOptions {
   drafts?: Pick<ServiceDrafts, 'followPublish'>;
   now?: () => Date;
   lockdown?: boolean;
+  rightsFromEntraGroups?: boolean;
 }
 
 const tenantParam = z
@@ -410,6 +411,10 @@ const routes = {
           lockdownReadOnly: z.literal(true).optional().openapi({
             description:
               'Present only in a locked environment when the login may only read: not a trusted Entra login and not in MEMBER_ENTRA_GROUPS',
+          }),
+          rightsFrom: z.literal('entra-groups').optional().openapi({
+            description:
+              'Present when Entra ID groups give the rights instead of Altinn, so apps name the right place to change them',
           }),
         }),
         'Organisations',
@@ -1062,6 +1067,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         })),
         ...(principal.email ? { email: principal.email } : {}),
         ...(options.lockdown && readOnlyInLockdown(principal) ? { lockdownReadOnly: true } : {}),
+        ...(options.rightsFromEntraGroups ? { rightsFrom: 'entra-groups' as const } : {}),
       },
       200,
     );

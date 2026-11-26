@@ -20,7 +20,7 @@
   <rect class="lane" x="20" y="156" width="1160" height="210" rx="6"/>
   <rect class="lane" x="20" y="382" width="1160" height="158" rx="6"/>
 
-  <text class="role" x="40" y="70">Digdir</text>
+  <text class="role" x="40" y="70">Platform operators</text>
   <text class="where" x="40" y="92">in the console</text>
   <text class="role" x="40" y="250">Your organisation</text>
   <text class="where" x="40" y="272">in the portal, or through</text>
@@ -31,7 +31,7 @@
   <!-- Digdir -->
   <rect x="230" y="42" width="290" height="76" rx="4" fill="#656c76"/>
   <text class="t" x="375" y="74" text-anchor="middle">Approves organisations</text>
-  <text class="s" x="375" y="96" text-anchor="middle">Onboarding, rights from Altinn</text>
+  <text class="s" x="375" y="96" text-anchor="middle">Onboarding and rights</text>
   <rect x="540" y="42" width="300" height="76" rx="4" fill="#656c76"/>
   <text class="t" x="690" y="74" text-anchor="middle">Chooses models and prices</text>
   <text class="s" x="690" y="96" text-anchor="middle">Where each model runs, what it costs</text>
@@ -99,8 +99,8 @@
   <!-- Users and systems -->
   <rect x="230" y="404" width="290" height="112" rx="4" fill="#3d444d"/>
   <text class="t" x="375" y="446" text-anchor="middle">Employees</text>
-  <text class="s" x="375" y="470" text-anchor="middle">Chat in the workspace, with sources</text>
-  <text class="s" x="375" y="490" text-anchor="middle">and a button for feedback</text>
+  <text class="s" x="375" y="470" text-anchor="middle">Ask in the service&#8217;s own assistant,</text>
+  <text class="s" x="375" y="490" text-anchor="middle">with sources and feedback</text>
   <rect x="540" y="404" width="300" height="112" rx="4" fill="#3d444d"/>
   <text class="t" x="690" y="446" text-anchor="middle">Your own frontend</text>
   <text class="s" x="690" y="470" text-anchor="middle">Calls the API with a key,</text>

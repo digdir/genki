@@ -31,10 +31,12 @@ const client = (answer: () => Response, at = 'https://portal.example/datasets?x=
 };
 
 describe('the platform login', () => {
-  it('logs in through the platform login: sends the browser to /auth/login with the current page as next', () => {
+  it('logs in through the platform login: sends the browser to /auth/login with the current page as next and its language', () => {
     const { auth, visited } = client(() => json(401, {}));
     void auth.login();
-    expect(visited).toEqual([`/auth/login?next=${encodeURIComponent('/datasets?x=1#/datasets')}`]);
+    expect(visited).toEqual([
+      `/auth/login?next=${encodeURIComponent('/datasets?x=1#/datasets')}&lang=nb`,
+    ]);
   });
 
   it('logout sends the browser to /auth/logout', async () => {

@@ -157,6 +157,7 @@ export type PlatformOptions = Authentication & {
   names?: ActorNames;
   now?: () => Date;
   lockdown?: boolean;
+  rightsFromEntraGroups?: boolean;
   loginRefusal?: (request: Request) => Promise<string | undefined>;
   platformClientIds?: readonly string[];
 };
@@ -350,6 +351,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       ...(options.platform.drafts ? { drafts: options.platform.drafts } : {}),
       ...(options.platform.now ? { now: options.platform.now } : {}),
       lockdown,
+      ...(options.platform.rightsFromEntraGroups ? { rightsFromEntraGroups: true } : {}),
     });
   }
 
