@@ -80,18 +80,16 @@ afterEach(() => {
 });
 
 describe('the assistant host', () => {
-  it('draws only the service’s name above the sign-in, and the service’s menu under the button', async () => {
+  it('draws only the service’s name above the sign-in, and no menu: the pages are in the profile menu after login', async () => {
     draw('/', genki({ '/api/v1/hosts/ka.example.no': () => json(view) }));
 
     const name = await screen.findByRole('link', { name: 'Klarspråkassistenten' });
     expect(name.getAttribute('href')).toBe('/');
     expect(screen.getByRole('banner').textContent).toBe('Klarspråkassistenten');
     expect(screen.queryByRole('group', { name: 'Språk / Language' })).toBeNull();
-    const menu = screen.getByRole('navigation', { name: 'Meny' });
-    expect(menu.querySelector('a[href="/om"]')?.textContent).toBe('Om');
-    const help = screen.getByRole('link', { name: 'Hjelp' });
-    expect(help.getAttribute('target')).toBe('_blank');
-    expect(help.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(screen.queryByRole('navigation')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Om' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Hjelp' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Logg inn' })).toBeTruthy();
   });
 
@@ -118,7 +116,7 @@ describe('the assistant host', () => {
     draw('/', genki({ '/api/v1/hosts/ka.example.no': () => json(view) }), 'en');
 
     expect(await screen.findByRole('link', { name: 'The plain language assistant' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Help' })).toBeTruthy();
+    expect(screen.getByText(/The plain language assistant/, { selector: 'p' })).toBeTruthy();
   });
 
   it('keeps a service in one language to it, with no language choice, whatever the browser asks for', async () => {

@@ -250,30 +250,6 @@ const AssistantPane = ({
   );
 };
 
-/** The service's own pages and links, under the sign-in, since nothing else shows them before it. */
-const HostMenu = ({ host }: { host: HostView }) => {
-  const t = useT();
-  const { locale } = useLocale();
-  if (host.menu.length === 0) return null;
-  return (
-    <nav aria-label={t('host.menu')}>
-      <ul className="ah-menu">
-        {host.menu.map((item) => (
-          <li key={'page' in item ? `page:${item.page}` : `href:${item.href}`}>
-            {'page' in item ? (
-              <a href={`/${item.page}`}>{textIn(item.label, locale)}</a>
-            ) : (
-              <a href={item.href} target="_blank" rel="noopener noreferrer">
-                {textIn(item.label, locale)}
-              </a>
-            )}
-          </li>
-        ))}
-      </ul>
-    </nav>
-  );
-};
-
 /** The login page: one card in the middle, genki's mascot, a heading, and the one way in. */
 const SignIn = ({
   host,
@@ -306,13 +282,9 @@ const SignIn = ({
             <Heading level={2} data-size="xs">
               {t('host.signInUnavailable')}
             </Heading>
-            {host.menu.length > 0 ? (
-              <Paragraph>{t('host.signInUnavailableDetail')}</Paragraph>
-            ) : null}
           </Alert>
         )}
       </Card>
-      <HostMenu host={host} />
     </div>
   );
 };
