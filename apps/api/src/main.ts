@@ -616,7 +616,7 @@ const platform = await createPlatform({
       trusted.filter((t) => t.kind === 'ansattporten').map((t) => ['issuer', t.issuer]),
     ),
     audience,
-    altinnResource: resource,
+    ...(entraOnly ? {} : { altinnResource: resource }),
   },
   apiKeys: tenantKeys,
   ...(db ? { keyPolicies: postgresKeyPolicies(db.apiKeys) } : {}),

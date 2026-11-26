@@ -9,6 +9,7 @@ export const serviceUi = {
     navLabel: 'Tabs for {name}',
     sectionOverview: 'Overview',
     draftNote: 'Overview and Quality arrive once the service is published.',
+    continueTo: 'Continue to {tab}',
     sectionSetup: 'Setup',
     sectionInterface: 'Design',
     sectionTest: 'Try',

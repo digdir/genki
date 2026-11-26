@@ -236,6 +236,7 @@ genki-test runs as the synthetic `312521172` until its data moves to Digdir's `9
 
 1. Close the API and move the data: the platform database, the uploaded files and the knowledge datasets. An operator does this by hand with their own move scripts; they are not in this repository.
 2. Set `PLATFORM_TENANT=991825827` in the GitHub environment `test` and `SMOKE_TENANT=991825827` in `genki-test`, then deploy test.
+3. Check every hosted Client in the new tenant: `curl -fsS https://api.genki.digdir.cloud/v1/hosts/<hostname>` answers its service for each name it should draw. A 404, or «Her er det ingen assistent» on the page, means the Client's `spec.hostnames` lacks the name, typically one opened by a zone move at the same time. An operator sets the list with `PUT /tenants/{tenant}/clients/{id}/hosted`, body `{"hosted": true, "hostnames": [{"hostname": "<name>", "environment": "prod"}, ...]}` and a `change-reason` header; the list replaces the whole one, so send every name the Client keeps, the main one first, which the portal shows. Its `spec.url` is set apart from that, with the whole definition, as in [Moving to a new zone](../infra/README.md#moving-to-a-new-zone).
 
 Set `PLATFORM_TENANT`, never clear it: an empty value means `991825827`, which hides which tenant test runs as, and a rollback needs it set back to `312521172`.
 
@@ -268,6 +269,8 @@ genki-test signs in through production Ansattporten with genki's production clie
    ```sh
    gh variable set ANSATTPORTEN_ISSUER --env test --body https://ansattporten.no
    gh variable delete ALTINN_PDP_URL --env test
+   gh variable delete ALTINN_PDP_MASKINPORTEN_CLIENT_ID --env test
+   gh variable delete ALTINN_RESOURCE --env test
    ```
 
 3. **Deploy**: `gh workflow run deploy.yml --ref main`, then `gh run watch`. The deploy stops before any change if the stage or `ALTINN_PDP_URL` is wrong. Once past that, the candidate deploy already points the API's login secret at the production one, so a failed gate leaves the switch half applied: run the undo below. `rollback.yml` only moves traffic and does not undo the switch.
@@ -300,6 +303,7 @@ az deployment sub create -l westeurope -n genki-hostname-binder-access -f infra/
   -p environmentName=test resourceGroupName=rg-genki-test-weu dnsZoneName=genki.digdir.cloud policyEffect=Audit
 gh variable set ANSATTPORTEN_ISSUER --env test --body https://test.ansattporten.no
 gh variable set ALTINN_PDP_URL --env test --body https://platform.tt02.altinn.no
+gh variable set ALTINN_PDP_MASKINPORTEN_CLIENT_ID --env test --body c3cd8108-89cb-4479-b3fa-6314fc74bf0a
 gh workflow run deploy.yml --ref main
 ```
 

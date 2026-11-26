@@ -44,9 +44,13 @@ export const browserSnippet = (
     `  redirect_uri: '${spec.oidc?.redirectUris[0] ?? ''}',`,
     "  response_type: 'code',",
     "  scope: 'openid profile',",
-    '  authorization_details: JSON.stringify([',
-    `    { type: 'ansattporten:altinn:resource', resource: '${oidc.altinnResource ?? ''}' },`,
-    '  ]),',
+    ...(oidc.altinnResource
+      ? [
+          '  authorization_details: JSON.stringify([',
+          `    { type: 'ansattporten:altinn:resource', resource: '${oidc.altinnResource}' },`,
+          '  ]),',
+        ]
+      : []),
     '};',
     '',
     `const svar = await fetch('${apiBase}/v1/chat/completions', {`,

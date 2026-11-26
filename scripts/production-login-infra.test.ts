@@ -51,10 +51,11 @@ const login = (values: Record<string, unknown> | undefined) => ({
   secretName: values?.platformLoginSecretName,
   lockdown: values?.lockdown,
   altinn: values?.altinnPdpUrl,
+  resource: values?.altinnResource,
 });
 
 describe.skipIf(!hasAz && !process.env.CI)('genki-test on production Ansattporten', () => {
-  it('keeps the test client, its secret, Altinn and lockdown while the issuer is test Ansattporten', () => {
+  it('keeps the test client, its secret, Altinn, its test resource and lockdown while the issuer is test Ansattporten', () => {
     const { values } = testParams({
       ANSATTPORTEN_ISSUER: TEST_ISSUER,
       ALTINN_PDP_URL: 'https://platform.tt02.altinn.no',
@@ -66,6 +67,7 @@ describe.skipIf(!hasAz && !process.env.CI)('genki-test on production Ansattporte
       secretName: 'platform-login-client-secret',
       lockdown: true,
       altinn: 'https://platform.tt02.altinn.no',
+      resource: 'urn:altinn:resource:digdir-genai-platform-test',
     });
   }, 120_000);
 
@@ -81,7 +83,7 @@ describe.skipIf(!hasAz && !process.env.CI)('genki-test on production Ansattporte
     }
   }, 360_000);
 
-  it('signs in through the production client and its secret, without lockdown or Altinn, once the hostnames are at certificates', () => {
+  it('signs in through the production client and its secret, on the platform resource, without lockdown or Altinn, once the hostnames are at certificates', () => {
     const { values } = testParams({
       ANSATTPORTEN_ISSUER: PRODUCTION_ISSUER,
       HOSTNAMES_STAGE: 'certificates',
@@ -93,6 +95,7 @@ describe.skipIf(!hasAz && !process.env.CI)('genki-test on production Ansattporte
       secretName: 'platform-login-client-secret-prod',
       lockdown: false,
       altinn: '',
+      resource: 'urn:altinn:resource:digdir-genai-platform',
     });
     expect(values?.platformLoginStage).toBe('certificates');
   }, 120_000);

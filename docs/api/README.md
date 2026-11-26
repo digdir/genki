@@ -75,6 +75,10 @@ To announce one, add a line to a new dated entry below that names the operation 
 
 `npm run definitions:compat` checks every YAML or JSON file in the repository that is a service, step flow, skill or block definition (seeds, examples and fixtures) against the current schema, including the strategy, tool and guardrail settings. Models, datasets, rerankers, tools and blocks are not looked up, since each environment has its own. Give it the path to a tenant export (`GET /tenants/{tenant}/export`) or a folder of definitions to check those instead.
 
+### 2026-11-26: no Altinn resource without Altinn
+
+- `GET /v1/hosts/{hostname}` answers `login.altinnResource: null`, and `GET /tenants/{tenant}/clients` leaves `oidc.altinnResource` out, when rights come only from Entra groups (no `ALTINN_PDP_URL`), so a login asks for no `authorization_details`.
+
 ### 2026-11-26: the design connector for Claude
 
 - New, when `GENAI_PUBLIC_API_URL` is set and only on that host: `POST /mcp/design` (MCP with `list_design_elements`, `get_design_element` and `import_design`, as the person who approved the connection, in that organisation), `POST /oauth/design/register`, `GET /oauth/design/authorize`, `GET /oauth/design/finish/{request}` (issues the code only in the browser that started the connection), `POST /oauth/design/token`, `POST /oauth/design/revoke`, and the metadata at `/.well-known/oauth-protected-resource/mcp/design` and `/.well-known/oauth-authorization-server/oauth/design` ([ADR 0073](../adr/0073-design-connector-for-claude.md)).

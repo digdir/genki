@@ -22,7 +22,7 @@ import { runtimeSkills } from '@genai/strategy-single-call';
 import { inferQueryIntent } from './intent.js';
 import {
   activeFiltersInstruction,
-  agentTools,
+  agentToolsFor,
   cutOffToolCallNudge,
   answerInstructionsLead,
   composeSystemPrompt,
@@ -62,7 +62,9 @@ import {
   sentenceIdFilter,
   sourcesFirst,
   stripPageMarkers,
+  validateCitations,
 } from './citations.js';
+import { citeGaps } from './citation-gaps.js';
 import { skillCatalog, useSkill, useSkillTool, withLoadedSkills } from './skills.js';
 import { sourcesPart, type SourceRecord } from './sources.js';
 import type { Evaluator } from './structured.js';
@@ -589,7 +591,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       serviceFactsLookup && (config.tools ?? []).some(isServiceFactsRef),
     );
     const toolSpecs = [
-      ...(searchable ? agentTools : []),
+      ...(searchable ? agentToolsFor(citeBy) : []),
       ...(sourceFactsOn ? [sourceFactsTool] : []),
       ...(serviceFactsOn ? [serviceFactsTool] : []),
       ...(skills.length ? [useSkillTool] : []),
@@ -748,7 +750,9 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         break;
       }
       const tools =
-        phase === 'finalize' ? agentTools.filter((t) => t.name === 'generate_response') : toolSpecs;
+        phase === 'finalize'
+          ? agentToolsFor(citeBy).filter((t) => t.name === 'generate_response')
+          : toolSpecs;
       lastIteration = iteration;
       yield {
         type: 'kernel.notice',
@@ -1203,6 +1207,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     ) {
       const settlement = settleCitations(answer, workspace);
       let settled: string | undefined;
+      let uncited = 0;
       if (settlement.action === 'carry-through') settled = workspace.lastGeneratedResponse;
       else if (settlement.action === 'decline') settled = settlement.text;
       else if (settlement.action === 'backfill') {
@@ -1237,6 +1242,27 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         answer = settled;
         resent = true;
       }
+      // Only cited excerpts are published, so each factual block needs its own [N] (#1051).
+      if (citeBy === 'excerpt' && validateCitations(answer, workspace.citationIndex).grounded) {
+        const filled = await citeGaps(
+          environment(
+            () => undefined,
+            () => undefined,
+          ),
+          answer,
+        );
+        uncited = filled.uncited;
+        if (filled.text !== answer) {
+          if (answer === workspace.quotedText) workspace.quotedText = filled.text;
+          yield {
+            type: 'kernel.notice',
+            data: { stage: 'answer-discarded', reason: 'uncited-blocks' },
+          };
+          yield { type: 'kernel.part.delta', data: { text: filled.text } };
+          answer = filled.text;
+          resent = true;
+        }
+      }
       // Quotes belong to the answer they were read from, never to one the loop wrote itself.
       if (answer !== workspace.quotedText) {
         workspace.citationQuotes = new Map();
@@ -1266,6 +1292,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
               .length,
             missed: workspace.sentenceIds.missed,
             cited: workspace.citations.length,
+            uncited,
           },
         };
     }

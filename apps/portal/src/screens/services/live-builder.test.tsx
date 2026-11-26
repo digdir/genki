@@ -1181,6 +1181,19 @@ describe('a new service saved as a draft on the server', () => {
     ).toBeTruthy();
   });
 
+  it('goes on from the setup of a draft to Utforming, the next tab, at the address the tab links to', async () => {
+    const { id } = await startNamed('Permisjonssvar');
+
+    const next = await screen.findByRole('link', { name: 'Videre til Utforming' });
+    expect(next.getAttribute('href')).toBe(
+      screen.getByRole('tab', { name: 'Utforming' }).getAttribute('href'),
+    );
+    fireEvent.click(next);
+
+    await waitFor(() => expect(window.location.hash).toBe(`#/services/${id}/interface`));
+    expect(await screen.findByRole('tab', { name: 'Utforming', selected: true })).toBeTruthy();
+  });
+
   it('opens a saved draft-only service in the one-form Oppsett, with the assistant beside it', async () => {
     const { fetch, id } = await startNamed('Permisjonssvar');
 

@@ -149,7 +149,9 @@ describe('the page the agent sees for each chunk', () => {
 
     const rule =
       'Write a page as plain text, such as "s. 67", never as a number in square brackets: [N] is only for citing a source.';
-    expect(await prompt('excerpt')).toContain(rule);
     expect(await prompt('document')).toContain(rule);
+    // An excerpt answer puts the page after its [N], since only cited excerpts are published (#1051).
+    expect(await prompt('excerpt')).toContain('Never put a page inside the square brackets.');
+    expect(await prompt('excerpt')).toContain('as in "[12] (s. 25)"');
   });
 });

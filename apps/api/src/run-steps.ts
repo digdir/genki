@@ -1305,7 +1305,8 @@ export class RunMapper {
   }
 
   private discarded(e: Event, ts: number, data: Data) {
-    if (data.reason === 'renumbered') {
+    // Renumbered markers and markers added to uncited blocks (#1051) keep the answer's words.
+    if (data.reason === 'renumbered' || data.reason === 'uncited-blocks') {
       this.out.push({ kind: 'retract', reason: 'discarded' });
       return;
     }

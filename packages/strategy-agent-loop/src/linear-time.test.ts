@@ -11,6 +11,7 @@ import { declineOnly, keepsTheDraft, soundsLikeRefusal } from './citation-backfi
 import { stripCodeFences } from './structured.js';
 import { questionLanguage } from './prompts.js';
 import { searchFailures } from './tools.js';
+import { gapBlocks, pageMention } from './citation-gaps.js';
 
 const quickly = (run: () => unknown) => {
   const started = performance.now();
@@ -19,6 +20,27 @@ const quickly = (run: () => unknown) => {
 };
 
 describe('answer cleanup on adversarial input', () => {
+  it('finds the uncited blocks of an answer and the pages it names in linear time', () => {
+    const index = new Map([[1, 'c1']]);
+    for (const text of [
+      `|${'-'.repeat(100_000)}x`,
+      `${'- '.repeat(50_000)}x`,
+      `**${'a'.repeat(100_000)}`,
+      `${'*'.repeat(100_000)}x`,
+      ` [${'1'.repeat(100_000)}`,
+      '\n'.repeat(100_000),
+    ])
+      expect(quickly(() => gapBlocks(text, index))).toBeLessThan(1000);
+    for (const text of [
+      `(s. 1${' '.repeat(100_000)}`,
+      '(s. 1'.repeat(30_000),
+      `(side ${'9'.repeat(100_000)})`,
+    ])
+      expect(quickly(() => [...text.matchAll(pageMention)])).toBeLessThan(1000);
+    expect(gapBlocks('## Funn\n\nSvar [1].\n\nUten kilde.\n\n|---|', index)).toHaveLength(1);
+    expect([...'Organisering (s. 27–28).'.matchAll(pageMention)].map((m) => m[1])).toEqual(['27']);
+  });
+
   it('recognises a source list line in linear time', () => {
     expect(quickly(() => stripSourceLists(`kilde ${'\t[0]'.repeat(30_000)}x`))).toBeLessThan(1000);
     expect(stripSourceLists('Svar.\n**Kilder:** [1], [2]')).toBe('Svar.');
