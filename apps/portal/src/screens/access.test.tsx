@@ -409,6 +409,16 @@ describe('Tilgang: tjenester', () => {
 });
 
 describe('Tilgang: gi en kollega tilgang', () => {
+  it('shows the grant button only once the people list has arrived', async () => {
+    const held = heldFetch(/access\/people/);
+    await renderAt('#/access', held.fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Tilgang' });
+    expect(screen.queryByRole('button', { name: 'Gi en kollega tilgang' })).toBeNull();
+    await held.release();
+    await peopleReady();
+    expect(screen.getByRole('button', { name: 'Gi en kollega tilgang' })).toBeTruthy();
+  });
+
   it('writes the Altinn message for the chosen rights instead of granting', async () => {
     const calls = recording();
     await renderAt('#/access', calls.fetch);

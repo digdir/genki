@@ -47,7 +47,7 @@ export const accessPeopleRoutes: RouteConfig[] = [
     summary:
       "The people in the tenant's organisation who hold a platform right in Altinn, with those rights. Any member",
     description:
-      "Read from Altinn access management through the organisation's system user, and kept for two minutes. When Altinn fails, the last list read is served with `stale: true`. When Entra groups give the rights, `people` is empty and `source` is `entra-groups`. Reads are not audited.",
+      "Read from Altinn access management through the organisation's system user, and kept for two minutes. When Altinn fails, the last list read is served with `stale: true`. When Entra groups give the rights (no `ALTINN_PEOPLE_URL` or `ALTINN_PDP_URL`, an Entra group setting, and mock rights not asked for), `people` is empty and `source` is `entra-groups`. Reads are not audited.",
     request: { params: z.object({ tenant }) },
     responses: {
       200: json(
