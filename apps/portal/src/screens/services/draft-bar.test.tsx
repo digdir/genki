@@ -103,9 +103,10 @@ describe('the draft bar on Oppsett for an existing service', () => {
       'Lagres i testutgaven med en gang. Brukerne har det ikke før du publiserer.',
     );
     expect(screen.queryByRole('region', { name: 'Lagring' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Publiser' }).getAttribute('aria-disabled')).toBe(
-      'true',
-    );
+    // Risk and Sikkerhetsregler are set on the publish page, so Publiser opens it with nothing changed.
+    expect(
+      screen.getByRole('button', { name: 'Publiser' }).getAttribute('aria-disabled'),
+    ).toBeNull();
   });
 
   it('autosaves after a short pause, not on every keystroke, and then counts the changes', async () => {
