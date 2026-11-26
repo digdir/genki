@@ -19,7 +19,14 @@ import { clientRegistry } from '../frontends.js';
 import { defaultReservedDomains } from '../hosts.js';
 import { operatorDirectory } from '../operators.js';
 import { actingClient } from './acting.js';
-import { createBff, handoffCookie, loginCookie, sessionCookie, type BffDeps } from './bff.js';
+import {
+  createBff,
+  handoffCookie,
+  loginCookie,
+  organisationsOf,
+  sessionCookie,
+  type BffDeps,
+} from './bff.js';
 import { InMemoryBffSessions } from './sessions.js';
 
 const ISSUER = 'https://login.test';
@@ -76,6 +83,7 @@ const setup = async (
     entraGroups?: string[];
     issuer?: string;
     loginPage?: string;
+    directory?: { orgNumber: string; name: string }[] | 'unreadable';
   } = {},
 ) => {
   const issuer = options.issuer ?? ISSUER;
@@ -222,12 +230,13 @@ const setup = async (
       value: async () => OWN_SECRET,
       hosts: async () => [issuer],
     },
-    organisations: async (accessToken) => {
-      const { principal } = await verifier.verify(accessToken);
-      return [...new Set((principal.authorizedFor ?? []).map((a) => a.org))].map((orgNumber) => ({
-        orgNumber,
-      }));
-    },
+    organisations: async (accessToken) =>
+      organisationsOf((await verifier.verify(accessToken)).principal, {
+        tenantDirectory: async () => {
+          if (options.directory === 'unreadable') throw new Error('directory unavailable');
+          return options.directory ?? [];
+        },
+      }),
     fetch: fetcher,
     now,
   };
@@ -322,6 +331,13 @@ const setup = async (
 
 type Setup = Awaited<ReturnType<typeof setup>>;
 
+const organisationsAt = async (s: Setup, id: string) =>
+  (
+    (await (await s.via('/bff/auth/me', 'ka.example.no', `${sessionCookie}=${id}`)).json()) as {
+      organisations: unknown;
+    }
+  ).organisations;
+
 describe('the platform login for hosted assistants', () => {
   let s: Setup;
   beforeEach(async () => {
@@ -346,6 +362,16 @@ describe('the platform login for hosted assistants', () => {
     expect(id).toMatch(/^[A-Za-z0-9_-]{43}$/);
     const me = await s.via('/bff/auth/me', 'ka.example.no', `${sessionCookie}=${id}`);
     expect(me.status).toBe(200);
+  });
+
+  it('the token’s organisation name wins over the directory', async () => {
+    const t = await setup({
+      directory: [{ orgNumber: ORG_A, name: 'Digitaliseringsdirektoratet' }],
+    });
+
+    const { id } = await t.signIn();
+
+    expect(await organisationsAt(t, id)).toEqual([{ orgNumber: ORG_A, name: 'Digdir' }]);
   });
 
   it.each(['nynorsk.example.no', 'ola.example.no'])(
@@ -705,6 +731,41 @@ describe('the platform login when Entra groups give the rights', () => {
     const { id } = await s.signIn();
 
     expect(id).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  });
+
+  it('an Entra login sees its organisation’s name from the directory', async () => {
+    const s = await setup({
+      entraGroups: [EMPLOYEE_GROUP],
+      directory: [
+        { orgNumber: ORG_A, name: 'Digitaliseringsdirektoratet' },
+        { orgNumber: ORG_B, name: 'Brønnøysundregistrene' },
+      ],
+    });
+
+    const { id } = await s.signIn();
+
+    expect(await organisationsAt(s, id)).toEqual([
+      { orgNumber: ORG_A, name: 'Digitaliseringsdirektoratet' },
+    ]);
+  });
+
+  it('an Entra login whose organisation the directory names only by its number sees the number', async () => {
+    const s = await setup({
+      entraGroups: [EMPLOYEE_GROUP],
+      directory: [{ orgNumber: ORG_A, name: ORG_A }],
+    });
+
+    const { id } = await s.signIn();
+
+    expect(await organisationsAt(s, id)).toEqual([{ orgNumber: ORG_A }]);
+  });
+
+  it('an Entra login still signs in, named by its number, when the directory cannot be read', async () => {
+    const s = await setup({ entraGroups: [EMPLOYEE_GROUP], directory: 'unreadable' });
+
+    const { id } = await s.signIn();
+
+    expect(await organisationsAt(s, id)).toEqual([{ orgNumber: ORG_A }]);
   });
 
   it('shows a person in no group a page that says they have no access, with no session', async () => {

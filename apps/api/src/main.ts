@@ -96,6 +96,7 @@ import {
   envFlagsIn,
 } from '@genai/composition';
 import { buildTimeOf, createApp } from './app.js';
+import type { OrganisationNameSources } from './organisation-names.js';
 import { defaultSlowRequestMs } from './request-timing.js';
 import { sharedLimiter } from './rate-limit.js';
 import { designConnectorModule } from './design-connector/consent.js';
@@ -804,6 +805,12 @@ const relist = scheduleModelRelist({
   onError: (error) => log('scheduled model listing failed', { error: String(error) }),
 });
 const builtAt = buildTimeOf(process.env.APP_BUILT_AT);
+const organisationNameSources = {
+  tenantDirectory: () => platform.directory.list(),
+  organisationName: (orgNumber: string) =>
+    (testData.organisations ?? []).find((o) => o.orgno === orgNumber)?.name,
+  registeredName: async (orgNumber: string) => (await platform.organization(orgNumber))?.name,
+} satisfies OrganisationNameSources;
 const app = createApp(version, {
   ...(builtAt ? { builtAt } : {}),
   ...(process.env.GENAI_ENV ? { environment: process.env.GENAI_ENV } : {}),
@@ -826,10 +833,7 @@ const app = createApp(version, {
       { kind: 'operator', issuer: 'platform', subject: 'task-reader' },
       tasks,
     ),
-    tenantDirectory: () => platform.directory.list(),
-    organisationName: (orgNumber) =>
-      (testData.organisations ?? []).find((o) => o.orgno === orgNumber)?.name,
-    registeredName: async (orgNumber) => (await platform.organization(orgNumber))?.name,
+    ...organisationNameSources,
     tenantQuota: platform.quota,
     tenantGate: platform.tenantGate,
     registered: platform.registered,
@@ -1014,7 +1018,7 @@ const bff = createBff({
   },
   organisations: async (accessToken) => {
     const verified = await verifier.verify(accessToken);
-    return organisationsOf(verified.principal);
+    return organisationsOf(verified.principal, organisationNameSources);
   },
   log,
 });

@@ -1,4 +1,5 @@
 import { withFlagDetails } from './flag-audit.js';
+import { organisationNames } from './organisation-names.js';
 import { isHiddenAuditTarget } from './internal-services.js';
 import { refusedAsArchived, serviceArchived, serviceArchivedType } from './archived-services.js';
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
@@ -1051,23 +1052,14 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         ...(principal.tenant ? [principal.tenant] : []),
       ]),
     ];
-    const directory = orgs.length > 0 ? ((await options.tenantDirectory?.()) ?? []) : [];
+    const names = await organisationNames(orgs, principal.orgNames, options);
     return c.json(
       {
-        organisations: await Promise.all(
-          orgs.map(async (orgNumber) => ({
-            orgNumber,
-            name:
-              [
-                directory.find((d) => d.orgNumber === orgNumber)?.name,
-                principal.orgNames?.[orgNumber],
-                options.organisationName?.(orgNumber),
-              ].find((name) => name && name !== orgNumber) ??
-              (await options.registeredName?.(orgNumber).catch(() => undefined)) ??
-              orgNumber,
-            rights: [...rightsOf(principal, orgNumber)],
-          })),
-        ),
+        organisations: orgs.map((orgNumber, i) => ({
+          orgNumber,
+          name: names[i] ?? orgNumber,
+          rights: [...rightsOf(principal, orgNumber)],
+        })),
         ...(principal.email ? { email: principal.email } : {}),
         ...(options.lockdown && readOnlyInLockdown(principal) ? { lockdownReadOnly: true } : {}),
       },
@@ -1088,16 +1080,10 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const orgs = [...new Set([...directory.map((d) => d.orgNumber), ...counts.keys()])].sort();
     const showsTokens = !principal.scopes?.includes(testRunnerScope);
     const quotas = await Promise.all(orgs.map((org) => options.tenantQuota?.(org)));
-    const looked = await Promise.all(
-      orgs.map(async (org) => {
-        const entry = directory.find((d) => d.orgNumber === org)?.name;
-        if (entry && entry !== org) return entry;
-        return (
-          options.organisationName?.(org) ??
-          (await options.registeredName?.(org).catch(() => undefined))
-        );
-      }),
-    );
+    const looked = await organisationNames(orgs, undefined, {
+      ...options,
+      tenantDirectory: async () => directory,
+    });
     return c.json(
       {
         data: orgs.map((orgNumber, i) => {
