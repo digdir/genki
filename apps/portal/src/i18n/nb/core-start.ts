@@ -48,8 +48,7 @@ export const dataHandling = defineNamespace({
 export const start = defineNamespace({
   login: 'Logg inn',
   loginFailed: 'Innloggingen mislyktes. Prøv igjen.',
-  sharedSub:
-    'Digdir drifter og tester disse. Alle virksomheter kan bruke dem så snart de har tilgang.',
+  sharedSub: 'Klarspråk og nynorsk er prøvd i test. De andre er planlagt.',
   shared1Title: 'Klarspråk',
   shared1Body: 'Skriver om tekst så den blir lettere å forstå, uten å endre innholdet.',
   shared1Example: 'Brukes for eksempel på vedtaksbrev før de sendes.',
@@ -116,13 +115,13 @@ export const start = defineNamespace({
   step2Title: 'Digdir godkjenner',
   step2Body:
     'Digdir behandler forespørselen og registrerer virksomheten. Du ser status i portalen, og logger inn på nytt når forespørselen er godkjent.',
-  step3Title: 'Gi rettighet i Altinn',
+  step3Title: 'Gi rettighet',
   step3Body:
-    'Den som styrer tilganger i Altinn hos dere, gir én person rettigheten «Administrere tjenester». Den personen logger inn i portalen.',
+    'Den som styrer tilganger hos dere, gir én person rettigheten «Administrere tjenester». Den personen logger inn i portalen.',
   step4Title: 'Lag den første tjenesten',
   step4Body:
-    'Prøv en delt tjeneste, eller beskriv jobben og la assistenten hjelpe dere. Gi kolleger tilgang i Altinn når tjenesten er klar.',
-  operatedBy: 'Driftes av Digitaliseringsdirektoratet',
+    'Prøv en delt tjeneste, eller beskriv jobben og la assistenten hjelpe dere. Gi kolleger tilgang når tjenesten er klar.',
+  operatedBy: 'Utforskes av Digitaliseringsdirektoratet sammen med KS og KS Digital',
   footer: 'Bunntekst',
   privacy: 'Personvernerklæring',
   accessibility: 'Tilgjengelighetserklæring',

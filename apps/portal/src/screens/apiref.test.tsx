@@ -109,7 +109,7 @@ describe('API-referanse', () => {
 
     const intro = (await screen.findByText(/Du kaller som/)).closest('p') as HTMLElement;
     expect(intro.textContent).toBe(
-      'Du kaller som Erik Larsen for Testetaten, med rettighetene dine fra Altinn: Bruke tjenester. Kallet sendes til API-et med din innlogging.',
+      'Du kaller som Erik Larsen for Testetaten, med rettighetene dine i plattformen: Bruke tjenester. Kallet sendes til API-et med din innlogging.',
     );
   });
 

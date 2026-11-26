@@ -15,7 +15,7 @@ export const apirefArea = {
     tabActions: 'Show API call in the portal',
     unknownEndpoint:
       'The endpoint "{endpoint}" does not exist in the API yet. These parts have no endpoints yet: {areas}.',
-    missingRights: 'My rights from Altinn',
+    missingRights: 'My rights on the platform',
     missingAccess: 'Setting access to a service',
     missingStatus: 'Getting the status of one run without a timeline',
     navLabel: 'Endpoints',
@@ -60,9 +60,9 @@ export const apirefArea = {
     copy: 'Copy {what}',
     tryHeading: 'Try',
     tryAs:
-      'You call as <strong>{name}</strong> for {tenant}, with your rights from Altinn: {held}. The call goes to the API with your sign-in.',
+      'You call as <strong>{name}</strong> for {tenant}, with your rights on the platform: {held}. The call goes to the API with your sign-in.',
     tryAnonymous:
-      'You call for {tenant}, with your rights from Altinn: {held}. The call goes to the API with your sign-in.',
+      'You call for {tenant}, with your rights on the platform: {held}. The call goes to the API with your sign-in.',
     heldNone: 'none',
     tryReadOnly:
       'Here you can only try read calls (GET), so nothing changes by accident. Use the curl example above to send this call.',

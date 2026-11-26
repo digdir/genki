@@ -112,7 +112,7 @@ export const sharedServices = {
   notFoundTitle: 'Shared service not found',
   notFoundBody: 'It does not exist, or is not available to you.',
   gotoList: 'Go to Shared services',
-  lead: 'Ready-made services that Digdir runs and tests. Try them here, call them from your own systems, or use them as tools in your own services.',
+  lead: 'Shared services being tried out. Try them here, call them from your own systems, or use them as tools in your own services.',
   emptyTitle: 'No shared services are available yet',
   emptyBody:
     'Shared services are ready-made services Digdir runs for everyone, such as plain language and translation to Nynorsk. Tell us which ones you need, and we will prioritise them.',

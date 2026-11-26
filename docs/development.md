@@ -5,7 +5,7 @@ You need [mise](https://mise.jdx.dev) (pins Node 24.21.0 in `mise.toml`) and Doc
 ```sh
 mise trust         # once per clone, or mise ignores mise.toml and runs whatever Node is on PATH
 mise install       # Node 24.21.0
-npm start          # setup, then API, worker, portal, console and workspace; stop all with Ctrl-C
+npm start          # setup, then the API, the worker and the apps; stop all with Ctrl-C
 ```
 
 `npm start` is `npm run setup` followed by `npm run dev:all`; run them separately when you only need one.
@@ -44,8 +44,8 @@ npm start          # setup, then API, worker, portal, console and workspace; sto
 | API       | http://localhost:8080           | The platform, with database migrations and seeded definitions                                    |
 | Worker    | http://localhost:8081           | Durable jobs, such as runs on the knowledge database; health checks                              |
 | Portal    | http://portal.localhost:5173    | Agencies: build, test and publish services, datasets and API keys                                |
-| Console   | http://console.localhost:5174   | Digdir operators: tenants, shared services, models, platform health                              |
-| Workspace | http://workspace.localhost:5176 | Employees: chat with published services, with sources and approvals                              |
+| Console   | http://console.localhost:5174   | Operators: tenants, shared services, models, platform health                                     |
+| Workspace | http://workspace.localhost:5176 | Being retired: services get their own hosted assistant (ADR 0061)                                |
 | Model     | http://127.0.0.1:8095           | Local test model, only when `LOCAL_MODEL_URL` points there                                       |
 | Blocks    | http://localhost:8090           | The block origin code blocks are framed from (ADR 0069), served by the API on `GENAI_BLOCK_PORT` |
 
@@ -126,13 +126,13 @@ To check it: `curl localhost:8080/health` reports `lockdown`, the API log at sta
 
 **What needs your own settings.** Every setting is listed in `.env.example`, with what happens when it is empty. Integrations with missing settings are skipped and logged at startup, not fatal, and so are the services that need them.
 
-| Works on a fresh clone, no secrets                                  | Needs your own settings in `.env.local`                                  |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Login with test persons, rights, portal, console, workspace         | Real models: `FOUNDRY_OPENAI_*`, `FOUNDRY_CLAUDE_*`                      |
-| Postgres storage, migrations, API keys, conversations, audit        |                                                                          |
-| "Lokal testchat" in the workspace, answered by the local echo model | Embeddings for vector search: Foundry                                    |
-| Your own single-call services on the local model (`local/echo`)     | Traces in Langfuse, Maskinporten, the real Altinn PDP, real Ansattporten |
-| Any model API replayed from response files on `local/replay`        |                                                                          |
+| Works on a fresh clone, no secrets                               | Needs your own settings in `.env.local`                                  |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Login with test persons, rights, portal, console                 | Real models: `FOUNDRY_OPENAI_*`, `FOUNDRY_CLAUDE_*`                      |
+| Postgres storage, migrations, API keys, conversations, audit     |                                                                          |
+| "Lokal testchat" in the portal, answered by the local echo model | Embeddings for vector search: Foundry                                    |
+| Your own single-call services on the local model (`local/echo`)  | Traces in Langfuse, Maskinporten, the real Altinn PDP, real Ansattporten |
+| Any model API replayed from response files on `local/replay`     |                                                                          |
 
 Without the Foundry settings, the seeded services (Kunnskapsassistenten, Klarspråk, Nynorsk and the rest) are skipped, so "Lokal testchat" is the only service until you add them. The seeded Kudos and public-docs are on the local knowledge server, `kunnskapsserveren`, with no generation, so locally they stay empty and their searches find nothing; the seed's `kudos` pipeline cannot run until the dataset names a generation. genki no longer reads the shared Typesense server (#690).
 
@@ -229,7 +229,7 @@ GENAI_HOSTED_HOSTNAMES=kunnskap.localhost=991825827 GENAI_PROXY_KEY=$KEY PLATFOR
 
 The Client may instead name its own Ansattporten client in `oidc`, which then logs in on the hostname itself. Save the tenant secret first (`PUT /tenants/991825827/secrets/<name>` with `allowedHosts: ["http://localhost:8080"]`), then the Client with `hosted: true`, `hostnames: [{ hostname: kunnskap.localhost }]`, the redirect URI `https://kunnskap.localhost/auth/callback` and `oidc.secret: <name>`: the mock login takes the secret when the Client is saved.
 
-**Tests.** `npm run check` runs prettier, eslint, the type check, dependency boundaries, the apps' size budgets, the `/v1` API and definition compatibility checks ([API changes](api/README.md#api-changes)) and every test. `npm run size` builds the portal, console, workspace, assistant and docs and fails when an app's first load, its entry and the chunks that entry imports up front, grows past its gzip budget in `scripts/size-budget.ts`. Docker must be running: the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers. Run a part with `npx vitest run <paths>` from the repository root, with paths from the root, and narrow it to one test with `-t "<name>"`. Run from inside an app, Vitest misses the root `vitest.config.ts` and fails with `Cannot find package '@genai/...'`. When Docker is not running, the container suites fail with `Could not find a working container runtime strategy`; that is Docker, not the test. Tests never call real models; the live suites skip themselves unless their settings are set.
+**Tests.** `npm run check` runs prettier, eslint, the type check, dependency boundaries, the apps' size budgets, the `/v1` API and definition compatibility checks ([API changes](api/README.md#api-changes)) and every test. `npm run size` builds the portal, console, workspace, assistant and docs and fails when an app's first load, its entry and the chunks that entry imports up front, grows past its gzip budget in `scripts/size-budget.ts`. Docker must be running: the database suites start containers with Testcontainers. Run a part with `npx vitest run <paths>` from the repository root, with paths from the root, and narrow it to one test with `-t "<name>"`. Run from inside an app, Vitest misses the root `vitest.config.ts` and fails with `Cannot find package '@genai/...'`. When Docker is not running, the container suites fail with `Could not find a working container runtime strategy`; that is Docker, not the test. Tests never call real models; the live suites skip themselves unless their settings are set.
 
 **Layout check.** With the portal on mock data (`VITE_API=mock npm run dev -w apps/portal`), `node scripts/layout-check.ts --url http://localhost:5173` signs in, follows every link it finds and reports each screen that scrolls sideways at 390, 768, 990 and 1280 px, in light and dark, with the elements that cause it, in `layout-check/report.json` and screenshots. `--dialogs` also opens the dialogs and side panels on each screen and reports one that scrolls as a whole instead of its list; `--only services,log` limits the screens. It needs a Chromium for `playwright-core`, or Chrome installed.
 
@@ -276,7 +276,7 @@ A bigger feature ships turned off and is switched on per organisation or person 
 | Adapters          | `adapter-openai`, `adapter-mcp`, `adapter-a2a`, `adapter-rest`, `conversations`                                                                                                                                                                                                                 |
 | Platform services | `identity` (principals, Ansattporten, Maskinporten, Altinn), `guardrails`, `hooks`, `eval` (test sets, judges, publishing gates), `jobs` (triggers and batch), `ingest` (Kudos, websites, folders), `valuehash`                                                                                 |
 | Client            | `client` (`@genai/client`, typed client for your own frontend), `schema-forms` (forms and results drawn from a service's JSON Schema)                                                                                                                                                           |
-| Apps              | `api`, `worker`, `portal`, `workspace`, `console`, `parity` (records headless-rag and compares against it)                                                                                                                                                                                      |
+| Apps              | `api`, `worker`, `portal`, `console`, `assistant` (the hosted assistant, ADR 0061), `admin-mcp`, `docs`, `parity` (records headless-rag and compares against it), and `workspace` while it is retired                                                                                           |
 
 Model provider APIs and catalog options are documented in [providers.md](providers.md).
 
@@ -288,7 +288,7 @@ Vendor SDKs live only in `packages/providers-*`, and only composition roots may 
 npm run check   # prettier, eslint, typecheck, dependency boundaries, size budgets, all tests
 ```
 
-Tests use Vitest; the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers, so Docker must be running. CI (`.github/workflows/ci.yml`) runs the same steps as `npm run check`, with the tests split over four runners, plus a gitleaks scan and a Docker image build, without pushing.
+Tests use Vitest; the database suites start containers with Testcontainers, so Docker must be running. CI (`.github/workflows/ci.yml`) runs the same steps as `npm run check`, with the tests split over four runners, plus a gitleaks scan and a Docker image build, without pushing.
 
 Quality of answers is measured, not assumed: `packages/eval` runs test sets with judges and publishing gates, and `apps/parity` compares the platform with headless-rag on the same questions ([apps/parity/README.md](../apps/parity/README.md)). Components behind a port, such as a document converter, an embedding model or a search engine, are compared with a candidate in `benchmarks/`, against a reference and a margin set beforehand ([benchmarks/README.md](../benchmarks/README.md), ADR 0003).
 
