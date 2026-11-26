@@ -410,7 +410,7 @@ export const App = ({
   const bffState = hostSession.kind === 'ok' ? hostSession.value.kind : 'off';
   const startSignIn = viaBff
     ? bffState === 'signed-out'
-      ? () => navigate(bff.signInUrl(at))
+      ? () => navigate(bff.signInUrl(at, locale))
       : undefined
     : login &&
       (() => {

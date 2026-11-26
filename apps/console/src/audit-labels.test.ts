@@ -46,6 +46,12 @@ describe('audit labels', () => {
     },
   );
 
+  it('Revisjon names moving an organisation’s data in plain words in bokmål and English', () => {
+    const moved = entry('platform.tenant.move', 'tenant:991825827');
+    expect(labelOf(moved, translator('nb'))).toBe('Flyttet virksomhetens data hit');
+    expect(labelOf(moved, translator('en'))).toBe("Moved the organisation's data here");
+  });
+
   it.each(['nb', 'en'] as const)(
     'Revisjon names adding, removing, promoting and rolling back a service environment in %s',
     (locale) => {

@@ -369,7 +369,8 @@ export const createApiClient = ({
       }>('/health', signal),
     isReadOnlyInLockdown: async (signal?: AbortSignal) =>
       (await get<{ lockdownReadOnly?: boolean }>('/me', signal)).lockdownReadOnly === true,
-    me: (signal?: AbortSignal) => get<{ email?: string }>('/me', signal),
+    me: (signal?: AbortSignal) =>
+      get<{ email?: string; rightsFrom?: 'entra-groups' }>('/me', signal),
     ...featureClients({
       get,
       request,

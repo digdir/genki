@@ -49,9 +49,10 @@ describe('sign-in through the BFF', () => {
     });
   });
 
-  it('keeps the return address on the host and sends the CSRF header with API calls', () => {
+  it('keeps the return address and the page language on the host and sends the CSRF header with API calls', () => {
     const signIn = bffSignIn(answering(200).fetcher);
     expect(signIn.signInUrl('/threads/1?a=b')).toBe('/auth/login?next=%2Fthreads%2F1%3Fa%3Db');
+    expect(signIn.signInUrl('/', 'nb')).toBe('/auth/login?next=%2F&lang=nb');
     expect(signIn.headers()).toEqual({ 'genai-csrf': '1' });
   });
 });

@@ -844,6 +844,7 @@ const app = createApp(version, {
     unmaskedInput: platform.unmaskedInput,
     names: actorNames(configEntries),
     lockdown,
+    rightsFromEntraGroups: accessPeople.kind === 'entra-groups',
     loginRefusal: async (request) => {
       const checked = await authenticator.check(request);
       return checked.ok ? undefined : checked.code;

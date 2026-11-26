@@ -15,7 +15,7 @@ export type HostSession =
 export interface HostSignIn {
   /** Whether the host serves the BFF, and who is signed in through it. */
   session(): Promise<HostSession>;
-  signInUrl(next: string): string;
+  signInUrl(next: string, lang?: string): string;
   signOutUrl: string;
   /** Headers for every API call from the page, so a state-changing call passes the CSRF check. */
   headers(): Record<string, string>;
@@ -49,7 +49,8 @@ export const bffSignIn = (fetcher: typeof fetch = fetch): HostSignIn => ({
       return { kind: 'unavailable' };
     return { kind: 'off' };
   },
-  signInUrl: (next) => `/auth/login?next=${encodeURIComponent(next)}`,
+  signInUrl: (next, lang) =>
+    `/auth/login?next=${encodeURIComponent(next)}${lang ? `&lang=${encodeURIComponent(lang)}` : ''}`,
   signOutUrl: '/auth/logout',
   headers: () => ({ 'genai-csrf': '1' }),
   chooseOrganisation: async (orgNumber) => {

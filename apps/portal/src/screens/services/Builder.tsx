@@ -96,7 +96,7 @@ import { gateStopReason, gateStops } from '../quality/QualityOverview';
 import { productionEnvironment } from '../../api/environments';
 import { DraftBar, savedByOf, saverOf, type SaveState, type SavedBy } from './DraftBar';
 import { DiscardDialog } from './DiscardDialog';
-import { newDraftId } from './draft-id';
+import { freeServiceId, newDraftId } from './draft-id';
 import { HandoverNotice } from './HandoverNotice';
 import { PublishDiff, type TestWarning } from './PublishDiff';
 import { SetupForm } from './setup-form';
@@ -818,7 +818,15 @@ export const Builder = ({
   const [deleting, setDeleting] = useState<'asking' | 'busy' | 'failed'>();
   const edited = JSON.stringify(service) !== JSON.stringify(init.definition);
   const high = service.spec.riskClass === 'high';
-  const serviceId = isNew ? slug(service.metadata.name ?? '') || 'ny-tjeneste' : id;
+  const [existingServices] = useAsync(
+    async (signal) =>
+      live && isNew ? (await api.services(tenant, signal)).data.map((s) => s.id) : [],
+    [api, tenant, live, isNew],
+  );
+  const baseId = slug(service.metadata.name ?? '') || 'ny-tjeneste';
+  const serviceId = isNew
+    ? freeServiceId(baseId, existingServices.status === 'ready' ? existingServices.data : [])
+    : id;
   const current = Math.max(versions[0]?.n ?? 0, remoteLatestVersion);
   const definition = useMemo(
     () =>
@@ -1212,6 +1220,7 @@ export const Builder = ({
     errors: PublishProblem[];
     refusedByGates: boolean;
     outdated?: true;
+    archivedId?: string;
   }>();
   const rebasedDraft = useRef<ServiceDraft | undefined>(undefined);
 
@@ -1410,11 +1419,25 @@ export const Builder = ({
   }: PublishInput & { stampRisk?: boolean; variantChoices?: Record<string, VariantChoice> }) => {
     setProblems(undefined);
     setUnmaskedRefused({ uses: [], messages: {} });
+    const freeId =
+      isNew && live
+        ? await api.services(tenant).then(
+            ({ data }) =>
+              freeServiceId(
+                baseId,
+                data.map((s) => s.id),
+              ),
+            () => undefined,
+          )
+        : undefined;
     draftBlocked.current = true;
-    const chosen = withVariantChoices(
+    const picked = withVariantChoices(
       publishable as unknown as ServiceDefinition,
       variantChoices,
     ) as unknown as Record<string, unknown>;
+    const chosen = freeId
+      ? { ...picked, metadata: { ...(picked.metadata as object), id: freeId } }
+      : picked;
     const outcome = await publishDraft(
       api,
       stampRisk && service.spec.riskClass
@@ -1443,7 +1466,11 @@ export const Builder = ({
         ),
       });
       setProblems(outcome);
-      throw new Error(outcome.errors[0]?.message ?? tRef.current('services.publishFailed'));
+      throw new Error(
+        outcome.archivedId !== undefined
+          ? tRef.current('services.archivedId')
+          : (outcome.errors[0]?.message ?? tRef.current('services.publishFailed')),
+      );
     }
     unsaved.current = false;
     draftBlocked.current = false;
@@ -2324,6 +2351,15 @@ export const Builder = ({
           onRebase={rebaseDraft}
           onResolve={resolveConflicts}
         />
+      ) : problems?.archivedId !== undefined ? (
+        <Alert data-color="danger" data-size="sm" role="alert">
+          <Paragraph data-size="sm">{t('services.archivedId')}</Paragraph>
+          <Paragraph data-size="sm">
+            <Link href={`#${servicePath(problems.archivedId)}`}>
+              {t('services.archivedIdOpen', { id: problems.archivedId })}
+            </Link>
+          </Paragraph>
+        </Alert>
       ) : problems ? (
         <Alert data-color="danger" data-size="sm" role="alert">
           <Paragraph data-size="sm">
@@ -2626,16 +2662,6 @@ export const Builder = ({
                   {t('services.publishToTest')}
                 </Button>
               )}
-              {canDelete && !fresh ? (
-                <Button
-                  variant="secondary"
-                  data-color="danger"
-                  data-size="sm"
-                  onClick={() => setDeleting('asking')}
-                >
-                  {t('services.deleteDraft')}
-                </Button>
-              ) : null}
               {archived || view === 'inUse' ? null : !canPublish ? (
                 <Button
                   variant="primary"

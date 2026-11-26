@@ -26,6 +26,15 @@ export const renderAt = async (path: string, fetch: typeof globalThis.fetch = mo
   return { auth, ...result };
 };
 
+export const entraGroupsFetch =
+  (base: typeof globalThis.fetch = mockFetch()): typeof fetch =>
+  async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const response = await base(input, init);
+    if (new URL(url, 'http://x').pathname !== '/api/me') return response;
+    return Response.json({ ...((await response.json()) as object), rightsFrom: 'entra-groups' });
+  };
+
 export const heldFetch = (pattern: RegExp, base: typeof globalThis.fetch = mockFetch()) => {
   let release: () => void = () => undefined;
   const held = new Promise<void>((resolve) => (release = resolve));

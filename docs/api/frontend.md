@@ -41,7 +41,7 @@ A hostname is opened by an operator's parameter file or by a claim of the servic
 
 A page on the assistant host signs in through the BFF (ADR 0061, ADR 0034) and holds no token. The host proxies these routes to the API with its proxy key; the API does not answer them without it.
 
-- `GET /auth/login?next=/path` starts the login; `next` is kept only as a path on the same hostname.
+- `GET /auth/login?next=/path` starts the login; `next` is kept only as a path on the same hostname. An optional `lang=nb` or `lang=en` sets the language of the page that says a login has no access; without it the page follows the browser.
 - `GET /auth/callback` is the redirect URI a Client with its own `oidc` registers, `https://{hostname}/auth/callback`.
 - A Client without `oidc` logs in through genki's platform login: `/auth/login` sends the browser to `https://login.apps.<zone>/auth/login?host={hostname}`, which runs the login with genki's own client and returns to `GET /auth/handoff?code=...` on the hostname. The code works once, for about a minute, only on that hostname and only in the browser that started the login.
 - `GET /auth/me` and `GET /auth/org`: the name, the chosen organisation and the organisations the person may act for, or `401` when no one is signed in. Never a token.

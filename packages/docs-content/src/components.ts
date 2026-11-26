@@ -358,12 +358,11 @@ export const componentsByBlock: Record<string, Component[]> = {
       name: 'Datakilder og innhenting',
       tagline: 'Hent dokumentene dit de skal søkes i, og hold dem oppdatert',
       description:
-        'Innhenting (ingestion) kobler et datasett til kildene det skal bygges fra: filer, nettsider, databaser, API-er, arkiv og samhandlingsverktøy. Kjøringen er inkrementell, så bare endrede dokumenter behandles på nytt, og tilgangsinformasjon fra kilden følger dokumentet inn i indeksen.',
+        'Innhenting (ingestion) kobler et datasett til kildene det skal bygges fra: filer, nettsider, databaser, API-er, arkiv og samhandlingsverktøy. Kjøringen er inkrementell, så bare endrede dokumenter behandles på nytt.',
       capabilities: [
         'Koblinger til filer, Parquet, Postgres, HTTP, nettsider og MCP-kilder',
         'Inkrementell oppdatering: nye, endrede og slettede dokumenter',
         'Deduplisering og dokument-ID på tvers av kjøringer',
-        'Tilgangsmetadata (ACL) fra kilden følger dokumentet',
         'Planlagte kjøringer og kjøring ved publisering',
       ],
       practices: [

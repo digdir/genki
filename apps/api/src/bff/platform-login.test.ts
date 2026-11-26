@@ -780,6 +780,59 @@ describe('the platform login when Entra groups give the rights', () => {
       false,
     );
   });
+
+  it('the no-access page speaks the language the app asked for at login, not the browser’s', async () => {
+    const s = await setup({ entraGroups: ['00000000-0000-4000-8000-000000000000'] });
+    const english = { 'accept-language': 'en-GB,en;q=0.9' };
+
+    const begin = await s.via(
+      '/bff/auth/login?next=%2F&lang=nb',
+      'ka.example.no',
+      undefined,
+      english,
+    );
+    const atLoginHost = s.atLocation(begin);
+    const started = await s.via(
+      `/bff/auth/login${atLoginHost.search}`,
+      atLoginHost.hostname,
+      undefined,
+      english,
+    );
+    const back = await s.ansattporten(s.atLocation(started));
+    const callback = await s.via(
+      `/bff/auth/callback${back.search}`,
+      back.hostname,
+      `${loginCookie}=${s.cookieValue(started, loginCookie) ?? ''}`,
+      english,
+    );
+
+    expect(callback.status).toBe(403);
+    const page = await callback.text();
+    expect(page).toContain('lang="nb"');
+    expect(page).toContain('Denne assistenten er bare åpen for ansatte i Digdir');
+  });
+
+  it('the no-access page of a Client with its own oidc speaks the language asked for at login', async () => {
+    const s = await setup({ entraGroups: ['00000000-0000-4000-8000-000000000000'] });
+    const english = { 'accept-language': 'en-GB,en;q=0.9' };
+
+    const begin = await s.via(
+      '/bff/auth/login?next=%2F&lang=nb',
+      'own.example.no',
+      undefined,
+      english,
+    );
+    const back = await s.ansattporten(s.atLocation(begin));
+    const callback = await s.via(
+      `/bff/auth/callback${back.search}`,
+      'own.example.no',
+      `${loginCookie}=${s.cookieValue(begin, loginCookie) ?? ''}`,
+      english,
+    );
+
+    expect(callback.status).toBe(403);
+    expect(await callback.text()).toContain('lang="nb"');
+  });
 });
 
 describe('the platform login on production Ansattporten', () => {
