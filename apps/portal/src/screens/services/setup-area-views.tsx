@@ -4,19 +4,17 @@ import {
   EXPERIMENTAL_Suggestion as Suggestion,
   Field,
   Heading,
-  Input,
   Label,
   Paragraph,
   Select,
   Tag,
 } from '@digdir/designsystemet-react';
-import { SparklesIcon, XMarkIcon } from '@navikt/aksel-icons';
+import { SparklesIcon } from '@navikt/aksel-icons';
 import { useId, useState, type ReactNode } from 'react';
-import { ErrorState } from '../../states';
 import { Icon } from '../../components/Icon';
 import type { AsyncState } from '../../hooks';
 import { useFormat } from '@genai/i18n/react';
-import { useT, type Format, type PlainKey, type T } from '../../i18n';
+import { useT, type PlainKey } from '../../i18n';
 import type { InputFieldSpec } from '../../data/service-definition';
 import type { FileInput } from '../../api';
 import './setup-layout.css';
@@ -54,24 +52,6 @@ export const AskChip = ({
       {label}
     </Button>
   ) : null;
-
-const ownerLabel = (t: T, d: DatasetOption) =>
-  d.shared ? t('setupList.sharedDataset') : (d.owner?.name ?? d.owner?.tenant ?? '');
-
-export const datasetMeta = (t: T, f: Format, d: DatasetOption) => {
-  const documents =
-    typeof d.documents === 'number'
-      ? t('setupList.documents', { count: d.documents })
-      : t('setupList.documentsUnknown');
-  const second = d.shared
-    ? d.owner?.name
-      ? t('setupList.datasetFrom', { owner: d.owner.name })
-      : t('setupList.datasetFromUnknown')
-    : d.updatedAt
-      ? t('setupList.datasetUpdated', { date: f.date(d.updatedAt, 'long') })
-      : t('setupList.datasetNeverUpdated');
-  return `${documents} · ${second}`;
-};
 
 const DatasetSuggestion = ({
   chosen,
@@ -131,143 +111,30 @@ const DatasetSuggestion = ({
 export const SourcesArea = ({
   chosen,
   options,
-  addedInDraft,
   readOnly,
-  onAdd,
-  onRemove,
-  onClear,
   ask,
   nameOf,
   onSet,
 }: {
   chosen: string[];
   options: AsyncState<DatasetOption[]>;
-  addedInDraft: (id: string) => boolean;
   readOnly: boolean;
-  onAdd: (id: string) => void;
-  onRemove: (index: number) => void;
-  onClear: () => void;
   ask?: ((q: string) => void) | undefined;
   nameOf: (id: string) => string;
-  /** Sets the whole list. With it, the choice is Designsystemet's Suggestion, several at once. */
-  onSet?: ((ids: string[]) => void) | undefined;
+  /** Sets the whole list, chosen several at once in Designsystemet's Suggestion. */
+  onSet: (ids: string[]) => void;
 }) => {
   const t = useT();
-  const f = useFormat();
-  const [query, setQuery] = useState('');
-  if (onSet)
-    return (
-      <div className="stack area-stack">
-        <AskChip label={t('setupList.askSources')} onAsk={ask} />
-        <DatasetSuggestion
-          chosen={chosen}
-          options={options}
-          readOnly={readOnly}
-          nameOf={nameOf}
-          onChange={onSet}
-        />
-      </div>
-    );
-  const needle = query.trim().toLowerCase();
-  const list = options.status === 'ready' ? options.data : [];
-  const hits = needle
-    ? list.filter((d) => `${d.name} ${ownerLabel(t, d)}`.toLowerCase().includes(needle))
-    : [];
   return (
     <div className="stack area-stack">
       <AskChip label={t('setupList.askSources')} onAsk={ask} />
-      <div className="stack-xs">
-        <label htmlFor="area-ds" className="area-label">
-          {t('setupList.datasetsLabel')}
-        </label>
-        <span id="area-ds-help" className="meta area-help">
-          {t('setupList.datasetsHelp')}
-        </span>
-        {chosen.length === 0 ? (
-          <span className="area-empty">{t('setupList.datasetsNone')}</span>
-        ) : null}
-        <ul className="chosen-list" aria-label={t('setupList.datasetsChosen')}>
-          {chosen.map((id, i) => {
-            const name = nameOf(id);
-            return (
-              <li key={`${id}-${i}`} className="chosen-chip">
-                <span className="chosen-name">{name}</span>
-                {addedInDraft(id) ? (
-                  <span className="chosen-badge">{t('setupList.addedInDraft')}</span>
-                ) : null}
-                {readOnly ? null : (
-                  <button
-                    type="button"
-                    className="chosen-remove"
-                    aria-label={t('setupList.removeDataset', { name })}
-                    onClick={() => onRemove(i)}
-                  >
-                    <Icon icon={XMarkIcon} size={14} />
-                  </button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-        {readOnly ? null : (
-          <div className="area-search-row">
-            <Input
-              id="area-ds"
-              type="search"
-              role="combobox"
-              aria-expanded={!!needle}
-              aria-controls="area-ds-list"
-              aria-describedby="area-ds-help"
-              placeholder={t('setupList.datasetsSearch')}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            {chosen.length ? (
-              <button type="button" className="link-button" onClick={onClear}>
-                {t('setupList.datasetsClear')}
-              </button>
-            ) : null}
-          </div>
-        )}
-        {needle && options.status === 'loading' ? (
-          <p className="meta">{t('setup.loadingDatasets')}</p>
-        ) : null}
-        {needle && options.status === 'error' ? (
-          <ErrorState error={options.error} headingLevel={3} />
-        ) : null}
-        {needle && options.status === 'ready' ? (
-          <ul id="area-ds-list" aria-label={t('setupList.datasetsHits')} className="hit-list">
-            {hits.map((d) => {
-              const added = chosen.includes(d.id);
-              return (
-                <li key={d.id} className="hit-row">
-                  <span className="hit-text">
-                    <span className="hit-name">{d.name}</span>
-                    <span className="meta">{datasetMeta(t, f, d)}</span>
-                  </span>
-                  <Tag data-size="sm" data-color={d.shared ? 'success' : 'neutral'}>
-                    {ownerLabel(t, d)}
-                  </Tag>
-                  <Button
-                    variant={added ? 'tertiary' : 'secondary'}
-                    data-size="sm"
-                    aria-disabled={added || undefined}
-                    aria-label={
-                      added
-                        ? t('setupList.datasetAddedLabel', { name: d.name })
-                        : t('setupList.datasetAddLabel', { name: d.name })
-                    }
-                    onClick={() => !added && onAdd(d.id)}
-                  >
-                    {added ? t('setup.added') : t('setupList.add')}
-                  </Button>
-                </li>
-              );
-            })}
-            {hits.length === 0 ? <li className="hit-none">{t('setupList.noHits')}</li> : null}
-          </ul>
-        ) : null}
-      </div>
+      <DatasetSuggestion
+        chosen={chosen}
+        options={options}
+        readOnly={readOnly}
+        nameOf={nameOf}
+        onChange={onSet}
+      />
     </div>
   );
 };

@@ -303,11 +303,6 @@ export const serviceTabsUi = {
       'Et utvalg av ekte kjøringer, for eksempel 5 av 100, blir vurdert automatisk uten fasit. Du ser poeng per dag ved siden av testsettet, og får beskjed hvis kvaliteten faller mellom to publiseringer.',
   }),
   serviceDev: defineNamespace({
-    channelsInSetup: 'Kanaler og varianter endrer du i Oppsett, under Kanaler',
-    channelsLead:
-      'API-nøklene som lar andre systemer kalle tjenesten, de egne løsningene den vises i og adressene den svarer på.',
-    definitionLead:
-      'Hele testutgaven som tekst. Det du endrer her, er den samme testutgaven som i Oppsett, og lagres på samme måte.',
     download: 'Last ned',
     pasteFile: 'Lim inn fil',
     seeChanges: 'Se endringene mot utgaven i bruk',

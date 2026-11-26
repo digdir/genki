@@ -9,7 +9,6 @@ import {
   type AssistantLayout,
   type BlockId,
   type BuilderState,
-  type ProfileData,
   type ServiceFacts,
   type TemplateId,
 } from '@genai/ui-blocks/builder';
@@ -27,14 +26,12 @@ import { BlocksPanel, takeOut } from './BlocksPanel';
 import { LayoutTransfer } from './LayoutTransfer';
 import { startTemplate, type BlocksStart } from './layoutStore';
 import { ServicePreview, type PreviewMode } from './ServicePreview';
-import type { Collection } from './profileEdit';
 import { TemplatesPanel } from './TemplatesPanel';
-import { TextsPanel } from './TextsPanel';
 import type { TryRun } from './TryView';
 import './blocks.css';
 import { BackLink } from '../../../components/BackLink';
 
-type LeftTab = 'chat' | 'blocks' | 'templates' | 'texts';
+type LeftTab = 'blocks' | 'templates';
 
 const leftMin = 320;
 const leftMax = 640;
@@ -112,7 +109,6 @@ export const useBlocksState = (
       setTemplate(undefined);
     },
     // The words are the service's, not a template's: the template stays chosen.
-    setProfile: (profile: ProfileData | undefined) => setState((s) => withProfile(s, profile)),
   };
 };
 
@@ -187,8 +183,6 @@ const ResizeHandle = ({
 export const BlocksStep = ({
   state,
   narrow,
-  assistant,
-  collections,
   transfer = true,
   run,
   address,
@@ -198,12 +192,8 @@ export const BlocksStep = ({
   state: BlocksState;
   narrow: boolean;
   refs?: ReactNode;
-  /** The builder assistant. Without it there is no Chat tab. */
-  assistant?: ReactNode;
   /** «Kopier oppsettet» and «Lim inn oppsett» under the panels; off where they live elsewhere. */
   transfer?: boolean;
-  /** The collections the draft searches, whose words «Tekster» edits. Without it, no such tab. */
-  collections?: readonly Collection[] | undefined;
   run: TryRun | undefined;
   address: string;
   onFullscreen: () => void;
@@ -232,14 +222,7 @@ export const BlocksStep = ({
       >
         <ToggleGroup.Item value="templates">{t('builderBlocks.tabTemplates')}</ToggleGroup.Item>
         <ToggleGroup.Item value="blocks">{t('builderBlocks.tabBlocks')}</ToggleGroup.Item>
-        {collections ? (
-          <ToggleGroup.Item value="texts">{t('builderBlocks.tabTexts')}</ToggleGroup.Item>
-        ) : null}
-        {assistant ? (
-          <ToggleGroup.Item value="chat">{t('builderBlocks.tabChat')}</ToggleGroup.Item>
-        ) : null}
       </ToggleGroup>
-      {state.tab === 'chat' ? assistant : null}
       {state.tab === 'blocks' ? (
         <>
           <BlocksPanel state={state.state} facts={state.facts} onChange={state.change} />
@@ -249,12 +232,7 @@ export const BlocksStep = ({
       {state.tab === 'templates' ? (
         <TemplatesPanel current={state.template} onPick={state.pick} />
       ) : null}
-      {state.tab === 'texts' && collections ? (
-        <TextsPanel layout={state.layout} collections={collections} onChange={state.setProfile} />
-      ) : null}
-      {state.tab === 'chat' || !transfer ? null : (
-        <LayoutTransfer layout={state.layout} onPaste={state.paste} />
-      )}
+      {transfer ? <LayoutTransfer layout={state.layout} onPaste={state.paste} /> : null}
     </div>
   );
   const preview = (

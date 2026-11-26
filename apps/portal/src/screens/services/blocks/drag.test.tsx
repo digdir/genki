@@ -19,7 +19,6 @@ const Split = () => (
   <BlocksStep
     state={useBlocksState()}
     narrow={false}
-    collections={[]}
     run={undefined}
     address="ny-tjeneste.genki.no"
     onFullscreen={() => undefined}

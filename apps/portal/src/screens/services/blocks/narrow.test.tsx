@@ -15,7 +15,6 @@ const Harness = ({ narrow }: { narrow: boolean }) => (
   <BlocksStep
     state={useBlocksState()}
     narrow={narrow}
-    collections={[]}
     run={undefined}
     address="ny-tjeneste.genki.no"
     onFullscreen={() => undefined}

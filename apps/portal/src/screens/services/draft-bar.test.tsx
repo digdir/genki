@@ -6,7 +6,6 @@ import { mockAnsattporten } from '../../auth';
 import { logTimelines } from '../../data/log';
 import { exampleDatasets, exampleOrganisations, exampleServices, mockFetch } from '../../mock';
 import type { ModelOption } from '../../types';
-import { openArea } from './setup-areas.test-utils';
 
 document.getAnimations ??= () => [];
 beforeAll(() => {
@@ -235,7 +234,7 @@ describe('the draft bar on Oppsett for an existing service', () => {
     window.location.hash = '#/services/rapportassistenten/interface';
     await new Promise((resolve) => setTimeout(resolve, 50));
     window.location.hash = '#/services/rapportassistenten/setup';
-    await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
+    await screen.findByRole('heading', { level: 2, name: 'Grunnleggende' });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(reads()).toBe(before);
   });
@@ -303,38 +302,21 @@ describe('the publish page', () => {
   });
 
   it('leaves Publiser open when only the risk confirmation is missing, since the publish page asks for it', async () => {
-    await openService('#/services/rapportassistenten/setup', {
+    const calls = await openService('#/services/rapportassistenten/setup', {
       draft: withInstructions('Svar kort.'),
       reply: checksOf({
         ready: false,
         problems: [{ path: 'spec.riskConfirmation', message: 'må bekreftes' }],
       }),
     });
-    const nav = await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
-    const advanced = await within(nav).findByRole('button', { name: /^Avansert/ });
-    await waitFor(() => expect(within(advanced).getByText('Én mangler')).toBeTruthy());
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/rapportassistenten/draft/checks'))).toBe(true),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
     expect(
       screen.getByRole('button', { name: 'Publiser' }).getAttribute('aria-disabled'),
     ).toBeNull();
     expect(screen.queryByText(/mangler før publisering$/)).toBeNull();
-  });
-
-  it('keeps the list of setup parts as a sticky rail below the draft bar', async () => {
-    await openService('#/services/rapportassistenten/setup/purpose', {
-      reply: (url, method) =>
-        method === 'PUT' && url.endsWith('/rapportassistenten/draft')
-          ? new Response(JSON.stringify({ title: 'Nede', status: 503 }), {
-              status: 503,
-              headers: { 'content-type': 'application/problem+json' },
-            })
-          : undefined,
-    });
-    await screen.findByLabelText('Instruksjoner til tjenesten');
-    fireEvent.change(instructions(), { target: { value: 'Svar kort.' } });
-    await screen.findByRole('region', { name: 'Lagring' }, { timeout: 3000 });
-    const nav = screen.getByRole('navigation', { name: 'Deler av oppsettet' });
-    expect(nav.classList).toContain('sticky-rail');
-    expect(nav.matches('.draft-bar ~ * .sticky-rail')).toBe(true);
   });
 
   it('says honestly that publish hooks were not checked when the API skipped them', async () => {
@@ -354,10 +336,9 @@ describe('the publish page', () => {
       draft: withInstructions('Svar kort.'),
       reply: checksOf({ ready: true, problems: [] }),
     });
-    openArea(/^Risiko og KI-forordningen/);
-    fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Publiser' }));
     await screen.findByRole('heading', { level: 1, name: 'Publiser Rapportassistenten' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
     const button = screen.getByRole('button', { name: 'Publiser' });
     await waitFor(() => expect(button.getAttribute('aria-disabled')).not.toBe('true'));
     fireEvent.click(button);
@@ -424,62 +405,6 @@ describe('Oppsett wired to the draft, dataset and input API', () => {
     expect(within(bar()).getAllByRole('listitem').length).toBeGreaterThan(0);
   });
 
-  it('lists datasets from the dataset list with their document count, update date and owner', async () => {
-    await openService('#/services/rapportassistenten/setup/sources');
-    fireEvent.change(await screen.findByLabelText('Dokumentsamlinger'), { target: { value: 'e' } });
-    const hits = await screen.findByRole('list', { name: 'Treff' });
-    const row = (name: string) => within(hits).getByText(name).closest('li') as HTMLElement;
-    await waitFor(() => expect(within(hits).getByText('Veiledere og rundskriv')).toBeTruthy());
-    expect(
-      within(row('Kudos-rapporter')).getByText(
-        '48 312 dokumenter · fra Digitaliseringsdirektoratet',
-      ),
-    ).toBeTruthy();
-    expect(within(row('Kudos-rapporter')).getByText('Felles dokumentsamling')).toBeTruthy();
-    expect(
-      within(row('Veiledere og rundskriv')).getByText('6 dokumenter · oppdatert 7. oktober 2026'),
-    ).toBeTruthy();
-    expect(
-      within(row('Nettsidene til Testetaten')).getByText(
-        '1 240 dokumenter · ingen innlesing registrert i genki',
-      ),
-    ).toBeTruthy();
-  });
-
-  it('says so when the dataset list does not know the owner or the document count', async () => {
-    await openService('#/services/rapportassistenten/setup/sources', {
-      reply: (url, method) =>
-        method === 'GET' && /\/tenants\/[^/]+\/datasets$/.test(url)
-          ? Response.json({
-              data: [
-                {
-                  id: 'ukjent',
-                  fullId: '123456789/ukjent',
-                  name: 'Ukjent eier',
-                  scope: '123456789',
-                  source: 'upload',
-                  documents: null,
-                  chunks: null,
-                  lastExecution: null,
-                  nextRunAt: null,
-                  updatedAt: null,
-                  owner: { tenant: '123456789', name: null },
-                },
-              ],
-            })
-          : undefined,
-    });
-    fireEvent.change(await screen.findByLabelText('Dokumentsamlinger'), {
-      target: { value: 'ukjent' },
-    });
-    const hits = await screen.findByRole('list', { name: 'Treff' });
-    expect(
-      await within(hits).findByText(
-        'Antall dokumenter ukjent · fra en virksomhet genki ikke har navnet til',
-      ),
-    ).toBeTruthy();
-  });
-
   it('shows the file limits the platform reports for the draft under Inndata', async () => {
     const calls = await openService('#/services/rapportassistenten/setup/input');
     fireEvent.click(await screen.findByRole('checkbox', { name: /^Filer/ }));
@@ -522,89 +447,11 @@ describe('Oppsett wired to the draft, dataset and input API', () => {
     expect(edit.getAttribute('aria-expanded')).toBe('true');
   });
 
-  it('shows the empty Byggeassistent on Oppsett without suggestion chips', async () => {
+  it('shows the empty Byggeassistent beside the Oppsett form without suggestion chips', async () => {
     await openService('#/services/rapportassistenten/setup');
     const assistant = await screen.findByRole('complementary', { name: 'Byggeassistent' });
-    expect(within(assistant).getByText(/Spør om endringer i oppsettet/)).toBeTruthy();
+    expect(within(assistant).getByText(/hjelpe med å fylle ut skjemaet/)).toBeTruthy();
     expect(within(assistant).queryByRole('button', { name: 'Hva koster dette?' })).toBeNull();
     expect(within(assistant).queryByRole('button', { name: 'Test tjenesten' })).toBeNull();
-  });
-
-  it('asks for the file limits only on Inndata', async () => {
-    const calls = await openService('#/services/rapportassistenten/setup');
-    await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
-    expect(calls.some((c) => c.url.endsWith('/definitions/input-fields'))).toBe(false);
-  });
-});
-
-describe('the Prøv pane on Oppsett', () => {
-  const runs = (calls: Call[]) =>
-    calls.filter((c) => c.method === 'POST' && c.url.endsWith('/playground/runs'));
-  const ask = async (question: string) => {
-    fireEvent.click(await screen.findByRole('tab', { name: 'Prøv' }));
-    const field = screen.getByLabelText('Spørsmål til utkastet');
-    fireEvent.change(field, { target: { value: question } });
-    fireEvent.keyDown(field, { key: 'Enter' });
-  };
-
-  it('takes a narrow screen from the form to Prøv with one button, as the pane sits below the form there', async () => {
-    await openService('#/services/rapportassistenten/setup/purpose');
-    fireEvent.click(await screen.findByRole('button', { name: 'Prøv tjenesten' }));
-
-    const side = screen.getByRole('region', { name: 'Byggeassistent og prøving' });
-    expect(within(side).getByRole('tab', { name: 'Prøv', selected: true })).toBeTruthy();
-    expect(document.activeElement).toBe(side);
-    expect(within(side).getByLabelText('Spørsmål til utkastet')).toBeTruthy();
-  });
-
-  it('runs the edited draft, not the edition in use, and shows the answer with its sources', async () => {
-    const calls = await openService('#/services/rapportassistenten/setup/purpose', {
-      reply: (url, method) =>
-        method === 'POST' && url.endsWith('/playground/runs')
-          ? Response.json({
-              runId: 'run-1',
-              text: 'Seks uker.',
-              sources: [{ chunkId: 'c1', title: 'Personalhåndboka, Ferie' }],
-              searchNotes: [],
-              timeMs: 10,
-              tokensIn: 1,
-              tokensOut: 1,
-              costNok: null,
-              dataLocation: null,
-              quota: { usedPercent: 0, monthlyTokens: 0 },
-            })
-          : undefined,
-    });
-    fireEvent.change(await screen.findByLabelText('Instruksjoner til tjenesten'), {
-      target: { value: 'Svar på rim.' },
-    });
-    await ask('Hvor mye ferie har jeg?');
-
-    expect(await screen.findByText('Seks uker.')).toBeTruthy();
-    expect(screen.getByText('Personalhåndboka, Ferie')).toBeTruthy();
-    const body = runs(calls)[0]?.body as {
-      setup: { service: { version: unknown; definition: unknown } };
-      input: unknown;
-    };
-    expect(body.setup.service.version).toBe('draft');
-    expect(body.setup.service.definition).toMatchObject({
-      spec: { strategy: { config: { instructions: 'Svar på rim.' } } },
-    });
-    expect(body.input).toEqual({ text: 'Hvor mye ferie har jeg?' });
-  });
-
-  it('shows the error when the run fails and keeps the question', async () => {
-    await openService('#/services/rapportassistenten/setup/purpose', {
-      reply: (url, method) =>
-        method === 'POST' && url.endsWith('/playground/runs')
-          ? Response.json(
-              { type: 'about:blank', title: 'The run failed', status: 502 },
-              { status: 502, headers: { 'content-type': 'application/problem+json' } },
-            )
-          : undefined,
-    });
-    await ask('Hvor mye ferie har jeg?');
-    expect(await screen.findByText('Kunne ikke hente dataene')).toBeTruthy();
-    expect(screen.getByText('Hvor mye ferie har jeg?')).toBeTruthy();
   });
 });

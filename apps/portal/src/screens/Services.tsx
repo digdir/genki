@@ -34,7 +34,7 @@ const tweaks: Record<string, string> = {
   'uttrekk-samtale': '/services/soknadsuttrekk/setup',
   'uttrekk-inn-og-ut': '/services/soknadsuttrekk/setup?pane=tjeneste',
   'uttrekk-prove': '/services/soknadsuttrekk/test',
-  'uttrekk-yaml': '/services/soknadsuttrekk/versions?view=yaml',
+  'uttrekk-yaml': '/services/soknadsuttrekk/advanced/yaml',
   'uttrekk-publiser': '/services/soknadsuttrekk?publiser=1',
   samtaletjeneste: '/services/rapportassistenten/test',
 };

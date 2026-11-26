@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
 import { mockFetch } from '../mock';
+import { go } from '../test-utils';
 import type { Organisation, UsageReport } from '../types';
 
 document.getAnimations ??= () => [];
@@ -125,18 +126,17 @@ describe('buttons the person has no right for', () => {
     expect(
       await screen.findByRole('heading', { name: 'Du ser tjenesten uten å kunne endre den' }),
     ).toBeTruthy();
-    const nav = screen.getByRole('navigation', { name: 'Deler av oppsettet' });
-    fireEvent.click(within(nav).getByRole('button', { name: /^Avansert/ }));
-    const areas = within(nav)
-      .getAllByRole('button')
-      .filter((b) => b.classList.contains('setup-nav-item'));
-    expect(areas.length).toBeGreaterThan(4);
-    for (const area of areas) {
-      fireEvent.click(area);
-      const editable = document.querySelectorAll(
-        '.setup-area-body input:not(:disabled), .setup-area-body textarea:not(:disabled)',
+    await screen.findByRole('heading', { level: 2, name: 'Grunnleggende' });
+    const editable = () =>
+      document.querySelectorAll(
+        '.setup-form-area input:not(:disabled), .setup-form-area textarea:not(:disabled), .advanced-body input:not(:disabled), .advanced-body textarea:not(:disabled)',
       );
-      expect(editable.length).toBe(0);
+    expect(document.querySelectorAll('.setup-form-area').length).toBeGreaterThan(4);
+    expect(editable().length).toBe(0);
+    for (const part of ['how', 'tools', 'variants', 'channels']) {
+      go(`#/services/rapportassistenten/advanced/${part}`);
+      await screen.findAllByRole('heading', { level: 2 });
+      expect(editable().length).toBe(0);
     }
     expect(screen.queryByRole('region', { name: 'Utkast' })?.querySelector('button')).toBeFalsy();
     expect(calls.some((c) => c.startsWith('PUT') && c.includes('/draft'))).toBe(false);

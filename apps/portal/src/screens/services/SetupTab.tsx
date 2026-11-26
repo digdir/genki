@@ -695,8 +695,6 @@ interface Props {
   api?: ApiClient | undefined;
   operationModels?: OperationModelChoice[] | undefined;
   area?: SetupArea | undefined;
-  /** The new Oppsett: Suggestion for the datasets. */
-  fresh?: boolean;
   ask?: ((question: string) => void) | undefined;
   modelNote?: ReactNode;
   inUse?: ServiceDefinition | undefined;
@@ -739,7 +737,6 @@ export const SetupTab = ({
   api,
   operationModels = [],
   area,
-  fresh = false,
   ask,
   modelNote,
   inUse,
@@ -1913,41 +1910,23 @@ export const SetupTab = ({
   );
 
   const keptKey = `${tenant ?? d.metadata.tenant ?? ''}/${serviceId}`;
-  const publishedDatasets = inUse ? datasetsOf(inUse.spec).map((x) => x.dataset) : [];
   const sourcesArea = live ? (
     <SourcesArea
       chosen={datasets.map((x) => x.dataset)}
       options={live.datasets}
-      addedInDraft={(ref) => !!inUse && !publishedDatasets.includes(ref)}
       readOnly={readOnly}
-      onAdd={(ref) =>
-        patch((cur) => withDatasets(cur.spec, [...datasetsOf(cur.spec), { dataset: ref }]))
-      }
-      onRemove={(i) =>
+      ask={ask}
+      nameOf={(ref) => datasetName(ref, datasetNames)}
+      onSet={(ids: string[]) =>
         patch((cur) =>
           withDatasets(
             cur.spec,
-            datasetsOf(cur.spec).filter((_x, j) => j !== i),
+            ids.map(
+              (ref) => datasetsOf(cur.spec).find((x) => x.dataset === ref) ?? { dataset: ref },
+            ),
           ),
         )
       }
-      onClear={() => patch((cur) => withDatasets(cur.spec, []))}
-      ask={ask}
-      nameOf={(ref) => datasetName(ref, datasetNames)}
-      {...(fresh
-        ? {
-            onSet: (ids: string[]) =>
-              patch((cur) =>
-                withDatasets(
-                  cur.spec,
-                  ids.map(
-                    (ref) =>
-                      datasetsOf(cur.spec).find((x) => x.dataset === ref) ?? { dataset: ref },
-                  ),
-                ),
-              ),
-          }
-        : {})}
     />
   ) : null;
   const publishedFieldIds = new Set((inUse?.spec.input.fields ?? []).map((x) => x.id));

@@ -11,8 +11,12 @@ import {
 import { useT, type PlainKey } from '../../i18n';
 import { areaLabelKeys } from './setup-change-text';
 import type { SetupArea } from './setup-diff';
-import type { AreaFact } from './setup-layout';
 import './setup-form.css';
+
+/** What the form says under an area: what it lacks before it can be published. */
+export interface AreaFact {
+  problems?: string[];
+}
 
 /** The areas the new Oppsett shows; the rest are under Avansert or on the publish page. */
 const groups: { heading: PlainKey; areas: SetupArea[] }[] = [

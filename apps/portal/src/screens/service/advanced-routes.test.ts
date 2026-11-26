@@ -18,9 +18,9 @@ describe('the Avansert tab of a service not published yet', () => {
     ]);
   });
 
-  it('keeps Avansert away from a published service, which keeps Teknisk', () => {
+  it('gives a published service Avansert beside Teknisk, which keeps the log and environments', () => {
     const tabs = serviceTabs(availableSections({ isNew: false })).map((t) => t.tab);
-    expect(tabs).not.toContain('advanced');
+    expect(tabs).toContain('advanced');
     expect(tabs).toContain('developer');
   });
 
@@ -50,18 +50,10 @@ describe('the Avansert tab of a service not published yet', () => {
     );
   });
 
-  it('leaves the old addresses of a published service where they were', () => {
-    expect(at('/services/utkast-1/channels', false)).toEqual({
-      section: 'channels',
-      detail: undefined,
+  it('opens a part of Avansert of a published service from its address', () => {
+    expect(at('/services/utkast-1/advanced/limits', false)).toEqual({
+      section: 'advanced',
+      detail: 'limits',
     });
-    expect(at('/services/utkast-1/setup/tools', false)).toEqual({
-      section: 'setup',
-      detail: 'tools',
-    });
-  });
-
-  it('sends a published service away from Avansert, which it does not have', () => {
-    expect(at('/services/utkast-1/advanced', false).redirect).toBe('/services/utkast-1');
   });
 });
