@@ -15,13 +15,13 @@
   <text class="s" transform="translate(92 245) rotate(-90)" text-anchor="middle" font-style="italic">mocked locally</text>
   <rect x="108" y="20" width="78" height="450" rx="4" fill="#7f7f7f"/>
   <text class="t" transform="translate(144 245) rotate(-90)" text-anchor="middle">Access</text>
-  <text class="s" transform="translate(164 245) rotate(-90)" text-anchor="middle">Altinn rights · platform rights · key policies</text>
-  <text class="s" transform="translate(180 245) rotate(-90)" text-anchor="middle" font-style="italic">Altinn mocked locally</text>
+  <text class="s" transform="translate(164 245) rotate(-90)" text-anchor="middle">Entra groups or Altinn · key policies</text>
+  <text class="s" transform="translate(180 245) rotate(-90)" text-anchor="middle" font-style="italic">mocked locally</text>
 
   <!-- Interfaces -->
   <rect x="206" y="20" width="676" height="92" rx="4" fill="#2e5f7f"/>
   <text class="t" x="544" y="54" text-anchor="middle">Interfaces and channels</text>
-  <text class="s" x="544" y="78" text-anchor="middle">Workspace (employees) · Portal (agencies) · Console (Digdir) · your own frontend</text>
+  <text class="s" x="544" y="78" text-anchor="middle">Portal (agencies) · Console (operators) · hosted assistants · your own frontend</text>
   <text class="s" x="544" y="98" text-anchor="middle">OpenAI-compatible /v1 · MCP · REST · A2A</text>
 
   <!-- AI services -->
@@ -40,8 +40,8 @@
   <!-- Data and tools -->
   <rect x="206" y="358" width="331" height="112" rx="4" fill="#2e5f7f"/>
   <text class="t" x="371" y="392" text-anchor="middle">Data</text>
-  <text class="s" x="371" y="416" text-anchor="middle">Datasets on Typesense, pgvector,</text>
-  <text class="s" x="371" y="436" text-anchor="middle">Postgres, HTTP or MCP</text>
+  <text class="s" x="371" y="416" text-anchor="middle">Datasets on the knowledge server</text>
+  <text class="s" x="371" y="436" text-anchor="middle">(pgvector), Postgres, HTTP or MCP</text>
   <text class="s" x="371" y="456" text-anchor="middle">Ingestion · reranking</text>
   <rect x="551" y="358" width="331" height="112" rx="4" fill="#2e5f7f"/>
   <text class="t" x="716" y="392" text-anchor="middle">Tools</text>
