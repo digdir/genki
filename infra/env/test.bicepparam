@@ -102,8 +102,8 @@ param ansattportenIssuer = !empty(issuer) && !contains(['https://test.ansattport
 param altinnResource = productionLogin
   ? 'urn:altinn:resource:digdir-genai-platform'
   : 'urn:altinn:resource:digdir-genai-platform-test'
-param altinnPdpUrl = productionLogin && !empty(altinnPdp)
-  ? fail('test signs in through production Ansattporten without Altinn; delete ALTINN_PDP_URL')
+param altinnPdpUrl = productionLogin && !empty(altinnPdp) && altinnPdp != 'https://platform.altinn.no'
+  ? fail('production Ansattporten lists organisations from production Altinn; set ALTINN_PDP_URL to https://platform.altinn.no or delete it')
   : altinnPdp
 param altinnPdpMaskinportenClientId = readEnvironmentVariable('ALTINN_PDP_MASKINPORTEN_CLIENT_ID', '')
 param maskinportenIssuer = readEnvironmentVariable('MASKINPORTEN_ISSUER', '')
