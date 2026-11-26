@@ -182,6 +182,8 @@ export const changes = defineNamespace({
   blockRequest: 'ba om godkjenning av delen',
   blockSettings: 'endret tilpasningene for delen',
   blockArchive: 'slettet designelementet',
+  designConnectorConnect: 'koblet Claude til Utforming',
+  designConnectorDisconnect: 'koblet Claude fra Utforming',
   blockShareRequest: 'ba om å dele designelementet med alle',
   blockShareApprove: 'godkjente deling av designelementet med alle',
   blockShareDecline: 'avviste deling av designelementet med alle',

@@ -8,6 +8,7 @@ import { InputField } from '../frontend-openapi.js';
 import { changeReason, problemContent } from '../http.js';
 import { blockReviewRoutes } from './block-reviews.js';
 import { blockRoutes } from './blocks.js';
+import { designConnectorRoutes } from './design-connector.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
 import { runSchema } from '../playground.js';
 import { withContentReasons } from './content-reason.js';
@@ -3262,7 +3263,12 @@ type DocumentedApp = { openAPIRegistry?: { registerPath(route: RouteConfig): voi
 export const documentServiceRoutes = (app: unknown) => {
   const registry = (app as DocumentedApp).openAPIRegistry;
   if (!registry) return;
-  for (const route of [...serviceRoutes, ...blockRoutes, ...blockReviewRoutes])
+  for (const route of [
+    ...serviceRoutes,
+    ...blockRoutes,
+    ...blockReviewRoutes,
+    ...designConnectorRoutes,
+  ])
     registry.registerPath(route);
 };
 

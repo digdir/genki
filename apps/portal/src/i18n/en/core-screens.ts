@@ -193,6 +193,8 @@ export const changes = {
   blockRequest: 'asked for approval of the part',
   blockSettings: 'changed the customisations of the part',
   blockArchive: 'deleted the design element',
+  designConnectorConnect: 'connected Claude to Design',
+  designConnectorDisconnect: 'disconnected Claude from Design',
   blockShareRequest: 'asked to share the design element with everyone',
   blockShareApprove: 'approved sharing the design element with everyone',
   blockShareDecline: 'declined sharing the design element with everyone',

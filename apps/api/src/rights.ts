@@ -101,6 +101,8 @@ export const adminActionRights: Readonly<
   'platform.service.delete': 'manage-services',
   'platform.step-flow.archive': 'manage-services',
   'platform.block.archive': 'manage-services',
+  'platform.design-connector.connect': 'manage-services',
+  'platform.design-connector.disconnect': 'use-services',
   'platform.service.access': 'manage-services',
   'platform.service.environments.add': 'manage-services',
   'platform.service.environments.remove': 'manage-services',

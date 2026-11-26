@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { reasonFreeWrites, selfAuthenticatedWrites } from './change-reason.js';
+import { platformModules } from './composition.js';
+import { idleConnectorModule } from './design-connector/design-connector.test-utils.js';
+import { maskinportenClientsModule } from './maskinporten-clients.js';
+import { onboardingModule } from './onboarding.js';
 import { bootPlatform, digdir, testService } from './testkit.js';
 
 const kari: Principal = {
@@ -16,6 +20,7 @@ const reason = 'Endring i testen';
 const notAdminChanges = reasonFreeWrites;
 
 const throughAdminTasks = [
+  'POST /tenants/:tenant/design-connector/requests/:request',
   'POST /tenants/:tenant/blocks/:id/share-requests',
   'DELETE /tenants/:tenant/blocks/:id',
   'POST /operator/block-share-requests/:rid/approve',
@@ -232,7 +237,17 @@ const throughAdminTasks = [
   'PUT /tenants/:tenant/triggers/:id/pause',
 ];
 
-const boot = () => bootPlatform({ people: { kari }, services: ['hjelper'] });
+const boot = () =>
+  bootPlatform({
+    people: { kari },
+    services: ['hjelper'],
+    modules: [
+      ...platformModules,
+      onboardingModule,
+      maskinportenClientsModule,
+      idleConnectorModule(digdir),
+    ],
+  });
 
 describe('writes run as admin tasks', () => {
   it('creating, changing and deleting a project are audited admin tasks', async () => {

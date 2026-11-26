@@ -34,9 +34,6 @@ export const designPath = (publisher: string, id: string) =>
 export const versionsPath = (publisher: string, id: string) =>
   `${designPath(publisher, id)}/versions`;
 
-export const claudeLink = (prompt: string) =>
-  `https://claude.ai/new?q=${encodeURIComponent(prompt)}`;
-
 /** A technical id made from a name: lower case, Norwegian letters spelled out, words joined by hyphens. */
 export const idFromName = (name: string) =>
   name

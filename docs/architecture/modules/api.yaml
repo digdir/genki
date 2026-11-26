@@ -30,6 +30,7 @@ responsibilities:
   - List the operations a step may call in a tenant, with their typed input and the models that offer each kind
   - List the interface blocks an organisation may use across publishers, preview one, pin an edition in a service draft, and serve each pinned edition with the interface (ADR 0067)
   - Serve code blocks' frames, bundles and bridge runtime on the block origin, a listener of its own with none of the API's routes, and send each code edition shared with everyone to one operator's review (ADR 0069)
+  - Serve the design connector for Claude: an OAuth server whose consent runs in Block Studio, and an MCP endpoint whose tools import designs as drafts through the API's own routes (ADR 0073)
 files:
   - apps/api/src/main.ts
   - apps/api/src/composition.ts
@@ -50,6 +51,7 @@ files:
   - apps/api/src/block-frames.ts
   - apps/api/src/block-import-routes.ts
   - apps/api/src/block-reviews.ts
+  - apps/api/src/design-connector/oauth.ts
 input: Environment and catalogs at boot; HTTP at runtime
 output: A running platform on :8080
 replaces:

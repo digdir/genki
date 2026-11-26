@@ -33,6 +33,8 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.block-share.approve': 'changes.blockShareApprove',
   'platform.block-share.decline': 'changes.blockShareDecline',
   'platform.catalog.delete': 'changes.catalogDelete',
+  'platform.design-connector.connect': 'changes.designConnectorConnect',
+  'platform.design-connector.disconnect': 'changes.designConnectorDisconnect',
   'platform.catalog.publish': 'changes.catalogPublish',
   'platform.provider-object.incident': 'changes.providerObjectIncident',
   'platform.batch-run.start': 'changes.batchRunStart',

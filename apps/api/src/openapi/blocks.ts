@@ -58,7 +58,14 @@ const BlockSummary = z
     summary: languageMap.optional(),
     zones: z.array(zone),
     sharing: z.enum(blockSharings),
-    latest: z.object({ version: z.number().int(), publishedAt: z.string() }),
+    latest: z.object({
+      version: z.number().int(),
+      publishedAt: z.string(),
+      fromClaude: z.boolean().optional().openapi({
+        description:
+          'true when the design connector saved the newest edition from Claude, by its change reason; it marks the edition and controls nothing',
+      }),
+    }),
     editions: z.number().int(),
     usedBy: z.number().int().openapi({ description: "The caller's own services that pin it" }),
   })

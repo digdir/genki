@@ -72,6 +72,12 @@ export interface RefBlockPayload<Template = unknown> {
 
 export type BlockOrigin = 'own' | 'built-in' | 'shared';
 
+/** The change reason genki's design connector gives every edition it saves. */
+export const claudeImportReason = 'Importert fra Claude';
+
+export const isFromClaude = (reason: string) =>
+  reason === claudeImportReason || reason.startsWith(`${claudeImportReason}: `);
+
 export interface BlockSummary {
   publisher: string;
   publisherName: string;
@@ -82,7 +88,7 @@ export interface BlockSummary {
   summary?: LanguageMap | undefined;
   zones: BlockZone[];
   sharing: BlockSharing;
-  latest: { version: number; publishedAt: string };
+  latest: { version: number; publishedAt: string; fromClaude?: boolean | undefined };
   editions: number;
   usedBy: number;
 }

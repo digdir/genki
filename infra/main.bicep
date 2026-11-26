@@ -639,6 +639,7 @@ module apps 'modules/containerapps.bicep' = {
       PLATFORM_LOGIN_CLIENT_ID: platformLoginOn ? platformLoginClientId : ''
       PLATFORM_LOGIN_HOSTNAME: liveLoginHostname
       PLATFORM_APP_ORIGINS: platformLoginOn ? join(appOrigins, ',') : ''
+      GENAI_PUBLIC_API_URL: platformLoginOn && !empty(liveHostnames.?api ?? '') ? 'https://${liveHostnames.api}' : ''
       GENAI_HOSTNAME_BINDER_PRINCIPAL_ID: binderOn ? binderIdentity!.properties.principalId : ''
       GENAI_HOSTNAME_BINDER_AUDIENCE: binderOn ? hostnameBinderAudience : ''
       GENAI_HOSTNAME_BINDER_TENANT_ID: binderOn ? tenant().tenantId : ''

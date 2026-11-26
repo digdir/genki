@@ -632,3 +632,24 @@ textarea.design-code,
   min-height: 0;
   height: 34px;
 }
+
+.design-connect-panel {
+  flex-basis: 100%;
+  max-width: 48rem;
+}
+
+.design-connect-copy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-2);
+  align-items: center;
+}
+
+.design-connect-copy code {
+  overflow-wrap: anywhere;
+}
+
+.design-connect-steps {
+  margin: 0;
+  padding-inline-start: var(--ds-size-5);
+}

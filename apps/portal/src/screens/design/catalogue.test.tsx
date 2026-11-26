@@ -24,13 +24,56 @@ describe('Block Studio’s catalogue at Utforming', () => {
     expect(cardNames()).toContain('Kudos-dokumentkort');
   });
 
-  it('offers «Åpne i Claude» and «Importer fra Claude» in its header', async () => {
+  it('offers «Koble til Claude» with the connector address, and «Importer fra Claude»', async () => {
     await studioAt('#/design');
-    const claude = await screen.findByRole('link', { name: 'Åpne i Claude' });
-    expect(claude.getAttribute('href')).toMatch(/^https:\/\/claude\.ai\/new\?q=/);
+    const connect = await screen.findByRole('button', { name: 'Koble til Claude' });
+    expect(screen.queryByRole('link', { name: /Åpne i Claude/ })).toBeNull();
     expect(screen.getByRole('link', { name: 'Importer fra Claude' }).getAttribute('href')).toBe(
       '#/design/import',
     );
+    fireEvent.click(connect);
+    expect(connect.getAttribute('aria-expanded')).toBe('true');
+    expect(await screen.findByText('http://localhost:8080/mcp/design')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'claude mcp add --transport http genki-design http://localhost:8080/mcp/design',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('ends every Claude connection from the guide', async () => {
+    await studioAt('#/design');
+    fireEvent.click(await screen.findByRole('button', { name: 'Koble til Claude' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Koble fra Claude' }));
+    expect(await screen.findByText('Koblet fra. Claude må koble til på nytt.')).toBeTruthy();
+  });
+
+  it('says Claude cannot connect yet where the API has no connector', async () => {
+    const base = mockFetch();
+    await studioAt('#/design', async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (new URL(url, 'http://mock').pathname.endsWith('/design-connector'))
+        return Response.json({ title: 'Not found', status: 404 }, { status: 404 });
+      return base(input, init);
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Koble til Claude' }));
+    expect(
+      await screen.findByText('Claude kan ikke kobles til her ennå. Bruk «Importer fra Claude».'),
+    ).toBeTruthy();
+  });
+
+  it('marks the block page «Fra Claude» when its edition came from Claude', async () => {
+    await studioAt('#/design/999888777/sporsmal-kort');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Spørsmålskort' })).toBeTruthy();
+    expect(screen.getAllByText('Fra Claude').length).toBeGreaterThan(0);
+  });
+
+  it('marks a design element whose newest edition came from Claude «Fra Claude»', async () => {
+    await studioAt('#/design');
+    const card = await screen.findByRole('link', { name: /Spørsmålskort/ });
+    expect(within(card).getByText('Fra Claude')).toBeTruthy();
+    const other = screen.getByRole('link', { name: /Kildeliste kompakt/ });
+    expect(within(other).queryByText('Fra Claude')).toBeNull();
   });
 
   it('narrows the cards to genki’s, the organisation’s own or those shared by others', async () => {

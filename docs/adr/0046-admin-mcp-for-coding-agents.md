@@ -38,7 +38,7 @@ Coding agents such as Claude Code and Copilot have no direct way to work on genk
 - The API is already the contract, and the portal is one client of it (ADR 0032). A local server that only calls the API adds nothing to defend on the server side.
 - Signing in as the person keeps ADR 0020's rule that changes are published with the person's own principal and rights, and leaves the key rules of ADR 0033 as they are.
 - Turned down:
-  - **An MCP endpoint hosted on the API.** Nothing to install, but it adds an admin surface to the server that needs its own review.
+  - **An MCP endpoint hosted on the API.** Nothing to install, but it adds an admin surface to the server that needs its own review. ADR 0073 adds one such endpoint for designers in Claude, limited to importing designs as drafts; this server stays the way coding agents work.
   - **A short-lived admin key that a trusted Entra login mints.** Faster to build, but it opens the definition routes to keys. ADR 0034 notes that keys outlive the token and the person's group membership.
   - **Propose, then apply, as in the prototype.** Two steps for every change. The coding agent already asks the person before each call, and the publish path, its gates and the risk confirmation stay the same.
 

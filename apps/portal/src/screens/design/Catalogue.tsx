@@ -72,7 +72,7 @@ export const Catalogue = ({ api, tenant, tenantName }: ScreenProps) => {
           {t('design.lead')}
         </Paragraph>
       </div>
-      <StudioActions prompt={t('design.claudeNewPrompt', { org: tenantName })} />
+      <StudioActions api={api} tenant={tenant} tenantName={tenantName} />
     </div>
   );
   if (state.status !== 'ready')
@@ -164,6 +164,11 @@ export const Catalogue = ({ api, tenant, tenantName }: ScreenProps) => {
                     <Tag data-size="sm" data-color="neutral">
                       {versionName(t, b.latest.version)}
                     </Tag>
+                    {b.latest.fromClaude ? (
+                      <Tag data-size="sm" data-color="info">
+                        {t('design.fromClaude')}
+                      </Tag>
+                    ) : null}
                   </span>
                 </a>
               </li>

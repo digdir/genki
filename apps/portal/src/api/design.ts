@@ -52,6 +52,13 @@ export interface ShareRequest {
   at: string;
 }
 
+export interface ConnectRequest {
+  client: string;
+  redirect: string;
+  scope: 'design';
+  startedAt: string;
+}
+
 const why = (reason: string) => ({ 'change-reason': reason.trim() });
 
 export const designApi = ({ get, request, tenantPath }: ApiContext) => {
@@ -101,6 +108,26 @@ export const designApi = ({ get, request, tenantPath }: ApiContext) => {
         `${blocks(tenant)}/${encodeURIComponent(id)}/share-requests`,
         { version },
         why(reason),
+      ),
+    connector: (tenant: string, signal?: AbortSignal) =>
+      get<{ url: string }>(`${tenantPath(tenant)}/design-connector`, signal),
+    connectRequest: (tenant: string, pending: string, signal?: AbortSignal) =>
+      get<ConnectRequest>(
+        `${tenantPath(tenant)}/design-connector/requests/${encodeURIComponent(pending)}`,
+        signal,
+      ),
+    decideConnect: (tenant: string, pending: string, decision: 'allow' | 'deny', reason: string) =>
+      request<{ redirect: string }>(
+        'POST',
+        `${tenantPath(tenant)}/design-connector/requests/${encodeURIComponent(pending)}`,
+        { decision },
+        why(reason),
+      ),
+    disconnect: (tenant: string) =>
+      request<{ ended: number }>(
+        'DELETE',
+        `${tenantPath(tenant)}/design-connector/grants`,
+        undefined,
       ),
     archive: (tenant: string, id: string, reason: string) =>
       request<{ id: string; archived: true; version: number }>(

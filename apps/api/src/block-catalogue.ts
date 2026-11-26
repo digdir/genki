@@ -11,6 +11,7 @@ import {
   type BlockUse,
   type BlockZone,
   type Principal,
+  isFromClaude,
 } from '@genai/contracts';
 import {
   parseBlockRef,
@@ -254,7 +255,11 @@ export const blockCatalogueModule: PlatformModuleFactory = (deps) => {
       ...(spec.summary ? { summary: spec.summary } : {}),
       zones: spec.zones,
       sharing: spec.sharing,
-      latest: { version: latest.version, publishedAt: latest.publishedAt },
+      latest: {
+        version: latest.version,
+        publishedAt: latest.publishedAt,
+        ...(isFromClaude(latest.reason) ? { fromClaude: true } : {}),
+      },
       editions: block.editions.length,
       usedBy,
     };

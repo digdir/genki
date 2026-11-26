@@ -252,6 +252,7 @@ import { resolveInterfaceBlocks } from './interface-blocks.js';
 import { codeBlockProblems } from './block-bundles.js';
 import { blockFrameUrl } from './block-origin.js';
 import { archivedRefProblems, blockArchiveModule } from './block-archive.js';
+import { connectorCaller } from './design-connector/acting.js';
 import { blockCatalogueModule } from './block-catalogue.js';
 import { blockReviewsModule, createBlockReviewsModule } from './block-reviews.js';
 import { blockImportModule } from './block-import-routes.js';
@@ -2070,7 +2071,8 @@ export const createPlatform = async (input: PlatformInput) => {
     const known = callers.get(request);
     if (known) return known;
     const found = (async () => {
-      const authenticated = await input.authenticate(request);
+      const authenticated: Caller | undefined =
+        connectorCaller(request) ?? (await input.authenticate(request));
       if (!authenticated) return undefined;
       const origin = input.lockdown
         ? withCredentialOrigin(input.lockdown, request, authenticated.principal)

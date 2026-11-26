@@ -6,6 +6,7 @@ import { envSecrets } from '@genai/kernel';
 import { createAccessPeopleModule } from './access-people.js';
 import { createAdmin, platformActions, type AdminHandler } from './admin.js';
 import { createPlatform, platformModules } from './composition.js';
+import { idleConnectorModule } from './design-connector/design-connector.test-utils.js';
 import { maskinportenClientsModule } from './maskinporten-clients.js';
 import { onboardingModule } from './onboarding.js';
 import { operatorModelsModule } from './operator-models.js';
@@ -78,6 +79,7 @@ const registeredActions = async () => {
       maskinportenClientsModule,
       operatorModelsModule,
       createAccessPeopleModule({ kind: 'not-configured', key: personKeys('rights-test') }),
+      idleConnectorModule(digdir),
     ],
   });
   return [...platformActions, ...Object.keys(platform.extensions)];
