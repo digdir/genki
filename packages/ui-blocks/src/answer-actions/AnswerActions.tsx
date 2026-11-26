@@ -18,7 +18,7 @@ export interface AnswerActionsProps {
   onCopyAnswer?: (() => void) | undefined;
   /** «Svaret med kildeliste» in «Kopier». The app copies the answer and its sources as markdown. */
   onCopyWithSources?: (() => void) | undefined;
-  /** «Lenke til tråden» in «Kopier»; without it the choice is drawn disabled. */
+  /** «Lenke til tråden» in «Kopier»; without it the choice is left out. */
   onCopyLink?: (() => void) | undefined;
   /** What the app's last copy did. Pass a new object for each copy; the receipt clears itself. */
   copied?: AnswerCopied | undefined;
@@ -115,9 +115,9 @@ export const AnswerActions = ({
     triggerRef.current?.focus();
     action();
   };
-  const choice = (label: string, icon: ReactNode, action: (() => void) | undefined) => (
+  const choice = (label: string, icon: ReactNode, action: () => void) => (
     <Dropdown.Item>
-      <Dropdown.Button disabled={!action} onClick={action ? () => choose(action) : undefined}>
+      <Dropdown.Button onClick={() => choose(action)}>
         {icon}
         {label}
       </Dropdown.Button>
@@ -158,7 +158,9 @@ export const AnswerActions = ({
                       onCopyWithSources,
                     )
                   : null}
-                {choice(t('answerActions.copyLink'), <LinkIcon aria-hidden />, onCopyLink)}
+                {onCopyLink
+                  ? choice(t('answerActions.copyLink'), <LinkIcon aria-hidden />, onCopyLink)
+                  : null}
               </Dropdown.List>
             </Dropdown>
           </Dropdown.TriggerContext>

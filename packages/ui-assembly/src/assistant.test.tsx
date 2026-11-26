@@ -4385,11 +4385,11 @@ describe('copying from an answer', () => {
     );
   });
 
-  it('enables «Lenke til tråden» only where the thread is in the address, and copies a link that opens it', async () => {
+  it('offers «Lenke til tråden» only where the thread is in the address, and copies a link that opens it', async () => {
     const { unmount } = draw(state('knowledge-assistant').layout, fakeApi().api);
     await ask();
-    const none = await screen.findByRole('button', { name: 'Lenke til tråden', hidden: true });
-    expect((none as HTMLButtonElement).disabled).toBe(true);
+    await screen.findByRole('button', { name: 'Kun svaret', hidden: true });
+    expect(screen.queryByRole('button', { name: 'Lenke til tråden', hidden: true })).toBeNull();
     unmount();
     history.replaceState(null, '', '/?t=t-old');
     draw(state('knowledge-assistant').layout, fakeApi().api, true);

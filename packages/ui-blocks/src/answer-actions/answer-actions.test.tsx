@@ -52,9 +52,9 @@ describe('the answer actions', () => {
     expect(choices()).toEqual(['Kun svaret', 'Svaret med kildeliste', 'Lenke til tråden']);
   });
 
-  it('draw «Lenke til tråden» disabled when the app has no link to give', () => {
+  it('leave «Lenke til tråden» out when the app has no link to give', () => {
     draw({ onCopyAnswer: () => {}, onCopyWithSources: () => {} });
-    expect(choices()).toEqual(['Kun svaret', 'Svaret med kildeliste', 'Lenke til tråden (av)']);
+    expect(choices()).toEqual(['Kun svaret', 'Svaret med kildeliste']);
   });
 
   it('open the menu from «Kopier», which points at it', () => {
