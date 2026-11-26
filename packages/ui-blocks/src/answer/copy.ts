@@ -1,5 +1,10 @@
 import type { Locale } from '@genai/i18n';
-import { cellsOf, citeGroup, inlineText, type FootnoteLabel } from '../markdown/Markdown.js';
+import {
+  cellsOf,
+  inlineText,
+  markdownFootnotes,
+  type FootnoteLabel,
+} from '../markdown/Markdown.js';
 import { excerptMarkdown, headingText } from '../sources/excerptMarkdown.js';
 import { documentKeys } from '../sources/pairing.js';
 import { distinctNames, sectionOf } from '../sources/Sources.js';
@@ -74,25 +79,6 @@ const plain = (markdown: string, label: (n: number) => Label) => {
     .trim();
 };
 
-// `[N]` and the blank before it, not a link `[N](…)`; linear, as no part matches two ways.
-const footnoteMark = /([ \t]?)(?<!\\)\[(\d+)\](?!\()/g;
-
-/** One stretch of prose with its footnotes as `label` says; `[1, 2]` is read as `[1] [2]`. */
-const renumber = (prose: string, label: (n: number) => Label) =>
-  prose
-    .replace(citeGroup, (_, list: string) =>
-      list
-        .split(',')
-        .map((n) => `[${n.trim()}]`)
-        .join(' '),
-    )
-    .replace(footnoteMark, (whole: string, blank: string, digits: string) => {
-      const n = Number(digits);
-      const shown = n < 1000 ? label(n) : undefined;
-      if (shown === undefined) return whole;
-      return shown === null ? '' : `${blank}[${shown}]`;
-    });
-
 /** The answer's markdown as written, only its footnotes renumbered as `label` says. */
 export const markdownText = (markdown: string, label: (n: number) => Label) => {
   let code = false;
@@ -103,13 +89,7 @@ export const markdownText = (markdown: string, label: (n: number) => Label) => {
         code = !code;
         return raw;
       }
-      if (code) return raw;
-      // A closed `…` is inline code and stays; a lone backtick at the end opens nothing.
-      const parts = raw.split('`');
-      const pieces = parts.map((piece, i) =>
-        i % 2 && i < parts.length - 1 ? piece : renumber(piece, label),
-      );
-      return withoutTrailingBlanks(pieces.join('`'));
+      return code ? raw : withoutTrailingBlanks(markdownFootnotes(raw, label));
     })
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
@@ -144,9 +124,9 @@ export const finishedText = (markdown: string) => {
 };
 
 /**
- * What «Svaret med kildeliste» puts on the clipboard, as kunnskapsassistenten copies it: the answer with
- * its footnotes, and a reference list under it, since an answer must not leave the app without
- * where it came from. One line per numbered excerpt, and two from one report told apart by their
+ * What «Svaret med kildeliste» copies, as kunnskapsassistenten does: the answer with its
+ * footnotes, and a reference list under it, since an answer must not leave the app without where
+ * it came from. One line per numbered excerpt, and two from one report told apart by their
  * page, section or first words. An answer whose footnotes name only documents is drawn without
  * footnotes, so it is copied without them, with one unnumbered line per cited document; with
  * `documentFootnotes` both keep the documents' numbers, as drawn. Each part is left out when the

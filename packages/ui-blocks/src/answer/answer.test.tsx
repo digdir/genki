@@ -845,6 +845,30 @@ describe('the answer as copied', () => {
     expect(copied.text.split('\n')[0]).toBe('Escaped \\[1] og fast [1].');
   });
 
+  it('leaves a link’s address and an autolink as written in markdown, though they hold `[n]`', () => {
+    expect(
+      markdownText('Se [Lovdata](https://x.no/?a[1]=b) og <https://x.no/[1]> [1].', () => null),
+    ).toBe('Se [Lovdata](https://x.no/?a[1]=b) og <https://x.no/[1]>.');
+  });
+
+  it('leaves a link whose words are `[1, 2]` as written in markdown, as the screen draws a link', () => {
+    expect(markdownText('Lenke [1, 2](https://x.no) og [2].', (n) => n + 1)).toBe(
+      'Lenke [1, 2](https://x.no) og [3].',
+    );
+  });
+
+  it('reads code spans and escaped backticks in markdown as the screen does', () => {
+    expect(markdownText('Kode ``[1]`` og \\` [1] `x` [2].', () => null)).toBe(
+      'Kode ``[1]`` og \\` `x`.',
+    );
+  });
+
+  it('renumbers footnotes inside bold and in a group, as the screen draws them', () => {
+    expect(markdownText('**Viktig [1]** og [1, 2].', (n) => (n === 1 ? null : 5))).toBe(
+      '**Viktig** og [5].',
+    );
+  });
+
   it('copies the answer alone with `list` off, dropping its footnotes but not a number in brackets that leads nowhere', () => {
     const copied = answerCopy('Se punkt [7]. Nkom rapporterer kvartalsvis [1].', {
       sources: [paged, tildeling, memo],
