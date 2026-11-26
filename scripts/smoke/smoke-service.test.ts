@@ -12,7 +12,7 @@ import { ragConfig } from '@genai/strategy-rag';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { Plan } from './assess.ts';
-import { withId } from './client.ts';
+import { loadPlan, serviceYaml, withId } from './client.ts';
 
 const plan = JSON.parse(readFileSync(join(import.meta.dirname, 'plan.json'), 'utf8')) as Plan;
 const yaml = readFileSync(join(import.meta.dirname, 'smoke-service.yaml'), 'utf8');
@@ -175,5 +175,18 @@ describe('the texts the screens are checked for', () => {
   it('still exist in the apps, so a renamed text does not silently turn a check off', () => {
     for (const text of [...plan.screenErrorText, ...plan.signedOutHeadings])
       expect({ text, found: apps.some((s) => s.includes(text)) }).toEqual({ text, found: true });
+  });
+});
+
+describe('the smoke tenant', () => {
+  it('comes from SMOKE_TENANT when set, in the plan and the published definition', () => {
+    const moved = loadPlan({ SMOKE_TENANT: '991825827' });
+    expect(moved.tenant).toBe('991825827');
+    expect(serviceYaml(moved.tenant)).toContain("metadata: { tenant: '991825827', id: smoke");
+    expect(loadPlan({}).tenant).toBe(plan.tenant);
+  });
+
+  it('refuses SMOKE_TENANT that is not an organisation number', () => {
+    expect(() => loadPlan({ SMOKE_TENANT: '99182582' })).toThrow('nine digits');
   });
 });

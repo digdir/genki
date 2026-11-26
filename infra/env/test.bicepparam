@@ -110,7 +110,9 @@ param altinnPeopleUrl = altinnPeople
 param altinnPeopleMaskinportenClientId = altinnPeopleClient
 param altinnPeopleMaskinportenScope = readEnvironmentVariable('ALTINN_PEOPLE_MASKINPORTEN_SCOPE', '')
 param operatorSubjects = readEnvironmentVariable('OPERATOR_SUBJECTS', '')
-param platformTenant = readEnvironmentVariable('PLATFORM_TENANT', '')
+var platformOrgSet = readEnvironmentVariable('PLATFORM_TENANT', '')
+var platformOrg = empty(platformOrgSet) ? '991825827' : platformOrgSet
+param platformTenant = platformOrg
 
 // The names moved to genki.digdir.cloud; those under genki-test.digdir.cloud stay bound and redirect (infra/README.md, "Moving to a new zone").
 var stage = readEnvironmentVariable('HOSTNAMES_STAGE', '')
@@ -131,7 +133,7 @@ param assistantHostEnabled = true
 param assistantBffEnabled = true
 param assistantHostnameStage = hostnamesStage
 param hostedHostnames = [
-  { subdomain: 'kunnskap', tenant: '312521172', stage: hostnamesStage }
+  { subdomain: 'kunnskap', tenant: platformOrg, stage: hostnamesStage }
 ]
 // genki's platform login client for hosted Clients without oidc (infra/README.md, "Platform login").
 param platformLoginClientId = productionLogin ? 'c0e4a5af-b2e1-4bba-9324-4caf55be8db5' : 'dde98722-c952-4172-a5d6-10bdf721680f'

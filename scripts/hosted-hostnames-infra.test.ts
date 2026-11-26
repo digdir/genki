@@ -66,7 +66,7 @@ const problems = (entries: Entry[], zone = 'genki-test.digdir.cloud'): string[] 
     return found;
   });
 
-const paramValues = (file: string) => {
+const paramValues = (file: string, env: Record<string, string> = {}) => {
   const out = execFileSync(
     'az',
     ['bicep', 'build-params', '--file', join(root, `infra/env/${file}.bicepparam`), '--stdout'],
@@ -79,6 +79,7 @@ const paramValues = (file: string) => {
         PG_ADMIN_GROUP_NAME: 'x',
         ANSATTPORTEN_ISSUER: '',
         ALTINN_PDP_URL: '',
+        ...env,
       },
     },
   );
@@ -147,13 +148,27 @@ describe.skipIf(!hasAz && !process.env.CI)('hosted hostnames in the template', (
   it.each(['test', 'prod'])(
     'every hosted hostname in %s is one the API opens to its tenant',
     (file) => {
-      const values = paramValues(file);
+      const values = paramValues(file, { PLATFORM_TENANT: '312521172' });
       const entries = values.hostedHostnames?.value;
       expect(Array.isArray(entries)).toBe(true);
       expect(problems(entries as Entry[], String(values.dnsZoneName?.value))).toEqual([]);
     },
     120_000,
   );
+
+  it('gives kunnskap in test the platform tenant, Digdir when PLATFORM_TENANT is empty, so a tenant move changes only PLATFORM_TENANT', () => {
+    for (const [set, tenant] of [
+      ['312521172', '312521172'],
+      ['991825827', '991825827'],
+      ['', '991825827'],
+    ]) {
+      const values = paramValues('test', { PLATFORM_TENANT: set });
+      expect(values.platformTenant?.value).toBe(tenant);
+      expect(values.hostedHostnames?.value).toContainEqual(
+        expect.objectContaining({ subdomain: 'kunnskap', tenant }),
+      );
+    }
+  }, 360_000);
 
   it('turns a subdomain into <subdomain>.apps.<genki zone>, and keeps a full hostname as it is', () => {
     expect(built?.variables?.hostedNames).toBe(

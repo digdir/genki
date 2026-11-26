@@ -7,11 +7,20 @@ export const freeTimeout = 30_000;
 export const runTimeout = 150_000;
 export const changeReason = 'Smoke test after a deploy, archived again by the same run';
 
-export const loadPlan = (): Plan =>
-  JSON.parse(readFileSync(join(import.meta.dirname, 'plan.json'), 'utf8')) as Plan;
+export const loadPlan = (env: Record<string, string | undefined> = process.env): Plan => {
+  const plan = JSON.parse(readFileSync(join(import.meta.dirname, 'plan.json'), 'utf8')) as Plan;
+  const tenant = env.SMOKE_TENANT;
+  if (!tenant) return plan;
+  if (!/^\d{9}$/.test(tenant))
+    throw new Error('SMOKE_TENANT is an organisation number of nine digits');
+  return { ...plan, tenant };
+};
 
-export const serviceYaml = () =>
-  readFileSync(join(import.meta.dirname, 'smoke-service.yaml'), 'utf8');
+export const serviceYaml = (tenant = loadPlan().tenant) =>
+  readFileSync(join(import.meta.dirname, 'smoke-service.yaml'), 'utf8').replace(
+    /tenant: '\d{9}'/,
+    `tenant: '${tenant}'`,
+  );
 
 export const withId = (yaml: string, from: string, to: string) =>
   yaml.replace(`id: ${from},`, `id: ${to},`);
