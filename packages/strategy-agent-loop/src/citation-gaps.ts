@@ -119,12 +119,7 @@ const readChunks = (workspace: Workspace): Chunk[] => {
   ];
 };
 
-/**
- * Numbers for the excerpts: the answer's own markers first, the rest after them. A marker that
- * quotes a sentence (#971) is never reused, since its footnote highlights that sentence; such an
- * excerpt gets a fresh number. A new number comes after every number in the index and the text,
- * so a marker that leads nowhere never becomes one.
- */
+/** Numbers for the excerpts: the answer's own first, fresh ones for quoted or new excerpts. */
 const numbering = (workspace: Workspace, text: string, quoted: ReadonlySet<number>) => {
   const chunkOf = (id: string) =>
     workspace.chunks.get(id) ?? workspace.sourceOrder.find((c) => c.chunkId === id);
@@ -155,10 +150,7 @@ const numbering = (workspace: Workspace, text: string, quoted: ReadonlySet<numbe
 const coversPage = (c: Chunk, page: number) =>
   c.page !== undefined && c.page <= page && page <= (c.pageEnd ?? c.page);
 
-/**
- * «(s. P)» with no [N] gets the [N] of the one read excerpt that covers page P, from the documents
- * its own block cites; in a block that cites nothing, only when the whole answer cites one document.
- */
+/** «(s. P)» with no [N] gets the one read excerpt covering P, from its block's documents (ADR 0052). */
 const citePages = (
   text: string,
   workspace: Workspace,
@@ -290,10 +282,7 @@ export interface FilledGaps {
   uncited: number;
 }
 
-/**
- * With excerpt citations only the cited excerpts are published, so every factual block needs its
- * own [N]. Pages first, then one model call for the blocks still uncited (#1051).
- */
+/** Every factual block of an excerpt answer gets its own [N]: pages first, then one gap call (#1051). */
 export const citeGaps = async (env: ToolEnvironment, answer: string): Promise<FilledGaps> => {
   const { workspace } = env;
   const quoted =
