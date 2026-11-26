@@ -6,7 +6,6 @@ import { mockAnsattporten } from '../../auth';
 import { logTimelines } from '../../data/log';
 import { exampleDatasets, exampleOrganisations, exampleServices, mockFetch } from '../../mock';
 import type { ModelOption } from '../../types';
-import { openArea, setupNav } from './setup-areas.test-utils';
 
 vi.mock('../service/sections', async (original) => {
   const real = await original<typeof import('../service/sections')>();
@@ -128,16 +127,14 @@ const failingSave: Reply = (url, method) =>
         headers: { 'content-type': 'application/problem+json' },
       })
     : undefined;
-const navItem = (name: RegExp) => {
-  openArea(name);
-  return within(setupNav()).getByRole('button', { name });
-};
+const pressPubliser = async () =>
+  fireEvent.click(await screen.findByRole('button', { name: 'Publiser' }));
 const instructions = () =>
   screen.getByLabelText('Instruksjoner til tjenesten') as HTMLTextAreaElement;
 
 describe('what Oppsett says is missing', () => {
   it('shows the reason a check marks an area as missing inside that area', async () => {
-    await openService('#/services/rapportassistenten/setup/sources', {
+    await openService('#/services/rapportassistenten/setup', {
       draft: withSpec({ riskConfirmation: { riskClass: published.spec.riskClass } }),
       reply: checks([
         {
@@ -147,13 +144,14 @@ describe('what Oppsett says is missing', () => {
         },
       ]),
     });
+    expect(await screen.findByText('Kunnskap mangler før publisering')).toBeTruthy();
+    await pressPubliser();
     const alert = await screen.findByText(/Dokumentsamlingen kudos lagres utenfor EU\/EØS/);
-    expect(alert.closest('section')?.getAttribute('aria-labelledby')).toBe('setup-area-h');
+    expect(alert.closest('section')?.getAttribute('aria-labelledby')).toBe('omrade-sources-h');
     expect(screen.getByRole('heading', { name: 'Dette mangler før publisering' })).toBeTruthy();
-    expect(screen.getByText('Kunnskap mangler før publisering')).toBeTruthy();
   });
 
-  it('marks an unconfirmed limited risk as missing in Oppsett without locking Publiser', async () => {
+  it('leaves Publiser open for an unconfirmed limited risk, and asks for it on the publish page', async () => {
     await openService('#/services/rapportassistenten/setup', {
       draft: withSpec({ riskClass: 'limited', riskConfirmation: undefined }),
       reply: checks([]),
@@ -161,9 +159,9 @@ describe('what Oppsett says is missing', () => {
     const publish = await screen.findByRole('button', { name: 'Publiser' });
     await waitFor(() => expect(publish.getAttribute('aria-disabled')).toBeNull());
     expect(screen.queryByText('Risikonivået må bekreftes før publisering')).toBeNull();
-    const risk = navItem(/^Risiko og KI-forordningen/);
-    expect(within(risk).getByText('Mangler')).toBeTruthy();
-    expect(within(risk).getByText('Kreves før publisering')).toBeTruthy();
+    fireEvent.click(publish);
+    const risk = await screen.findByRole('region', { name: 'Risiko og KI-forordningen' });
+    expect(within(risk).getByRole('button', { name: 'Bekreft risikonivå' })).toBeTruthy();
   });
 
   it('asks for an unconfirmed risk on the publish page as one required checkbox, and stamps it on publish', async () => {
@@ -228,7 +226,7 @@ describe('what Oppsett says is missing', () => {
   });
 
   it('counts an unconfirmed high risk the check already reports as one missing thing, listed once', async () => {
-    await openService('#/services/rapportassistenten/setup/risk', {
+    await openService('#/services/rapportassistenten/setup', {
       draft: withSpec({ riskClass: 'high', riskConfirmation: undefined }),
       reply: checks([
         {
@@ -238,9 +236,8 @@ describe('what Oppsett says is missing', () => {
         },
       ]),
     });
-    const missing = await screen.findByRole('heading', { name: 'Dette mangler før publisering' });
-    const list = within(missing.parentElement as HTMLElement).getByRole('list');
-    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    const publish = await screen.findByRole('button', { name: 'Publiser' });
+    await waitFor(() => expect(publish.getAttribute('aria-disabled')).toBeNull());
     expect(screen.queryByText('Risiko og KI-forordningen mangler før publisering')).toBeNull();
     expect(screen.queryByText(/ting mangler før publisering/)).toBeNull();
   });
@@ -252,10 +249,11 @@ describe('what Oppsett says is missing', () => {
     });
     const publish = await screen.findByRole('button', { name: 'Publiser' });
     await waitFor(() => expect(publish.getAttribute('aria-disabled')).toBeNull());
-    const risk = navItem(/^Risiko og KI-forordningen/);
-    expect(within(risk).getByText('Minimal risiko')).toBeTruthy();
-    expect(within(risk).queryByText('Mangler')).toBeNull();
     expect(screen.queryByText('Risikonivået må bekreftes før publisering')).toBeNull();
+    fireEvent.click(publish);
+    const risk = await screen.findByRole('region', { name: 'Risiko og KI-forordningen' });
+    expect(within(risk).getByText('Minimal risiko')).toBeTruthy();
+    expect(screen.queryByRole('checkbox', { name: /er fortsatt riktig$/ })).toBeNull();
   });
 });
 
@@ -307,7 +305,7 @@ describe('the draft bar and the discard dialog', () => {
 
     window.location.hash = '#/services/rapportassistenten';
     await waitFor(() =>
-      expect(screen.queryByRole('navigation', { name: 'Deler av oppsettet' })).toBeNull(),
+      expect(screen.queryByRole('heading', { level: 2, name: 'Grunnleggende' })).toBeNull(),
     );
     expect(screen.queryByText(/^Endringene er forkastet\./)).toBeNull();
   });
@@ -350,25 +348,6 @@ describe('Formål og målgruppe', () => {
     (more as HTMLDetailsElement).open = true;
     expect(within(more).queryByRole('tab', { name: 'Nynorsk' })).toBeNull();
     expect(within(more).getByRole('tab', { name: 'Bokmål' })).toBeTruthy();
-  });
-});
-
-describe('the section list', () => {
-  it('writes the result and model summaries as the design does', async () => {
-    await openService('#/services/rapportassistenten/setup', {
-      draft: withSpec({
-        model: { ...published.spec.model, primary: 'foundry-openai/gpt-4.1' },
-        output: { kind: 'answer', withSources: true },
-      }),
-    });
-    const nav = setupNav();
-    expect(
-      within(within(nav).getByRole('button', { name: /^Resultat/ })).getByText(
-        'Svar som tekst med kilder',
-      ),
-    ).toBeTruthy();
-    const model = navItem(/^Modell/);
-    expect(within(model).getByText(/ · EU\/EØS$/)).toBeTruthy();
   });
 });
 
@@ -438,10 +417,10 @@ describe('a redirect to an area of Oppsett', () => {
   it('keeps the area in the address after the redirect', async () => {
     await openService('#/services/rapportassistenten/settings');
     await waitFor(() =>
-      expect(window.location.hash).toBe('#/services/rapportassistenten/setup/limits'),
+      expect(window.location.hash).toBe('#/services/rapportassistenten/advanced/limits'),
     );
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(window.location.hash).toBe('#/services/rapportassistenten/setup/limits');
+    expect(window.location.hash).toBe('#/services/rapportassistenten/advanced/limits');
   });
 });
 

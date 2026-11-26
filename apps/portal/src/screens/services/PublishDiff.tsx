@@ -150,6 +150,8 @@ export const PublishDiff = ({
   blocked,
   blockedReason,
   riskLevel,
+  risk,
+  guards,
   children,
   onPublish,
 }: {
@@ -174,6 +176,9 @@ export const PublishDiff = ({
   blocked: boolean;
   blockedReason?: string | undefined;
   riskLevel?: string | undefined;
+  /** The risk level and the safety rules, set here as on the first publish page. */
+  risk?: ReactNode;
+  guards?: ReactNode;
   children?: ReactNode;
   onPublish: (reason: string, stampRisk: boolean) => Promise<void>;
 }) => {
@@ -317,6 +322,30 @@ export const PublishDiff = ({
           <Paragraph>{t('edition.qualityMet')}</Paragraph>
         ) : null}
       </section>
+
+      {risk ? (
+        <section aria-labelledby="publish-risk" className="stack-sm">
+          <div className="stack-xs">
+            <Heading level={2} data-size="xs" id="publish-risk">
+              {t('setupList.areaRisk')}
+            </Heading>
+            <Paragraph>{t('setupList.helpRisk')}</Paragraph>
+          </div>
+          {risk}
+        </section>
+      ) : null}
+
+      {guards ? (
+        <section aria-labelledby="publish-guards" className="stack-sm">
+          <div className="stack-xs">
+            <Heading level={2} data-size="xs" id="publish-guards">
+              {t('setupList.areaGuards')}
+            </Heading>
+            <Paragraph>{t('setupList.helpGuards')}</Paragraph>
+          </div>
+          {guards}
+        </section>
+      ) : null}
 
       {children}
 

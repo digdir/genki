@@ -1,4 +1,4 @@
-import { ArrowUpIcon, PaperplaneIcon, SparklesIcon } from '@navikt/aksel-icons';
+import { ArrowUpIcon, PaperplaneIcon } from '@navikt/aksel-icons';
 import { Button, Chip, Field, Label, Paragraph, Tag, Textarea } from '@digdir/designsystemet-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { AssistantProposal, ProposalDecision } from '../../api/assistant';
@@ -44,8 +44,7 @@ interface Props {
   onShow: (id: string) => void;
   onUndo: (id: string) => void;
   onAction: (id: string) => void;
-  side?: boolean;
-  /** Beside the new Oppsett: the same writing box as the chat, and no introduction. */
+  /** Beside the Oppsett form: the chat's writing box, and no introduction. */
   chat?: boolean;
 }
 
@@ -68,11 +67,10 @@ export const AssistantPanel = ({
   onShow,
   onUndo,
   onAction,
-  side: sideProp = false,
   chat = false,
 }: Props) => {
   const t = useT();
-  const side = sideProp || chat;
+  const side = chat;
   const log = useRef<HTMLDivElement>(null);
   const [policyDone, setPolicyDone] = useState<Record<string, boolean>>({});
   const { availability, entries, streaming } = assistant;
@@ -168,25 +166,6 @@ export const AssistantPanel = ({
         {assistant.announce}
       </div>
       <div ref={log} aria-live={streaming ? 'off' : 'polite'} className="assistant-log">
-        {side && !chat && messages.length === 0 ? (
-          <div className="assistant-intro">
-            <span aria-hidden="true" className="assistant-intro-icon">
-              <Icon icon={SparklesIcon} size={16} />
-            </span>
-            <div className="stack-xs">
-              <p>{t('assistant.sideIntro')}</p>
-              {off ? null : (
-                <div className="tag-row">
-                  {suggestions.map((s) => (
-                    <Chip.Button key={s} data-size="sm" onClick={() => onSend(s)}>
-                      {s}
-                    </Chip.Button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        ) : null}
         {chat && messages.length === 0 && !pending ? (
           <Paragraph data-size="sm" className="assistant-welcome">
             {t('assistant.chatWelcome')}
@@ -280,12 +259,7 @@ export const AssistantPanel = ({
             ))}
           </div>
         )}
-        <form
-          onSubmit={submit}
-          className={
-            chat ? 'compose-form compose-chat' : side ? 'compose-form compose-box' : 'compose-form'
-          }
-        >
+        <form onSubmit={submit} className={chat ? 'compose-form compose-chat' : 'compose-form'}>
           <Field className="compose-field">
             <Label
               htmlFor="til-assistenten"

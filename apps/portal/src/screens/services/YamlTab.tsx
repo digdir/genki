@@ -7,7 +7,7 @@ import {
   Textarea,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ApiClient } from '../../api';
 import { ApiCallLink } from '../../components/ApiCall';
 import { CopyButton } from '../../components/CopyButton';
@@ -35,19 +35,38 @@ export const YamlTab = ({ api, generated, onApply }: Props) => {
   const [check, setCheck] = useState<Check>({ kind: 'idle' });
   const text = edit ?? generated;
   const clean = edit === null || edit === generated;
+  const shown = useRef(text);
+  shown.current = text;
 
-  const apply = () => {
-    if (clean) return;
+  // The draft gets only text the platform's schema takes; what it refuses stays in the field.
+  const apply = async () => {
+    if (clean || check.kind === 'busy') return;
+    let parsed: unknown;
     try {
-      const parsed = parseYaml(text);
+      parsed = parseYaml(text);
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
         throw new YamlError(1, t('yamlTab.mustBeObject'));
-      onApply(parsed as Record<string, unknown>);
-      setEdit(null);
-      setNote(t('yamlTab.applied'));
     } catch (error) {
       setParseError(error instanceof YamlError ? error.message : t('yamlTab.unreadable'));
+      return;
     }
+    setCheck({ kind: 'busy' });
+    try {
+      const result = await api.validate(text);
+      // Text typed while the check ran is not what was checked; it waits for the next «Bruk».
+      if (shown.current !== text) return;
+      if (!result.valid) {
+        setCheck({ kind: 'invalid', errors: result.errors });
+        return;
+      }
+    } catch {
+      setCheck({ kind: 'failed' });
+      return;
+    }
+    setCheck({ kind: 'idle' });
+    onApply(parsed as Record<string, unknown>);
+    setEdit(null);
+    setNote(t('yamlTab.applied'));
   };
 
   const validate = async () => {
@@ -82,7 +101,12 @@ export const YamlTab = ({ api, generated, onApply }: Props) => {
         {parseError ? <ValidationMessage>{parseError}</ValidationMessage> : null}
       </Field>
       <div className="row-wrap">
-        <Button variant="primary" data-size="sm" aria-disabled={clean || undefined} onClick={apply}>
+        <Button
+          variant="primary"
+          data-size="sm"
+          aria-disabled={clean || check.kind === 'busy' || undefined}
+          onClick={() => void apply()}
+        >
           {t('yamlTab.apply')}
         </Button>
         <Button

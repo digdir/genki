@@ -52,6 +52,17 @@ const openInterface = async (fetch = recording()) => {
   return fetch;
 };
 
+/** Avansert → JSON of the published service, where «Kopier oppsettet» and «Lim inn oppsett» are. */
+const openJson = async (fetch = recording()) => {
+  const auth = mockAnsattporten(kari);
+  await auth.login();
+  window.location.hash = '#/services/rapportassistenten/advanced/json';
+  render(<App auth={auth} fetch={fetch} live />);
+  await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' });
+  await screen.findByRole('button', { name: 'Kopier oppsettet' });
+  return fetch;
+};
+
 /** A block's switch under «Designelementer», which the tab opens to after «Maler». */
 const switchIn = (group: string, name: string) => {
   const blocks = screen.queryByRole('radio', {
@@ -105,21 +116,14 @@ describe('the Utforming tab', () => {
     ).toBe(false);
   });
 
-  it('has «Tekster» beside «Maler» and «Designelementer», and keeps the words with the layout', async () => {
+  it('shows only Maler and Designelementer in Utforming for a published service', async () => {
     await openInterface();
     const switcher = within(screen.getByRole('group', { name: 'Designelementer og maler' }));
-    for (const name of ['Maler', 'Designelementer', 'Tekster'])
-      expect(switcher.getByRole('radio', { name })).toBeTruthy();
-    fireEvent.click(switcher.getByRole('radio', { name: 'Tekster' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Navn' }), {
-      target: { value: 'Rapporthjelpen' },
-    });
-    await waitFor(
-      () => expect(savedLayout()?.profile).toEqual({ assistantName: 'Rapporthjelpen' }),
-      {
-        timeout: 3000,
-      },
-    );
+    expect(switcher.getAllByRole('radio').map((r) => r.closest('label')?.textContent)).toEqual([
+      'Maler',
+      'Designelementer',
+    ]);
+    expect(screen.queryByRole('button', { name: 'Kopier oppsettet' })).toBeNull();
     expectAccessible();
   });
 
@@ -139,7 +143,7 @@ describe('«Kopier oppsettet»', () => {
   it('copies the layout as JSON that «Lim inn oppsett» reads back', async () => {
     const writeText = vi.fn(async (_text: string) => undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
-    await openInterface();
+    await openJson();
     fireEvent.click(screen.getByRole('button', { name: 'Kopier oppsettet' }));
     await screen.findByText('Oppsettet er kopiert som JSON.');
     const copied = readLayout(writeText.mock.calls[0]?.[0] ?? '');
@@ -149,7 +153,7 @@ describe('«Kopier oppsettet»', () => {
 
   it('shows the JSON to copy by hand when the browser refuses', async () => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
-    await openInterface();
+    await openJson();
     fireEvent.click(screen.getByRole('button', { name: 'Kopier oppsettet' }));
     await screen.findByText(/Nettleseren lot ikke portalen kopiere/);
     const shown = (screen.getByLabelText('Oppsettet') as HTMLTextAreaElement).value;
@@ -165,19 +169,17 @@ describe('«Lim inn oppsett»', () => {
   };
 
   it('uses a pasted layout that keeps the rules, and saves it in the draft', async () => {
-    await openInterface();
+    await openJson();
     paste(layoutJson(defaultLayout));
     await screen.findByText('Oppsettet du limte inn, er i bruk.');
-    expect(switchIn('Høyre', 'Fremgangsmåte').checked).toBe(false);
-    expect(switchIn('Midten', 'Fremgangsmåte').checked).toBe(true);
     await waitFor(() => expect(savedLayout()).toBeDefined(), { timeout: 3000 });
     expect(savedLayout()?.zones.main.map((placed) => placed.block)).toEqual(
       defaultLayout.zones.main.map((placed) => placed.block),
     );
   });
 
-  it('names a text past its limit by the field «Tekster» edits it in, not by its path', async () => {
-    await openInterface();
+  it('names a text past its limit by its field, not by its path', async () => {
+    await openJson();
     const long = 'x'.repeat(81);
     paste(
       JSON.stringify({
@@ -200,8 +202,8 @@ describe('«Lim inn oppsett»', () => {
     expect(said).not.toContain('profile.');
   });
 
-  it('names a broken plural and a link that is not https by their fields in «Tekster»', async () => {
-    await openInterface();
+  it('names a broken plural and a link that is not https by their fields', async () => {
+    await openJson();
     paste(
       JSON.stringify({
         ...defaultLayout,
@@ -222,8 +224,8 @@ describe('«Lim inn oppsett»', () => {
     );
   });
 
-  it('names a text «Tekster» does not edit, or one of a collection whose key holds a dot, by its path', async () => {
-    await openInterface();
+  it('names a text without a field of its own, or one of a collection whose key holds a dot, by its path', async () => {
+    await openJson();
     paste(
       JSON.stringify({
         ...defaultLayout,
@@ -239,7 +241,7 @@ describe('«Lim inn oppsett»', () => {
   });
 
   it('says why it refuses text that is not JSON, not a layout, or breaks a rule, and keeps the layout', async () => {
-    await openInterface();
+    await openJson();
     paste('{ not json');
     expect(screen.getByText('Teksten er ikke gyldig JSON.')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Oppsett som JSON'), {
@@ -261,7 +263,7 @@ describe('«Lim inn oppsett»', () => {
       ),
     ).toBeTruthy();
     expect(screen.getByLabelText('Oppsett som JSON').getAttribute('aria-invalid')).toBe('true');
-    expect(switchIn('Høyre', 'Kilder').checked).toBe(true);
+    expect(writes).toEqual([]);
     expectAccessible();
   });
 });
@@ -312,29 +314,15 @@ describe('the layout saved in the draft', () => {
     await openInterface(withDraftLayout(layout));
     expect(switchIn('Høyre', 'Kilder').checked).toBe(false);
     expect(switchIn('Midten', 'Samtale').checked).toBe(true);
-    fireEvent.click(screen.getByRole('radio', { name: 'Tekster' }));
-    expect((screen.getByRole('textbox', { name: 'Navn' }) as HTMLInputElement).value).toBe(
-      'Svarhjelpen',
-    );
   });
 
-  it('opens a layout whose texts are in both languages, and keeps the other language when saving', async () => {
-    const layout = {
-      ...fromTemplate('chat-only').layout,
-      profile: { assistantName: { nb: 'Kunnskapsassistenten', en: 'The Knowledge Assistant' } },
+  it('keeps the words of a layout, in both languages, when the person changes a block', async () => {
+    const profile = {
+      assistantName: { nb: 'Kunnskapsassistenten', en: 'The Knowledge Assistant' },
     };
-    await openInterface(withDraftLayout(layout));
-    fireEvent.click(screen.getByRole('radio', { name: 'Tekster' }));
-    const name = screen.getByRole('textbox', { name: 'Navn' }) as HTMLInputElement;
-    expect(name.value).toBe('Kunnskapsassistenten');
-    fireEvent.change(name, { target: { value: 'KA' } });
-    await waitFor(
-      () =>
-        expect(savedLayout()?.profile).toEqual({
-          assistantName: { nb: 'KA', en: 'The Knowledge Assistant' },
-        }),
-      { timeout: 3000 },
-    );
+    await openInterface(withDraftLayout({ ...fromTemplate('chat-only').layout, profile }));
+    fireEvent.click(switchIn('Høyre', 'Kilder'));
+    await waitFor(() => expect(savedLayout()?.profile).toEqual(profile), { timeout: 3000 });
   });
 
   it('will not edit a draft layout it cannot show without losing it, and writes nothing', async () => {
@@ -489,8 +477,8 @@ describe('the layout when the draft changes under the open tab', () => {
     await screen.findByRole('group', { name: 'Designelementer og maler' });
     fireEvent.click(switchIn('Høyre', 'Kilder'));
     await waitFor(() => expect(saved).toBeDefined());
-    fireEvent.click(screen.getByRole('radio', { name: 'Tekster' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Maler' }));
     view.rerender(tab(definitionWith(saved as AssistantLayout), onLayout));
-    expect((screen.getByRole('radio', { name: 'Tekster' }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole('radio', { name: 'Maler' }) as HTMLInputElement).checked).toBe(true);
   });
 });

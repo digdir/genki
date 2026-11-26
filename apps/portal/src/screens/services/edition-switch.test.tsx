@@ -15,7 +15,7 @@ describe('switching between the test edition and I bruk', () => {
   it('still counts the test edition changes after the owner has looked at I bruk', async () => {
     const auth = mockAnsattporten(kari);
     await auth.login();
-    window.location.hash = '#/services/rapportassistenten/definition';
+    window.location.hash = '#/services/rapportassistenten/advanced/yaml';
     const base = mockFetch();
     let saved = false;
     const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -24,14 +24,15 @@ describe('switching between the test edition and I bruk', () => {
       return response;
     };
     render(<App auth={auth} fetch={fetch} live />);
-    const editor = (await screen.findByLabelText(
-      'Teknisk tekst',
-      {},
+    const editor = (await screen.findByRole(
+      'textbox',
+      { name: 'Oppsettet som YAML' },
       { timeout: 8000 },
     )) as HTMLTextAreaElement;
     fireEvent.change(editor, {
       target: { value: editor.value.replace(/purpose: .*/, "purpose: 'Svarer kort.'") },
     });
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk endringene' }));
     await waitFor(() => expect(saved).toBe(true), { timeout: 5000 });
 
     window.location.hash = '#/services/rapportassistenten';

@@ -175,18 +175,6 @@ const publishFromHeader = async (fetch: typeof globalThis.fetch) => {
 };
 
 describe('publishing the draft in live mode', () => {
-  it('offers Publiser only when there is a draft', async () => {
-    const { fetch } = platform({}, false);
-    const auth = mockAnsattporten(kari);
-    await auth.login();
-    window.location.hash = '#/services/klarsprak';
-    render(<App auth={auth} fetch={fetch} live />);
-    await screen.findByRole('heading', { level: 1, name: 'Klarspråk' });
-    expect(
-      (await screen.findByRole('button', { name: 'Publiser' })).getAttribute('aria-disabled'),
-    ).toBe('true');
-  });
-
   it('says users get everything in the test edition and goes back to Oppsett on Avbryt without publishing', async () => {
     const { fetch, posts } = platform({});
     await openPublishPage(fetch);
@@ -226,7 +214,9 @@ describe('publishing the draft in live mode', () => {
 
     expect(await screen.findByText('Utgave 2 er publisert.')).toBeTruthy();
     const complete = '/tenants/999888777/definitions/complete';
-    expect(posts.map((p) => p.url.replace(/^.*\/api/, ''))).toEqual([
+    // Oppsett, which the page returns to, then asks for the file input; that is not the publish.
+    const publishing = posts.filter((p) => !p.url.endsWith('/definitions/input-fields'));
+    expect(publishing.map((p) => p.url.replace(/^.*\/api/, ''))).toEqual([
       complete,
       '/definitions/validate',
       complete,
@@ -369,6 +359,45 @@ describe('publishing the draft in live mode', () => {
     expect(within(row).getByText('Skriver om tekst til klarspråk')).toBeTruthy();
     expect(within(row).getByText('Skriver kortere tekst')).toBeTruthy();
   });
+
+  it('shows the risk level and Sikkerhetsregler on the compare publish page of a published service, and publishes a changed guard', async () => {
+    const { fetch, posts } = platform({
+      draftSpec: { guardrails: { 'pii-before-model': true, 'require-sources': true } },
+    });
+    const page = await openPublishPage(fetch);
+    const risk = within(page).getByRole('region', { name: 'Risiko og KI-forordningen' });
+    expect(within(risk).getByText('Begrenset risiko')).toBeTruthy();
+    const guards = within(page).getByRole('region', { name: 'Sikkerhetsregler' });
+    fireEvent.click(
+      within(guards).getByRole('button', { name: 'Fjern Fjern personopplysninger før modellkall' }),
+    );
+    expect(within(guards).queryByText('Fjern personopplysninger før modellkall')).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByText('Sjekker testutgaven mot plattformen …')).toBeNull(),
+    );
+    fireEvent.click(within(page).getByRole('button', { name: 'Publiser' }));
+    await waitFor(() => expect(posts.some((p) => p.url.endsWith('/definitions'))).toBe(true));
+    // The fake platform's completion step adds its own guard, so the draft is read where it was sent.
+    const sent = posts.filter((p) => p.url.endsWith('/definitions/complete')).at(-1)?.body
+      .definition?.spec;
+    expect(sent?.guardrails).toEqual({ 'require-sources': true });
+  });
+
+  it("asks the platform for a published service's file input as soon as its Oppsett opens", async () => {
+    const { fetch: base } = platform({});
+    const asked: string[] = [];
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/definitions/input-fields')) asked.push(url);
+      return base(input, init);
+    };
+    const auth = mockAnsattporten(kari);
+    await auth.login();
+    window.location.hash = '#/services/klarsprak/setup';
+    render(<App auth={auth} fetch={fetch} live />);
+    await screen.findByRole('heading', { level: 3, name: 'Inndata' }, { timeout: 15000 });
+    await waitFor(() => expect(asked.length).toBeGreaterThan(0), { timeout: 5000 });
+  }, 30000);
 
   it('never lists a new risk confirmation as a change', async () => {
     const { fetch } = platform({

@@ -19,8 +19,6 @@ export const assistantUi = {
     undoLabel: 'Angre: {title}',
     redoLabel: 'Gjør om: {title}',
     actionDone: '{label} (gjort)',
-    sideIntro:
-      'Spør om endringer i oppsettet. Det jeg foreslår havner i testutgaven, ikke hos brukerne.',
     chatWelcome:
       'Hvis du vil kan jeg hjelpe med å fylle ut skjemaet til høyre. Bruk forslagsknappene eller spør hvis du lurer på noe.',
     sidePlaceholder: 'Spør om noe …',

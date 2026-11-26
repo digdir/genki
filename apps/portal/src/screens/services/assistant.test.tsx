@@ -9,7 +9,7 @@ import { assistantStates } from '../../data/services';
 import { exampleTestSets, mockFetch } from '../../mock';
 import type { AssistantMockOptions } from '../../mock/assistant';
 import { expectAccessible, go, renderAt } from '../../test-utils';
-import { openArea, setupNav } from './setup-areas.test-utils';
+import { openArea } from './setup-areas.test-utils';
 
 beforeEach(() => {
   window.location.hash = '';
@@ -112,14 +112,14 @@ const askForDocumentView = async (turns: AssistantTurnRequest[] = []) => {
     '#/services/soknadsuttrekk/interface',
     withAssistant({ turns, reply: interfaceReply }),
   );
-  const switcher = await screen.findByRole('group', { name: blocksSwitcher });
+  await screen.findByRole('group', { name: blocksSwitcher });
   if (documentView().checked) fireEvent.click(documentView());
   expect(documentView().checked).toBe(false);
-  fireEvent.click(within(switcher).getByRole('radio', { name: 'Samtale' }));
-  const panel = screen.getByRole('complementary', { name: 'Byggeassistent' });
+  // The builder assistant is beside the Oppsett form; what it turns on opens Utforming.
+  go('#/services/soknadsuttrekk/setup');
+  const panel = await screen.findByRole('complementary', { name: 'Byggeassistent' });
   say(panel, 'Leserne må ha enkel tilgang til originaldokumentet');
-  await within(panel).findByText('Slår på i utformingen: Dokumentvisning.', {}, slow);
-  fireEvent.click(within(switcher).getByRole('radio', { name: 'Designelementer' }));
+  await screen.findByRole('group', { name: blocksSwitcher }, slow);
 };
 
 describe('builder assistant', () => {
@@ -237,11 +237,6 @@ describe('builder assistant', () => {
     expect(within(card).getByText('Endring').getAttribute('data-color')).toBe('accent');
     expect(within(card).queryByText('Fra assistenten')).toBeNull();
     await waitFor(() => expect(instructions().value).toContain('Slå opp søkeren'));
-    expect(
-      within(within(setupNav()).getByRole('button', { name: /^Formål og målgruppe/ })).getByText(
-        'Fra assistenten',
-      ),
-    ).toBeTruthy();
     fireEvent.click(
       within(panel).getByRole('button', {
         name: 'Angre: La til sjekk av status i Enhetsregisteret',

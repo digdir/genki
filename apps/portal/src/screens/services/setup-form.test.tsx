@@ -2,15 +2,15 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { setupAreas, type SetupArea } from './setup-diff';
-import { SetupForm } from './setup-form';
-import type { AreaFact } from './setup-layout';
+import { SetupForm, type AreaFact } from './setup-form';
 
 beforeEach(() => localStorage.clear());
 afterEach(cleanup);
 
-const facts = Object.fromEntries(
-  setupAreas.map((a): [SetupArea, AreaFact] => [a, { status: 'done', summary: '' }]),
-) as Record<SetupArea, AreaFact>;
+const facts = Object.fromEntries(setupAreas.map((a): [SetupArea, AreaFact] => [a, {}])) as Record<
+  SetupArea,
+  AreaFact
+>;
 
 const form = (withChat = true) =>
   render(

@@ -6,7 +6,6 @@ import { createApiClient } from '../../api';
 import { RightsProvider } from '../../Shell';
 import { LiveChanges } from '../changes/LiveChanges';
 import { LiveTransfer } from '../settings/LiveTransfer';
-import { DefinitionEditor } from './DefinitionEditor';
 import { TestRun } from './TestRun';
 import { History } from './History';
 
@@ -112,58 +111,6 @@ const published = (version: number) => ({
 });
 
 describe('service definition sections', () => {
-  it('edits the YAML, validates it and saves it as the draft instead of publishing', async () => {
-    const { api, calls } = platform({
-      [`GET ${service}`]: history,
-      [`GET /tenants/${tenant}/services/klarsprak/draft`]: () => null,
-      [`PUT /tenants/${tenant}/services/klarsprak/draft`]: () => ({
-        revision: 1,
-        definition: {},
-        files: {},
-        at: '2026-11-19T13:02:00Z',
-        reason: '',
-      }),
-      'POST /definitions/validate': () => ({ valid: true }),
-    });
-    render(<DefinitionEditor api={api} tenant={tenant} serviceId="klarsprak" />);
-
-    const editor = (await screen.findByLabelText('Teknisk tekst')) as HTMLTextAreaElement;
-    expect(editor.value).toContain('instructions: Svar kort.');
-    expect(editor.value).not.toMatch(/version: 2/);
-    fireEvent.change(editor, {
-      target: { value: editor.value.replace('Svar kort.', 'Svar svært kort.') },
-    });
-
-    await waitFor(() => expect(calls.some((c) => c.method === 'PUT')).toBe(true), {
-      timeout: 3000,
-    });
-    const save = calls.find((c) => c.method === 'PUT');
-    expect(decodeURIComponent(save?.headers.get('change-reason') ?? '')).toBe(
-      'Utkast lagret fra byggeren',
-    );
-    expect(JSON.stringify((save?.body as { definition: unknown }).definition)).toContain(
-      'Svar svært kort.',
-    );
-    expect(calls.some((c) => c.method === 'POST' && c.path === '/definitions')).toBe(false);
-  });
-
-  it('shows schema errors from validation and does not save the draft', async () => {
-    const { api, calls } = platform({
-      [`GET ${service}`]: history,
-      [`GET /tenants/${tenant}/services/klarsprak/draft`]: () => null,
-      'POST /definitions/validate': () => ({
-        status: 422,
-        errors: [{ path: 'spec.riskClass', message: 'Invalid option' }],
-      }),
-    });
-    render(<DefinitionEditor api={api} tenant={tenant} serviceId="klarsprak" />);
-    const editor = await screen.findByLabelText('Teknisk tekst');
-    fireEvent.change(editor, { target: { value: 'kind: Service' } });
-
-    expect(await screen.findByText('spec.riskClass', {}, { timeout: 3000 })).toBeTruthy();
-    expect(calls.some((c) => c.method === 'PUT' || c.path === '/definitions')).toBe(false);
-  });
-
   it('restores an earlier edition by publishing its content again, without asking for a reason or promising the test edition keeps its changes', async () => {
     const { api, calls } = platform({
       [`GET ${service}`]: history,

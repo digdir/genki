@@ -26,7 +26,6 @@ import {
 import type { PinnedDraft } from '../../../api/design';
 import { FromLibrary, usePinnedBlocks, type PinActions } from './FromDesign';
 import { useFlag, useFlags } from '../../../flags';
-import { collectionsOf, type Collection } from './profileEdit';
 import type { TryRun } from './TryView';
 
 /**
@@ -44,12 +43,11 @@ export const InterfaceTab = ({
   fullscreen,
   backHref,
   adding,
-  assistant,
   onAdded,
   onFullscreen,
   onExitFullscreen,
-  simple = false,
   pins,
+  published = false,
 }: {
   api: ApiClient;
   tenant: string;
@@ -61,28 +59,23 @@ export const InterfaceTab = ({
   narrow: boolean;
   /** Writes a layout into the draft; without it the builder changes nothing that is kept. */
   onLayout?: ((layout: AssistantLayout) => void) | undefined;
-  /** Only Maler and Designelementer, as in the new Oppsett. */
-  simple?: boolean;
   /** The preview on its own, larger. */
   fullscreen: boolean;
   backHref: string;
   /** Blocks the builder assistant chose, turned on once per key. */
   adding?: { key: string; blocks: readonly string[] } | undefined;
-  assistant?: ReactNode;
   onAdded?: () => void;
   onFullscreen: () => void;
   onExitFullscreen: () => void;
   pins?: PinActions | undefined;
+  /** Published once, so it may have an address to look up. */
+  published?: boolean;
 }) => {
   const t = useT();
   const studio = useFlag('blockStudio');
   const flagsReady = useFlags().ready;
   const datasets = useMemo(() => datasetsOfDefinition(definition), [definition]);
   const datasetFilters = useDatasetFilters(api, datasets);
-  const collections = useMemo(
-    () => collectionsOf(datasets, (dataset) => datasetFilters[dataset]),
-    [datasets, datasetFilters],
-  );
   const facts = useMemo(
     () =>
       factsFromDefinition(definition, {
@@ -103,8 +96,8 @@ export const InterfaceTab = ({
     () => ({ api, tenant, source: { definition, files }, pinned, refBlocks }),
     [api, tenant, definition, files, pinned, refBlocks],
   );
-  // The address Åpne tjenesten opens; a fresh service has none to look up yet.
-  const { address: serviceUrl } = useServiceAddress(api, tenant, service, !simple);
+  // The address Åpne tjenesten opens; a service never published has none to look up yet.
+  const { address: serviceUrl } = useServiceAddress(api, tenant, service, published);
   const address = serviceUrl ? new URL(serviceUrl).host : t('builderBlocks.noAddress');
 
   const written = useRef(storedJson);
@@ -157,9 +150,7 @@ export const InterfaceTab = ({
       onAdded={onAdded}
       fullscreen={fullscreen}
       narrow={narrow}
-      assistant={simple ? undefined : assistant}
-      collections={simple ? undefined : collections}
-      transfer={!simple}
+      transfer={false}
       run={run}
       address={address}
       backHref={backHref}
@@ -237,8 +228,6 @@ const InterfaceBuilder = ({
   onAdded,
   fullscreen,
   narrow,
-  assistant,
-  collections,
   transfer,
   run,
   address,
@@ -256,8 +245,6 @@ const InterfaceBuilder = ({
   onAdded?: (() => void) | undefined;
   fullscreen: boolean;
   narrow: boolean;
-  assistant?: ReactNode;
-  collections: Collection[] | undefined;
   transfer: boolean;
   run: TryRun;
   address: string;
@@ -307,8 +294,6 @@ const InterfaceBuilder = ({
     <BlocksStep
       state={blocks}
       narrow={narrow}
-      assistant={assistant}
-      collections={collections}
       transfer={transfer}
       run={run}
       address={address}

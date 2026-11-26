@@ -367,6 +367,7 @@ export const ServiceChannels = ({
   frontend,
   listHref = `#${servicePath(service, 'channels')}`,
   hasApp = false,
+  titled = true,
   now = () => new Date(),
 }: {
   api: ApiClient;
@@ -379,6 +380,8 @@ export const ServiceChannels = ({
   frontend?: string | undefined;
   listHref?: string;
   hasApp?: boolean;
+  /** Its own heading; off where the page already names the part, as Avansert does. */
+  titled?: boolean;
   now?: () => Date;
 }) => {
   const t = useT();
@@ -643,9 +646,11 @@ export const ServiceChannels = ({
     <div className="fe-channels stack">
       <div className="dv-head">
         <div className="stack-xs">
-          <Heading level={2} data-size="md">
-            {t('service.sectionChannels')}
-          </Heading>
+          {titled ? (
+            <Heading level={2} data-size="md">
+              {t('service.sectionChannels')}
+            </Heading>
+          ) : null}
           <Paragraph className="meta dv-lead">{t('serviceDev.keysLead', { name })}</Paragraph>
         </div>
         {canManage ? (

@@ -47,9 +47,6 @@ const order: ServiceSection[] = [
   'advanced',
 ];
 
-/** The new Oppsett is for services not published yet; return true to give it to every service. */
-export const usesNewSetup = ({ isNew }: { isNew: boolean }) => isNew;
-
 const forNew: ServiceSection[] = [
   'setup',
   'interface',
@@ -130,12 +127,8 @@ export const serviceTabs = (sections: ServiceSection[]) =>
 export const subSections = (tab: ServiceTab, sections: ServiceSection[]) =>
   tabSections[tab].filter((s) => sections.includes(s) && !notListed.includes(s));
 
-export const availableSections = ({ isNew }: { isNew: boolean }) => {
-  const fresh = usesNewSetup({ isNew });
-  return (isNew ? order.filter((s) => forNew.includes(s)) : order).filter((s) =>
-    fresh ? !movedToAdvanced[s] : s !== 'advanced',
-  );
-};
+export const availableSections = ({ isNew }: { isNew: boolean }) =>
+  (isNew ? order.filter((s) => forNew.includes(s)) : order).filter((s) => !movedToAdvanced[s]);
 
 export const servicePath = (id: string, section?: ServiceSection, rest = '') => {
   const base = `/services/${encodeURIComponent(id)}`;
@@ -171,7 +164,8 @@ export const locate = (
     const moved = allowed.includes(wanted) ? undefined : movedToAdvanced[wanted];
     const into = moved && allowed.includes('advanced');
     const section: ServiceSection = into ? 'advanced' : wanted;
-    const rest = into ? `/${moved}` : wantedRest;
+    // Kanaler keeps the client it was opened on: /channels/<frontend> → /advanced/channels/<frontend>.
+    const rest = into ? `/${moved}${moved === 'channels' ? wantedRest : ''}` : wantedRest;
     const target = allowed.includes(section) ? section : fallback;
     return {
       section: target,
@@ -186,17 +180,13 @@ export const locate = (
     keep.delete('view');
     return go('definition');
   }
-  if (raw === 'how-it-works') return go('setup', '/how');
-  // Only the sections of the new Oppsett, where Kanaler and the YAML live under Avansert.
-  const fresh = allowed.includes('advanced') && !allowed.includes('channels');
-  if (fresh) {
-    if (raw === 'settings') return go('settings');
-    if (raw === 'setup' && detail && (advancedItems as readonly string[]).includes(detail))
-      return go('advanced', `/${detail}`);
-    if (raw === 'setup' && (detail === 'risk' || detail === 'guards'))
-      return go('setup', '/publish');
-  }
-  if (raw === 'settings' && allowed.includes('setup')) return go('setup', '/limits');
+  if (raw === 'how-it-works') return go('advanced', '/how');
+  if (raw === 'settings') return go('settings');
+  if (raw === 'channels' && detail) return go('channels', `/${detail}`);
+  if (raw === 'setup' && detail && (advancedItems as readonly string[]).includes(detail))
+    return go('advanced', `/${detail}`);
+  if (raw === 'setup' && (detail === 'risk' || detail === 'guards')) return go('setup', '/publish');
+  if (raw === 'setup' && detail === 'start') return go('advanced', '/channels');
   const known = (Object.keys(sectionLabels) as ServiceSection[]).find((s) => s === raw);
   if (!raw || !known) return { section: fallback, detail: undefined };
   if (!allowed.includes(known)) {

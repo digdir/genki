@@ -80,7 +80,6 @@ describe('side by side columns', () => {
 
 describe('side rails', () => {
   const rails = [
-    ['screens/services/setup-layout.css', '.setup-nav', '@container setup (max-width: 1179px)'],
     ['screens/models/models.css', '.mc-filters', '@container page (max-width: 823px)'],
     ['app.css', '.dev-tools-nav', '@media (max-width: 900px)'],
     ['screens/service/service.css', '.service-subnav', '@container page (max-width: 1179px)'],

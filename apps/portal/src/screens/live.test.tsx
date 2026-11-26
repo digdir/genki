@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
@@ -396,12 +396,11 @@ describe('live mode shows only platform data', () => {
     expect(screen.getByRole('region', { name: 'Formål og målgruppe' })).toBeTruthy();
   });
 
-  it('sends a published service away from an Avansert address, which only services not published yet have', async () => {
+  it('opens Avansert of a published service at its address', async () => {
     await renderLive('#/services/kunnskapsassistenten/advanced/yaml', kaPlatform);
 
-    await waitFor(() => expect(window.location.hash).toBe('#/services/kunnskapsassistenten'));
-    expect(await screen.findByRole('heading', { level: 2, name: 'I bruk' })).toBeTruthy();
-    expect(screen.queryByRole('link', { name: 'Oppsettet som YAML' })).toBeNull();
+    expect(await screen.findByRole('textbox', { name: 'Oppsettet som YAML' })).toBeTruthy();
+    expect(window.location.hash).toBe('#/services/kunnskapsassistenten/advanced/yaml');
   });
 
   it('lists Kunnskapsassistenten from the platform definitions', async () => {
@@ -416,8 +415,10 @@ describe('live mode shows only platform data', () => {
     await renderLive('#/services/kunnskapsassistenten/channels', kaPlatform);
 
     expect((await screen.findAllByText('/api/mcp')).length).toBeGreaterThan(0);
-    go('#/services/kunnskapsassistenten/setup/channels');
-    expect(await screen.findByRole('heading', { level: 2, name: 'Kanaler' })).toBeTruthy();
+    expect(window.location.hash).toBe('#/services/kunnskapsassistenten/advanced/channels');
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'API-nøkler og kanaler' }),
+    ).toBeTruthy();
     expect(screen.getByLabelText('Offentlig navn')).toBeTruthy();
     go('#/services/kunnskapsassistenten');
     expect(await screen.findByRole('heading', { level: 2, name: 'I bruk' })).toBeTruthy();
@@ -503,7 +504,7 @@ describe('live service page', () => {
       'https://motor.example.no/turn',
     ],
   ])('maps strategy %#: %s', async (strategy, name, field, value) => {
-    await renderLive('#/services/kunnskapsassistenten/setup/how', serviceWith(strategy));
+    await renderLive('#/services/kunnskapsassistenten/advanced/how', serviceWith(strategy));
 
     fireEvent.click(
       await screen.findByRole('button', { name: /^Bytt (arbeidsmåte|arbeidsflyt)$/ }),
@@ -513,11 +514,6 @@ describe('live service page', () => {
     expect(
       ((await screen.findByLabelText(new RegExp(`^${field}`))) as HTMLInputElement).value,
     ).toBe(value);
-    expect(
-      within(screen.getByRole('navigation', { name: 'Deler av oppsettet' })).getByRole('button', {
-        name: new RegExp(`^Arbeidsmåte.*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
-      }),
-    ).toBeTruthy();
   });
 
   it('says in the service builder that the chosen model ignores temperature', async () => {

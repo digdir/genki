@@ -305,11 +305,6 @@ export const serviceTabsUi = {
       'A sample of real runs, for example 5 of 100, is evaluated automatically without an expected answer. You see a score per day beside the test set, and are told if the quality drops between two publishes.',
   },
   serviceDev: {
-    channelsInSetup: 'Change channels and variants in Setup, under Channels',
-    channelsLead:
-      'The API keys that let other systems call the service, the own frontends it shows in and the addresses it answers on.',
-    definitionLead:
-      'The whole test edition as text. What you change here is the same test edition as in Setup, and it is saved the same way.',
     download: 'Download',
     pasteFile: 'Load from file',
     seeChanges: 'See the changes against the edition in use',

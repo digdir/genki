@@ -145,7 +145,7 @@ const resizeTo = (width: number) =>
 /** Renames the service on «Oppsett» and comes back to «Grensesnitt». */
 const renameElsewhere = async (name: string) => {
   go('#/services/rapportassistenten/setup');
-  await click(await screen.findByRole('button', { name: /^Formål og målgruppe/ }));
+  await screen.findByRole('heading', { level: 3, name: 'Formål og målgruppe' });
   fireEvent.change(await screen.findByRole('textbox', { name: 'Navn' }), {
     target: { value: name },
   });
@@ -308,7 +308,7 @@ describe('the try view drawn again', () => {
     await ask(question);
     await screen.findByText(notReady);
     go('#/services/rapportassistenten/setup');
-    await screen.findByRole('button', { name: /^Formål og målgruppe/ });
+    await screen.findByRole('heading', { level: 3, name: 'Formål og målgruppe' });
     expect(screen.queryByText(notReady)).toBeNull();
     go('#/services/rapportassistenten/interface');
     expect(await screen.findByText(notReady)).toBeTruthy();
