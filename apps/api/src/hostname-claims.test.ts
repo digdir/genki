@@ -1050,6 +1050,32 @@ describe('a published service gets an address', () => {
     });
   });
 
+  it('an address frontend with a domain its owner added blocks deleting for good and keeps the domain', async () => {
+    const t = await boot();
+    expect((await t.publish(service('klarsprak'))).ok).toBe(true);
+    await t.bindAll(`klarsprak.apps.${zone}`);
+    const added = await t.claim('klarsprak-host', {
+      hostname: 'ka.example.no',
+      environment: 'prod',
+    });
+    expect(added.status).toBe(201);
+    await t.verify('ka.example.no');
+    await t.bindAll('ka.example.no');
+    await archive(t, 'klarsprak');
+
+    const res = await deleteForGood(t, 'klarsprak');
+
+    expect(res.status).toBe(409);
+    expect((await res.json()) as unknown).toMatchObject({
+      errors: [{ path: 'frontends', id: 'klarsprak-host' }],
+    });
+    expect(await clientIds(t)).toEqual(['klarsprak-host']);
+    expect((await t.claims.list(digdir)).map((c) => [c.hostname, c.state])).toEqual(
+      expect.arrayContaining([['ka.example.no', 'active']]),
+    );
+    expect(await t.work()).toEqual([]);
+  });
+
   it('a hosted frontend set up like genki would, under a name of its own, still blocks deleting for good', async () => {
     const t = await boot();
     expect((await t.publish(service('klarsprak', digdir, false))).ok).toBe(true);

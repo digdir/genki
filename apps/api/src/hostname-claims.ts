@@ -341,6 +341,7 @@ export const isAddressClientOf = (
   claims: readonly HostnameClaim[],
 ) => {
   const { metadata, spec } = client.definition;
+  const own = claims.filter((c) => c.client === metadata.id);
   return (
     addressClientIds(service).includes(metadata.id) &&
     spec.service === service &&
@@ -354,7 +355,8 @@ export const isAddressClientOf = (
     spec.allowedOrigins.length === 0 &&
     spec.channels.length === addressChannels.length &&
     addressChannels.every((channel) => spec.channels.includes(channel)) &&
-    claims.some((c) => c.client === metadata.id && c.service === service && c.assigned)
+    own.length > 0 &&
+    own.every((c) => c.service === service && c.assigned)
   );
 };
 
