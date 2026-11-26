@@ -5,7 +5,5 @@ export const api = {
   unknownUser: 'Unknown user',
   loginFailed: 'The sign-in failed.',
   loginUnavailable: 'Sign-in is not available here.',
-  reminderReason: 'Reminder about onboarding',
   exportReason: 'Export of the audit log',
-  tracingReason: 'Changed tracing',
 } satisfies Translation<typeof source>;

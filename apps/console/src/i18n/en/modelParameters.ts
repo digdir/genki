@@ -24,5 +24,5 @@ export const modelParameters = {
   rejectedText:
     'The model answered that it does not accept {name}. The platform retried without it, so services keep working. Last seen {when}. Choose "The model does not support it" under Parameters to make it a fixed rule.',
   rejectedHint: 'Has rejected {name}',
-  saved: 'The parameters for {model} are saved. The change is logged in Audit.',
+  saved: 'The parameters for {model} are saved. The change is logged.',
 } satisfies Translation<typeof source>;

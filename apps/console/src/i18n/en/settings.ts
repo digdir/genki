@@ -5,7 +5,7 @@ export const settings = {
   catSearch: 'Search',
   catAnswer: 'Answers',
   catAssistant: 'Assistant',
-  catSkills: 'Skills',
+  catSkills: 'Work instructions',
   catPlayground: 'Playground',
   catUsage: 'Usage',
   labelPlannerEnabled: 'Plan the search',
@@ -58,11 +58,11 @@ export const settings = {
   labelAssistantDailyTokens: 'Tokens per day for the assistant',
   descAssistantDailyTokens: 'Reset at 00:00 Norwegian time.',
   labelAssistantModel: 'Model for the build assistant',
-  labelSkillsDefaultPassThreshold: 'Requirement for publishing skills',
+  labelSkillsDefaultPassThreshold: 'Requirement for publishing work instructions',
   descSkillsDefaultPassThreshold:
     'Share of test cases that must pass when the test set has no requirement of its own.',
-  labelSkillsTestModel: 'Model for test runs of skills',
-  labelSkillsJudgeModel: 'Model that judges test answers',
+  labelSkillsTestModel: 'Model for test runs of work instructions',
+  labelSkillsJudgeModel: 'Model that evaluates test answers',
   labelAnswersWrittenStandard: 'Written standard in answers',
   descAnswersWrittenStandard:
     'Answer in the same written standard as the question, or always bokmål or nynorsk.',
@@ -78,7 +78,7 @@ export const settings = {
   labelPlaygroundEnabled: 'The playground is on',
   labelUsageMonthlyTokens: 'Tokens per month',
   labelUsageTenantCallsPerMinute: 'Calls per minute for the organisation',
-  labelBatchApprovalLimitNok: 'Limit per batch job before approval (NOK)',
+  labelBatchApprovalLimitNok: 'Limit per batch run before approval (NOK)',
   riskMinimal: 'minimal risk',
   riskLimited: 'limited risk',
   riskHigh: 'high risk',
@@ -116,7 +116,7 @@ export const settings = {
     'How long questions, answers and documents are kept after a run ends. High-risk services keep them at least 183 days, limited-risk at least 30.',
   labelRetentionAuditDays: 'Days the audit trail is kept',
   descRetentionAuditDays:
-    'Days the audit trail of a run (ids, type, who, usage, versions and times) is kept after it ends. Never shorter than the content.',
+    'Days the audit trail of a run (ids, type, who, usage, editions and times) is kept after it ends. Never shorter than the content.',
   errNumber: 'Write a number.',
   errRange: 'Must be between {min} and {max}.',
   errInteger: 'Must be a whole number.',
@@ -167,7 +167,7 @@ export const settings = {
   layerPlatform: 'Platform default',
   layerTenant: 'Organisation',
   layerService: 'Service',
-  layerDataset: 'Dataset',
+  layerDataset: 'Document collection',
   layerPinned: 'Pinned',
   previewReason: 'Preview of the change',
   saved: '{label} is saved ({value}). The change is logged.',
@@ -198,7 +198,7 @@ export const settings = {
   none: 'None',
   savedToAudit: 'Saved in the audit log.',
   save: 'Save',
-  versions: 'Versions of the platform default',
+  versions: 'Editions of the platform default',
   changesHere: 'Changes here',
   cannotSet: 'Cannot be set',
   pinnedLower: 'pinned',
@@ -237,7 +237,7 @@ export const settings = {
   descPlannerPrompt: 'A custom prompt for the planner. Empty uses the built-in one.',
   descRetrievalQueryAwareBoost: 'Boosts hits that overlap with the question.',
   descRetrievalAutoFilterAliases:
-    'Names that mean the same as a value in the dataset, such as an abbreviation. Each entry is a group of names. When the search names one of them, it counts as the value as stored in the dataset.',
+    'Names that mean the same as a value in the document collection, such as an abbreviation. Each entry is a group of names. When the search names one of them, it counts as the value as stored.',
   descRetrievalAutoFilterRules:
     'The automatic filter rules, in the order they are tried. Without an agent they filter the search; an agent gets them as a hint.',
   descRetrievalDocTitleFanout: 'Number of passages read per document that matches on title.',
@@ -262,15 +262,16 @@ export const settings = {
   descKnowledgeHeavyThreshold:
     'Chunks an index build, a fill or a VACUUM must go over to wait for the night window.',
   descKnowledgeSwitchRetentionDays:
-    'Days the previous search engine copy is kept after a dataset switches engine.',
+    'Days the previous search engine copy is kept after a document collection switches engine.',
   descAssistantEnabled: 'Offer the build assistant in the service builder.',
   descAssistantModel:
     'The model the build assistant uses. Empty picks the first enabled model with tools within the allowed data location.',
   descSkillsTestModel:
-    'The model that runs test sets for skills. Empty picks the cheapest model the organisation may use.',
+    'The model that runs test sets for work instructions. Empty picks the cheapest model the organisation may use.',
   descSkillsJudgeModel:
-    'The model that judges answers in the test sets. Empty picks the cheapest model from another family.',
-  descPlaygroundEnabled: 'Offer the playground for trying services, skills and building blocks.',
+    'The model that evaluates answers in the test sets. Empty picks the cheapest model from another family.',
+  descPlaygroundEnabled:
+    'Offer the playground for trying services, work instructions and catalogue parts.',
   descUsageMonthlyTokens:
     'Tokens an organisation may use per calendar month. The playground refuses runs once they are used up.',
   descUsageTenantCallsPerMinute:

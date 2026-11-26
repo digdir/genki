@@ -14,8 +14,6 @@ import type {
   SettingsGrid,
   TaskTimeline,
   Tenant,
-  TraceConnection,
-  TraceTool,
   TracingStatus,
 } from './types';
 
@@ -803,142 +801,13 @@ export const exampleHistory: QualityHistory = {
   ],
 };
 
-export const exampleTraceTools: TraceTool[] = [
-  {
-    id: 'langfuse',
-    name: 'Langfuse',
-    description: 'Sporing, evaluering og annotering.',
-    fields: [
-      {
-        key: 'host',
-        label: 'Adresse til Langfuse',
-        type: 'url',
-        placeholder: 'https://langfuse.testetaten.example.no',
-        help: '',
-      },
-      {
-        key: 'pk',
-        label: 'Offentlig nøkkel',
-        type: 'text',
-        placeholder: 'pk-lf-',
-        help: 'Begynner med pk-lf-',
-      },
-      {
-        key: 'sk',
-        label: 'Hemmelig nøkkel',
-        type: 'secret',
-        placeholder: 'sk-lf-',
-        help: 'Lagres i Key Vault og vises aldri igjen.',
-      },
-    ],
-  },
-  {
-    id: 'phoenix',
-    name: 'Arize Phoenix',
-    description: 'Sporing og evaluering med OpenTelemetry.',
-    fields: [
-      {
-        key: 'endpoint',
-        label: 'Adresse til Phoenix',
-        type: 'url',
-        placeholder: 'https://',
-        help: '',
-      },
-      {
-        key: 'apikey',
-        label: 'API-nøkkel',
-        type: 'secret',
-        placeholder: '',
-        help: 'Lagres i Key Vault.',
-      },
-    ],
-  },
-  {
-    id: 'appinsights',
-    name: 'Application Insights',
-    description: 'Drift og ytelse i Azure.',
-    fields: [
-      {
-        key: 'conn',
-        label: 'Tilkoblingsstreng',
-        type: 'secret',
-        placeholder: 'InstrumentationKey=…',
-        help: 'Lagres i Key Vault.',
-      },
-    ],
-  },
-  {
-    id: 'otel',
-    name: 'OpenTelemetry (eget mål)',
-    description: 'Send spor til et hvilket som helst OTLP-mål.',
-    fields: [
-      { key: 'endpoint', label: 'OTLP-adresse', type: 'url', placeholder: 'https://', help: '' },
-      {
-        key: 'headers',
-        label: 'Ekstra hoder',
-        type: 'secret',
-        placeholder: '',
-        help: 'Lagres i Key Vault.',
-      },
-    ],
-  },
-];
-
-const traceConnection: TraceConnection = {
-  status: 'ok',
-  hosting: 'norway',
-  values: { host: 'https://langfuse.digdir.example.no', pk: 'pk-lf-digdir-7a21' },
-  secretsStored: true,
-  scope: exampleAgencies.slice(0, 7),
-  content: 'meta',
-  mask: true,
-  sampleRate: 10,
-  syncScores: true,
-  annotations: false,
-  lastDelivery: '2026-10-07T10:51:00+02:00',
-  sent24h: 41200,
-  queued: 0,
-};
-
 export const exampleTracing: TracingStatus = {
   enabled: true,
-  source: 'registry',
+  source: 'environment',
   endpoint: 'https://langfuse.digdir.example.no/api/public/otel',
   content: false,
   sampleRate: 0.1,
   stats: { exported: 41200, dropped: 0, failed: 0, sampledOut: 0 },
-  tools: exampleTraceTools,
-  connections: { langfuse: traceConnection },
-  tenantConnections: [
-    {
-      tenant: 'Testetaten',
-      tool: 'Langfuse',
-      content: 'Fullt innhold, maskert',
-      status: 'failing',
-      lastDelivery: '2026-10-07T09:38:00+02:00',
-    },
-    {
-      tenant: 'Eksempeldirektoratet',
-      tool: 'Arize Phoenix',
-      content: 'Bare metadata',
-      status: 'ok',
-      lastDelivery: '2026-10-07T10:50:00+02:00',
-    },
-    {
-      tenant: 'Eksempelhelseforetaket',
-      tool: 'Application Insights',
-      content: 'Bare metadata',
-      status: 'ok',
-      lastDelivery: '2026-10-07T10:49:00+02:00',
-    },
-    {
-      tenant: 'Kontrollrådet',
-      tool: 'Langfuse',
-      content: 'Fullt innhold, maskert',
-      status: 'ok',
-      lastDelivery: '2026-10-07T10:44:00+02:00',
-    },
-  ],
 };
 
 export const exampleOperations: OperationsOverview = {

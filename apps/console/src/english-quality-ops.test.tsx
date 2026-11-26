@@ -33,7 +33,7 @@ describe('quality, tracing and operations in English', () => {
   it('shows the quality matrix tabs and the judges', async () => {
     await open('#/quality-matrix?tab=judges');
 
-    expect(await screen.findByRole('tab', { name: 'Judges' })).toBeTruthy();
+    expect(await screen.findByRole('tab', { name: 'Automatic evaluations' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Quality matrix' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Assess answers' })).toBeTruthy();
     expect(screen.getByLabelText('Threshold (kappa)')).toBeTruthy();
@@ -45,7 +45,7 @@ describe('quality, tracing and operations in English', () => {
     expect(
       await screen.findByRole('heading', { name: 'Tracing and evaluation for the platform' }),
     ).toBeTruthy();
-    expect(await screen.findByRole('heading', { name: 'Tools' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: "The platform's tracing" })).toBeTruthy();
   });
 
   it('shows operations in English', async () => {

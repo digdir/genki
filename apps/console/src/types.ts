@@ -399,7 +399,6 @@ export interface BuildingBlocks {
   tools: BuildingBlock[];
   types?: BlockType[];
   registry?: RegistryBlock[];
-  agencies?: string[];
   plugins?: PluginSummary[];
 }
 
@@ -545,62 +544,14 @@ export interface LabelItem {
   judgeCriteria?: { correct: Verdict; grounded: Exclude<Verdict, 'Delvis'> };
 }
 
-export interface TraceField {
-  key: string;
-  label: string;
-  type: 'url' | 'text' | 'secret';
-  placeholder: string;
-  help: string;
-}
-
-export interface TraceTool {
-  id: string;
-  name: string;
-  description: string;
-  fields: TraceField[];
-}
-
-export type Hosting = 'norway' | 'eu' | 'outside';
-
-export interface TraceConnection {
-  status: 'ok' | 'failing';
-  hosting: Hosting;
-  values: Record<string, string>;
-  secretsStored: boolean;
-  scope: string[];
-  content: 'meta' | 'full';
-  mask: boolean;
-  sampleRate: number;
-  syncScores: boolean;
-  annotations: boolean;
-  lastDelivery?: string;
-  sent24h?: number;
-  queued?: number;
-  error?: { what: string; why: string; code: string };
-}
-
 export interface TracingStatus {
   enabled: boolean;
-  source: 'environment' | 'registry';
+  source: 'environment';
   endpoint?: string;
   content?: boolean;
   sampleRate?: number;
   stats?: { exported: number; dropped: number; failed: number; sampledOut: number };
-  tools?: TraceTool[];
-  connections?: Record<string, TraceConnection>;
-  tenantConnections?: {
-    tenant: string;
-    tool: string;
-    content: string;
-    status: 'ok' | 'failing';
-    lastDelivery: string;
-  }[];
 }
-
-export type TraceSettings = Omit<
-  TraceConnection,
-  'status' | 'lastDelivery' | 'sent24h' | 'queued' | 'error' | 'secretsStored'
-> & { secrets: Record<string, string> };
 
 export interface RunningTask {
   task: string;

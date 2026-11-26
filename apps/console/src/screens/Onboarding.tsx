@@ -200,20 +200,9 @@ export const followUps = (requests: AccessRequest[], tenants: Tenant[]): FollowU
 const daysSince = (iso: string | undefined, now: number) =>
   iso ? Math.floor((now - new Date(iso).getTime()) / dayMs) : 0;
 
-const Card = ({
-  item,
-  reminded,
-  canRemind,
-  onRemind,
-}: {
-  item: FollowUp;
-  reminded: boolean;
-  canRemind: boolean;
-  onRemind: () => Promise<void>;
-}) => {
+const Card = ({ item }: { item: FollowUp }) => {
   const t = useT();
   const f = useFormat();
-  const [busy, setBusy] = useState(false);
   const live = item.services > 0;
   const waited = daysSince(item.registeredAt, Date.now());
   const late = !live && waited > lateAfterDays;
@@ -243,10 +232,7 @@ const Card = ({
       return i === stepNames.length - 1
         ? t('onboarding.servicesPublished', { count: item.services })
         : t('onboarding.timeNotRecorded');
-    if (states[i] === 'late')
-      return t(reminded ? 'onboarding.noProgressReminded' : 'onboarding.noProgress', {
-        days: waited,
-      });
+    if (states[i] === 'late') return t('onboarding.noProgress', { days: waited });
     if (i === 2 && states[i] === 'waiting') return t('onboarding.scopesNote');
     return '';
   };
@@ -287,22 +273,6 @@ const Card = ({
                   {i === 2 ? <NotDecided /> : null}
                 </span>
                 {text ? <span className="meta">{text}</span> : null}
-                {state !== 'late' || reminded ? null : !canRemind ? (
-                  <span className="meta">{t('onboarding.reminderUnavailable')}</span>
-                ) : (
-                  <Button
-                    variant="secondary"
-                    data-size="sm"
-                    className="align-start"
-                    loading={busy}
-                    onClick={() => {
-                      setBusy(true);
-                      void onRemind().finally(() => setBusy(false));
-                    }}
-                  >
-                    {t('onboarding.sendReminder')}
-                  </Button>
-                )}
               </span>
             </li>
           );
@@ -459,7 +429,7 @@ const RegisterDialog = ({
   );
 };
 
-export const Onboarding = ({ api, live = false }: { api: ApiClient; live?: boolean }) => {
+export const Onboarding = ({ api }: { api: ApiClient }) => {
   const t = useT();
   const tRef = useRef(t);
   tRef.current = t;
@@ -476,23 +446,7 @@ export const Onboarding = ({ api, live = false }: { api: ApiClient; live?: boole
     [api],
   );
   const [registering, setRegistering] = useState(false);
-  const [reminded, setReminded] = useState<Set<string>>(() => new Set());
   const flash = useFlash();
-
-  const remind = (item: FollowUp) => async () => {
-    try {
-      await api.remindOnboarding(item.org);
-      setReminded((all) => new Set(all).add(item.org));
-      flash.show(
-        tRef.current('onboarding.reminderSent', {
-          contact: item.contact ?? tRef.current('onboarding.contactFallback'),
-          name: item.name,
-        }),
-      );
-    } catch {
-      flash.show(tRef.current('onboarding.reminderFailed'), 'danger');
-    }
-  };
 
   const ready = state.status === 'ready' ? state.data : undefined;
   const list = ready ? followUps(ready.requests, ready.tenants) : [];
@@ -542,13 +496,7 @@ export const Onboarding = ({ api, live = false }: { api: ApiClient; live?: boole
       ) : (
         <div className="card-grid wide">
           {list.map((item) => (
-            <Card
-              key={item.org}
-              item={item}
-              reminded={reminded.has(item.org)}
-              canRemind={!live}
-              onRemind={remind(item)}
-            />
+            <Card key={item.org} item={item} />
           ))}
         </div>
       )}

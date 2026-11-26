@@ -35,11 +35,9 @@ export const onboarding = {
   servicesPublished: { one: '{count} service published', other: '{count} services published' },
   timeNotRecorded: 'The time is not recorded in the platform.',
   noProgress: 'No progress for {days} days.',
-  noProgressReminded: 'No progress for {days} days. Reminder sent today.',
   scopesNote: 'The scopes are added to the client in Maskinporten.',
   orgNo: 'Org. no. {number}',
   orgNoContact: 'Org. no. {number} · contact person {contact}',
-  sendReminder: 'Send reminder',
   lookupSource: '{name} (from the Central Coordinating Register)',
   dialogIntro:
     'For organisations Digdir takes in directly, without a request from the portal. Requests normally come through For processing.',
@@ -58,8 +56,4 @@ export const onboarding = {
   emptyTitle: 'No organisations in onboarding',
   emptyText:
     'When Digdir approves an access request in <link>For processing</link>, the organisation appears here until it is under way.',
-  reminderSent: 'Reminder sent to {contact}, {name}.',
-  contactFallback: 'the contact person',
-  reminderFailed: 'Could not send the reminder. Try again shortly.',
-  reminderUnavailable: 'Reminder: not available yet.',
 } satisfies Translation<typeof source>;

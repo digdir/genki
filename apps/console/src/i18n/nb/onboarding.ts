@@ -3,15 +3,15 @@ import { defineNamespace } from '@genai/i18n';
 export const onboarding = defineNamespace({
   accessDenied: 'Du har ikke tilgang til å gjøre dette.',
   somethingWrong: 'Noe gikk galt. Prøv igjen.',
-  orgnrDigits: 'Organisasjonsnummeret har 9 siffer.',
-  orgnrControl: 'Sjekk organisasjonsnummeret. Kontrollsifferet stemmer ikke.',
+  orgnrDigits: 'Org.nr. har 9 siffer.',
+  orgnrControl: 'Sjekk org.nr. Kontrollsifferet stemmer ikke.',
   orgnrExists: 'Denne virksomheten bruker allerede plattformen.',
   nameMissing: 'Skriv navnet på virksomheten.',
   reasonShort: 'Skriv en begrunnelse på minst {min} tegn. Nå er det {n}.',
   registerTitle: 'Registrer virksomhet',
   registerIntro:
     'Virksomheten vises under Virksomheter med en gang. Registreringen logges i Revisjon.',
-  orgnr: 'Organisasjonsnummer',
+  orgnr: 'Org.nr.',
   nameFull: 'Navn på virksomheten',
   reason: 'Begrunnelse',
   reasonSaved: 'Lagres i revisjonsloggen.',
@@ -34,11 +34,9 @@ export const onboarding = defineNamespace({
   servicesPublished: { one: '{count} tjeneste publisert', other: '{count} tjenester publisert' },
   timeNotRecorded: 'Tidspunktet er ikke registrert i plattformen.',
   noProgress: 'Ingen fremdrift på {days} dager.',
-  noProgressReminded: 'Ingen fremdrift på {days} dager. Påminnelse sendt i dag.',
   scopesNote: 'Scopes legges til klienten i Maskinporten.',
   orgNo: 'Org.nr. {number}',
   orgNoContact: 'Org.nr. {number} · kontaktperson {contact}',
-  sendReminder: 'Send påminnelse',
   lookupSource: '{name} (fra Enhetsregisteret)',
   dialogIntro:
     'For virksomheter Digdir tar inn direkte, uten forespørsel fra portalen. Vanligvis kommer forespørslene gjennom Til behandling.',
@@ -57,8 +55,4 @@ export const onboarding = defineNamespace({
   emptyTitle: 'Ingen virksomheter i oppstart',
   emptyText:
     'Når Digdir godkjenner en tilgangsforespørsel i <link>Til behandling</link>, vises virksomheten her til den er i gang.',
-  reminderSent: 'Påminnelse sendt til {contact}, {name}.',
-  contactFallback: 'kontaktpersonen',
-  reminderFailed: 'Kunne ikke sende påminnelsen. Prøv igjen om litt.',
-  reminderUnavailable: 'Påminnelse: ikke tilgjengelig ennå.',
 });

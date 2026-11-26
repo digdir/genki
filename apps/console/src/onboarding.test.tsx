@@ -67,23 +67,12 @@ describe('oppstart', () => {
     );
   });
 
-  it('sends a reminder for a step that is late', async () => {
-    const { calls, fetch } = recording();
-    await open(fetch);
+  it('offers no reminder for a late step, since the platform cannot send one', async () => {
+    await open(mockFetch());
 
     const fylke = await screen.findByRole('article', { name: 'Fylkeskommunen i Testfylke' });
-    fireEvent.click(within(fylke).getByRole('button', { name: 'Send påminnelse' }));
-
-    expect(
-      await screen.findByText('Påminnelse sendt til Rune Moe, Fylkeskommunen i Testfylke.'),
-    ).toBeTruthy();
-    expect(within(fylke).getByText(/Påminnelse sendt i dag\./)).toBeTruthy();
-    expect(within(fylke).queryByRole('button', { name: 'Send påminnelse' })).toBeNull();
-    expect(
-      calls.some(
-        (c) => c.method === 'POST' && c.path === '/api/operator/onboarding/921444555/reminders',
-      ),
-    ).toBe(true);
+    expect(within(fylke).getByText(/Ingen fremdrift på/)).toBeTruthy();
+    expect(within(fylke).queryByRole('button', { name: /påminnelse/i })).toBeNull();
   });
 
   it('registers an agency directly from a dialog after checking the fields', async () => {
@@ -93,7 +82,7 @@ describe('oppstart', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Registrer virksomhet' }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Registrer' }));
-    expect(within(dialog).getByText('Organisasjonsnummeret har 9 siffer.')).toBeTruthy();
+    expect(within(dialog).getByText('Org.nr. har 9 siffer.')).toBeTruthy();
     expect(
       within(dialog).getByText('Skriv en begrunnelse på minst 10 tegn. Nå er det 0.'),
     ).toBeTruthy();
@@ -101,7 +90,7 @@ describe('oppstart', () => {
       false,
     );
 
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Organisasjonsnummer' }), {
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Org.nr.' }), {
       target: { value: '974760673' },
     });
     await waitFor(() =>

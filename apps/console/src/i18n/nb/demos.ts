@@ -226,7 +226,7 @@ export const demos = defineNamespace({
   settingsHeight: 'Høyde (piksler)',
   settingsTenant: 'Testvirksomhet',
   settingsTenantHelp:
-    'Organisasjonsnummeret til demovirksomheten i genki-test. Tomt betyr røyktestens virksomhet.',
+    'Org.nr. til demovirksomheten i genki-test. Tomt betyr røyktestens virksomhet.',
   settingsLogin: 'Innlogging for opptak',
   settingsLoginHelp: 'Hvem opptakeren logger inn som. Nøkkelen ligger i nøkkelhvelvet, aldri her.',
   settingsRetention: 'Lagringstid (dager)',

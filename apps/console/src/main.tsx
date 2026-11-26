@@ -45,7 +45,7 @@ if (root) {
             en: 'Operations console – Generative AI platform',
           }}
         >
-          <App auth={auth} fetch={fetch} live={!useMock} />
+          <App auth={auth} fetch={fetch} />
         </LocaleProvider>
       </StrictMode>,
     ),

@@ -1,7 +1,7 @@
 import { defineNamespace } from '@genai/i18n';
 
 export const policies = defineNamespace({
-  title: 'Krav til kvalitet og sikkerhetsregler',
+  title: 'Krav og sikkerhetsregler',
   introTenant:
     'Virksomhetens egne krav og regler, ved siden av de plattformen gjelder for alle. Påkrevde regler settes bare i plattformvisningen.',
   introPlatform:

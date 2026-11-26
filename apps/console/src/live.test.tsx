@@ -107,7 +107,7 @@ const openLive = async (path: string, extra?: Extra) => {
   await auth.login();
   window.location.hash = path;
   const api = liveApi(true, extra);
-  render(<App auth={auth} fetch={api.fetch} live />);
+  render(<App auth={auth} fetch={api.fetch} />);
   return api;
 };
 
@@ -163,7 +163,7 @@ describe('live mode without invented data', () => {
   it('registers a tenant through the platform without onboarding requests', async () => {
     const api = await openLive('#/onboarding');
 
-    fireEvent.change(await screen.findByRole('textbox', { name: 'Organisasjonsnummer' }), {
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Org.nr.' }), {
       target: { value: '974760673' },
     });
     fireEvent.change(screen.getByRole('textbox', { name: 'Navn på virksomheten' }), {
@@ -194,11 +194,11 @@ describe('live mode without invented data', () => {
 
     expect(await screen.findByText('Klarspråk')).toBeTruthy();
     expect(await screen.findByText('Kortere svar')).toBeTruthy();
-    expect((await screen.findByLabelText('Versjon 2 som YAML')).textContent).toContain(
+    expect((await screen.findByLabelText('Utgave 2 som YAML')).textContent).toContain(
       'instructions: Svar kort.',
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Vis YAML, versjon 1' }));
-    expect((await screen.findByLabelText('Versjon 1 som YAML')).textContent).toContain(
+    fireEvent.click(screen.getByRole('button', { name: 'Vis YAML, utgave 1' }));
+    expect((await screen.findByLabelText('Utgave 1 som YAML')).textContent).toContain(
       'Svar langt.',
     );
   });
@@ -249,14 +249,14 @@ describe('live mode without invented data', () => {
     expect(within(block).getByText('Designelement')).toBeTruthy();
     expect(within(skill).getByText('Arbeidsinstruks')).toBeTruthy();
 
-    fireEvent.click(within(block).getByRole('button', { name: /Versjoner/ }));
+    fireEvent.click(within(block).getByRole('button', { name: /Utgaver/ }));
     await waitFor(() => expect(window.location.hash).toContain('kind=block'));
     await waitFor(() =>
       expect(
         api.calls.some((c) => c.path === '/api/operator/tenants/991825827/definitions/blocks/chat'),
       ).toBe(true),
     );
-    fireEvent.click(within(skill).getByRole('button', { name: /Versjoner/ }));
+    fireEvent.click(within(skill).getByRole('button', { name: /Utgaver/ }));
     await waitFor(() =>
       expect(
         api.calls.some(

@@ -1,5 +1,4 @@
 import {
-  Alert,
   Button,
   Chip,
   Details,
@@ -12,7 +11,6 @@ import {
   Label,
   Link,
   Paragraph,
-  Radio,
   Select,
   Spinner,
   Table,
@@ -48,20 +46,12 @@ import type {
 } from '../types';
 import { toYaml } from '../yaml';
 import { Flash, Kpis, PageHeader, TableRegion, useFlash } from '../ui';
-import { reasonProblem } from '../reason';
 
 const availabilityLabel: Record<Availability, [PlainKey, 'success' | 'info' | 'neutral']> = {
   all: ['buildingBlocks.availabilityAll', 'success'],
   selected: ['buildingBlocks.availabilitySelected', 'info'],
   none: ['buildingBlocks.availabilityNone', 'neutral'],
 };
-
-const availabilityNow = (availability: Availability, name: string, t: T) =>
-  availability === 'all'
-    ? t('buildingBlocks.availabilityNowAll', { name })
-    : availability === 'selected'
-      ? t('buildingBlocks.availabilityNowSelected', { name })
-      : t('buildingBlocks.availabilityNowNone', { name });
 
 const typeOf = (id: string, name: PlainKey, description: PlainKey, t: T): BlockType => ({
   id,
@@ -167,12 +157,7 @@ const fromPlugin =
   };
 
 export const normalizeBlocks = (data: Blocks, t: T, f: Format) => {
-  if (data.registry && data.types)
-    return {
-      types: data.types,
-      blocks: data.registry,
-      agencies: data.agencies ?? [...new Set(data.registry.flatMap((b) => b.agencies ?? []))],
-    };
+  if (data.registry && data.types) return { types: data.types, blocks: data.registry };
   if (data.plugins) {
     const usage = new Map(data.blocks.map((b) => [b.ref, b.usedBy]));
     const blocks = [
@@ -183,7 +168,6 @@ export const normalizeBlocks = (data: Blocks, t: T, f: Format) => {
     return {
       types: pluginTypes(t).filter((type) => blocks.some((b) => b.type === type.id)),
       blocks,
-      agencies: [...new Set(blocks.flatMap((b) => b.agencies ?? []))],
     };
   }
   const blocks = [
@@ -194,7 +178,6 @@ export const normalizeBlocks = (data: Blocks, t: T, f: Format) => {
   return {
     types: fallbackTypes(t),
     blocks,
-    agencies: [...new Set(blocks.flatMap((b) => b.agencies ?? []))],
   };
 };
 
@@ -555,8 +538,6 @@ const List = ({
   );
 };
 
-type PreviewKind = 'availability' | 'release' | 'disable';
-
 const manifestOf = (b: RegistryBlock) =>
   [
     `type: ${b.type}`,
@@ -576,16 +557,12 @@ const Detail = ({
   api,
   block,
   types,
-  agencies,
   onBack,
   onChanged,
-  live = false,
 }: {
   api: ApiClient;
-  live?: boolean;
   block: RegistryBlock;
   types: BlockType[];
-  agencies: string[];
   onBack: () => void;
   onChanged: (message: string) => void;
 }) => {
@@ -593,124 +570,10 @@ const Detail = ({
   const tRef = useRef(t);
   tRef.current = t;
   const tenantName = useTenantNames(api);
-  const [draft, setDraft] = useState<Availability>(block.availability ?? 'all');
-  const [chosen, setChosen] = useState<string[]>(block.agencies ?? []);
-  const [preview, setPreview] = useState<PreviewKind | undefined>();
-  const [reason, setReason] = useState('');
-  const [reasonError, setReasonError] = useState<string | undefined>();
-  const [failed, setFailed] = useState<string | undefined>();
   const [tab, setTab] = useState('usage');
   const [testing, setTesting] = useState(false);
   const flash = useFlash();
   const type = types.find((candidate) => candidate.id === block.type);
-  const affected = (list: RegistryBlock['services']) =>
-    list.map((s) => `${s.service} · ${s.tenant}`);
-  const losing = (block.agencies ?? []).filter(
-    (a) => draft === 'none' || (draft === 'selected' && !chosen.includes(a)),
-  );
-  const same =
-    draft === (block.availability ?? 'all') &&
-    (draft !== 'selected' ||
-      [...chosen].sort().join() === [...(block.agencies ?? [])].sort().join());
-
-  const open = (kind: PreviewKind) => {
-    setPreview(kind);
-    setReason('');
-    setReasonError(undefined);
-    setFailed(undefined);
-  };
-
-  const pv = (() => {
-    if (preview === 'availability') {
-      const list = block.services.filter((s) => losing.includes(s.tenant));
-      return {
-        title: t('buildingBlocks.previewAvailabilityTitle'),
-        text:
-          draft === 'all'
-            ? t('buildingBlocks.previewAllText')
-            : losing.length
-              ? t('buildingBlocks.previewLosingText', { count: losing.length })
-              : t('buildingBlocks.previewNoneLosing'),
-        affTitle: t('buildingBlocks.previewStopsWorking'),
-        n: list.length,
-        color: list.length ? ('danger' as const) : ('neutral' as const),
-        items: affected(list),
-        confirmLabel: t('buildingBlocks.saveAvailability'),
-        run: async (why: string) => {
-          const next = draft === 'all' ? agencies : draft === 'none' ? [] : chosen;
-          await api.setBlockAvailability(block.id, draft, next, why);
-          return availabilityNow(draft, block.name, tRef.current);
-        },
-      };
-    }
-    if (preview === 'release' && block.next) {
-      const next = block.next;
-      const list =
-        block.id === 'mcp' ? block.services.filter((s) => s.detail === 'sse') : block.services;
-      const blocked = next.testPassed
-        ? undefined
-        : t('buildingBlocks.releaseBlocked', { version: next.version });
-      return {
-        title: t('buildingBlocks.previewReleaseTitle', { version: next.version }),
-        text: t('buildingBlocks.previewReleaseText', { description: next.description }),
-        changes: next.breakingChanges,
-        test: next,
-        affTitle:
-          block.id === 'mcp'
-            ? t('buildingBlocks.releaseMustChange')
-            : t('buildingBlocks.releaseRunsTests'),
-        n: list.length,
-        color: 'warning' as const,
-        items: affected(list),
-        blocked,
-        confirmLabel: t('buildingBlocks.makeAvailable', { version: next.version }),
-        run: async (why: string) => {
-          await api.releaseBlockVersion(block.id, next.version, why);
-          return tRef.current('buildingBlocks.released', {
-            name: block.name,
-            version: next.version,
-            count: list.length,
-          });
-        },
-      };
-    }
-    if (preview === 'disable')
-      return {
-        title: t('buildingBlocks.previewDisableTitle'),
-        text: t('buildingBlocks.previewDisableText'),
-        affTitle: t('buildingBlocks.servicesStop'),
-        n: block.serviceCount,
-        color: 'danger' as const,
-        items: [
-          ...affected(block.services),
-          ...(block.serviceCount > block.services.length
-            ? [t('buildingBlocks.andMore', { count: block.serviceCount - block.services.length })]
-            : []),
-        ],
-        confirmLabel: t('buildingBlocks.disable'),
-        run: async (why: string) => {
-          await api.disableBlock(block.id, why);
-          return tRef.current('buildingBlocks.disabled', { name: block.name });
-        },
-      };
-    return undefined;
-  })();
-
-  const confirm = async () => {
-    if (!pv || ('blocked' in pv && pv.blocked)) return;
-    const tooShort = reasonProblem(t, reason);
-    if (tooShort) {
-      setReasonError(tooShort);
-      return;
-    }
-    try {
-      const message = await pv.run(reason.trim());
-      setPreview(undefined);
-      onChanged(tRef.current('buildingBlocks.loggedInAudit', { message }));
-    } catch {
-      setFailed(tRef.current('common.saveFailed'));
-    }
-  };
 
   const rerun = async () => {
     setTesting(true);
@@ -719,10 +582,6 @@ const Detail = ({
         block.id,
         tRef.current('buildingBlocks.rerunReason', { name: block.name }),
       );
-      if (!live) {
-        flash.show(tRef.current('buildingBlocks.rerunDone', { name: block.name }));
-        return;
-      }
       const failed = (run.results ?? []).filter((r) => r.status === 'failed').length;
       onChanged(
         run.passed
@@ -747,7 +606,6 @@ const Detail = ({
   const log = block.changelog ?? [
     { version: block.version, at: block.testedAt ?? '–', text: t('buildingBlocks.currentVersion') },
   ];
-  const blocked = pv && 'blocked' in pv ? pv.blocked : undefined;
 
   return (
     <>
@@ -800,157 +658,6 @@ const Detail = ({
         </span>
       </div>
       <Flash message={flash.message} />
-      {live ? null : (
-        <section className="card stack" aria-labelledby="hand-h">
-          <Heading level={2} data-size="xs" id="hand-h">
-            {t('buildingBlocks.manageTitle')}
-          </Heading>
-          <Fieldset>
-            <FieldsetLegend>{t('buildingBlocks.availableFor')}</FieldsetLegend>
-            {(
-              [
-                ['all', t('buildingBlocks.availabilityAll')],
-                ['selected', t('buildingBlocks.availabilitySelected')],
-                ['none', t('buildingBlocks.availabilityOptionNone')],
-              ] as const
-            ).map(([value, label]) => (
-              <Radio
-                key={value}
-                name="avail"
-                label={label}
-                value={value}
-                checked={draft === value}
-                onChange={() => {
-                  // A changed choice makes an open preview stale.
-                  setDraft(value);
-                  setPreview(undefined);
-                }}
-              />
-            ))}
-          </Fieldset>
-          {draft === 'selected' ? (
-            <Fieldset data-size="sm">
-              <FieldsetLegend>{t('buildingBlocks.organisations')}</FieldsetLegend>
-              <div className="chips">
-                {agencies.map((a) => (
-                  <Chip.Checkbox
-                    key={a}
-                    data-size="sm"
-                    checked={chosen.includes(a)}
-                    onChange={() => {
-                      setChosen((c) => (c.includes(a) ? c.filter((x) => x !== a) : [...c, a]));
-                      setPreview(undefined);
-                    }}
-                  >
-                    {a}
-                  </Chip.Checkbox>
-                ))}
-              </div>
-            </Fieldset>
-          ) : null}
-          <div className="actions-row">
-            <Button
-              variant="secondary"
-              data-size="sm"
-              aria-disabled={same || undefined}
-              onClick={() => {
-                if (!same) open('availability');
-              }}
-            >
-              {t('buildingBlocks.previewChange')}
-            </Button>
-            {block.next ? (
-              <Button variant="secondary" data-size="sm" onClick={() => open('release')}>
-                {t('buildingBlocks.makeAvailable', { version: block.next.version })}
-              </Button>
-            ) : null}
-            <Button
-              variant="tertiary"
-              data-size="sm"
-              data-color="danger"
-              onClick={() => open('disable')}
-            >
-              {t('buildingBlocks.disable')}
-            </Button>
-          </div>
-          {pv ? (
-            <div className="preview" aria-labelledby="pv-block-h">
-              <h3 id="pv-block-h">{t('buildingBlocks.previewTitle', { title: pv.title })}</h3>
-              <Paragraph>{pv.text}</Paragraph>
-              {'changes' in pv && pv.changes?.length ? (
-                <div>
-                  <span className="label-strong">{t('buildingBlocks.breaking')}</span>
-                  <ul>
-                    {pv.changes.map((c) => (
-                      <li key={c}>{c}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              {'test' in pv && pv.test ? (
-                <span className="name-line">
-                  <Tag data-size="sm" data-color={pv.test.testPassed ? 'success' : 'danger'}>
-                    {pv.test.testPassed ? t('buildingBlocks.passed') : t('buildingBlocks.failed')}
-                  </Tag>
-                  {t('buildingBlocks.testsFor', {
-                    version: pv.test.version,
-                    when: pv.test.testedAt ?? '',
-                  })}
-                </span>
-              ) : null}
-              <div>
-                <span className="name-line">
-                  <Tag data-size="sm" data-color={pv.color}>
-                    {String(pv.n)}
-                  </Tag>{' '}
-                  {pv.affTitle}
-                </span>
-                {pv.items.length === 0 ? (
-                  <Paragraph data-size="sm">{t('buildingBlocks.noneAffected')}</Paragraph>
-                ) : (
-                  <ul>
-                    {pv.items.map((a) => (
-                      <li key={a}>{a}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              {blocked ? (
-                <Alert data-color="danger" data-size="sm">
-                  {blocked}
-                </Alert>
-              ) : null}
-              {failed ? (
-                <Alert data-color="danger" data-size="sm" role="alert">
-                  {failed}
-                </Alert>
-              ) : null}
-              <div className="field">
-                <Label htmlFor="block-reason">{t('common.reason')}</Label>
-                <Textarea
-                  id="block-reason"
-                  rows={2}
-                  value={reason}
-                  aria-invalid={reasonError ? true : undefined}
-                  onChange={(e) => {
-                    setReason(e.target.value);
-                    setReasonError(undefined);
-                  }}
-                />
-                {reasonError ? <ValidationMessage>{reasonError}</ValidationMessage> : null}
-              </div>
-              <div className="actions-row">
-                <Button aria-disabled={blocked ? true : undefined} onClick={() => void confirm()}>
-                  {pv.confirmLabel}
-                </Button>
-                <Button variant="secondary" onClick={() => setPreview(undefined)}>
-                  {t('common.cancel')}
-                </Button>
-              </div>
-            </div>
-          ) : null}
-        </section>
-      )}
       <Tabs value={tab} onChange={setTab}>
         <TabsList>
           <TabsTab value="usage">{t('buildingBlocks.tabUsage')}</TabsTab>
@@ -1005,13 +712,11 @@ const Detail = ({
             <div className="name-line">
               <span className="sm">
                 {t('buildingBlocks.lastRun', { when: block.testedAt ?? t('buildingBlocks.never') })}{' '}
-                {live
-                  ? block.verifiable
-                    ? t('buildingBlocks.runsOnStart')
-                    : t('buildingBlocks.runsInBuild')
-                  : t('buildingBlocks.runsNightly')}
+                {block.verifiable
+                  ? t('buildingBlocks.runsOnStart')
+                  : t('buildingBlocks.runsInBuild')}
               </span>
-              {live && !block.verifiable ? null : (
+              {block.verifiable ? (
                 <Button
                   variant="secondary"
                   data-size="sm"
@@ -1020,7 +725,7 @@ const Detail = ({
                 >
                   {t('buildingBlocks.rerun')}
                 </Button>
-              )}
+              ) : null}
               <span role="status">
                 {testing ? (
                   <>
@@ -1129,11 +834,9 @@ const Detail = ({
 export const BuildingBlocks = ({
   api,
   initial,
-  live = false,
 }: {
   api: ApiClient;
   initial?: string | undefined;
-  live?: boolean;
 }) => {
   const t = useT();
   const f = useFormat();
@@ -1149,7 +852,7 @@ export const BuildingBlocks = ({
         <ErrorState error={state.error} onRetry={retry} />
       </>
     );
-  const { types, blocks, agencies } = normalizeBlocks(state.data, t, f);
+  const { types, blocks } = normalizeBlocks(state.data, t, f);
   if (blocks.length === 0)
     return (
       <>
@@ -1165,10 +868,8 @@ export const BuildingBlocks = ({
         <Detail
           key={block.id}
           api={api}
-          live={live}
           block={block}
           types={types}
-          agencies={agencies}
           onBack={() => setSelected(undefined)}
           onChanged={(message) => {
             flash.show(message);

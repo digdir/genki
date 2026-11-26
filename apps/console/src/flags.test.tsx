@@ -114,7 +114,7 @@ describe('feature flags on the console', () => {
 
     fireEvent.click(within(section).getByRole('button', { name: 'Slå på eller av' }));
     const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Organisasjonsnummer' }), {
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Org.nr.' }), {
       target: { value: '999888777' },
     });
     fireEvent.change(within(dialog).getByRole('textbox', { name: /Personens utsteder/ }), {
