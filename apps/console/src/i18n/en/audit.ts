@@ -88,6 +88,7 @@ export const audit = {
   actionRecipeShare: 'Shared a recipe with every organisation',
   actionRecipeUnshare: 'Stopped sharing a recipe',
   actionTriggerPause: 'Paused trigger',
+  actionProductionLoginReset: 'Reset the clean-up at the switch to production Ansattporten',
   actionDescriptorUpload: 'Uploaded recipe',
   actionDescriptorStatus: 'Changed recipe status',
   actionDescriptorWithdraw: 'Withdrew recipe',

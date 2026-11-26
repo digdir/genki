@@ -165,6 +165,7 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.tools.register': 'changes.toolsRegister',
   'platform.tools.sync': 'changes.toolsSync',
   'platform.trigger.pause': 'changes.triggerPause',
+  'platform.production-login.reset': 'changes.productionLoginReset',
   'platform.incident.resolve': 'changes.incidentResolve',
   'platform.incident.save': 'changes.incidentSave',
   'platform.flag.person': 'changes.flagChangedAny',

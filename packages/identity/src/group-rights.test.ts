@@ -46,15 +46,15 @@ const productionClaims = (groups: string[], overrides: Record<string, unknown> =
   ...overrides,
 });
 
-const sign = (claims: Record<string, unknown>) =>
-  new SignJWT(claims)
+const sign = (claims: Record<string, unknown>, audience: string | null = AUDIENCE) => {
+  const jwt = new SignJWT(claims)
     .setProtectedHeader({ alg: 'RS256', kid: key.kid })
     .setIssuer(ISSUER)
-    .setAudience(AUDIENCE)
     .setSubject('pairwise-subject')
     .setIssuedAt()
-    .setExpirationTime('2m')
-    .sign(key.privateKey);
+    .setExpirationTime('2m');
+  return (audience ? jwt.setAudience(audience) : jwt).sign(key.privateKey);
+};
 
 const groupRules: TrustedEntra = {
   groups: [OPERATORS],
@@ -112,6 +112,19 @@ describe('rights from Entra groups on production Ansattporten', () => {
       scopes: [memberEntraScope],
     });
     expect(platformRightsOf(principal, DIGDIR, RESOURCE)).toEqual([...PLATFORM_RIGHTS]);
+  });
+
+  it('a production login has no pid and needs none', async () => {
+    const verified = await verify(productionClaims([MEMBERS]));
+
+    expect(verified.personId).toBeUndefined();
+    expect(verified.principal.subject).toBe('pairwise-subject');
+  });
+
+  it('an access token without aud is refused, so the login must ask for the API audience as resource', async () => {
+    await expect(
+      verifier().verify(await sign(productionClaims([OPERATORS]), null)),
+    ).rejects.toMatchObject({ code: 'invalid_token' });
   });
 
   it('a member of the operator group is a trusted Entra login, which the API makes an operator', async () => {

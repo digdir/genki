@@ -77,6 +77,8 @@ const paramValues = (file: string) => {
         ...process.env,
         PG_ADMIN_GROUP_OBJECT_ID: '00000000-0000-0000-0000-000000000000',
         PG_ADMIN_GROUP_NAME: 'x',
+        ANSATTPORTEN_ISSUER: '',
+        ALTINN_PDP_URL: '',
       },
     },
   );

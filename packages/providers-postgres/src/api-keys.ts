@@ -335,6 +335,14 @@ export class PostgresApiKeys {
     });
   }
 
+  /** Every live key in any tenant without the admitted mark. */
+  async unadmitted(): Promise<{ tenant: string; id: string; digest: string }[]> {
+    const result = await this.pool.query<{ tenant: string; id: string; digest: string }>(
+      'select tenant, id, digest from unadmitted_api_keys()',
+    );
+    return result.rows;
+  }
+
   async revoke(tenant: string, id: string, at: Date = new Date()): Promise<boolean> {
     return withTenant(this.pool, tenant, async (client) => {
       const result = await client.query(

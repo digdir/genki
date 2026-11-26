@@ -65,4 +65,19 @@ describe('followPublished', () => {
     expect(sync).toHaveBeenCalledTimes(2);
     following.stop();
   });
+
+  it('a leader whose sync reports inactive syncs again on every tick', async () => {
+    vi.useFakeTimers();
+    const sync = vi.fn(async () => ({ active: false }));
+    const following = followPublished({
+      sync,
+      leadership: { tryAcquire: async () => true },
+      leaderPollMs: 1000,
+    });
+    await following.run();
+
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(sync).toHaveBeenCalledTimes(4);
+    following.stop();
+  });
 });

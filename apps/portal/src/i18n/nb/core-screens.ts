@@ -335,6 +335,7 @@ export const changes = defineNamespace({
   toolsRegister: 'registrerte verktøyet',
   toolsSync: 'oppdaterte verktøyene fra',
   triggerPause: 'satte utløseren på pause',
+  productionLoginReset: 'nullstilte oppryddingen ved bytte til produksjons-Ansattporten',
 });
 
 export const servicesScreen = defineNamespace({

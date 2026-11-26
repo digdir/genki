@@ -74,12 +74,15 @@ const setup = async (
     tokenEndpoint?: string;
     noSecret?: boolean;
     entraGroups?: string[];
+    issuer?: string;
+    loginPage?: string;
   } = {},
 ) => {
+  const issuer = options.issuer ?? ISSUER;
   let clock = start;
   const now = () => clock;
   const mock = createMockAnsattporten({
-    issuer: ISSUER,
+    issuer,
     key,
     testData: {
       persons: [
@@ -125,7 +128,7 @@ const setup = async (
     issuers: [
       {
         kind: 'ansattporten',
-        issuer: ISSUER,
+        issuer,
         audience: AUDIENCE,
         keys: createLocalJWKSet({ keys: [key.publicJwk] }),
         ...(options.platformClients ? { trustedClients: options.platformClients } : {}),
@@ -161,10 +164,22 @@ const setup = async (
       authorization: new Headers(init?.headers).get('authorization'),
     });
     const answer = await mock.app.request(`${url.pathname}${url.search}`, init);
-    if (!options.tokenEndpoint || url.pathname !== '/.well-known/openid-configuration')
+    if (
+      !(options.tokenEndpoint || options.loginPage) ||
+      url.pathname !== '/.well-known/openid-configuration'
+    )
       return answer;
-    const discovery = (await answer.json()) as Record<string, unknown>;
-    return Response.json({ ...discovery, token_endpoint: options.tokenEndpoint });
+    const discovery = (await answer.json()) as Record<string, string>;
+    const onLoginPage = (endpoint: string | undefined) =>
+      options.loginPage && endpoint
+        ? `${options.loginPage}${new URL(endpoint).pathname}`
+        : endpoint;
+    return Response.json({
+      ...discovery,
+      authorization_endpoint: onLoginPage(discovery.authorization_endpoint),
+      end_session_endpoint: onLoginPage(discovery.end_session_endpoint),
+      ...(options.tokenEndpoint ? { token_endpoint: options.tokenEndpoint } : {}),
+    });
   }) as typeof fetch;
   const sessions = new InMemoryBffSessions(now);
   const principals: (Principal | Error)[] = [];
@@ -194,7 +209,7 @@ const setup = async (
       reservedDomains: defaultReservedDomains,
     },
     hostActive: async (hostname) => !options.inactive?.includes(hostname),
-    issuer: ISSUER,
+    issuer,
     altinnResource: options.entraGroups ? undefined : RESOURCE,
     acrValues: options.entraGroups ? 'entraid' : undefined,
     platformLogin: {
@@ -205,7 +220,7 @@ const setup = async (
     },
     secrets: {
       value: async () => OWN_SECRET,
-      hosts: async () => [ISSUER],
+      hosts: async () => [issuer],
     },
     organisations: async (accessToken) => {
       const { principal } = await verifier.verify(accessToken);
@@ -703,5 +718,72 @@ describe('the platform login when Entra groups give the rights', () => {
     expect(callback.headers.getSetCookie().some((c) => c.startsWith(`${handoffCookie}=`))).toBe(
       false,
     );
+  });
+});
+
+describe('the platform login on production Ansattporten', () => {
+  const production = (options: { tokenEndpoint?: string } = {}) =>
+    setup({
+      issuer: 'https://ansattporten.no',
+      loginPage: 'https://login.ansattporten.no',
+      entraGroups: [EMPLOYEE_GROUP],
+      ...options,
+    });
+
+  it('asks for the API audience as resource, since production puts no aud in a token without it', async () => {
+    const s = await production();
+
+    const { started } = await s.toHandoff();
+
+    expect(s.atLocation(started).searchParams.get('resource')).toBe(AUDIENCE);
+  });
+
+  it('sends people to production’s login page straight to Entra ID, asking Altinn for nothing', async () => {
+    const s = await production();
+
+    const { started } = await s.toHandoff();
+
+    const authorize = s.atLocation(started);
+    expect(authorize.origin).toBe('https://login.ansattporten.no');
+    expect(authorize.searchParams.get('acr_values')).toBe('entraid');
+    expect(authorize.searchParams.has('authorization_details')).toBe(false);
+  });
+
+  it('signs in with genki’s secret sent to the issuer’s origin', async () => {
+    const s = await production();
+
+    const { id } = await s.signIn();
+
+    expect(id).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const withSecret = s.sent.filter((r) => r.authorization?.startsWith('Basic '));
+    expect(withSecret.length).toBeGreaterThan(0);
+    expect(new Set(withSecret.map((r) => r.origin))).toEqual(new Set(['https://ansattporten.no']));
+  });
+
+  it('never sends genki’s secret to the login page, even when discovery puts the token endpoint there', async () => {
+    const s = await production({ tokenEndpoint: 'https://login.ansattporten.no/token' });
+
+    await s.toHandoff();
+
+    expect(s.sent.filter((r) => r.authorization?.startsWith('Basic '))).toEqual([]);
+  });
+
+  it('refuses a callback whose iss is test Ansattporten before any token call', async () => {
+    const s = await production();
+    const begin = await s.via('/bff/auth/login', 'ka.example.no');
+    const atLoginHost = s.atLocation(begin);
+    const started = await s.via(`/bff/auth/login${atLoginHost.search}`, atLoginHost.hostname);
+    const back = await s.ansattporten(s.atLocation(started));
+    back.searchParams.set('iss', 'https://test.ansattporten.no');
+    const before = s.sent.length;
+
+    const callback = await s.via(
+      `/bff/auth/callback${back.search}`,
+      back.hostname,
+      `${loginCookie}=${s.cookieValue(started, loginCookie) ?? ''}`,
+    );
+
+    expect(callback.headers.get('location')).toBe('https://ka.example.no/');
+    expect(s.sent.slice(before).filter((r) => r.authorization !== null)).toEqual([]);
   });
 });

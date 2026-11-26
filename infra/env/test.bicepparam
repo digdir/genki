@@ -86,13 +86,23 @@ param appEnv = {
 
 // What issue 464 turns when genki-test becomes production; the resource names stay genai-test-*.
 param platformTier = 'test'
-param lockdown = true
+param lockdown = !productionLogin
 param tracesEnvironment = 'test'
 param testRunnerKeys = true
 
-param ansattportenIssuer = readEnvironmentVariable('ANSATTPORTEN_ISSUER', '')
+// Production Ansattporten turns on its own client and turns lockdown off (docs/runbook.md, "Production Ansattporten").
+var issuer = readEnvironmentVariable('ANSATTPORTEN_ISSUER', '')
+var productionLogin = issuer == 'https://ansattporten.no'
+var altinnPdp = readEnvironmentVariable('ALTINN_PDP_URL', '')
+param ansattportenIssuer = !empty(issuer) && !contains(['https://test.ansattporten.no', 'https://ansattporten.no'], issuer)
+  ? fail('ANSATTPORTEN_ISSUER must be https://test.ansattporten.no or https://ansattporten.no')
+  : productionLogin && hostnamesStage != 'certificates'
+      ? fail('production Ansattporten knows only login.apps.genki.digdir.cloud; set HOSTNAMES_STAGE=certificates first')
+      : issuer
 param altinnResource = readEnvironmentVariable('ALTINN_RESOURCE', 'urn:altinn:resource:digdir-genai-platform')
-param altinnPdpUrl = readEnvironmentVariable('ALTINN_PDP_URL', '')
+param altinnPdpUrl = productionLogin && !empty(altinnPdp)
+  ? fail('test signs in through production Ansattporten without Altinn; delete ALTINN_PDP_URL')
+  : altinnPdp
 param altinnPdpMaskinportenClientId = readEnvironmentVariable('ALTINN_PDP_MASKINPORTEN_CLIENT_ID', '')
 param maskinportenIssuer = readEnvironmentVariable('MASKINPORTEN_ISSUER', '')
 param maskinportenTokenUrl = readEnvironmentVariable('MASKINPORTEN_TOKEN_URL', '')
@@ -124,7 +134,8 @@ param hostedHostnames = [
   { subdomain: 'kunnskap', tenant: '312521172', stage: hostnamesStage }
 ]
 // genki's platform login client for hosted Clients without oidc (infra/README.md, "Platform login").
-param platformLoginClientId = 'dde98722-c952-4172-a5d6-10bdf721680f'
+param platformLoginClientId = productionLogin ? 'c0e4a5af-b2e1-4bba-9324-4caf55be8db5' : 'dde98722-c952-4172-a5d6-10bdf721680f'
+param platformLoginSecretName = productionLogin ? 'platform-login-client-secret-prod' : 'platform-login-client-secret'
 param platformLoginStage = hostnamesStage
 param hostnameBinderEnabled = readEnvironmentVariable('HOSTNAME_BINDER_ENABLED', 'true') != 'false'
 param hostnameBinderAudience = readEnvironmentVariable('HOSTNAME_BINDER_AUDIENCE', '')
