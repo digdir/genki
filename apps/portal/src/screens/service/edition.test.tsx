@@ -80,7 +80,15 @@ describe('the test edition and in use in the service header', () => {
   it('gives Historikk its own tab while the flag says so', () => {
     const tabs = serviceTabs(availableSections({ isNew: false })).map((t) => t.tab);
     expect(historyHasOwnTab).toBe(true);
-    expect(tabs).toEqual(['overview', 'setup', 'interface', 'quality', 'history', 'developer']);
+    expect(tabs).toEqual([
+      'overview',
+      'setup',
+      'interface',
+      'quality',
+      'history',
+      'developer',
+      'advanced',
+    ]);
     expect(tabOf('versions')).toBe('history');
   });
 });
