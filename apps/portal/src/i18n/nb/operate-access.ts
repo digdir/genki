@@ -3,6 +3,8 @@ import { defineNamespace } from '@genai/i18n';
 const access = defineNamespace({
   title: 'Tilgang',
   lead: 'Rettighetene gis i Altinn. Her kan dere i tillegg begrense hvem som får bruke hver tjeneste.',
+  leadGroups:
+    'Rettighetene gis i gruppene deres i Entra ID. Her kan dere i tillegg begrense hvem som får bruke hver tjeneste.',
   grant: 'Gi en kollega tilgang',
   newTab: '(åpnes i ny fane)',
   openAltinn: 'Åpne Altinn',
@@ -17,7 +19,9 @@ const access = defineNamespace({
   altinnNoList: 'Derfor kan vi ikke vise hvem som har hvilke rettigheter akkurat nå.',
   altinnNotConnected: 'Altinn er ikke koblet til ennå.',
   altinnNotConnectedText: 'Derfor ser du ikke kollegenes rettigheter her. Du ser dem i Altinn.',
-  loadingPeople: 'Henter rettighetene fra Altinn',
+  fromGroups: 'Hvem som har tilgang, bestemmes i Entra ID.',
+  fromGroupsText: 'Derfor ser du bare dine egne rettigheter her.',
+  loadingPeople: 'Henter rettighetene',
   searchPerson: 'Søk etter person',
   searchPlaceholder: 'Navn',
   showWhoCan: 'Vis de som kan',
@@ -93,6 +97,7 @@ const access = defineNamespace({
   add: 'Legg til',
   noPeopleToPick:
     'Derfor er det ingen å velge blant her ennå. Når Altinn er koblet til, kan du velge hvem som får bruke tjenesten.',
+  noPeopleToPickGroups: 'Derfor er det ingen å velge blant her.',
   pickAtLeastOne: 'Velg minst én person, eller la alle med «Bruke tjenester» bruke tjenesten.',
   unsaved: 'Du har endringer som ikke er lagret',
   reasonLabel: 'Hvorfor endrer du dette? (vises i loggen)',

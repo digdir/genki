@@ -163,6 +163,7 @@ export const changes = defineNamespace({
   settingPin: 'låste utgaven av',
   tenantImport: 'importerte',
   tenantCreate: 'registrerte virksomheten',
+  tenantMove: 'flyttet virksomhetens data hit',
   supportOpen: 'åpnet støttetilgang',
   contentRead: 'så innhold',
   contentReason: 'oppga grunn for å se innhold',

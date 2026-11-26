@@ -200,6 +200,18 @@ describe('the people of an organisation and their rights', () => {
     expect(await readJson<{ code: string }>(res)).toMatchObject({ code: 'altinn_not_configured' });
   });
 
+  it('answers an empty list from Entra groups, not an Altinn error, when Entra groups give the rights', async () => {
+    const source = peopleSourceFrom(
+      { MEMBER_ENTRA_GROUPS: '11111111-2222-3333-4444-555555555555' },
+      testData,
+      resource,
+    );
+    const { send } = await boot(source);
+    const res = await send(`/tenants/${digdir}/access/people`, 'kari');
+    expect(res.status).toBe(200);
+    expect(await readJson(res)).toMatchObject({ people: [], source: 'entra-groups' });
+  });
+
   it('serves the last list it read, marked stale, when Altinn stops answering', async () => {
     let down = false;
     const inner = peopleFromTestData(testData, { resource, key });
@@ -389,6 +401,18 @@ describe('where the people come from', () => {
   it('uses the local test data only in dev mode', () => {
     expect(peopleSourceFrom({ GENAI_DEV_MODE: 'true' }, testData, resource).kind).toBe('test-data');
     expect(peopleSourceFrom({}, testData, resource).kind).toBe('not-configured');
+  });
+
+  it('reads rights from Entra groups only when the Altinn PDP is not set', () => {
+    const groups = { OPERATOR_ENTRA_GROUPS: '11111111-2222-3333-4444-555555555555' };
+    expect(peopleSourceFrom(groups, testData, resource).kind).toBe('entra-groups');
+    expect(
+      peopleSourceFrom(
+        { ...groups, ALTINN_PDP_URL: 'https://platform.tt02.altinn.no' },
+        testData,
+        resource,
+      ).kind,
+    ).toBe('not-configured');
   });
 
   it('refuses to start against Altinn without the settings it needs', () => {

@@ -10,6 +10,7 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.setting.pin': 'changes.settingPin',
   'platform.tenant.import': 'changes.tenantImport',
   'platform.tenant.create': 'changes.tenantCreate',
+  'platform.tenant.move': 'changes.tenantMove',
   'platform.support.open': 'changes.supportOpen',
   'platform.content.read': 'changes.contentRead',
   'platform.content.reason': 'changes.contentReason',

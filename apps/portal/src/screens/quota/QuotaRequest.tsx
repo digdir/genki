@@ -275,12 +275,14 @@ export const QuotaRequestAction = ({
     return (
       <>
         {decision}
+        {decision && fallback ? ' ' : null}
         {fallback}
       </>
     );
   return (
     <>
       {decision}
+      {decision ? ' ' : null}
       <Button variant="tertiary" data-size="sm" onClick={() => setOpen(true)}>
         {t('quotaRequest.open')}
       </Button>

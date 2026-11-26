@@ -47,7 +47,7 @@ export const accessPeopleRoutes: RouteConfig[] = [
     summary:
       "The people in the tenant's organisation who hold a platform right in Altinn, with those rights. Any member",
     description:
-      "Read from Altinn access management through the organisation's system user, and kept for two minutes. When Altinn fails, the last list read is served with `stale: true`. Reads are not audited.",
+      "Read from Altinn access management through the organisation's system user, and kept for two minutes. When Altinn fails, the last list read is served with `stale: true`. When Entra groups give the rights, `people` is empty and `source` is `entra-groups`. Reads are not audited.",
     request: { params: z.object({ tenant }) },
     responses: {
       200: json(
@@ -55,9 +55,13 @@ export const accessPeopleRoutes: RouteConfig[] = [
           people: z.array(
             z.object({ id: personId, name: z.string(), rights: z.array(z.enum(rights)) }),
           ),
-          at: z.string().describe('When the list was read from Altinn.'),
+          at: z.string().describe('When the list was read.'),
           stale: z.boolean(),
-          source: z.enum(['altinn', 'test-data']),
+          source: z
+            .enum(['altinn', 'test-data', 'entra-groups'])
+            .describe(
+              "`entra-groups`: rights come from the organisation's Entra groups, so `people` is empty.",
+            ),
         }),
         'People and rights',
       ),
