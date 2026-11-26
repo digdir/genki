@@ -10,7 +10,7 @@ import { Sources } from '../sources/Sources.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
 import { Answer, type AnswerProps, type AnswerTarget } from './Answer.js';
 import { answerCitations, type AnswerMarker } from './citations.js';
-import { answerCopy, finishedText } from './copy.js';
+import { answerCopy, finishedText, markdownText } from './copy.js';
 import { en, nb } from './i18n.js';
 
 document.getAnimations ??= () => [];
@@ -776,6 +776,100 @@ describe('the answer as copied', () => {
         '[3] Årsrapport Nasjonal kommunikasjonsmyndighet 2021, s. 12 (2022). https://kudos.dfo.no/dokument/2021',
       ].join('\n'),
     );
+  });
+
+  it('copies only the words, without footnotes or «Kilder», when the app gives no sources', () => {
+    const copied = answerCopy(text);
+    expect(copied.sources).toBe(0);
+    expect(copied.text).toBe(
+      [
+        'Rapportering',
+        '',
+        'Nkom rapporterer kvartalsvis.',
+        '',
+        'Internkontrollen følger DFØ, og bevilgningen var 594,2 mill. kroner. Rapporteringen er fast.',
+      ].join('\n'),
+    );
+  });
+
+  it('keeps the answer’s markdown with `format: markdown`, its footnotes as drawn and «Kilder» as a list', () => {
+    const copied = answerCopy(text, {
+      sources: [paged, tildeling, memo],
+      markers,
+      format: 'markdown',
+    });
+    expect(copied.sources).toBe(3);
+    expect(copied.text).toBe(
+      [
+        '### Rapportering',
+        '',
+        'Nkom rapporterer kvartalsvis. [1]',
+        '',
+        'Internkontrollen følger DFØ [2], og bevilgningen var 594,2 mill. kroner [3]. Rapporteringen er fast [1].',
+        '',
+        '**Kilder**',
+        '',
+        '- [1] Tildelingsbrev Nkom 2022.',
+        '- [2] Årsrapport Nasjonal kommunikasjonsmyndighet 2021 (2022). https://kudos.dfo.no/dokument/2021',
+        '- [3] Årsrapport Nasjonal kommunikasjonsmyndighet 2021, s. 12 (2022). https://kudos.dfo.no/dokument/2021',
+      ].join('\n'),
+    );
+  });
+
+  it('leaves a markdown link whose words are a number as written', () => {
+    const copied = answerCopy('Se [3](https://example.org).', { format: 'markdown' });
+    expect(copied.text).toBe('Se [3](https://example.org).');
+  });
+
+  it('leaves inline code and code blocks as written in markdown', () => {
+    const written = 'Skriv `[1]` slik.\n\n```\n[2]\n```';
+    expect(answerCopy(written, { format: 'markdown' }).text).toBe(written);
+  });
+
+  it('reads footnotes after a lone backtick in markdown, as the screen does', () => {
+    const copied = answerCopy('Bruk ` alene [1].', {
+      sources: [paged, tildeling, memo],
+      markers,
+      format: 'markdown',
+    });
+    expect(copied.text.split('\n')[0]).toBe('Bruk ` alene [1].');
+    expect(copied.text).toContain('- [1] Tildelingsbrev Nkom 2022.');
+  });
+
+  it('leaves an escaped bracket in markdown as written, as the screen draws it as text', () => {
+    const copied = answerCopy('Escaped \\[1] og fast [1].', {
+      sources: [paged, tildeling, memo],
+      markers,
+      format: 'markdown',
+    });
+    expect(copied.text.split('\n')[0]).toBe('Escaped \\[1] og fast [1].');
+  });
+
+  it('copies the answer alone with `list` off, dropping its footnotes but not a number in brackets that leads nowhere', () => {
+    const copied = answerCopy('Se punkt [7]. Nkom rapporterer kvartalsvis [1].', {
+      sources: [paged, tildeling, memo],
+      markers,
+      list: false,
+    });
+    expect(copied).toEqual({ text: 'Se punkt [7]. Nkom rapporterer kvartalsvis.', sources: 0 });
+  });
+
+  it('renumbers the footnotes in markdown in linear time on a long adversarial string', () => {
+    const time = (n: number) => {
+      const long = [
+        '[1'.repeat(n),
+        ' '.repeat(n),
+        '[9]('.repeat(n),
+        `[${'1, '.repeat(n)}x`,
+        '`[1]'.repeat(n),
+        'x [1]\n\n\n'.repeat(n / 10),
+      ].join('');
+      const started = performance.now();
+      markdownText(long, () => 1);
+      return performance.now() - started;
+    };
+    time(1_000);
+    expect(time(100_000)).toBeLessThan(1000);
   });
 
   it('keeps each footnote’s own number with `numberEachFootnote`, and lists all of an excerpt’s', () => {

@@ -6,9 +6,15 @@ import {
   Label,
   Paragraph,
   Textarea,
+  Tooltip,
 } from '@digdir/designsystemet-react';
-import { ThumbDownIcon, ThumbUpIcon } from '@navikt/aksel-icons';
-import { useEffect, useId, useRef, useState } from 'react';
+import {
+  ThumbDownFillIcon,
+  ThumbDownIcon,
+  ThumbUpFillIcon,
+  ThumbUpIcon,
+} from '@navikt/aksel-icons';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { translator, useT } from './i18n.js';
 import type { AnswerFeedback, AnswerFeedbackStatus, AnswerRating } from './types.js';
 
@@ -31,11 +37,18 @@ interface FeedbackProps {
 }
 
 /**
- * «Var svaret nyttig?», generalised from genki's workspace. A click on a thumb sends the rating at
- * once; the reasons and the comment are optional and come after, sent with the rating again. The
+ * «Var svaret nyttig?», generalised from genki's workspace: two thumbs for the actions' row, and
+ * under it the optional reasons and comment and how the sending went. A click on a thumb sends
+ * the rating at once; the reasons and the comment come after, sent with the rating again. The
  * platform keeps the latest feedback on a run, so each send replaces the one before.
  */
-export const Feedback = ({ status, onSend }: FeedbackProps) => {
+export const useFeedback = ({
+  status,
+  onSend,
+}: FeedbackProps): {
+  thumbs: ReactNode;
+  panel: ReactNode;
+} => {
   const t = useT();
   const [rating, setRating] = useState<AnswerRating>();
   const [picked, setPicked] = useState<string[]>([]);
@@ -118,89 +131,113 @@ export const Feedback = ({ status, onSend }: FeedbackProps) => {
         ? t('answerActions.notSent')
         : '';
 
-  const thumb = (value: AnswerRating) => (
-    <Button
-      variant={rating === value ? 'primary' : 'secondary'}
-      data-size="sm"
-      aria-pressed={rating === value}
-      ref={(button) => {
-        thumbs.current[value] = button;
-      }}
-      onClick={() => choose(value)}
-    >
-      {value === 'up' ? <ThumbUpIcon aria-hidden /> : <ThumbDownIcon aria-hidden />}
-      {value === 'up' ? t('answerActions.yes') : t('answerActions.no')}
-    </Button>
-  );
+  // Icons alone, named and with a tooltip, so the row stays one quiet line under the answer.
+  const thumb = (value: AnswerRating) => {
+    const pressed = rating === value;
+    const label = value === 'up' ? t('answerActions.rateUp') : t('answerActions.rateDown');
+    const Icon =
+      value === 'up'
+        ? pressed
+          ? ThumbUpFillIcon
+          : ThumbUpIcon
+        : pressed
+          ? ThumbDownFillIcon
+          : ThumbDownIcon;
+    return (
+      <Tooltip content={label}>
+        <Button
+          variant="tertiary"
+          data-size="sm"
+          icon
+          aria-label={label}
+          aria-pressed={pressed}
+          ref={(button) => {
+            thumbs.current[value] = button;
+          }}
+          onClick={() => choose(value)}
+        >
+          <Icon aria-hidden />
+        </Button>
+      </Tooltip>
+    );
+  };
 
-  return (
-    <div
-      role="group"
-      aria-label={t('answerActions.feedback')}
-      className="uib-answer-actions-feedback"
-    >
-      <div className="uib-answer-actions-feedback-row">
-        <span className="uib-answer-actions-question">{t('answerActions.useful')}</span>
+  return {
+    thumbs: (
+      <span
+        role="group"
+        aria-label={t('answerActions.useful')}
+        className="uib-answer-actions-thumbs"
+      >
         {thumb('up')}
         {thumb('down')}
-      </div>
-      {rating && open ? (
-        <div className="uib-answer-actions-form" ref={form}>
-          {rating === 'down' ? (
-            <Fieldset data-size="sm">
-              <Fieldset.Legend>{t('answerActions.whatWrong')}</Fieldset.Legend>
-              <div className="uib-answer-actions-reasons">
-                {reasonKeys.map((key) => {
-                  const reason = stored(key);
-                  return (
-                    <Chip.Checkbox
-                      key={key}
-                      data-size="sm"
-                      checked={picked.includes(reason)}
-                      onChange={() =>
-                        setPicked((list) =>
-                          list.includes(reason)
-                            ? list.filter((r) => r !== reason)
-                            : [...list, reason],
-                        )
-                      }
-                    >
-                      {t(key)}
-                    </Chip.Checkbox>
-                  );
-                })}
-              </div>
-            </Fieldset>
-          ) : null}
-          <Field data-size="sm">
-            <Label htmlFor={commentId}>{t('answerActions.comment')}</Label>
-            <Textarea
-              id={commentId}
-              className="uib-answer-actions-comment"
-              rows={2}
-              maxLength={FEEDBACK_MAX_LENGTH}
-              value={comment}
-              aria-describedby={counterId}
-              onChange={(event) => setComment(event.target.value)}
-            />
-            <span id={counterId} className="uib-answer-actions-counter">
-              {t('answerActions.counter', { length: comment.length, max: FEEDBACK_MAX_LENGTH })}
-            </span>
-          </Field>
-          <div className="uib-answer-actions-form-actions">
-            <Button data-size="sm" loading={busy && withDetails} onClick={submit}>
-              {t('answerActions.send')}
-            </Button>
-            <Button variant="tertiary" data-size="sm" onClick={close}>
-              {t('answerActions.skip')}
-            </Button>
+      </span>
+    ),
+    panel: (
+      <>
+        {rating && open ? (
+          <div
+            role="group"
+            aria-label={t('answerActions.feedback')}
+            className="uib-answer-actions-form"
+            ref={form}
+          >
+            {rating === 'down' ? (
+              <Fieldset data-size="sm">
+                <Fieldset.Legend>{t('answerActions.whatWrong')}</Fieldset.Legend>
+                <div className="uib-answer-actions-reasons">
+                  {reasonKeys.map((key) => {
+                    const reason = stored(key);
+                    return (
+                      <Chip.Checkbox
+                        key={key}
+                        data-size="sm"
+                        checked={picked.includes(reason)}
+                        onChange={() =>
+                          setPicked((list) =>
+                            list.includes(reason)
+                              ? list.filter((r) => r !== reason)
+                              : [...list, reason],
+                          )
+                        }
+                      >
+                        {t(key)}
+                      </Chip.Checkbox>
+                    );
+                  })}
+                </div>
+              </Fieldset>
+            ) : null}
+            <Field data-size="sm">
+              <Label htmlFor={commentId}>{t('answerActions.comment')}</Label>
+              <Textarea
+                id={commentId}
+                className="uib-answer-actions-comment"
+                rows={2}
+                maxLength={FEEDBACK_MAX_LENGTH}
+                value={comment}
+                aria-describedby={counterId}
+                onChange={(event) => setComment(event.target.value)}
+              />
+              <span id={counterId} className="uib-answer-actions-counter">
+                {t('answerActions.counter', { length: comment.length, max: FEEDBACK_MAX_LENGTH })}
+              </span>
+            </Field>
+            <div className="uib-answer-actions-form-actions">
+              <Button data-size="sm" loading={busy && withDetails} onClick={submit}>
+                {t('answerActions.send')}
+              </Button>
+              <Button variant="tertiary" data-size="sm" onClick={close}>
+                {t('answerActions.skip')}
+              </Button>
+            </div>
           </div>
-        </div>
-      ) : null}
-      {/* Always drawn, so what it says is announced when it changes. */}
-      <Paragraph role="status" data-size="sm" className="uib-answer-actions-status">
-        {message}
-      </Paragraph>
-    </div>
-  );
+        ) : null}
+        {/* Always drawn, so what it says is announced when it changes. */}
+        <Paragraph role="status" data-size="sm" className="uib-answer-actions-status">
+          {message}
+        </Paragraph>
+      </>
+    ),
+  };
 };

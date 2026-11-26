@@ -338,7 +338,7 @@ export const inline = (
 const noCitation: CiteRenderer = () => undefined;
 
 // `[1, 2]` is drawn as one element, which no leaf sees: as `[1] [2]` each stays as written.
-const citeGroup = /\[(\d+(?:\s*,\s*\d+)+)\]/g;
+export const citeGroup = /\[(\d+(?:\s*,\s*\d+)+)\]/g;
 
 /** What a footnote `[n]` is copied as: another number, nothing, or `undefined` for itself. */
 export type FootnoteLabel = (n: number) => number | null | undefined;

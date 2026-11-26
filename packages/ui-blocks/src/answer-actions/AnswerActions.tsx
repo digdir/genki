@@ -1,22 +1,31 @@
-import { Button, Tooltip } from '@digdir/designsystemet-react';
-import { ClipboardIcon, ClipboardLinkIcon } from '@navikt/aksel-icons';
+import { Dropdown } from '@digdir/designsystemet-react';
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  FilesIcon,
+  FileTextIcon,
+  LinkIcon,
+  ClipboardIcon,
+} from '@navikt/aksel-icons';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { classes } from '../dom.js';
-import { Feedback } from './Feedback.js';
+import { useFeedback } from './Feedback.js';
 import { useT } from './i18n.js';
 import type { AnswerCopied, AnswerFeedback, AnswerFeedbackStatus } from './types.js';
 
 export interface AnswerActionsProps {
-  /** Shows «Kopier svaret». The app copies the answer, with its sources if it has them. */
+  /** Shows «Kopier» with «Kun svaret». The app copies the answer's words, without its sources. */
   onCopyAnswer?: (() => void) | undefined;
-  /** Shows «Kopier lenke til tråden». The app copies the link. */
+  /** «Svaret med kildeliste» in «Kopier». The app copies the answer and its sources as markdown. */
+  onCopyWithSources?: (() => void) | undefined;
+  /** «Lenke til tråden» in «Kopier»; without it the choice is drawn disabled. */
   onCopyLink?: (() => void) | undefined;
   /** The link opens the thread only for this person, in this browser, and the block says so. */
   linkOnlyHere?: boolean | undefined;
   /** What the app's last copy did. Pass a new object for each copy; the receipt clears itself. */
   copied?: AnswerCopied | undefined;
   /**
-   * Shows «Var svaret nyttig?» under the answer, with `onFeedback`. Off unless asked for:
+   * Shows a thumb up and a thumb down first in the row, with `onFeedback`. Off unless asked for:
    * kunnskapsassistenten took the feedback under each answer out on 6 October 2026, because it
    * adds a lot of noise under every answer, and its decision log has it to be rethought.
    */
@@ -28,9 +37,9 @@ export interface AnswerActionsProps {
   onFeedback?: ((feedback: AnswerFeedback) => void) | undefined;
   /** How the app's sending went. */
   feedbackStatus?: AnswerFeedbackStatus | undefined;
-  /** The app's own actions, after the copy buttons. */
+  /** The app's own actions, after «Kopier». */
   actions?: ReactNode;
-  /** At the far end of the row, outside every button: when the answer came, for example. */
+  /** At the far end of the row, outside every button. */
   end?: ReactNode;
   /** Designsystemet's `data-color` for the block. Neutral unless given, as kunnskapsassistenten. */
   color?: string | undefined;
@@ -53,12 +62,13 @@ const useReceipt = (copied: AnswerCopied | undefined) => {
 };
 
 /**
- * What a reader can do with a finished answer: copy it, copy the link to its thread, and
- * say whether it was useful. The block only raises events; the app copies and sends, and
- * passes back what happened.
+ * What a reader can do with a finished answer: say whether it was useful, and copy it, with or
+ * without its sources, or the link to its thread, from one «Kopier» menu. The block only raises
+ * events; the app copies and sends, and passes back what happened.
  */
 export const AnswerActions = ({
   onCopyAnswer,
+  onCopyWithSources,
   onCopyLink,
   linkOnlyHere,
   copied,
@@ -73,8 +83,13 @@ export const AnswerActions = ({
   const t = useT();
   const noteId = useId();
   const receiptRef = useRef<HTMLParagraphElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const receipt = useReceipt(copied);
+  // Controlled: a choice closes the menu before the app copies, so the receipt is not hidden.
+  const [open, setOpen] = useState(false);
   const note = t('answerActions.linkOnlyHere');
+  const asks = feedback && onFeedback !== undefined;
+  const rating = useFeedback({ status: feedbackStatus, onSend: onFeedback ?? (() => {}) });
 
   // The receipt grows the column under a reader at the end; `nearest` moves it no further
   // than it must. A drawn focus ring then takes back what it needs; a pointer draws none.
@@ -86,10 +101,8 @@ export const AnswerActions = ({
       focused.scrollIntoView?.({ block: 'nearest' });
   }, [receipt]);
 
-  const copies = Boolean(onCopyAnswer || onCopyLink);
-  const row = copies || actions !== undefined || end !== undefined;
-  const asks = feedback && onFeedback !== undefined;
-  if (!row && !asks) return null;
+  const copies = Boolean(onCopyAnswer || onCopyWithSources || onCopyLink);
+  if (!copies && !asks && actions === undefined && end === undefined) return null;
 
   const receiptText = !receipt
     ? ''
@@ -103,46 +116,91 @@ export const AnswerActions = ({
           ? t('answerActions.copiedWithSources', { count: receipt.sources })
           : t('answerActions.copied');
 
-  const linkButton = onCopyLink ? (
-    <Button
-      aria-describedby={linkOnlyHere ? noteId : undefined}
-      data-size="sm"
-      onClick={onCopyLink}
-      variant="tertiary"
-    >
-      <ClipboardLinkIcon aria-hidden />
-      {t('answerActions.copyLink')}
-    </Button>
-  ) : null;
+  // The choice goes with the closed menu, so focus goes back to «Kopier», where it came from.
+  const choose = (action: () => void) => {
+    setOpen(false);
+    triggerRef.current?.focus();
+    action();
+  };
+  const choice = (
+    label: string,
+    icon: ReactNode,
+    action: (() => void) | undefined,
+    note?: string,
+  ) => (
+    <Dropdown.Item>
+      <Dropdown.Button
+        disabled={!action}
+        aria-describedby={note ? noteId : undefined}
+        onClick={action ? () => choose(action) : undefined}
+      >
+        {icon}
+        {label}
+      </Dropdown.Button>
+      {/* Seen under the choice and read as its description, not part of its name. */}
+      {note ? (
+        <span id={noteId} className="uib-answer-actions-note">
+          {note}
+        </span>
+      ) : null}
+    </Dropdown.Item>
+  );
 
   return (
     <div className={classes('uib-answer-actions', className)} data-color={color}>
-      {row ? (
-        <div className="uib-answer-actions-row">
-          {onCopyAnswer ? (
-            <Button data-size="sm" onClick={onCopyAnswer} variant="tertiary">
-              <ClipboardIcon aria-hidden />
-              {t('answerActions.copyAnswer')}
-            </Button>
-          ) : null}
-          {/* The limit is a description and not part of the name, so the row keeps its
-              height where the column is narrow. */}
-          {linkButton && linkOnlyHere ? <Tooltip content={note}>{linkButton}</Tooltip> : linkButton}
-          {/* `hidden`: the description still reaches the button, and the sentence is not a
-              second stop for a reader walking the row. One string, or a gap before the dot. */}
-          {linkButton && linkOnlyHere ? <span hidden id={noteId}>{`${note}.`}</span> : null}
-          {actions}
-          {end !== undefined ? <span className="uib-answer-actions-end">{end}</span> : null}
-          {/* Always drawn while there is something to copy, never hidden while empty: a
-              live region and its text that arrive in the same frame announce nothing. */}
-          {copies ? (
-            <p aria-live="polite" className="uib-answer-actions-receipt" ref={receiptRef}>
-              {receiptText}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      {asks ? <Feedback status={feedbackStatus} onSend={onFeedback} /> : null}
+      <div className="uib-answer-actions-row">
+        {asks ? rating.thumbs : null}
+        {copies ? (
+          <Dropdown.TriggerContext>
+            <Dropdown.Trigger ref={triggerRef} variant="tertiary" data-size="sm">
+              <FilesIcon aria-hidden />
+              {t('answerActions.copy')}
+              {open ? <ChevronUpIcon aria-hidden /> : <ChevronDownIcon aria-hidden />}
+            </Dropdown.Trigger>
+            <Dropdown
+              open={open}
+              onOpen={() => setOpen(true)}
+              onClose={() => setOpen(false)}
+              placement="bottom-start"
+              data-size="sm"
+            >
+              {/* Buttons, not role="menu", as Designsystemet recommends without the arrow keys. */}
+              <Dropdown.List>
+                {onCopyAnswer
+                  ? choice(
+                      t('answerActions.copyAnswer'),
+                      <ClipboardIcon aria-hidden />,
+                      onCopyAnswer,
+                    )
+                  : null}
+                {onCopyWithSources
+                  ? choice(
+                      t('answerActions.copyWithSources'),
+                      <FileTextIcon aria-hidden />,
+                      onCopyWithSources,
+                    )
+                  : null}
+                {choice(
+                  t('answerActions.copyLink'),
+                  <LinkIcon aria-hidden />,
+                  onCopyLink,
+                  onCopyLink && linkOnlyHere ? `${note}.` : undefined,
+                )}
+              </Dropdown.List>
+            </Dropdown>
+          </Dropdown.TriggerContext>
+        ) : null}
+        {actions}
+        {end !== undefined ? <span className="uib-answer-actions-end">{end}</span> : null}
+        {/* Always drawn while there is something to copy, never hidden while empty: a
+            live region and its text that arrive in the same frame announce nothing. */}
+        {copies ? (
+          <p aria-live="polite" className="uib-answer-actions-receipt" ref={receiptRef}>
+            {receiptText}
+          </p>
+        ) : null}
+      </div>
+      {asks ? rating.panel : null}
     </div>
   );
 };

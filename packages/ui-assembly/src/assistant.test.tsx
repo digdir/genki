@@ -1840,7 +1840,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     history.replaceState(null, '', '/');
     drawNext(followUps);
     await ask();
-    await screen.findByRole('button', { name: 'Kopier svaret' });
+    await screen.findByRole('button', { name: 'Kopier' });
     expect(screen.queryByRole('button', { name: 'Kan du utdype?' })).toBeNull();
     expect(document.querySelector('.uib-composer-follow-ups')).toBeNull();
   });
@@ -1854,7 +1854,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     await opened();
     expect(document.querySelector('.uib-shell')?.getAttribute('data-frame')).toBe('cards');
     await ask();
-    await screen.findByRole('button', { name: 'Kopier svaret' });
+    await screen.findByRole('button', { name: 'Kopier' });
     expect(screen.queryByRole('button', { name: 'Kan du utdype?' })).toBeNull();
     unmount();
     history.replaceState(null, '', '/');
@@ -1863,7 +1863,15 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     expect(document.querySelector('.uib-shell')?.getAttribute('data-frame')).not.toBe('cards');
   });
 
-  it('copies the thread’s link with no note that it works only here, and keeps the answer’s time', async () => {
+  it('draws no time under an answer, where only the actions stand', async () => {
+    drawNext();
+    await ask();
+    await screen.findByRole('button', { name: 'Kopier' });
+    expect(document.querySelector('.uib-answer-row-slot time')).toBeNull();
+    expect(document.querySelector('.uib-answer-actions time')).toBeNull();
+  });
+
+  it('copies the thread’s link with no note that it works only here', async () => {
     const clipboard: string[] = [];
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -1871,10 +1879,9 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     });
     history.replaceState(null, '', '/?t=t-old');
     drawNext();
-    const copyLink = await screen.findByRole('button', { name: 'Kopier lenke til tråden' });
+    const copyLink = await screen.findByRole('button', { name: 'Lenke til tråden', hidden: true });
     expect(copyLink.hasAttribute('aria-describedby')).toBe(false);
-    expect(document.querySelector('.uib-answer-actions [hidden]')).toBeNull();
-    expect(document.querySelector('.uib-answer-actions time')).toBeTruthy();
+    expect(document.querySelector('.uib-answer-actions-note')).toBeNull();
     await act(async () => {
       fireEvent.click(copyLink);
     });
@@ -1888,7 +1895,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
   it('leaves «Kunnskapsassistenten»’s note on the thread’s link as it was', async () => {
     history.replaceState(null, '', '/?t=t-old');
     drawNext(reader, fromTemplate('knowledge-assistant').layout);
-    const copyLink = await screen.findByRole('button', { name: 'Kopier lenke til tråden' });
+    const copyLink = await screen.findByRole('button', { name: 'Lenke til tråden', hidden: true });
     const note = document.getElementById(copyLink.getAttribute('aria-describedby') ?? '');
     expect(note?.textContent).toBe('Virker bare for deg, i denne nettleseren.');
   });
@@ -4288,9 +4295,13 @@ describe('footnotes per document in the next look, until genki cites excerpts', 
     draw(fromTemplate('knowledge-assistant-next').layout, fakeApi().api, true);
     await ask();
     await act(async () => {
-      fireEvent.click(await screen.findByRole('button', { name: 'Kopier svaret' }));
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Svaret med kildeliste', hidden: true }),
+      );
     });
-    expect(clipboard).toEqual(['Rapporteringen er fast [1].\n\nKilder\n[1] Tildelingsbrev 2022.']);
+    expect(clipboard).toEqual([
+      'Rapporteringen er fast [1].\n\n**Kilder**\n\n- [1] Tildelingsbrev 2022.',
+    ]);
   });
 
   it('puts the Kildeliste under the answer, which copies itself as Markdown', async () => {
@@ -4341,33 +4352,49 @@ describe('copying from an answer', () => {
     });
   });
 
-  it('copies what the screen says: the footnotes numbered as drawn, and a line per numbered excerpt', async () => {
+  it('copies «Svaret med kildeliste» as markdown: the footnotes numbered as drawn, and a line per numbered excerpt', async () => {
     await openStored(state('sources-only').layout);
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Kopier svaret' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Svaret med kildeliste', hidden: true }));
     });
     const markers = [{ marker: '1', chunkId: 'c1', documentId: '42' }];
-    expect(clipboard).toEqual([answerCopy(answer, { sources: [source], markers }).text]);
-    expect(clipboard[0]).toBe('Rapporteringen er fast [1].\n\nKilder\n[1] Tildelingsbrev 2022.');
+    expect(clipboard).toEqual([
+      answerCopy(answer, { sources: [source], markers, format: 'markdown' }).text,
+    ]);
+    expect(clipboard[0]).toBe(
+      'Rapporteringen er fast [1].\n\n**Kilder**\n\n- [1] Tildelingsbrev 2022.',
+    );
   });
 
   it('copies an answer whose footnotes name only documents without them, with a line per document', async () => {
     draw(state('sources-only').layout, fakeApi().api);
     await ask();
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Kopier svaret' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Svaret med kildeliste', hidden: true }));
     });
-    expect(clipboard).toEqual(['Rapporteringen er fast.\n\nKilder\nTildelingsbrev 2022.']);
+    expect(clipboard).toEqual(['Rapporteringen er fast.\n\n**Kilder**\n\n- Tildelingsbrev 2022.']);
   });
 
-  it('offers «Kopier lenke til tråden» only where the thread is in the address, and copies a link that opens it', async () => {
+  it('copies «Kun svaret» as the words alone, without footnotes or «Kilder»', async () => {
+    await openStored(state('sources-only').layout);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Kun svaret', hidden: true }));
+    });
+    expect(clipboard).toEqual(['Rapporteringen er fast.']);
+    expect(document.querySelector('.uib-answer-actions-receipt')?.textContent).toBe(
+      'Svaret er kopiert.',
+    );
+  });
+
+  it('enables «Lenke til tråden» only where the thread is in the address, and copies a link that opens it', async () => {
     const { unmount } = draw(state('knowledge-assistant').layout, fakeApi().api);
     await ask();
-    expect(screen.queryByRole('button', { name: 'Kopier lenke til tråden' })).toBeNull();
+    const none = await screen.findByRole('button', { name: 'Lenke til tråden', hidden: true });
+    expect((none as HTMLButtonElement).disabled).toBe(true);
     unmount();
     history.replaceState(null, '', '/?t=t-old');
     draw(state('knowledge-assistant').layout, fakeApi().api, true);
-    const copyLink = await screen.findByRole('button', { name: 'Kopier lenke til tråden' });
+    const copyLink = await screen.findByRole('button', { name: 'Lenke til tråden', hidden: true });
     await act(async () => {
       fireEvent.click(copyLink);
     });
@@ -4559,12 +4586,13 @@ describe('feedback on an answer', () => {
         onFeedback={onFeedback}
       />,
     );
+  // The thumbs stand in the actions' row; the form and the status come under it, in the block.
   const rate = async () => {
-    const group = await screen.findByRole('group', { name: 'Tilbakemelding på svaret' });
+    const thumbs = await screen.findByRole('group', { name: 'Var svaret nyttig?' });
     await act(async () => {
-      fireEvent.click(within(group).getByRole('button', { name: 'Ja' }));
+      fireEvent.click(within(thumbs).getByRole('button', { name: 'Nyttig' }));
     });
-    return group;
+    return thumbs.closest('.uib-answer-actions') as HTMLElement;
   };
   const withRun = (taskId?: string): AssistantApi => {
     const { api } = fakeApi();

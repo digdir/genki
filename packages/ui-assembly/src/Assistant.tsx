@@ -158,15 +158,14 @@ export const Assistant = ({ mainId, frameWidth, refBlocks, ...options }: Assista
   />
 );
 
+// No time at the end of the row: the answer's time said little and crowded the actions.
 const AnswerRow = ({
   a,
   turn,
-  end,
   search,
 }: {
   a: AssistantState;
   turn: ConversationAnswer;
-  end: ReactNode;
   search: ReactNode;
 }) => {
   const t = useT();
@@ -186,14 +185,24 @@ const AnswerRow = ({
     <AnswerActions
       {...(copying
         ? {
-            // What the screen says: the footnotes numbered as drawn, and a line per reference.
+            // The words as drawn, without footnotes or the reference list.
             onCopyAnswer: () => {
+              const { text } = answerCopy(turn.text, {
+                sources: turn.sources,
+                markers: turn.markers,
+                list: false,
+              });
+              void copy(text, { kind: 'answer' });
+            },
+            // The answer's markdown, its footnotes numbered as drawn, and a line per reference.
+            onCopyWithSources: () => {
               const { text, sources } = answerCopy(turn.text, {
                 sources: turn.sources,
                 markers: turn.markers,
                 locale: t.locale,
                 documentFootnotes: a.look === 'next',
                 numberEachFootnote: a.look === 'next',
+                format: 'markdown',
               });
               void copy(text, { kind: 'answer', sources });
             },
@@ -230,7 +239,6 @@ const AnswerRow = ({
       }}
       feedbackStatus={status}
       actions={search}
-      end={end}
     />
   );
 };
@@ -541,6 +549,7 @@ export const AssistantView = ({
       middle = (
         <Conversation
           turns={a.conversation}
+          time={false}
           loading={a.view === 'loading'}
           onFetchAgain={a.fetchAgain}
           assistantName={name}
@@ -595,7 +604,7 @@ export const AssistantView = ({
           onAtEndChange={setAtEnd}
           actions={(turn, parts) => (
             <>
-              <AnswerRow a={a} turn={turn} end={parts.end} search={parts.search} />
+              <AnswerRow a={a} turn={turn} search={parts.search} />
               {refs.main.length > 0 ? (
                 <div className="uia-answer-blocks">
                   {refs.main.map((ref, i) =>

@@ -1,5 +1,5 @@
 import type { Locale } from '@genai/i18n';
-import { cellsOf, inlineText, type FootnoteLabel } from '../markdown/Markdown.js';
+import { cellsOf, citeGroup, inlineText, type FootnoteLabel } from '../markdown/Markdown.js';
 import { excerptMarkdown, headingText } from '../sources/excerptMarkdown.js';
 import { documentKeys } from '../sources/pairing.js';
 import { distinctNames, sectionOf } from '../sources/Sources.js';
@@ -18,6 +18,10 @@ export interface AnswerCopyOptions {
   documentFootnotes?: boolean | undefined;
   /** As the answer's `numberEachFootnote`: each footnote keeps its own number, as drawn. */
   numberEachFootnote?: boolean | undefined;
+  /** `text` (default): the words as drawn. `markdown`: the answer's markdown and a list. */
+  format?: 'text' | 'markdown' | undefined;
+  /** False copies the answer alone, its footnotes dropped as with no sources. */
+  list?: boolean | undefined;
 }
 
 export interface AnswerCopy {
@@ -70,6 +74,48 @@ const plain = (markdown: string, label: (n: number) => Label) => {
     .trim();
 };
 
+// `[N]` and the blank before it, not a link `[N](…)`; linear, as no part matches two ways.
+const footnoteMark = /([ \t]?)(?<!\\)\[(\d+)\](?!\()/g;
+
+/** One stretch of prose with its footnotes as `label` says; `[1, 2]` is read as `[1] [2]`. */
+const renumber = (prose: string, label: (n: number) => Label) =>
+  prose
+    .replace(citeGroup, (_, list: string) =>
+      list
+        .split(',')
+        .map((n) => `[${n.trim()}]`)
+        .join(' '),
+    )
+    .replace(footnoteMark, (whole: string, blank: string, digits: string) => {
+      const n = Number(digits);
+      const shown = n < 1000 ? label(n) : undefined;
+      if (shown === undefined) return whole;
+      return shown === null ? '' : `${blank}[${shown}]`;
+    });
+
+/** The answer's markdown as written, only its footnotes renumbered as `label` says. */
+export const markdownText = (markdown: string, label: (n: number) => Label) => {
+  let code = false;
+  return markdown
+    .split('\n')
+    .map((raw) => {
+      if (fence.test(raw)) {
+        code = !code;
+        return raw;
+      }
+      if (code) return raw;
+      // A closed `…` is inline code and stays; a lone backtick at the end opens nothing.
+      const parts = raw.split('`');
+      const pieces = parts.map((piece, i) =>
+        i % 2 && i < parts.length - 1 ? piece : renumber(piece, label),
+      );
+      return withoutTrailingBlanks(pieces.join('`'));
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 /** How many of an excerpt's first words tell it apart in a reference line. */
 const OPENING_WORDS = 8;
 
@@ -98,7 +144,7 @@ export const finishedText = (markdown: string) => {
 };
 
 /**
- * What «Kopier svaret» puts on the clipboard, as kunnskapsassistenten copies it: the answer with
+ * What «Svaret med kildeliste» puts on the clipboard, as kunnskapsassistenten copies it: the answer with
  * its footnotes, and a reference list under it, since an answer must not leave the app without
  * where it came from. One line per numbered excerpt, and two from one report told apart by their
  * page, section or first words. An answer whose footnotes name only documents is drawn without
@@ -113,7 +159,12 @@ export const answerCopy = (text: string, options: AnswerCopyOptions = {}): Answe
     locale = 'nb',
     documentFootnotes = false,
     numberEachFootnote = false,
+    format = 'text',
+    list = true,
   } = options;
+  const markdown = format === 'markdown';
+  const scan = (label: (n: number) => Label) =>
+    markdown ? markdownText(text, label) : plain(text, label);
   const t = translator(locale);
   const { pairing, met } = readFootnotes(text, sources, markers);
   const byExcerpt = pairing.mode === 'excerpt';
@@ -213,6 +264,7 @@ export const answerCopy = (text: string, options: AnswerCopyOptions = {}): Answe
         : -1
       : sources.findIndex((s) => s.index === n);
     if ((markers && !marker) || (!markers && at < 0)) return undefined;
+    if (!list) return null;
     if (!byExcerpt && byDocument.size) return byDocument.get(keys[at] ?? '') ?? null;
     // One that names only a document is drawn as nothing, so it is copied as nothing.
     return (byExcerpt && marker && pairing.numbers.get(marker.chunkId)) || null;
@@ -220,24 +272,28 @@ export const answerCopy = (text: string, options: AnswerCopyOptions = {}): Answe
 
   // A footnote the screen drops, such as a repeat beside its twin, is copied as nothing too.
   const seen: number[] = [];
-  plain(text, (n) => {
+  scan((n) => {
     seen.push(n);
     return undefined;
   });
   const drawn = met.filter((m) => m.n < 1000);
   const inStep = seen.length === drawn.length && seen.every((n, i) => drawn[i]?.n === n);
   let at = 0;
-  const body = plain(text, (n) => {
+  const body = scan((n) => {
     const met = inStep ? drawn[at] : undefined;
     at += 1;
     if (met?.dropped) return null;
-    if (each && met?.citation !== undefined && references.length > 0) return met.citation + 1;
+    if (each && list && met?.citation !== undefined && references.length > 0)
+      return met.citation + 1;
     return label(n);
   });
-  return references.length === 0
+  return references.length === 0 || !list
     ? { text: body, sources: 0 }
     : {
-        text: [body, '', t('answer.copyHeading'), ...references].join('\n'),
+        text: (markdown
+          ? [body, '', `**${t('answer.copyHeading')}**`, '', ...references.map((r) => `- ${r}`)]
+          : [body, '', t('answer.copyHeading'), ...references]
+        ).join('\n'),
         sources: references.length,
       };
 };

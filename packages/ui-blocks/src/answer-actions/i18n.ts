@@ -2,8 +2,10 @@ import { defineCatalogue, defineNamespace, type Translation } from '@genai/i18n'
 import { defineTranslations } from '@genai/i18n/react';
 
 export const nbAnswerActions = defineNamespace({
-  copyAnswer: 'Kopier svaret',
-  copyLink: 'Kopier lenke til tråden',
+  copy: 'Kopier',
+  copyAnswer: 'Kun svaret',
+  copyWithSources: 'Svaret med kildeliste',
+  copyLink: 'Lenke til tråden',
   linkOnlyHere: 'Virker bare for deg, i denne nettleseren',
   copied: 'Svaret er kopiert.',
   copiedWithSources: {
@@ -14,8 +16,8 @@ export const nbAnswerActions = defineNamespace({
   copyFailed: 'Kunne ikke kopiere. Nettleseren tillot det ikke.',
   feedback: 'Tilbakemelding på svaret',
   useful: 'Var svaret nyttig?',
-  yes: 'Ja',
-  no: 'Nei',
+  rateUp: 'Nyttig',
+  rateDown: 'Ikke nyttig',
   whatWrong: 'Hva var galt? (valgfritt)',
   reasonWrong: 'Feil',
   reasonNoSource: 'Mangler kilde',
@@ -31,8 +33,10 @@ export const nbAnswerActions = defineNamespace({
 });
 
 export const enAnswerActions = {
-  copyAnswer: 'Copy the answer',
-  copyLink: 'Copy link to the thread',
+  copy: 'Copy',
+  copyAnswer: 'Only the answer',
+  copyWithSources: 'The answer with the source list',
+  copyLink: 'Link to the thread',
   linkOnlyHere: 'Works only for you, in this browser',
   copied: 'The answer is copied.',
   copiedWithSources: {
@@ -43,8 +47,8 @@ export const enAnswerActions = {
   copyFailed: 'Could not copy. The browser did not allow it.',
   feedback: 'Feedback on the answer',
   useful: 'Was the answer useful?',
-  yes: 'Yes',
-  no: 'No',
+  rateUp: 'Useful',
+  rateDown: 'Not useful',
   whatWrong: 'What was wrong? (optional)',
   reasonWrong: 'Wrong',
   reasonNoSource: 'Missing source',

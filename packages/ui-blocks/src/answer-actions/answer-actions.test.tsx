@@ -18,11 +18,20 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const both = { onCopyAnswer: () => {}, onCopyLink: () => {} } satisfies AnswerActionsProps;
-const draw = (props: AnswerActionsProps = both) => render(<AnswerActions {...props} />);
+const all = {
+  onCopyAnswer: () => {},
+  onCopyWithSources: () => {},
+  onCopyLink: () => {},
+} satisfies AnswerActionsProps;
+const draw = (props: AnswerActionsProps = all) => render(<AnswerActions {...props} />);
 
-const copyAnswer = () => screen.getByRole('button', { name: 'Kopier svaret' });
-const copyLink = () => screen.getByRole('button', { name: 'Kopier lenke til tråden' });
+const copy = () => screen.getByRole('button', { name: 'Kopier' });
+// A choice by name. jsdom has no popover, so the menu's buttons count as hidden while it is open.
+const choice = (name: string) => screen.getByRole('button', { name, hidden: true });
+const choices = () =>
+  [...document.querySelectorAll('.ds-dropdown button')].map(
+    (b) => `${b.textContent}${(b as HTMLButtonElement).disabled ? ' (av)' : ''}`,
+  );
 const receipt = () => document.querySelector('[aria-live="polite"]') as HTMLElement;
 
 describe('the answer actions', () => {
@@ -31,35 +40,65 @@ describe('the answer actions', () => {
     expect(container.innerHTML).toBe('');
 
     rerender(<AnswerActions onCopyAnswer={() => {}} />);
-    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Kopier svaret']);
-    expect(screen.queryByRole('group', { name: 'Tilbakemelding på svaret' })).toBeNull();
+    expect(copy().textContent).toBe('Kopier');
+    expect(screen.queryByRole('group', { name: 'Var svaret nyttig?' })).toBeNull();
   });
 
-  it('raise an event to copy the answer or the link, and copy nothing themselves', () => {
+  it('offer «Kun svaret», «Svaret med kildeliste» and «Lenke til tråden» in one «Kopier» menu', () => {
+    draw();
+    expect(choices()).toEqual(['Kun svaret', 'Svaret med kildeliste', 'Lenke til tråden']);
+  });
+
+  it('draw «Lenke til tråden» disabled when the app has no link to give', () => {
+    draw({ onCopyAnswer: () => {}, onCopyWithSources: () => {} });
+    expect(choices()).toEqual(['Kun svaret', 'Svaret med kildeliste', 'Lenke til tråden (av)']);
+  });
+
+  it('open the menu from «Kopier», which points at it', () => {
+    draw();
+    const menu = document.querySelector('.ds-dropdown') as HTMLElement;
+    expect(menu.id).toBeTruthy();
+    expect(copy().getAttribute('popovertarget')).toBe(menu.id);
+  });
+
+  it('raise an event for each choice, and copy nothing themselves', () => {
     const writeText = vi.fn();
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
     const asked: string[] = [];
-    draw({ onCopyAnswer: () => asked.push('answer'), onCopyLink: () => asked.push('link') });
+    draw({
+      onCopyAnswer: () => asked.push('answer'),
+      onCopyWithSources: () => asked.push('sources'),
+      onCopyLink: () => asked.push('link'),
+    });
 
-    fireEvent.click(copyAnswer());
-    fireEvent.click(copyLink());
+    fireEvent.click(choice('Kun svaret'));
+    fireEvent.click(choice('Svaret med kildeliste'));
+    fireEvent.click(choice('Lenke til tråden'));
 
-    expect(asked).toEqual(['answer', 'link']);
+    expect(asked).toEqual(['answer', 'sources', 'link']);
     expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it('send focus back to «Kopier» after a choice, and keep it there when the receipt comes', () => {
+    const { rerender } = draw();
+    fireEvent.click(choice('Kun svaret'));
+    expect(document.activeElement).toBe(copy());
+    rerender(<AnswerActions {...all} copied={{ kind: 'answer' }} />);
+    expect(document.activeElement).toBe(copy());
   });
 
   it('say what the app copied: the answer, and how many sources went with it', () => {
     const { rerender } = draw();
-    rerender(<AnswerActions {...both} copied={{ kind: 'answer', sources: 3 }} />);
+    rerender(<AnswerActions {...all} copied={{ kind: 'answer', sources: 3 }} />);
     expect(receipt().textContent).toBe('Svaret og 3 kilder er kopiert.');
-    rerender(<AnswerActions {...both} copied={{ kind: 'answer', sources: 1 }} />);
+    rerender(<AnswerActions {...all} copied={{ kind: 'answer', sources: 1 }} />);
     expect(receipt().textContent).toBe('Svaret og 1 kilde er kopiert.');
-    rerender(<AnswerActions {...both} copied={{ kind: 'answer' }} />);
+    rerender(<AnswerActions {...all} copied={{ kind: 'answer' }} />);
     expect(receipt().textContent).toBe('Svaret er kopiert.');
   });
 
   it('say so when the browser refused the copy', () => {
-    draw({ ...both, copied: { kind: 'failed' } });
+    draw({ ...all, copied: { kind: 'failed' } });
     expect(receipt().textContent).toBe('Kunne ikke kopiere. Nettleseren tillot det ikke.');
   });
 
@@ -72,56 +111,54 @@ describe('the answer actions', () => {
 
   it('clear the receipt after four seconds, and start again on the next copy', () => {
     vi.useFakeTimers();
-    const { rerender } = draw({ ...both, copied: { kind: 'answer' } });
+    const { rerender } = draw({ ...all, copied: { kind: 'answer' } });
     act(() => vi.advanceTimersByTime(RECEIPT_MS - 1000));
-    rerender(<AnswerActions {...both} copied={{ kind: 'answer', sources: 2 }} />);
+    rerender(<AnswerActions {...all} copied={{ kind: 'answer', sources: 2 }} />);
     act(() => vi.advanceTimersByTime(RECEIPT_MS - 1000));
     expect(receipt().textContent).toBe('Svaret og 2 kilder er kopiert.');
     act(() => vi.advanceTimersByTime(1000));
     expect(receipt().textContent).toBe('');
   });
 
-  it('keep focus on the button that copied', () => {
-    const { rerender } = draw();
-    copyAnswer().focus();
-    fireEvent.click(copyAnswer());
-    rerender(<AnswerActions {...both} copied={{ kind: 'answer' }} />);
-    expect(document.activeElement).toBe(copyAnswer());
-  });
-
-  it('put the app’s own actions after the copy buttons, and its end outside every button', () => {
-    draw({
-      ...both,
+  it('put the thumbs first, then «Kopier», then the app’s own actions, and its end outside every button', () => {
+    const { container } = draw({
+      ...all,
+      feedback: true,
+      onFeedback: () => {},
       actions: <button type="button">Søk i svaret</button>,
-      end: <time dateTime="2026-11-06T14:32:00Z">14:32</time>,
+      end: <span>slutt</span>,
     });
-    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
-      'Kopier svaret',
-      'Kopier lenke til tråden',
-      'Søk i svaret',
-    ]);
-    const time = screen.getByText('14:32');
-    expect(time.closest('button')).toBeNull();
-    expect(time.closest('.uib-answer-actions-end')).not.toBeNull();
+    const row = container.querySelector('.uib-answer-actions-row') as HTMLElement;
+    const order = [...row.querySelectorAll(':scope > * button, :scope > button')]
+      .filter((b) => !b.closest('.ds-dropdown'))
+      .map((b) => b.getAttribute('aria-label') ?? b.textContent);
+    expect(order).toEqual(['Nyttig', 'Ikke nyttig', 'Kopier', 'Søk i svaret']);
+    const end = screen.getByText('slutt');
+    expect(end.closest('button')).toBeNull();
+    expect(end.closest('.uib-answer-actions-end')).not.toBeNull();
   });
 
   it('are neutral unless the app names another colour family, as kunnskapsassistenten draws them', () => {
     const { container, rerender } = draw();
     const root = container.firstElementChild as HTMLElement;
     expect(root.getAttribute('data-color')).toBe('neutral');
-    for (const button of screen.getAllByRole('button'))
-      expect(button.hasAttribute('data-color')).toBe(false);
-    rerender(<AnswerActions {...both} color="brand1" />);
+    expect(copy().hasAttribute('data-color')).toBe(false);
+    rerender(<AnswerActions {...all} color="brand1" />);
     expect(root.getAttribute('data-color')).toBe('brand1');
   });
 
   it('speak English when the person does', () => {
     render(
       <InLocale locale="en">
-        <AnswerActions {...both} linkOnlyHere copied={{ kind: 'link' }} />
+        <AnswerActions {...all} linkOnlyHere copied={{ kind: 'link' }} />
       </InLocale>,
     );
-    expect(screen.getByRole('button', { name: 'Copy the answer' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeTruthy();
+    expect(choices()).toEqual([
+      'Only the answer',
+      'The answer with the source list',
+      'Link to the thread',
+    ]);
     expect(receipt().textContent).toBe(
       'The link to the thread is copied. Works only for you, in this browser.',
     );
@@ -131,44 +168,42 @@ describe('the answer actions', () => {
 /**
  * digdir/kunnskapsassistenten#119: in kunnskapsassistenten, a thread's address opens the
  * thread only in the browser it was made in. The limit is a description and not part of
- * the name, and the same sentence stands in three places.
+ * the name, and the receipt says it too.
  */
 describe('the link that works only here', () => {
-  it('is named by what the button does, with the limit as its description', () => {
-    draw({ ...both, linkOnlyHere: true });
-    const describedBy = copyLink().getAttribute('aria-describedby');
-    expect(describedBy).toBeTruthy();
-    const note = document.getElementById(describedBy ?? '');
+  it('is named by what the choice does, with the limit shown under it as its description', () => {
+    draw({ ...all, linkOnlyHere: true });
+    const link = choice('Lenke til tråden');
+    const note = document.getElementById(link.getAttribute('aria-describedby') ?? '');
     expect(note?.textContent).toBe('Virker bare for deg, i denne nettleseren.');
-    // `hidden`: the description reaches the button, but is not a stop of its own in the row.
-    expect(note?.hidden).toBe(true);
-  });
-
-  it('says the same in the tooltip, the visible half', () => {
-    draw({ ...both, linkOnlyHere: true });
-    expect(copyLink().getAttribute('data-tooltip')).toBe(
-      'Virker bare for deg, i denne nettleseren',
-    );
+    expect(note?.hidden).toBe(false);
+    expect(note?.closest('li')).toBe(link.closest('li'));
+    expect(link.textContent).toBe('Lenke til tråden');
   });
 
   it('says both halves in the receipt, where it is read aloud', () => {
-    draw({ ...both, linkOnlyHere: true, copied: { kind: 'link' } });
+    draw({ ...all, linkOnlyHere: true, copied: { kind: 'link' } });
     expect(receipt().textContent).toBe(
       'Lenken til tråden er kopiert. Virker bare for deg, i denne nettleseren.',
     );
   });
 
   it('is not claimed when the app has not said the link is limited', () => {
-    draw({ ...both, copied: { kind: 'link' } });
-    expect(copyLink().hasAttribute('aria-describedby')).toBe(false);
-    expect(copyLink().hasAttribute('data-tooltip')).toBe(false);
+    draw({ ...all, copied: { kind: 'link' } });
+    expect(choice('Lenke til tråden').hasAttribute('aria-describedby')).toBe(false);
+    expect(document.querySelector('.uib-answer-actions-note')).toBeNull();
     expect(receipt().textContent).toBe('Lenken til tråden er kopiert.');
   });
 
   it('gives every control a name and points only at what exists', () => {
-    const { container } = draw({ ...both, linkOnlyHere: true });
-    for (const button of within(container).getAllByRole('button'))
-      expect(button.textContent?.trim()).not.toBe('');
+    const { container } = draw({
+      ...all,
+      linkOnlyHere: true,
+      feedback: true,
+      onFeedback: () => {},
+    });
+    for (const button of within(container).getAllByRole('button', { hidden: true }))
+      expect((button.getAttribute('aria-label') ?? button.textContent)?.trim()).not.toBe('');
     for (const element of container.querySelectorAll('[aria-describedby]'))
       expect(
         document.getElementById(element.getAttribute('aria-describedby') ?? ''),
