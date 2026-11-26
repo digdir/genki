@@ -91,6 +91,40 @@ describe('citing every factual block of an excerpt answer', () => {
     expect(out.sources.map((s) => s.chunkId)).toEqual(['c1', 'c2']);
   });
 
+  describe('with two cited documents', () => {
+    const a3 = chunk(1, { document: 'dA', content: 'Sykefraværet var 5,1 prosent.', page: 3 });
+    const a25 = chunk(2, { document: 'dA', content: 'Budsjettet i A var 90 millioner.', page: 25 });
+    const b3 = chunk(3, { document: 'dB', content: 'Turnover var 9 prosent.', page: 3 });
+    const b25 = chunk(4, {
+      document: 'dB',
+      content: 'Budsjettet i B var 120 millioner.',
+      page: 25,
+    });
+
+    it('gives «(s. P)» the excerpt of the document its own block cites, not of another cited document', async () => {
+      const out = await answer(storeOf(a3, a25, b3, b25), [
+        'Sykefraværet var 5,1 prosent [1].\n\nTurnover var 9 prosent [3], og budsjettet var 120 millioner (s. 25).',
+      ]);
+
+      expect(out.text).toBe(
+        'Sykefraværet var 5,1 prosent [1].\n\nTurnover var 9 prosent [3], og budsjettet var 120 millioner [4] (s. 25).',
+      );
+      expect(synths(out)).toHaveLength(1);
+      expect(out.sources.map((s) => s.chunkId)).toEqual(['c1', 'c3', 'c4']);
+    });
+
+    it('leaves «(s. P)» in a block that cites nothing to the gap call when the answer cites two documents', async () => {
+      const draft =
+        'Sykefraværet var 5,1 prosent [1].\n\nTurnover var 9 prosent [3].\n\nBudsjettet var 120 millioner (s. 25).';
+      const out = await answer(storeOf(a3, a25, b3), [draft, draft]);
+
+      expect(synths(out)).toHaveLength(2);
+      expect(out.text).toBe(draft);
+      expect(out.sources.map((s) => s.chunkId)).toEqual(['c1', 'c3']);
+      expect(gapNotice(out)).toMatchObject({ uncited: 1 });
+    });
+  });
+
   it('leaves «(s. P)» to the gap call when two read excerpts of cited documents cover page P', async () => {
     const twin = chunk(5, { document: 'd1', content: 'Turnover i 2023 var 7 prosent.', page: 25 });
     const out = await answer(storeOf(sick, turnover, twin), [

@@ -155,24 +155,45 @@ const numbering = (workspace: Workspace, text: string, quoted: ReadonlySet<numbe
 const coversPage = (c: Chunk, page: number) =>
   c.page !== undefined && c.page <= page && page <= (c.pageEnd ?? c.page);
 
-/** «(s. P)» with no [N] gets the [N] of the one read excerpt of a cited document that covers page P. */
+/**
+ * «(s. P)» with no [N] gets the [N] of the one read excerpt that covers page P, from the documents
+ * its own block cites; in a block that cites nothing, only when the whole answer cites one document.
+ */
 const citePages = (
   text: string,
   workspace: Workspace,
   numbers: ReturnType<typeof numbering>,
 ): string => {
-  const citedDocuments = new Set(
-    parseCitations(text, workspace.citationIndex).flatMap((c) => {
-      const chunk = numbers.byNumber.get(c.index);
-      return chunk ? [documentKey(chunk)] : [];
-    }),
-  );
-  if (citedDocuments.size === 0) return text;
-  const candidates = readChunks(workspace).filter((c) => citedDocuments.has(documentKey(c)));
+  const documentsIn = (part: string) =>
+    new Set(
+      parseCitations(part, workspace.citationIndex).flatMap((c) => {
+        const chunk = numbers.byNumber.get(c.index);
+        return chunk ? [documentKey(chunk)] : [];
+      }),
+    );
+  const inAnswer = documentsIn(text);
+  if (inAnswer.size === 0) return text;
+  const blocks = answerBlocks(text);
+  const read = readChunks(workspace);
+  let at = 0;
+  const cache = new Map<Block, Set<string>>();
   return text.replace(pageMention, (whole, page: string, offset: number) => {
     if (citedBefore.test(text.slice(Math.max(0, offset - 8), offset))) return whole;
     if (citedAfter.test(text.slice(offset + whole.length, offset + whole.length + 8))) return whole;
-    const covering = candidates.filter((c) => coversPage(c, Number(page)));
+    // Mentions come in text order, so the block pointer only moves forward.
+    while (at < blocks.length && (blocks[at] as Block).end <= offset) at++;
+    const block = blocks[at] && (blocks[at] as Block).start <= offset ? blocks[at] : undefined;
+    let inBlock = block ? cache.get(block) : new Set<string>();
+    if (block && !inBlock) {
+      inBlock = documentsIn(text.slice(block.start, block.end));
+      cache.set(block, inBlock);
+    }
+    inBlock ??= new Set<string>();
+    const documents = inBlock.size > 0 ? inBlock : inAnswer.size === 1 ? inAnswer : undefined;
+    if (!documents) return whole;
+    const covering = read.filter(
+      (c) => documents.has(documentKey(c)) && coversPage(c, Number(page)),
+    );
     if (covering.length !== 1) return whole;
     return `[${numbers.add(covering[0] as Chunk)}] ${whole}`;
   });
