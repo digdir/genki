@@ -67,7 +67,7 @@ The client is a production Ansattporten client of its own, registered in Digdir'
 
 Its id goes into the GitHub variable `OPERATOR_CLIENT_IDS` in the `test` environment (comma separated), which the deploy passes to the API; deploy test after changing it.
 
-To log in through test Ansattporten instead, with an Altinn resource, set `ANSATTPORTEN_ISSUER=https://test.ansattporten.no` and `GENKI_ALTINN_RESOURCE=urn:altinn:resource:digdir-genai-platform-test`.
+To log in through test Ansattporten instead, with an Altinn resource, set `ANSATTPORTEN_ISSUER=https://test.ansattporten.no`, `GENKI_ALTINN_RESOURCE=urn:altinn:resource:digdir-genai-platform-test` and, for a client registered with `http://localhost:5173/callback`, `ADMIN_MCP_REDIRECT_URI=http://localhost:5173/callback`.
 
 If you run the portal's dev server on port 5173, stop it while you log in, or set `ADMIN_MCP_REDIRECT_URI` to another callback registered for the client.
 
