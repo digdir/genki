@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { isLoopback, type TokenSource } from './client.js';
+import { isLoopback, requireSafeUrl, type TokenSource } from './client.js';
 import { languageOf, loginPage, loginPageHeaders, type LoginPageKind } from './login-page.js';
 
 export interface Tokens {
@@ -13,7 +13,7 @@ export interface LoginOptions {
   issuer: string;
   clientId: string;
   audience: string;
-  altinnResource: string;
+  altinnResource?: string;
   redirectUri: string;
   open: (url: string) => void;
   fetch?: typeof fetch;
@@ -107,10 +107,12 @@ export const browserLogin = async (options: LoginOptions): Promise<Tokens> => {
   query.set('code_challenge', codeChallenge(verifier));
   query.set('code_challenge_method', 'S256');
   query.set('resource', options.audience);
-  query.set(
-    'authorization_details',
-    JSON.stringify([{ type: 'ansattporten:altinn:resource', resource: options.altinnResource }]),
-  );
+  if (options.altinnResource)
+    query.set(
+      'authorization_details',
+      JSON.stringify([{ type: 'ansattporten:altinn:resource', resource: options.altinnResource }]),
+    );
+  else query.set('acr_values', 'entraid');
 
   const code = await new Promise<string>((resolve, reject) => {
     const handler = (request: IncomingMessage, response: ServerResponse) => {
@@ -179,6 +181,26 @@ export const browserLogin = async (options: LoginOptions): Promise<Tokens> => {
     redirect_uri: redirectUri,
     code_verifier: verifier,
   });
+};
+
+export const loginOptionsFrom = (
+  env: Record<string, string | undefined>,
+  clientId: string,
+  open: (url: string) => void,
+): LoginOptions => {
+  const value = (name: string) => env[name]?.trim() || undefined;
+  const altinnResource = value('GENKI_ALTINN_RESOURCE');
+  return {
+    issuer: requireSafeUrl(
+      'ANSATTPORTEN_ISSUER',
+      value('ANSATTPORTEN_ISSUER') ?? 'https://ansattporten.no',
+    ),
+    clientId,
+    audience: value('GENKI_AUDIENCE') ?? 'digdir:genai',
+    ...(altinnResource ? { altinnResource } : {}),
+    redirectUri: value('ADMIN_MCP_REDIRECT_URI') ?? 'http://127.0.0.1:5173/callback',
+    open,
+  };
 };
 
 export const refreshTokens = async (options: LoginOptions, previous: Tokens) => {

@@ -47,19 +47,33 @@ No login is needed against a local API in development mode. The server logs in t
 
 ```sh
 claude mcp add genki-admin -s local \
-  -e GENKI_API_BASE=https://api.genki-test.digdir.cloud \
-  -e GENKI_TENANT=<organisation number> \
-  -e ADMIN_MCP_CLIENT_ID=<the former console client's id, listed in OPERATOR_CLIENT_IDS in the test environment> \
+  -e GENKI_API_BASE=https://api.genki.digdir.cloud \
+  -e GENKI_TENANT=991825827 \
+  -e ANSATTPORTEN_ISSUER=https://ansattporten.no \
+  -e ADMIN_MCP_CLIENT_ID=<the genki-admin production client's id> \
   -- <path to genki>/node_modules/.bin/tsx --conditions=source <path to genki>/apps/admin-mcp/src/main.ts
 ```
 
-The first tool call opens the browser for an Ansattporten login (authorization code flow with PKCE, callback on `http://localhost:5173/callback`). It uses the console's former Ansattporten client, a public client with that callback registered, which genki-test keeps in `OPERATOR_CLIENT_IDS` for this server after the console moved to the platform login (ADR 0061), so a trusted Entra login works as it does in the console. A TestID login through that client is refused unless it is in `EMPLOYEE_CLIENT_IDS`, which infra no longer sets. Keep the client and that entry while the server is in use. When the token is about to expire the server refreshes it; if that fails, it opens the browser again. Restarting the agent means logging in again.
+genki-test signs in through production Ansattporten and gives rights from Entra groups, without Altinn ([runbook](../../docs/runbook.md#production-ansattporten)). The first tool call opens the browser for an Ansattporten login with the authorization code flow and PKCE, callback on `http://127.0.0.1:5173/callback`. Without `GENKI_ALTINN_RESOURCE` the server asks for an Entra ID login (`acr_values=entraid`) and no Altinn resource, as the platform login does with Altinn off. The API accepts this client's Entra login only if the client is in `OPERATOR_CLIENT_IDS`, only with an email in `ENTRA_EMAIL_DOMAIN` when that is set, and only for a member of `OPERATOR_ENTRA_GROUPS` (the whole platform and the operator role) or `MEMBER_ENTRA_GROUPS` (every right in `PLATFORM_TENANT`). When the token is about to expire the server refreshes it; if it has no refresh token or the refresh fails, it opens the browser again. Restarting the agent means logging in again.
+
+The client is a production Ansattporten client of its own, registered in Digdir's self-service:
+
+- integration Ansattporten, application type `native`, since production allows a `localhost` callback only for native clients;
+- authentication method `none` (a public client, no secret), PKCE with `S256`;
+- redirect URI `http://127.0.0.1:5173/callback`, as Ansattporten recommends over `localhost`;
+- grant types `authorization_code` and `refresh_token`; one-time refresh tokens work, since the server keeps the new one from every refresh;
+- scopes `openid` and `profile`;
+- no resource or audience on the client and no `authorization_details`: the server asks for `resource=digdir:genai` at each login, and Ansattporten puts it in the token's `aud` without any registration, as for genki's platform login client.
+
+Its id goes into the GitHub variable `OPERATOR_CLIENT_IDS` in the `test` environment (comma separated), which the deploy passes to the API; deploy test after changing it.
+
+To log in through test Ansattporten instead, with an Altinn resource, set `ANSATTPORTEN_ISSUER=https://test.ansattporten.no` and `GENKI_ALTINN_RESOURCE=urn:altinn:resource:digdir-genai-platform-test`.
 
 If you run the portal's dev server on port 5173, stop it while you log in, or set `ADMIN_MCP_REDIRECT_URI` to another callback registered for the client.
 
 ## Other clients
 
-Use absolute paths. These examples use local development mode; for genki-test, replace the `env` block with `GENKI_API_BASE`, `GENKI_TENANT` and `ADMIN_MCP_CLIENT_ID` as above.
+Use absolute paths. These examples use local development mode; for genki-test, replace the `env` block with `GENKI_API_BASE`, `GENKI_TENANT`, `ANSATTPORTEN_ISSUER` and `ADMIN_MCP_CLIENT_ID` as above.
 
 Cursor (`.cursor/mcp.json`) and Claude Desktop (`claude_desktop_config.json`) use `mcpServers`:
 
@@ -108,10 +122,10 @@ For other clients, or if a format has changed, see the client's documentation. T
 | `GENKI_API_BASE`              | required; `http://localhost:8080` with dev login | The genki API. https, unless on this machine                                                   |
 | `GENKI_TENANT`                | required                                         | The organisation number (9 digits) the server works for                                        |
 | `ADMIN_MCP_CLIENT_ID`         | required unless `GENKI_DEV_LOGIN=true`           | The Ansattporten client id                                                                     |
-| `ANSATTPORTEN_ISSUER`         | `https://test.ansattporten.no`                   | The login issuer                                                                               |
+| `ANSATTPORTEN_ISSUER`         | `https://ansattporten.no`                        | The login issuer                                                                               |
 | `GENKI_AUDIENCE`              | `digdir:genai`                                   | The `resource` asked for at login                                                              |
-| `GENKI_ALTINN_RESOURCE`       | `urn:altinn:resource:digdir-genai-platform-test` | The Altinn resource in the login's `authorization_details`                                     |
-| `ADMIN_MCP_REDIRECT_URI`      | `http://localhost:5173/callback`                 | The login callback; must be registered for the client, http on this machine                    |
+| `GENKI_ALTINN_RESOURCE`       | none                                             | The Altinn resource in the login's `authorization_details`; without it, an Entra ID login      |
+| `ADMIN_MCP_REDIRECT_URI`      | `http://127.0.0.1:5173/callback`                 | The login callback; must be registered for the client, http on this machine                    |
 | `GENKI_DEV_LOGIN`             | `false`                                          | `true` uses the API's mock dev login. Local API only                                           |
 | `GENKI_READ_ONLY`             | `false`                                          | `true` removes `publish_definition`, `save_block` and `give_content_reason`                    |
 | `GENKI_PLAYGROUND`            | `true`                                           | `false` removes `run_playground` and `evaluate_change`                                         |
