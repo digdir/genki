@@ -330,12 +330,16 @@ export const createDesignConnector = (options: DesignConnectorOptions) => {
     if (slow) return errorPage(c, 429);
     const id = c.req.param('request');
     const browser = getCookie(c, browserCookie(id));
+    const finish = c.req.query('f');
     deleteCookie(c, browserCookie(id), { path: '/', secure: secureCookies });
-    const pending = await grants.request(id);
-    if (!pending?.approved) return errorPage(c, 404);
-    if (!browser || !sameHash(hash('browser', browser), pending.browserHash)) {
-      await grants.takeRequest(id);
-      log('design connector finish refused', { reason: 'browser' });
+    const { request: taken, approval } = await grants.takeAll(id);
+    if (!taken || !approval) return errorPage(c, 404);
+    const sameBrowser =
+      Boolean(browser) && sameHash(hash('browser', browser ?? ''), taken.browserHash);
+    const approvedHere =
+      Boolean(finish) && sameHash(hash('finish', finish ?? ''), approval.finishHash);
+    if (!sameBrowser || !approvedHere) {
+      log('design connector finish refused', { reason: sameBrowser ? 'finish' : 'browser' });
       return errorPage(
         c,
         403,
@@ -343,10 +347,8 @@ export const createDesignConnector = (options: DesignConnectorOptions) => {
         'designConnector.otherBrowserBody',
       );
     }
-    const taken = await grants.takeRequest(id);
-    if (!taken?.approved) return errorPage(c, 404);
     const code = await grants.issueCode({
-      grant: taken.approved,
+      grant: approval.approved,
       redirectUri: taken.redirectUri,
       challenge: taken.challenge,
     });

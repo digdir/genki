@@ -8,6 +8,7 @@ import { changeReasonOf } from '../http.js';
 import { t } from '../i18n/index.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
 import { connectorCaller } from './acting.js';
+import { hash, randomToken } from './grants.js';
 import type { DesignConnector } from './oauth.js';
 import type { DesignConnectorSettings } from './settings.js';
 
@@ -117,7 +118,7 @@ export const designConnectorModule =
           );
         const id = c.req.param('request') ?? '';
         const pending = await connector.grants.request(id);
-        if (!pending || pending.approved)
+        if (!pending || (await connector.grants.approval(id)))
           return refused(c, 404, 'design-connector-request-gone', t('designConnector.requestGone'));
         if (body.decision === 'deny') {
           await connector.grants.takeRequest(id);
@@ -127,6 +128,14 @@ export const designConnectorModule =
           target.searchParams.set('iss', settings.issuer);
           return c.json({ redirect: target.toString() });
         }
+        const finish = randomToken();
+        const approved = await connector.grants.approve(
+          id,
+          { tenant: found.tenant, principal: found.principal, clientId: pending.clientId },
+          hash('finish', finish),
+        );
+        if (!approved)
+          return refused(c, 404, 'design-connector-request-gone', t('designConnector.requestGone'));
         try {
           const done = await mounted.admin.within(
             found.principal,
@@ -134,21 +143,12 @@ export const designConnectorModule =
             { tenant: found.tenant, client: pending.clientName, reason: changeReasonOf(c) ?? '' },
             async () => ({ value: true, target: `design-connector:${found.tenant}` }),
           );
-          const approved = await connector.grants.approve(id, {
-            tenant: found.tenant,
-            principal: found.principal,
-            clientId: pending.clientId,
-          });
-          if (!approved)
-            return refused(
-              c,
-              404,
-              'design-connector-request-gone',
-              t('designConnector.requestGone'),
-            );
           c.header('genai-task', done.task);
-          return c.json({ redirect: `${settings.issuer}/finish/${encodeURIComponent(id)}` });
+          return c.json({
+            redirect: `${settings.issuer}/finish/${encodeURIComponent(id)}?f=${encodeURIComponent(finish)}`,
+          });
         } catch (error) {
+          await connector.grants.withdrawApproval(id);
           if (error instanceof AdminRefused) return refusedBy(c, error);
           throw error;
         }

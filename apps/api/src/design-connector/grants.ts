@@ -19,7 +19,6 @@ export interface PendingRequest {
   scope: string;
   browserHash: string;
   startedAt: number;
-  approved?: CodeRow['grant'];
 }
 
 export interface Grant {
@@ -30,6 +29,11 @@ export interface Grant {
   previousHash?: string;
   rotatedAt?: number;
   expiresAt: number;
+}
+
+export interface Approval {
+  approved: CodeRow['grant'];
+  finishHash: string;
 }
 
 export interface CodeRow {
@@ -120,18 +124,43 @@ export const connectorGrants = (store: BffSessionStore, partition: string, now: 
       return parse<PendingRequest>(found.payload);
     },
 
-    /** Records the person's approval on a pending request, once; the code waits for the browser that started it. */
-    async approve(id: string, approved: CodeRow['grant']) {
-      if (!opaque.test(id)) return false;
-      let done = false;
-      await store.update(partition, hash('request', id), async (current) => {
-        const pending =
-          current.client === 'request' ? parse<PendingRequest>(current.payload) : undefined;
-        if (!pending || pending.approved) return current;
-        done = true;
-        return { ...current, payload: JSON.stringify({ ...pending, approved }) };
-      });
-      return done;
+    /** Records the person's approval of a pending request once, ended by their «Koble fra Claude». */
+    async approve(id: string, approved: CodeRow['grant'], finishHash: string) {
+      const pending = await this.request(id);
+      if (!pending) return false;
+      return store.claim(
+        partition,
+        hash('approval', id),
+        row(
+          'approval',
+          pending.startedAt + requestMs,
+          { approved, finishHash } satisfies Approval,
+          [personKey(approved.principal)],
+        ),
+      );
+    },
+
+    async withdrawApproval(id: string) {
+      if (opaque.test(id)) await store.delete(partition, hash('approval', id));
+    },
+
+    async approval(id: string) {
+      if (!opaque.test(id)) return undefined;
+      const found = await store.get(partition, hash('approval', id));
+      return found?.client === 'approval' ? parse<Approval>(found.payload) : undefined;
+    },
+
+    /** Takes a pending request and its approval once, whatever they hold. */
+    async takeAll(id: string) {
+      const request = await this.takeRequest(id);
+      if (!opaque.test(id)) return { request };
+      const key = hash('approval', id);
+      const found = await store.get(partition, key);
+      const approval =
+        found?.client === 'approval' && (await store.delete(partition, key))
+          ? parse<Approval>(found.payload)
+          : undefined;
+      return { request, approval };
     },
 
     async endGrant(grantId: string) {

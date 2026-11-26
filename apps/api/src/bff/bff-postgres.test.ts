@@ -108,4 +108,14 @@ describe('BFF sessions in Postgres', () => {
     expect(await sessions.claim(ORG_A, jti, row())).toBe(false);
     expect(await (await open()).claim(ORG_A, jti, row())).toBe(false);
   });
+
+  it('a back-channel logout ends a claimed row carrying its key', async () => {
+    const sessions = await open();
+    const claimed = sessionIdHash('claimed-approval');
+    expect(await sessions.claim(ORG_A, claimed, { ...row(), logoutKeys: ['sub-claimed'] })).toBe(
+      true,
+    );
+    expect(await sessions.endByLogoutKeys(['sub-claimed'])).toBe(1);
+    expect(await sessions.get(ORG_A, claimed)).toBeUndefined();
+  });
 });

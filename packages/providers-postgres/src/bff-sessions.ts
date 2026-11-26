@@ -72,9 +72,17 @@ export class PostgresBffSessions {
         tenant,
       ]);
       const inserted = await client.query(
-        `insert into bff_sessions (tenant, id_hash, hostname, client, sealed, expires_at)
-         values ($1, $2, $3, $4, $5, $6) on conflict (tenant, id_hash) do nothing`,
-        [tenant, idHash, row.hostname, row.client, sealed, new Date(row.expiresAt)],
+        `insert into bff_sessions (tenant, id_hash, hostname, client, sealed, expires_at, logout_keys)
+         values ($1, $2, $3, $4, $5, $6, $7) on conflict (tenant, id_hash) do nothing`,
+        [
+          tenant,
+          idHash,
+          row.hostname,
+          row.client,
+          sealed,
+          new Date(row.expiresAt),
+          [...(row.logoutKeys ?? [])],
+        ],
       );
       return (inserted.rowCount ?? 0) > 0;
     });

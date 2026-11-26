@@ -139,7 +139,9 @@ const boot = async ({
     );
     expect(approved.status).toBe(200);
     const finish = new URL(((await approved.json()) as { redirect: string }).redirect);
-    const finished = await outside(finish.pathname, { headers: { cookie: cookieOf(started) } });
+    const finished = await outside(finish.pathname + finish.search, {
+      headers: { cookie: cookieOf(started) },
+    });
     expect(finished.status).toBe(302);
     return new URL(finished.headers.get('location') ?? '').searchParams.get('code') ?? '';
   };
@@ -502,7 +504,8 @@ describe('the design connector for Claude', () => {
       body: { decision: 'allow' },
       reason: connectReason,
     });
-    const finish = new URL(((await approved.json()) as { redirect: string }).redirect).pathname;
+    const redirect = new URL(((await approved.json()) as { redirect: string }).redirect);
+    const finish = redirect.pathname + redirect.search;
 
     const withoutCookie = await outside(finish);
     const again = await outside(finish, { headers: { cookie: cookieOf(attackers) } });
@@ -516,6 +519,89 @@ describe('the design connector for Claude', () => {
     expect(again.status).toBe(404);
     expect(wrongCookie.status).toBe(404);
     expect(await connector.grants.request(request)).toBeUndefined();
+  });
+
+  it('gives no code when the browser that started the connection finishes after someone else approved it', async () => {
+    const { register, authorize, requestOf, cookieOf, send, outside, connector } = await boot();
+    const client = (await (await register()).json()) as { client_id: string };
+    const attackers = await authorize({
+      response_type: 'code',
+      client_id: client.client_id,
+      redirect_uri: claudeCallback,
+      code_challenge: pkce().challenge,
+      code_challenge_method: 'S256',
+    });
+    const request = requestOf(attackers);
+    const approved = await send(`/tenants/${digdir}/design-connector/requests/${request}`, 'kari', {
+      body: { decision: 'allow' },
+      reason: connectReason,
+    });
+    const handedToVictim = new URL(((await approved.json()) as { redirect: string }).redirect);
+
+    const polled = await outside(handedToVictim.pathname, {
+      headers: { cookie: cookieOf(attackers) },
+    });
+    const withSecretAfter = await outside(handedToVictim.pathname + handedToVictim.search, {
+      headers: { cookie: cookieOf(attackers) },
+    });
+
+    expect(polled.status).toBe(403);
+    expect(polled.headers.get('location')).toBeNull();
+    expect(withSecretAfter.status).toBe(404);
+    expect(withSecretAfter.headers.get('location')).toBeNull();
+    expect(await connector.grants.request(request)).toBeUndefined();
+    expect(await connector.grants.approval(request)).toBeUndefined();
+  });
+
+  it('ends a connection that is finished before it is approved', async () => {
+    const { register, authorize, requestOf, cookieOf, send, outside } = await boot();
+    const client = (await (await register()).json()) as { client_id: string };
+    const started = await authorize({
+      response_type: 'code',
+      client_id: client.client_id,
+      redirect_uri: claudeCallback,
+      code_challenge: pkce().challenge,
+      code_challenge_method: 'S256',
+    });
+    const request = requestOf(started);
+
+    const early = await outside(`/oauth/design/finish/${request}`, {
+      headers: { cookie: cookieOf(started) },
+    });
+    const approved = await send(`/tenants/${digdir}/design-connector/requests/${request}`, 'kari', {
+      body: { decision: 'allow' },
+      reason: connectReason,
+    });
+
+    expect(early.status).toBe(404);
+    expect(approved.status).toBe(404);
+  });
+
+  it('approve, disconnect before finish: no code and no grant', async () => {
+    const { register, authorize, requestOf, cookieOf, send, outside, connector } = await boot();
+    const client = (await (await register()).json()) as { client_id: string };
+    const started = await authorize({
+      response_type: 'code',
+      client_id: client.client_id,
+      redirect_uri: claudeCallback,
+      code_challenge: pkce().challenge,
+      code_challenge_method: 'S256',
+    });
+    const request = requestOf(started);
+    const approved = await send(`/tenants/${digdir}/design-connector/requests/${request}`, 'kari', {
+      body: { decision: 'allow' },
+      reason: connectReason,
+    });
+    const finish = new URL(((await approved.json()) as { redirect: string }).redirect);
+
+    await send(`/tenants/${digdir}/design-connector/grants`, 'kari', { method: 'DELETE' });
+    const finished = await outside(finish.pathname + finish.search, {
+      headers: { cookie: cookieOf(started) },
+    });
+
+    expect(finished.status).toBe(404);
+    expect(finished.headers.get('location')).toBeNull();
+    expect(await connector.grants.approval(request)).toBeUndefined();
   });
 
   it('sets the browser cookie HttpOnly, Secure and SameSite=Lax, and never puts it in a URL', async () => {
@@ -601,6 +687,30 @@ describe('the design connector for Claude', () => {
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(404);
+  });
+
+  it('keeps a request open for a second try when the approval is refused for a missing reason', async () => {
+    const { register, authorize, requestOf, send } = await boot();
+    const client = (await (await register()).json()) as { client_id: string };
+    const request = requestOf(
+      await authorize({
+        response_type: 'code',
+        client_id: client.client_id,
+        redirect_uri: claudeCallback,
+        code_challenge: pkce().challenge,
+        code_challenge_method: 'S256',
+      }),
+    );
+    const path = `/tenants/${digdir}/design-connector/requests/${request}`;
+
+    const refused = await send(path, 'kari', { body: { decision: 'allow' } });
+    const retried = await send(path, 'kari', {
+      body: { decision: 'allow' },
+      reason: connectReason,
+    });
+
+    expect(refused.status).toBeGreaterThanOrEqual(400);
+    expect(retried.status).toBe(200);
   });
 
   it('sends a refusal back to Claude without a code when the person says no', async () => {

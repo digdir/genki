@@ -130,16 +130,17 @@ export const designConnectorRoutes: RouteConfig[] = [
     method: 'get',
     path: '/oauth/design/finish/{request}',
     summary:
-      'Finishes an approved connection in the browser that started it: checks the HttpOnly cookie /oauth/design/authorize set, then sends the code to Claude. Without that cookie the request is ended and no code is issued',
-    request: { params: z.object({ request }) },
+      'Finishes an approved connection in the browser that started it: needs the HttpOnly cookie /oauth/design/authorize set and the one-time secret f the approval answered. Takes the request once; anything else ends it without a code',
+    request: { params: z.object({ request }), query: z.object({ f: z.string() }) },
     responses: {
       302: { description: "To the client's redirect URI with the code" },
       403: {
-        description: 'Another browser finished it; the request is ended',
+        description: 'The cookie or the secret did not match; the connection is ended',
         content: { 'text/html': { schema: z.string() } },
       },
       404: {
-        description: 'Not approved, expired or already finished',
+        description:
+          'Not approved yet, expired, ended or already finished; a request not yet approved is ended',
         content: { 'text/html': { schema: z.string() } },
       },
       429: {
