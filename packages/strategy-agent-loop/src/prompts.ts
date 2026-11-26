@@ -62,11 +62,14 @@ export const defaultSystemPrompt = composeSystemPrompt(searchPromptSections);
 
 export const toolsOnlySystemPrompt = composeSystemPrompt(toolsOnlyPromptSections);
 
+const documentPageCite = 'cite that page as plain text, such as "s. 67", never in square brackets.';
+const excerptPageCite =
+  'write that page right after the [N] of the excerpt it comes from, as in "[12] (s. 67)", never alone and never inside the square brackets.';
+
 export const agentTools: ToolSpec[] = [
   {
     name: 'search',
-    description:
-      'Search the document collection using multiple queries. Returns hits grouped by document, with metadata only (doc_num, title, publication date, publisher, and per hit chunk_id, chunk_index, page, content_length, headers, scores), NO content. The result says how many hits and documents the search found, which documents it shows and how to see the rest. Use read_chunks to fetch content of promising results. page=N (pages=N-M when a chunk spans several) is the chunk\'s page in its PDF: cite that page as plain text, such as "s. 67", never in square brackets. publisher="…" names the organisation that published the document: documents with the same title are told apart by it.',
+    description: `Search the document collection using multiple queries. Returns hits grouped by document, with metadata only (doc_num, title, publication date, publisher, and per hit chunk_id, chunk_index, page, content_length, headers, scores), NO content. The result says how many hits and documents the search found, which documents it shows and how to see the rest. Use read_chunks to fetch content of promising results. page=N (pages=N-M when a chunk spans several) is the chunk's page in its PDF: ${documentPageCite} publisher="…" names the organisation that published the document: documents with the same title are told apart by it.`,
     parameters: {
       type: 'object',
       properties: {
@@ -116,8 +119,7 @@ export const agentTools: ToolSpec[] = [
   },
   {
     name: 'read_chunks',
-    description:
-      'Read full content of specific chunks. Use after search to read promising results. Supports reading by chunk IDs or by document + chunk index range. Each chunk\'s header carries its PDF page as page=N, or pages=N-M when it spans several: cite that page as plain text, such as "s. 67", never in square brackets. publisher="…" names the organisation that published the document: say whose document you quote when documents share a title.',
+    description: `Read full content of specific chunks. Use after search to read promising results. Supports reading by chunk IDs or by document + chunk index range. Each chunk's header carries its PDF page as page=N, or pages=N-M when it spans several: ${documentPageCite} publisher="…" names the organisation that published the document: say whose document you quote when documents share a title.`,
     parameters: {
       type: 'object',
       properties: {
@@ -194,6 +196,16 @@ export const agentTools: ToolSpec[] = [
   },
 ];
 
+/** The tools as a service that cites excerpts or documents is shown them: the page rule differs. */
+export const agentToolsFor = (citeBy: 'document' | 'excerpt' = 'document'): ToolSpec[] =>
+  citeBy === 'excerpt'
+    ? agentTools.map((t) =>
+        t.description?.includes(documentPageCite)
+          ? { ...t, description: t.description.replace(documentPageCite, excerptPageCite) }
+          : t,
+      )
+    : agentTools;
+
 /** Shown with excerpts whose sentences carry ids (#971). */
 export const sentenceRule =
   "Each sentence, heading, list item and table row in an excerpt starts with an id such as ⟨4⟩. Cite the sentences a claim rests on as [N:4], [N:4-6] for sentences that follow each other, or [N:4, 9] for sentences apart, where N is the excerpt's number. Never copy the ⟨4⟩ ids into the answer.";
@@ -201,9 +213,13 @@ export const sentenceRule =
 const pageRule =
   'Write a page as plain text, such as "s. 67", never as a number in square brackets: [N] is only for citing a source.';
 
+/** With excerpt citations a page is part of a citation: only cited excerpts are published (#1051). */
+const excerptPageRule =
+  'A page goes right after the [N] of the excerpt it comes from, as in "[12] (s. 25)", and never stands alone: a page with no [N] before it leads the reader to no excerpt. Never put a page inside the square brackets.';
+
 export const citationInstruction = `When making claims based on the provided sources, cite them using [N] notation where N is the source number. Every factual claim should have at least one citation. Place citations immediately after the relevant statement. ${pageRule}`;
 
-export const excerptCitationInstruction = `Each excerpt in the context has its own number. When making claims based on the provided sources, cite the excerpt the claim rests on using [N] notation, where N is that excerpt's number. ${sentenceRule} Cite the excerpt, not the document as a whole: when two sentences rest on different excerpts, each cites its own, even when the excerpts come from the same document. Every factual claim should have at least one citation. Place citations immediately after the relevant statement. ${pageRule}`;
+export const excerptCitationInstruction = `Each excerpt in the context has its own number. When making claims based on the provided sources, cite the excerpt the claim rests on using [N] notation, where N is that excerpt's number. ${sentenceRule} Cite the excerpt, not the document as a whole: when two sentences rest on different excerpts, each cites its own, even when the excerpts come from the same document. Every factual claim should have at least one citation. Place citations immediately after the relevant statement. ${excerptPageRule}`;
 
 export const ambiguityInstruction =
   'If the sources contain multiple plausible values, labels, or interpretations, do not hide the ambiguity. Compare the user’s wording to the source labels, preserve the source terminology, and explicitly mention ambiguity when the question is underspecified. Do not silently collapse distinct source labels into one concept. Do not merge or arithmetic-combine values from different labels, sentences, or chunks unless the source explicitly states that they belong together. If one label is clearly the closest semantic match, use it and state that label in the answer. If different chunks describe different scopes or definitions, explain that difference instead of producing a single blended number.';
@@ -349,3 +365,6 @@ export const activeFiltersInstruction = (filters: ActiveFilter[]) =>
     .join(
       '; ',
     )}. Every search is already limited to them. Do not search outside them or try to widen or remove them with filter_by. If nothing within them answers the question, say so and finish. Cite sources as [N], never by chunk_id.`;
+
+export const citeGapsPrompt = (context: string, answer: string, uncited: string) =>
+  `The answer below cites numbered excerpts with [N]. The paragraphs, list items and table rows listed under "Uncited" have no citation yet. In those, put [N] right after each factual statement a numbered excerpt supports, where N is that excerpt's number. ${excerptPageRule} Leave headings, transitions and the answer's own caveats without a citation, and leave a statement uncited when no excerpt supports it. Do not change a word, and keep every citation already in the answer where it is. Do not mention the excerpts or this task. Reply with the whole answer only.\n\nExcerpts:\n${context}\n\nAnswer:\n${answer}\n\nUncited:\n${uncited}`;
