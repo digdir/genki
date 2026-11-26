@@ -22,8 +22,8 @@
  * `.data/engine-benchmark/<time>`). The API's own comparison refuses runs on different data, so the
  * script compares them itself.
  *
- * Login: against genki-test, set GENKI_API_BASE (https) and ADMIN_MCP_CLIENT_ID (the console's
- * client id), and the browser opens for Ansattporten, as for the genki-admin MCP server
+ * Login: against genki-test, set GENKI_API_BASE (https) and ADMIN_MCP_CLIENT_ID (the genki-admin
+ * production client's id), and the browser opens for Ansattporten, as for the genki-admin MCP server
  * (apps/admin-mcp/README.md; ANSATTPORTEN_ISSUER, GENKI_AUDIENCE, GENKI_ALTINN_RESOURCE and
  * ADMIN_MCP_REDIRECT_URI as there). Locally, GENKI_DEV_LOGIN=kari (or another mock person) uses
  * the API's mock login. GENKI_TENANT defaults to Digdir, 991825827.
@@ -33,7 +33,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { requireSafeUrl } from '../apps/admin-mcp/src/client.js';
-import { sessionToken } from '../apps/admin-mcp/src/login.js';
+import { loginOptionsFrom, sessionToken } from '../apps/admin-mcp/src/login.js';
 
 const env = (name: string) => process.env[name]?.trim() || undefined;
 const required = (name: string) => {
@@ -66,18 +66,9 @@ const tokenSource = (() => {
         return ((await r.json()) as { token: string }).token;
       }));
   }
-  const session = sessionToken({
-    issuer: requireSafeUrl(
-      'ANSATTPORTEN_ISSUER',
-      env('ANSATTPORTEN_ISSUER') ?? 'https://test.ansattporten.no',
-    ),
-    clientId: required('ADMIN_MCP_CLIENT_ID'),
-    audience: env('GENKI_AUDIENCE') ?? 'digdir:genai',
-    altinnResource:
-      env('GENKI_ALTINN_RESOURCE') ?? 'urn:altinn:resource:digdir-genai-platform-test',
-    redirectUri: env('ADMIN_MCP_REDIRECT_URI') ?? 'http://localhost:5173/callback',
-    open: openBrowser,
-  });
+  const session = sessionToken(
+    loginOptionsFrom(process.env, required('ADMIN_MCP_CLIENT_ID'), openBrowser),
+  );
   return () => session.get();
 })();
 

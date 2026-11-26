@@ -10,7 +10,7 @@ import {
 } from '@modelcontextprotocol/server';
 import { serveStdio, StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { genkiClient, isLoopback, requireSafeUrl, type GenkiClient } from './client.js';
-import { devLoginSource, sessionToken } from './login.js';
+import { devLoginSource, loginOptionsFrom, sessionToken } from './login.js';
 import { createAdminServer } from './protocol.js';
 import { toolsFor } from './tools.js';
 
@@ -61,18 +61,7 @@ const connect = (): GenkiClient => {
   const portal = portalFor(apiBase);
   const token = devLogin
     ? devLoginSource(apiBase)
-    : sessionToken({
-        issuer: requireSafeUrl(
-          'ANSATTPORTEN_ISSUER',
-          env('ANSATTPORTEN_ISSUER') ?? 'https://test.ansattporten.no',
-        ),
-        clientId: required('ADMIN_MCP_CLIENT_ID'),
-        audience: env('GENKI_AUDIENCE') ?? 'digdir:genai',
-        altinnResource:
-          env('GENKI_ALTINN_RESOURCE') ?? 'urn:altinn:resource:digdir-genai-platform-test',
-        redirectUri: env('ADMIN_MCP_REDIRECT_URI') ?? 'http://localhost:5173/callback',
-        open: openBrowser,
-      });
+    : sessionToken(loginOptionsFrom(process.env, required('ADMIN_MCP_CLIENT_ID'), openBrowser));
   return genkiClient({ apiBase, tenant, token, ...(portal ? { portal } : {}) });
 };
 
