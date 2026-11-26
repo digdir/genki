@@ -9,6 +9,7 @@ export const audit = defineNamespace({
   actionDefaultSet: 'Endret plattformstandard',
   actionTenantImport: 'Importerte',
   actionTenantCreate: 'Registrerte virksomhet',
+  actionTenantMove: 'Flyttet virksomhetens data hit',
   actionContentRead: 'Digdir så innhold',
   actionContentReason: 'Digdir oppga grunn for å se innhold',
   actionModelsRefresh: 'Hentet modeller på nytt',

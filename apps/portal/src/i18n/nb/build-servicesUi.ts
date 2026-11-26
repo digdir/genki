@@ -131,6 +131,9 @@ export const servicesUi = {
     refusedByGates:
       'Kravene til kvalitet stoppet publiseringen. Kjør testsettene for testutgaven først.',
     notAcceptedShort: 'Plattformen godtok ikke testutgaven:',
+    archivedId:
+      'Id-en er brukt av en arkivert tjeneste. Velg en annen id, eller gjenopprett den arkiverte tjenesten.',
+    archivedIdOpen: 'Åpne den arkiverte tjenesten {id}',
     changeFirstVersion: 'Første utgave av tjenesten',
     changeDraft: 'Endringer i utkastet som ikke er publisert',
     changeForm: 'Endringer gjort i skjemaet',

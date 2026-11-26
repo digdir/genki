@@ -293,6 +293,70 @@ describe('the live builder', () => {
     expect(within(published).getByText(/^Lagres i testutgaven med en gang\./)).toBeTruthy();
   });
 
+  const withArchived = (base: typeof globalThis.fetch, refusePublish = false) => {
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (/\/tenants\/[^/]+\/services$/.test(url) && (init?.method ?? 'GET') === 'GET')
+        return refusePublish
+          ? new Response(null, { status: 503 })
+          : Response.json({
+              data: [{ id: 'ny-tjeneste', name: 'Ny tjeneste', lifecycle: 'archived' }],
+            });
+      if (refusePublish && init?.method === 'POST' && url.endsWith('/api/definitions'))
+        return new Response(
+          JSON.stringify({
+            type: 'urn:genai:problem:service-archived',
+            title: 'Service archived',
+            status: 409,
+            errors: [{ path: 'lifecycle', message: 'Tjenesten er arkivert' }],
+          }),
+          { status: 409, headers: { 'content-type': 'application/problem+json' } },
+        );
+      return base(input, init);
+    };
+    return fetch;
+  };
+
+  const publishFirst = async () => {
+    const page = await toFirstPublish();
+    fireEvent.click(within(page).getByRole('button', { name: 'Bekreft risikonivå' }));
+    fireEvent.change(within(page).getByLabelText('Hva er endret, og hvorfor?'), {
+      target: { value: 'Første versjon av tjenesten' },
+    });
+    await waitFor(() => expect(within(page).queryByText(leftHeading)).toBeNull());
+    fireEvent.click(within(page).getByRole('button', { name: 'Publiser' }));
+    return page;
+  };
+
+  it('never gives a new service the id of an archived service in the organisation', async () => {
+    const { calls, fetch } = recorded();
+    await startBuilder(withArchived(fetch));
+    await publishFirst();
+    const published = await waitFor(() => {
+      const call = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/definitions'));
+      expect(call).toBeTruthy();
+      return call?.body as { definition: { metadata: { id: string } } };
+    });
+    expect(published.definition.metadata.id).toBe('ny-tjeneste-2');
+  });
+
+  it('says the id belongs to an archived service when the platform refuses it, and links to that service', async () => {
+    const { fetch } = recorded();
+    await startBuilder(withArchived(fetch, true));
+    const page = await publishFirst();
+    expect(
+      await within(page).findByText(
+        'Id-en er brukt av en arkivert tjeneste. Velg en annen id, eller gjenopprett den arkiverte tjenesten.',
+      ),
+    ).toBeTruthy();
+    expect(
+      within(page)
+        .getByRole('link', { name: 'Åpne den arkiverte tjenesten ny-tjeneste' })
+        .getAttribute('href'),
+    ).toBe('#/services/ny-tjeneste');
+    expect(within(page).queryByText(/Teknisk tekst/)).toBeNull();
+  });
+
   it('checks the definition again when the risk level is fixed on the first publish page, and then publishes', async () => {
     const riskError = 'a service that decides about people needs the high risk class';
     const { calls, fetch } = recorded((body) =>
@@ -1263,6 +1327,17 @@ describe('a new service saved as a draft on the server', () => {
       [id, { revision: revisions(calls).length }],
     ]);
     expect(await screen.findByText('Ingen tjenester ennå')).toBeTruthy();
+  });
+
+  it('offers a returning draft one delete, below its setup, and none in the header', async () => {
+    const { fetch, id } = await startNamed('Permisjonssvar');
+
+    await elsewhere(fetch, `#/services/${id}/setup`);
+
+    await screen.findByLabelText('Navn');
+    const head = document.querySelector('.service-head') as HTMLElement;
+    expect(within(head).queryByRole('button', { name: 'Slett utkastet' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Slett utkastet' })).toHaveLength(1);
   });
 
   it('offers to delete the draft of a service never published, and not the draft of a published one', async () => {

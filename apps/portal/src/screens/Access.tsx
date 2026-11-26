@@ -954,6 +954,7 @@ export const Access = ({ api, tenant, tenantName, route, live }: ScreenProps) =>
     [api, tenant],
     { keepPreviousFor: tenant },
   );
+  const [meState] = useAsync((signal) => api.me(signal), [api]);
   const [restState, retryRest, restPending] = useAsync(
     async (signal) => {
       const [limits, services] = await Promise.all([
@@ -1004,7 +1005,9 @@ export const Access = ({ api, tenant, tenantName, route, live }: ScreenProps) =>
     (peopleState.status === 'error' && !notConnected) ||
     (peopleState.status === 'ready' && peopleState.data.stale);
   const people = peopleState.status === 'ready' ? peopleState.data : undefined;
-  const fromGroups = people?.source === 'entra-groups';
+  const fromGroups =
+    people?.source === 'entra-groups' ||
+    (meState.status === 'ready' && meState.data.rightsFrom === 'entra-groups');
   const noList: NoList | undefined = notConnected ? 'altinn' : fromGroups ? 'groups' : undefined;
 
   const body = () => {
@@ -1103,7 +1106,10 @@ export const Access = ({ api, tenant, tenantName, route, live }: ScreenProps) =>
         )}
       </div>
 
-      {altinnDown && (peopleError === undefined || peopleError === 'altinn_unavailable') ? (
+      {altinnDown &&
+      !fromGroups &&
+      meState.status !== 'loading' &&
+      (peopleError === undefined || peopleError === 'altinn_unavailable') ? (
         <Alert data-color="danger" className="access-altinn-alert">
           <div className="access-altinn-text">
             <strong>{t('access.altinnDown')}</strong>{' '}

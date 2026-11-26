@@ -13,7 +13,7 @@ import {
   Tag,
 } from '@digdir/designsystemet-react';
 import { useState } from 'react';
-import type { ApiClient, ConfigEntry } from '../../api';
+import { ApiError, type ApiClient, type ConfigEntry } from '../../api';
 import type { EvalRun, ServiceTestSet } from '../../api/quality';
 import type { CaseChange, ComparedCase, EvalComparison } from '../../api/service-tabs';
 import { ReasonField, reasonProblem } from '../../components/ReasonField';
@@ -742,6 +742,11 @@ const rowsFromCompare = (cases: ComparedCase[], current: Set<string>): CaseRow[]
     before: c.baseline ? c.baseline.pass : undefined,
   }));
 
+const noPublishedRun = (error: unknown) =>
+  error instanceof ApiError &&
+  error.status === 404 &&
+  (error.problem?.errors ?? []).some((e) => e.path === 'baseline');
+
 const matches = (filter: CaseFilter, r: CaseRow) =>
   filter === 'all'
     ? true
@@ -784,13 +789,18 @@ export const CasesSection = ({
     async (signal) => {
       if (!run) return undefined;
       const current = new Set((run.current ?? []).map((c) => c.case));
-      const [compared, detail] = await Promise.all([
+      const compare = (baseline: string | undefined) =>
         api.serviceTabs.compare(
           tenant,
           serviceId,
-          { candidate: run.id, baseline: baselineId, limit: comparePage },
+          { candidate: run.id, baseline, limit: comparePage },
           signal,
-        ),
+        );
+      const [compared, detail] = await Promise.all([
+        compare(baselineId).catch((error: unknown) => {
+          if (baselineId === undefined && noPublishedRun(error)) return compare(run.id);
+          throw error;
+        }),
         api.quality.run(tenant, run.id, signal).catch(() => undefined),
       ]);
       const tasks = new Map(

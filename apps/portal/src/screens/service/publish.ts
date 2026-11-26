@@ -9,9 +9,21 @@ export type PublishProblem = { path: string; message: string };
 
 export type PublishOutcome =
   | { ok: true; published: PublishResult }
-  | { ok: false; errors: PublishProblem[]; refusedByGates: boolean; outdated?: true };
+  | {
+      ok: false;
+      errors: PublishProblem[];
+      refusedByGates: boolean;
+      outdated?: true;
+      archivedId?: string;
+    };
 
 export const draftOutdated = 'urn:genai:problem:draft-outdated';
+export const serviceArchived = 'urn:genai:problem:service-archived';
+
+const idOf = (definition: Record<string, unknown>) => {
+  const id = (definition.metadata as { id?: unknown } | undefined)?.id;
+  return typeof id === 'string' ? id : '';
+};
 
 export const publishDraft = async (
   api: ApiClient,
@@ -41,6 +53,8 @@ export const publishDraft = async (
         refusedByGates: false,
         outdated: true,
       };
+    if (error instanceof ApiError && error.problem?.type === serviceArchived)
+      return { ok: false, errors: [], refusedByGates: false, archivedId: idOf(definition) };
     return failed(problemErrors(error));
   }
 };

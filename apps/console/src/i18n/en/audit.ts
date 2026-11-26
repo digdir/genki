@@ -10,6 +10,7 @@ export const audit = {
   actionDefaultSet: 'Changed platform default',
   actionTenantImport: 'Imported',
   actionTenantCreate: 'Registered organisation',
+  actionTenantMove: "Moved the organisation's data here",
   actionContentRead: 'Digdir viewed content',
   actionContentReason: 'Digdir gave a reason to see content',
   actionModelsRefresh: 'Refreshed models',

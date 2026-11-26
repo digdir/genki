@@ -1,4 +1,4 @@
-import { resolveLocale } from '@genai/i18n';
+import { negotiate, resolveLocale } from '@genai/i18n';
 import type { AuthClient } from './auth';
 import { translator } from './i18n';
 import type { Session } from './types';
@@ -61,7 +61,10 @@ export const bffLogin = (options: BffLoginOptions): AuthClient => {
       if (unavailable) return Promise.reject(new LoginError('the platform login is not served'));
       const here = options.location();
       const next = `${here.pathname}${here.search}${here.hash}`;
-      options.navigate(`/auth/login?next=${encodeURIComponent(next)}`);
+      const lang = negotiate(options.uiLocale?.());
+      options.navigate(
+        `/auth/login?next=${encodeURIComponent(next)}${lang ? `&lang=${lang}` : ''}`,
+      );
       return new Promise<Session>(() => undefined);
     },
     logout: async (endSession = false) => {
