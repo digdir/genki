@@ -240,3 +240,89 @@ describe('Åpne tjenesten in the service header', () => {
     expect(screen.queryByRole('link', { name: /Åpne tjenesten/ })).toBeNull();
   }, 20000);
 });
+
+const hosted = () =>
+  withClients([
+    client('web', {
+      hosted: true,
+      hostnames: [{ hostname: 'rapport.apps.genki-test.digdir.cloud' }],
+    }),
+  ]);
+
+const openInterface = async (fetch: typeof globalThis.fetch) => {
+  const auth = mockAnsattporten(kari);
+  await auth.login();
+  window.location.hash = '#/services/rapportassistenten/interface';
+  render(<App auth={auth} fetch={fetch} live />);
+  await waitFor(() => expect(header()?.textContent).toMatch(/Publiser/), { timeout: 15000 });
+};
+
+describe('the address in the Prøv pane', () => {
+  it("shows the header's address in the Prøv pane's address bar", async () => {
+    await openInterface(hosted().fetch);
+    await screen.findByRole('link', { name: /Åpne tjenesten/ }, { timeout: 5000 });
+    expect(
+      await screen.findByText('rapport.apps.genki-test.digdir.cloud', {}, { timeout: 5000 }),
+    ).toBeTruthy();
+  }, 30000);
+
+  it('shows Forhåndsvisning in the Prøv pane when the service has no address', async () => {
+    const { fetch, answered } = withClients([client('api', { kind: 'server' })]);
+    await openInterface(fetch);
+    await waitFor(() => expect(answered.clients).toBe(true), { timeout: 8000 });
+    expect(await screen.findByText('Forhåndsvisning', {}, { timeout: 5000 })).toBeTruthy();
+  }, 30000);
+
+  it('never shows an address made from the service id in the Prøv pane', async () => {
+    const { fetch, answered } = withClients([client('api', { kind: 'server' })]);
+    await openInterface(fetch);
+    await waitFor(() => expect(answered.clients).toBe(true), { timeout: 8000 });
+    await screen.findByText('Forhåndsvisning', {}, { timeout: 5000 });
+    expect(screen.queryByText(/\.genki\.no$/)).toBeNull();
+  }, 30000);
+});
+
+describe('the no-address note in the service header', () => {
+  const openWithout = async () => {
+    const auth = mockAnsattporten(kari);
+    await auth.login();
+    window.location.hash = '#/services/rapportassistenten';
+    const { fetch, answered } = withClients([client('api', { kind: 'server' })]);
+    render(<App auth={auth} fetch={fetch} live />);
+    await waitFor(() => expect(header()?.textContent).toMatch(/Publiser/), { timeout: 15000 });
+    await waitFor(() => expect(answered.clients).toBe(true), { timeout: 8000 });
+  };
+
+  it('says Ingen adresse ennå in the header of a published service without an address', async () => {
+    await openWithout();
+    const note = await screen.findByRole('link', { name: /Ingen adresse ennå/ }, { timeout: 5000 });
+    expect(header()?.contains(note)).toBe(true);
+  }, 30000);
+
+  it('links the no-address note to Egen nettside in Oppsett', async () => {
+    await openWithout();
+    const note = await screen.findByRole('link', { name: /Ingen adresse ennå/ }, { timeout: 5000 });
+    expect(note.getAttribute('href')).toBe('#/services/rapportassistenten/setup/channels');
+  }, 30000);
+
+  it('shows no address note on a service that is not published', async () => {
+    const auth = mockAnsattporten(kari);
+    await auth.login();
+    window.location.hash = '#/services/new';
+    const { fetch } = withClients([client('api', { kind: 'server' })]);
+    render(<App auth={auth} fetch={fetch} live />);
+    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' }, { timeout: 8000 });
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.queryByText(/Ingen adresse ennå/)).toBeNull();
+  }, 20000);
+
+  it('shows Åpne tjenesten and no note when the service has an active address', async () => {
+    const auth = mockAnsattporten(kari);
+    await auth.login();
+    window.location.hash = '#/services/rapportassistenten';
+    render(<App auth={auth} fetch={hosted().fetch} live />);
+    await waitFor(() => expect(header()?.textContent).toMatch(/Publiser/), { timeout: 15000 });
+    await screen.findByRole('link', { name: /Åpne tjenesten/ }, { timeout: 5000 });
+    expect(screen.queryByText(/Ingen adresse ennå/)).toBeNull();
+  }, 30000);
+});

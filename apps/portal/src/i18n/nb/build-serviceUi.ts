@@ -176,6 +176,7 @@ export const serviceUi = {
     testService: 'Test tjenesten',
     openService: 'Åpne tjenesten',
     opensInNewTab: '(åpnes i ny fane)',
+    noAddress: 'Ingen adresse ennå',
     publish: 'Publiser',
     ownersOnly: 'Bare eiere kan publisere',
     testStatus: 'Lagres i testutgaven med en gang. Brukerne har det ikke før du publiserer.',
