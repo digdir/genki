@@ -4,7 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import {
   createRuntime,
+  InMemoryConfigEntryStore,
   mayUseModels,
+  productionAnsattporten,
+  productionLoginSwitchId,
+  productionLoginSwitchKind,
   resolveCatalog,
   TenantSecretVault,
   type RuntimeInput,
@@ -21,7 +25,7 @@ import { envSecrets, InMemoryEventLog, InMemoryStateStore, InMemoryTaskStore } f
 import { InMemoryBlobStore, observable } from '@genai/port-blob';
 import { fakeHttp, type FakeReply, type FakeServer } from '@genai/port-model/testing';
 import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
-import { createWorker, ownTenantOnly } from './worker.js';
+import { createWorker, ownTenantOnly, triggerLock } from './worker.js';
 
 const root = join(import.meta.dirname, '..', '..', '..');
 const examples = join(root, 'packages', 'jobs', 'examples');
@@ -309,6 +313,41 @@ describe('worker', () => {
       failed: 0,
     });
     expect(await blob.head({ tenant, path: 'klarsprak/results/arkiv-1.json' })).toBeDefined();
+    worker.stop();
+  });
+
+  it('on test with production Ansattporten the worker runs no triggers until the switch is done', async () => {
+    const { runtime, blob, runs } = await setup();
+    const config = new InMemoryConfigEntryStore();
+    const env = { GENAI_ENV: 'test', ANSATTPORTEN_ISSUER: productionAnsattporten };
+    const worker = createWorker({
+      runtime,
+      onRun: (r) => runs.push(r),
+      locked: triggerLock(env, tenant, config),
+    });
+    const marker = (version: number, state: string) =>
+      config.append({
+        kind: productionLoginSwitchKind,
+        scope: tenant,
+        id: productionLoginSwitchId,
+        version,
+        spec: { state, since: '2026-11-26T10:00:00Z' },
+        deleted: false,
+        by: 'platform:production-login-switch',
+        at: '2026-11-26T10:00:00Z',
+        reason: 'test',
+      });
+
+    expect(await worker.sync()).toMatchObject({ locked: true, active: false, started: 0 });
+    await marker(1, 'running');
+    expect(await worker.sync()).toMatchObject({ locked: true, active: false, started: 0 });
+    await drop(blob, 'klarsprak/innboks/c.txt', 'x');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(runs).toHaveLength(0);
+
+    await marker(2, 'done');
+    expect(await worker.sync()).toMatchObject({ active: true, started: 1 });
+    expect(await worker.sync()).not.toHaveProperty('locked');
     worker.stop();
   });
 

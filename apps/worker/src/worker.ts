@@ -1,5 +1,11 @@
 import type { Principal } from '@genai/contracts';
-import type { Runtime } from '@genai/composition';
+import {
+  isLockdown,
+  isTestOnProductionAnsattporten,
+  productionLoginSwitchDone,
+  type ConfigEntryStore,
+  type Runtime,
+} from '@genai/composition';
 import type { PolicyDecisionPoint } from '@genai/kernel';
 import {
   InMemoryQueue,
@@ -21,6 +27,18 @@ export const ownTenantOnly = (systemScope = 'genai:worker'): PolicyDecisionPoint
       : { allow: false, reason: 'the worker only runs as an agency system user' },
 });
 
+/** Locked in lockdown, and on genki-test with production Ansattporten until the API's switch is done. */
+export const triggerLock =
+  (
+    env: Record<string, string | undefined>,
+    platformTenant: string,
+    config?: Pick<ConfigEntryStore, 'history'>,
+  ) =>
+  async () =>
+    isLockdown(env) ||
+    (isTestOnProductionAnsattporten(env) &&
+      !(config && (await productionLoginSwitchDone(config, platformTenant))));
+
 export interface WorkerOptions {
   runtime: Pick<Runtime, 'kernel' | 'registry' | 'store' | 'blobStore' | 'sync'>;
   queue?: MessageQueue;
@@ -30,7 +48,7 @@ export interface WorkerOptions {
   paused?: (binding: TriggerBinding) => boolean | Promise<boolean>;
   blocked?: (binding: TriggerBinding) => Promise<{ code: string; error: string } | undefined>;
   active?: () => boolean | Promise<boolean>;
-  locked?: boolean;
+  locked?: boolean | (() => boolean | Promise<boolean>);
   admit?: (tenant: string) => Promise<Admission>;
   meter?: (task: string) => Promise<RunCost>;
 }
@@ -57,13 +75,15 @@ export const createWorker = (options: WorkerOptions) => {
   const syncOnce = async () => {
     await runtime.sync();
     const bindings = await triggerBindings(runtime.store);
-    const active = !options.locked && ((await options.active?.()) ?? true);
+    const locked =
+      typeof options.locked === 'function' ? await options.locked() : Boolean(options.locked);
+    const active = !locked && ((await options.active?.()) ?? true);
     const changes = runner.reconcile(active ? bindings : []);
     return {
       capabilities: runtime.registry.all().length,
       triggers: bindings.length,
       active,
-      ...(options.locked ? { locked: true } : {}),
+      ...(locked ? { locked: true } : {}),
       ...changes,
     };
   };

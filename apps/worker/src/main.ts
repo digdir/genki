@@ -14,6 +14,7 @@ import {
   followChanges,
   exchangeRateGuard,
   isLockdown,
+  isTestOnProductionAnsattporten,
   knowledgeRecordsOf,
   latestUsdNok,
   loadCatalog,
@@ -161,7 +162,7 @@ import { reconcileKnowledgeRuns } from './reconciler.js';
 import { runProgress } from './run-progress.js';
 import { scheduleUsagePolls, usagePollWork, type PolledSource } from './usage-poll.js';
 import { auditEntry, authoritativeDns, scheduleHostnameDns } from './hostname-dns.js';
-import { createWorker, ownTenantOnly } from './worker.js';
+import { createWorker, ownTenantOnly, triggerLock } from './worker.js';
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
@@ -717,6 +718,8 @@ const datasetOf = (id: string) =>
 
 const lockdown = isLockdown(process.env);
 if (lockdown) log('lockdown: the worker runs no triggers and refuses every model call');
+if (isTestOnProductionAnsattporten(process.env))
+  log('production Ansattporten on test: no triggers until the API has paused the TestID era');
 
 const blob = new FileSystemBlobStore(blobDir);
 const vault = new TenantSecretVault(db?.tenantSecrets);
@@ -881,7 +884,7 @@ const worker = createWorker({
       pricedModels,
     ),
   ...(lease ? { active: () => lease.tryAcquire() } : {}),
-  locked: lockdown,
+  locked: triggerLock(process.env, platformTenant, db?.configEntries),
 });
 log('worker started', {
   version: process.env.APP_VERSION ?? 'dev',

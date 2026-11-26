@@ -1,11 +1,18 @@
-import { environmentTierOf } from '@genai/composition';
+import {
+  environmentTierOf,
+  isTestOnProductionAnsattporten,
+  productionAnsattporten,
+  productionLoginSwitchId,
+  productionLoginSwitchKind,
+  productionLoginSwitchOf,
+} from '@genai/composition';
 import type { DefinitionStore } from '@genai/definitions';
 import { triggerId, triggerPauseKind, triggerTarget } from '@genai/jobs';
 import { appendVersion, platformScope, type ConfigEntryStore } from './config-store.js';
 import type { AuditEntry } from './admin.js';
 import { maskinportenClientKind } from './maskinporten-clients.js';
 
-export const productionAnsattporten = 'https://ansattporten.no';
+export { productionAnsattporten };
 
 export const testIdEraReason = 'TestID-era credential revoked at the production login switch';
 
@@ -13,8 +20,8 @@ export const testIdEraResetReason =
   'Back on test Ansattporten: the next production login switch revokes again';
 
 const actor = 'platform:production-login-switch';
-const markerKind = 'production-login-switch';
-const markerId = 'testid-era-revoked';
+const markerKind = productionLoginSwitchKind;
+const markerId = productionLoginSwitchId;
 const pipelineKind = 'ingestion-pipeline';
 
 type Env = Record<string, string | undefined>;
@@ -48,17 +55,14 @@ export interface TestIdEraRevoked {
 
 /** Only genki-test's switch from test to production Ansattporten, never prod's first start. */
 export const revokesTestIdEra = (env: Env, entraOnly: boolean) =>
-  environmentTierOf(env) === 'test' &&
-  entraOnly &&
-  env.ANSATTPORTEN_ISSUER === productionAnsattporten;
+  isTestOnProductionAnsattporten(env) && entraOnly;
 
 export const forgetsTestIdEraRevocation = (env: Env) =>
   environmentTierOf(env) === 'test' && env.ANSATTPORTEN_ISSUER !== productionAnsattporten;
 
 type MarkerDeps = Pick<TestIdEraDeps, 'platformTenant' | 'config' | 'audit' | 'now' | 'newId'>;
 
-const markerOf = async (deps: MarkerDeps) =>
-  (await deps.config.history(markerKind, deps.platformTenant, markerId)).at(-1);
+const markerOf = (deps: MarkerDeps) => productionLoginSwitchOf(deps.config, deps.platformTenant);
 
 const writeMarker = async (
   deps: MarkerDeps,
