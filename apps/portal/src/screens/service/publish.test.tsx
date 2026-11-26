@@ -124,7 +124,15 @@ const platform = (
       return draft
         ? json({
             revision: 1,
-            definition: { ...definition, spec: { ...definition.spec, ...outcome.draftSpec } },
+            // The draft changes the purpose, so the publish page has something to publish.
+            definition: {
+              ...definition,
+              spec: {
+                ...definition.spec,
+                purpose: 'Skriver tekst om til klarspråk',
+                ...outcome.draftSpec,
+              },
+            },
             files: published.files,
             at: '2026-10-08T08:00:00Z',
             reason: 'utkast',
@@ -399,9 +407,23 @@ describe('publishing the draft in live mode', () => {
     await waitFor(() => expect(asked.length).toBeGreaterThan(0), { timeout: 5000 });
   }, 30000);
 
+  it("keeps the publish page's Publiser locked while the test edition is the same as the one in use", async () => {
+    const { fetch, posts } = platform({}, false);
+    const page = await openPublishPage(fetch);
+    expect(await within(page).findByText('Testutgaven er lik den i bruk.')).toBeTruthy();
+    expect(
+      await within(page).findByText('Endre en sikkerhetsregel eller risikonivået for å publisere.'),
+    ).toBeTruthy();
+    const button = within(page).getByRole('button', { name: 'Publiser' });
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(button);
+    expect(posts.some((p) => p.url.endsWith('/definitions'))).toBe(false);
+  });
+
   it('never lists a new risk confirmation as a change', async () => {
     const { fetch } = platform({
       draftSpec: {
+        purpose: definition.spec.purpose,
         riskConfirmation: { by: 'employee:kari', at: '2026-11-20', reasons: ['Sjekket på nytt'] },
       },
     });

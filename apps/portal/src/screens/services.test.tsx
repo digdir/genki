@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { mockFetch } from '../mock';
 import { expectAccessible, failingFetch, go, renderAt, renderLive } from '../test-utils';
@@ -397,6 +397,55 @@ describe('developer view', () => {
     expect(screen.queryByText('Endringene er brukt i oppsettet.')).toBeNull();
     expect(screen.getByRole('heading', { level: 1, name: 'Ny tjeneste' })).toBeTruthy();
     expect(drafts.slice(saved).some((d) => d.includes('veldig-hoy'))).toBe(false);
+  });
+
+  it('writes nothing to the draft when the schema check cannot be reached, and says so', async () => {
+    const base = mockFetch();
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/definitions/validate'))
+        return new Response(JSON.stringify({ title: 'Nede', status: 503 }), {
+          status: 503,
+          headers: { 'content-type': 'application/problem+json' },
+        });
+      return base(input, init);
+    };
+    await openNewYaml(fetch);
+    fireEvent.change(yamlField(), {
+      target: { value: yamlField().value.replace('name: ny-tjeneste', 'name: Ikke sjekket') },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk endringene' }));
+    expect(
+      await screen.findByText('Kunne ikke sjekke den tekniske teksten nå. Prøv igjen.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Endringene er brukt i oppsettet.')).toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: 'Ny tjeneste' })).toBeTruthy();
+    expect(yamlField().value).toContain('name: Ikke sjekket');
+  });
+
+  it('leaves text typed while the schema check runs in the field, for the next Bruk endringene', async () => {
+    const base = mockFetch();
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/definitions/validate')) await held;
+      return base(input, init);
+    };
+    await openNewYaml(fetch);
+    const original = yamlField().value;
+    fireEvent.change(yamlField(), {
+      target: { value: original.replace('name: ny-tjeneste', 'name: Første') },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk endringene' }));
+    fireEvent.change(yamlField(), {
+      target: { value: original.replace('name: ny-tjeneste', 'name: Andre') },
+    });
+    release();
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.queryByText('Endringene er brukt i oppsettet.')).toBeNull();
+    expect(screen.queryByRole('heading', { level: 1, name: 'Første' })).toBeNull();
+    expect(yamlField().value).toContain('name: Andre');
   });
 
   it('applies and discards YAML edits', async () => {

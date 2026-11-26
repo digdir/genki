@@ -24,10 +24,12 @@ type Check =
 interface Props {
   api: ApiClient;
   generated: string;
+  /** The draft's prompt files, which the platform checks the definition's references against. */
+  files: Record<string, string>;
   onApply: (definition: Record<string, unknown>) => void;
 }
 
-export const YamlTab = ({ api, generated, onApply }: Props) => {
+export const YamlTab = ({ api, generated, files, onApply }: Props) => {
   const t = useT();
   const [edit, setEdit] = useState<string | null>(null);
   const [note, setNote] = useState('');
@@ -52,7 +54,7 @@ export const YamlTab = ({ api, generated, onApply }: Props) => {
     }
     setCheck({ kind: 'busy' });
     try {
-      const result = await api.validate(text);
+      const result = await api.validate(text, files);
       // Text typed while the check ran is not what was checked; it waits for the next «Bruk».
       if (shown.current !== text) return;
       if (!result.valid) {
@@ -72,7 +74,7 @@ export const YamlTab = ({ api, generated, onApply }: Props) => {
   const validate = async () => {
     setCheck({ kind: 'busy' });
     try {
-      const result = await api.validate(text);
+      const result = await api.validate(text, files);
       setCheck(result.valid ? { kind: 'valid' } : { kind: 'invalid', errors: result.errors });
     } catch {
       setCheck({ kind: 'failed' });

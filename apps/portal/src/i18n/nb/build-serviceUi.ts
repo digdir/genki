@@ -210,6 +210,7 @@ export const serviceUi = {
     publishLead: 'Brukerne får alt som er i testutgaven nå.',
     changeCount: { one: 'Én endring', other: '{count} endringer' },
     noChanges: 'Testutgaven er lik den i bruk.',
+    nothingToPublish: 'Endre en sikkerhetsregel eller risikonivået for å publisere.',
     showLines: 'Vis linje for linje',
     colInUseNow: 'I bruk nå',
     colAfter: 'Etter publisering',

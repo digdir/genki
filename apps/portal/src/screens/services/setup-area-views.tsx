@@ -81,14 +81,15 @@ const DatasetSuggestion = ({
       <Field.Description>{t('setupList.datasetsHelp')}</Field.Description>
       <Suggestion
         multiple
-        selected={items.filter((item) => chosen.includes(item.value))}
+        // In the chosen order, so picking one more adds it last instead of sorting the list by the catalogue.
+        selected={chosen.flatMap((c) => items.filter((item) => item.value === c))}
         onSelectedChange={(picked) => {
           const ids = picked.map((item) => item.value);
           if (ids.join('\n') !== chosen.join('\n')) onChange(ids);
         }}
       >
         <Suggestion.Input id={id} readOnly={readOnly} />
-        <Suggestion.Clear aria-label={t('setupList.datasetsClear')} />
+        {readOnly ? null : <Suggestion.Clear aria-label={t('setupList.datasetsClear')} />}
         <Suggestion.List>
           <Suggestion.Empty>
             {options.status === 'loading'

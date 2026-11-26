@@ -1701,6 +1701,9 @@ export const Builder = ({
         : 'draft'
       : undefined;
   const riskToConfirm = (riskOpen || riskChecked) && riskSet && !forbidden;
+  // The publish page opens with nothing changed, but publishes only once a rule or the risk has,
+  // or to stamp a risk confirmation that is due.
+  const nothingToPublish = unpublished.length === 0 && !riskToConfirm;
   const blockingProblems = checkProblems.filter(
     (p) => !(riskToConfirm && areaOfPath(p.path) === 'risk'),
   );
@@ -1997,6 +2000,7 @@ export const Builder = ({
             <YamlTab
               api={api}
               generated={yaml}
+              files={files}
               onApply={(d) => replaceWith(asServiceDefinition(d))}
             />
           ) : item === 'channels' && !isNew ? (
@@ -2290,12 +2294,15 @@ export const Builder = ({
                   {t('edition.noAddress')}
                 </Link>
               ) : null}
-              <Button asChild variant="secondary" data-size="sm">
-                <a href={`#${servicePath(routeId, 'interface', '/preview')}`}>
-                  <Icon icon={PlayIcon} />
-                  {t('edition.testService')}
-                </a>
-              </Button>
+              {/* It opens the test edition's preview: not for an archived service, nor beside the edition in use. */}
+              {archived || view === 'inUse' ? null : (
+                <Button asChild variant="secondary" data-size="sm">
+                  <a href={`#${servicePath(routeId, 'interface', '/preview')}`}>
+                    <Icon icon={PlayIcon} />
+                    {t('edition.testService')}
+                  </a>
+                </Button>
+              )}
               {archived || view === 'inUse' ? null : !canPublish ? (
                 <Button
                   variant="primary"
@@ -2605,13 +2612,21 @@ export const Builder = ({
             testHref={`#${servicePath(routeId, 'quality')}`}
             backHref={`#${servicePath(routeId, 'setup')}`}
             canPublish={canPublish}
-            blocked={check?.status !== 'done' || invalid || missingCount > 0 || unmaskedMissing > 0}
+            blocked={
+              nothingToPublish ||
+              check?.status !== 'done' ||
+              invalid ||
+              missingCount > 0 ||
+              unmaskedMissing > 0
+            }
             blockedReason={
-              riskProblem && !riskToConfirm
-                ? riskProblem
-                : check?.status === 'done'
-                  ? blockedBy
-                  : t('services.checkingDraft')
+              nothingToPublish
+                ? t('edition.nothingToPublish')
+                : riskProblem && !riskToConfirm
+                  ? riskProblem
+                  : check?.status === 'done'
+                    ? blockedBy
+                    : t('services.checkingDraft')
             }
             risk={setup(setupSections, 'risk')}
             guards={setup(setupSections, 'guards')}

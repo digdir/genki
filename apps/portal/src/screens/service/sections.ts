@@ -193,7 +193,9 @@ export const locate = (
     if (movedToAdvanced[known] && allowed.includes('advanced')) return go(known);
     return { section: fallback, detail: undefined, redirect: servicePath(id, fallback) };
   }
-  return { section: known, detail };
+  // Avansert's items keep what comes after them: /advanced/channels/<frontend> opens that client.
+  const rest = known === 'advanced' ? segments.slice(3).join('/') || undefined : detail;
+  return { section: known, detail: rest };
 };
 
 export type Edition = 'test' | 'inUse';

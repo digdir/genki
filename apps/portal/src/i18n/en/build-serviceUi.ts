@@ -210,6 +210,7 @@ export const serviceUi = {
     publishLead: 'Users get everything that is in the test edition now.',
     changeCount: { one: 'One change', other: '{count} changes' },
     noChanges: 'The test edition is the same as the one in use.',
+    nothingToPublish: 'Change a safety rule or the risk level to publish.',
     showLines: 'Show line by line',
     colInUseNow: 'In use now',
     colAfter: 'After publishing',

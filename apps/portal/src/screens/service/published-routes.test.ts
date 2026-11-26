@@ -50,4 +50,15 @@ describe('the old addresses of a published service', () => {
       redirect: '/services/rapport/setup',
     });
   });
+
+  it('keeps the client of an Avansert → Kanaler address as its detail', () => {
+    expect(at('/services/rapport/advanced/channels/web')).toEqual({
+      section: 'advanced',
+      detail: 'channels/web',
+    });
+  });
+
+  it('sends /how-it-works to Avansert → Arbeidsmåte', () => {
+    expect(at('/services/rapport/how-it-works').redirect).toBe('/services/rapport/advanced/how');
+  });
 });
