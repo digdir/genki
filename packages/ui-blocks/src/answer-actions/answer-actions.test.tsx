@@ -10,12 +10,15 @@ import { en, nb } from './i18n.js';
 beforeAll(() => {
   // jsdom lays nothing out; the call that keeps the receipt in view has to go somewhere.
   Element.prototype.scrollIntoView = () => {};
+  // jsdom has no popover; the menu opens and closes through this call.
+  HTMLElement.prototype.togglePopover ??= () => false;
 });
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const all = {
@@ -77,6 +80,23 @@ describe('the answer actions', () => {
 
     expect(asked).toEqual(['answer', 'sources', 'link']);
     expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it('close the menu when a choice is made', () => {
+    const shown = new Map<Element, boolean>();
+    vi.spyOn(HTMLElement.prototype, 'togglePopover').mockImplementation(function (
+      this: HTMLElement,
+      force?: boolean | TogglePopoverOptions,
+    ) {
+      shown.set(this, force === true);
+      return force === true;
+    });
+    draw();
+    const menu = document.querySelector('.ds-dropdown') as HTMLElement;
+    fireEvent.click(copy());
+    expect(shown.get(menu)).toBe(true);
+    fireEvent.click(choice('Kun svaret'));
+    expect(shown.get(menu)).toBe(false);
   });
 
   it('send focus back to «Kopier» after a choice, and keep it there when the receipt comes', () => {
