@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   existsSync,
   mkdtempSync,
@@ -11,6 +11,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import {
   apiKeyScript,
   browserLaunch,
@@ -18,17 +19,21 @@ import {
   Cancelled,
   demoOfRecording,
   demoSignIn,
+  downloadEditSource,
   failureOf,
   libraryOf,
   managedIdentityTokenUrl,
   estimateDemo,
   keep,
+  darkScript,
   languageScript,
-  mixArgs,
   parseArgs,
   parseDemo,
   pickDemos,
   queuedOf,
+  spendFromEnv,
+  spentFile,
+  voiceSpentOf,
   recordDemo,
   sampleLineOf,
   RecordingOpen,
@@ -43,6 +48,7 @@ import {
   StepFailure,
   subtitles,
 } from './demo.ts';
+import { spendOf } from './demo-voice.ts';
 
 const demosDir = join(import.meta.dirname, '../demos');
 const minimal = (steps: string) =>
@@ -51,6 +57,10 @@ const clock = () => {
   let t = 0;
   return { now: () => t, pause: (ms: number) => void (t += ms) };
 };
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('demo recordings', () => {
   it('reuses a saved voice clip and leaves no partial file behind', () => {
@@ -76,6 +86,29 @@ describe('demo recordings', () => {
     );
   });
 
+  it('keeps every page in the dark colour scheme so the film has one look', () => {
+    const scheme = new Map([['data-color-scheme', 'light']]);
+    const watchers: (() => void)[] = [];
+    const root = {
+      getAttribute: (name: string) => scheme.get(name) ?? null,
+      setAttribute: (name: string, value: string) => scheme.set(name, value),
+    };
+    class Observer {
+      constructor(callback: () => void) {
+        watchers.push(callback);
+      }
+      observe() {}
+    }
+    runInNewContext(darkScript, {
+      document: { documentElement: root },
+      MutationObserver: Observer,
+    });
+    expect(scheme.get('data-color-scheme')).toBe('dark');
+    scheme.set('data-color-scheme', 'light');
+    for (const watch of watchers) watch();
+    expect(scheme.get('data-color-scheme')).toBe('dark');
+  });
+
   it('refuses a language that is not a language tag, so it cannot become browser code', () => {
     expect(() => languageScript("nb'});alert(1);//")).toThrow(/language must be a tag/);
     expect(() => languageScript('nb-NO\n')).toThrow(/language must be a tag/);
@@ -99,33 +132,6 @@ describe('demo recordings', () => {
     expect(ssml('A & B <voice name="x">', 'nb-NO-PernilleNeural', 'nb-NO')).toBe(
       '<speak version="1.0" xml:lang="nb-NO"><voice name="nb-NO-PernilleNeural">A &amp; B &lt;voice name=&quot;x&quot;&gt;</voice></speak>',
     );
-  });
-
-  it('starts each narration clip at the moment its step started', () => {
-    const args = mixArgs(
-      'raw.webm',
-      [
-        { file: 'a.mp3', at: 0 },
-        { file: 'b.mp3', at: 6.456 },
-      ],
-      'x.srt',
-      'out.mp4',
-    );
-    const filter = args.at(args.indexOf('-filter_complex') + 1);
-    expect(filter).toBe(
-      '[1:a]adelay=0:all=1[a0];[2:a]adelay=6456:all=1[a1];[a0][a1]amix=inputs=2:normalize=0[voice]',
-    );
-    expect(args).toContain('3:s');
-  });
-
-  it('records without a voice track when no line has narration', () => {
-    const args = mixArgs('raw.webm', [], 'x.srt', 'out.mp4', 'nb-NO');
-    expect(args).not.toContain('-filter_complex');
-    expect(args).toEqual(expect.arrayContaining(['-map', '0:v', '1:s', 'language=nob']));
-  });
-
-  it('marks the subtitles with the demo language', () => {
-    expect(mixArgs('v', [], 's', 'o', 'en-GB')).toContain('language=eng');
   });
 
   it('every demo in demos/ is valid and lasts about one to two minutes', () => {
@@ -250,6 +256,125 @@ describe('demo recordings', () => {
     expect(failure.step).toBe(0);
     expect(failure.message).toBe(
       'The start page https://portal.genki-test.digdir.cloud never showed «Prøveområde»\n  Timeout 30000ms',
+    );
+  });
+
+  it('glides the pointer before each command and starts the voice once the page it opens has loaded', () => {
+    const calls: string[] = [];
+    runStep(
+      {
+        say: 'Hei',
+        do: [
+          ['find', 'role', 'link', 'click', '--name', 'Logg'],
+          ['wait', '--text', 'Logg'],
+          ['find', 'role', 'tab', 'hover', '--name', 'Endringer'],
+        ],
+      },
+      0,
+      (...command) => calls.push(command[0] === 'find' ? (command[3] ?? '') : (command[0] ?? '')),
+      15_000,
+      undefined,
+      undefined,
+      { point: (command) => calls.push(`point ${command[0]}`), cue: () => calls.push('voice') },
+    );
+    expect(calls).toEqual([
+      'point find',
+      'click',
+      'point wait',
+      'wait',
+      'voice',
+      'point find',
+      'hover',
+    ]);
+  });
+
+  it('starts the voice at once in a step that only points', () => {
+    const calls: string[] = [];
+    runStep(
+      { say: 'Hei', do: [['find', 'text', 'Kvote', 'hover']] },
+      0,
+      () => calls.push('hover'),
+      15_000,
+      undefined,
+      undefined,
+      { cue: () => calls.push('voice') },
+    );
+    expect(calls).toEqual(['voice', 'hover']);
+  });
+
+  it('refuses a step with a command that is not allowed before pointing or speaking', () => {
+    const calls: string[] = [];
+    expect(() =>
+      runStep(
+        {
+          say: 'Hei',
+          do: [
+            ['hover', '#a'],
+            ['eval', 'x'],
+          ],
+        },
+        0,
+        () => calls.push('browser'),
+        15_000,
+        undefined,
+        undefined,
+        { point: () => calls.push('point'), cue: () => calls.push('voice') },
+      ),
+    ).toThrow(/not allowed/);
+    expect(calls).toEqual([]);
+  });
+
+  it('marks the moment a step leaves the page, after the pointer arrives and before the click', () => {
+    const calls: string[] = [];
+    runStep(
+      {
+        say: 'Hei',
+        do: [
+          ['find', 'text', 'Kvote', 'hover'],
+          ['find', 'role', 'link', 'click', '--name', 'Logg'],
+          ['wait', '--text', 'Logg'],
+        ],
+      },
+      0,
+      (...command) => calls.push(command[0] === 'find' ? (command[3] ?? '') : (command[0] ?? '')),
+      15_000,
+      undefined,
+      undefined,
+      {
+        point: () => calls.push('point'),
+        navigate: () => calls.push('leave'),
+        cue: () => calls.push('voice'),
+      },
+    );
+    expect(calls).toEqual(['point', 'hover', 'point', 'leave', 'click', 'point', 'wait', 'voice']);
+  });
+
+  it('reads a title card, a closing card, chapters and focus from a demo', () => {
+    const demo = parseDemo(
+      minimal('  - say: Hei\n    chapter: Hva er Genki\n    focus: [role, table]\n').replace(
+        'steps:',
+        "intro:\n  title: Genki\n  subtitle: Generativ KI\n  presenter: Ola, Digdir\noutro:\n  title: 'Først ut: Simen'\nsteps:",
+      ),
+    );
+    expect(demo.intro).toEqual({
+      title: 'Genki',
+      subtitle: 'Generativ KI',
+      presenter: 'Ola, Digdir',
+    });
+    expect(demo.outro).toEqual({ title: 'Først ut: Simen' });
+    expect(demo.steps[0]).toMatchObject({ chapter: 'Hva er Genki', focus: ['role', 'table'] });
+  });
+
+  it('refuses a card without a title, a card with other fields and a focus it cannot find', () => {
+    expect(() =>
+      parseDemo(
+        minimal('  - say: Hei\n    focus: [eval, x]\n').replace(
+          'steps:',
+          'intro:\n  subtitle: x\noutro:\n  title: T\n  logo: x.png\nsteps:',
+        ),
+      ),
+    ).toThrow(
+      /intro must have a title[\s\S]*outro takes only title, subtitle and presenter[\s\S]*step 1: focus must be/,
     );
   });
 
@@ -547,6 +672,30 @@ describe('reporting to the demo library', () => {
     expect(existsSync(join('demos/out', name))).toBe(false);
   });
 
+  it('records a model-voice demo without narration unless a cost cap is approved', async () => {
+    vi.stubEnv('SPEECH_RESOURCE', 'speech');
+    vi.stubEnv('SPEECH_RESOURCE_GROUP', 'rg');
+    vi.stubEnv('SPEECH_SUBSCRIPTION', 'sub');
+    vi.stubEnv('DEMO_AUDIO_ENDPOINT', 'https://x.openai.azure.com');
+    const narrated: boolean[] = [];
+    const library = {
+      start: (_: string, voiced: boolean) => {
+        narrated.push(voiced);
+        return Promise.reject(new RecordingOpen('open'));
+      },
+      upload: () => Promise.reject(new Error('no upload expected')),
+      finish: () => Promise.reject(new Error('no finish expected')),
+    };
+    const demo = parseDemo(
+      minimal('  - say: Modellstemme\n').replace('voice: nb-NO-PernilleNeural', 'voice: cedar'),
+    );
+
+    await recordDemo(demo, `cedar-${Date.now()}`, false, { library }, spendOf());
+    await recordDemo(demo, `cedar-${Date.now()}`, false, { library }, spendOf(5));
+
+    expect(narrated).toEqual([false, true]);
+  });
+
   it('reports a failed step with the command it was running and why', () => {
     const step = { say: 'Vi åpner kjøringen.', do: [['find', 'role', 'link', 'click']] };
     let caught: unknown;
@@ -708,10 +857,138 @@ describe('reporting to the demo library', () => {
     expect(sampleLineOf('nb-NO')).toMatch(/^Hei!/);
   });
 
+  it('passes the approved cost cap on, and voices nothing for an edit, which reuses the clips of its film', async () => {
+    const edit = '55555555-5555-4555-8555-555555555555';
+    const cedar = '66666666-6666-4666-8666-666666666666';
+    const spec = {
+      title: 'T',
+      language: 'nb-NO',
+      voice: 'cedar',
+      app: 'portal',
+      path: '/#/',
+      steps: [{ say: 'En.' }],
+    };
+    const send = (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('?status=queued'))
+        return Response.json({
+          data: [
+            { id: edit, demo: 'a' },
+            { id: cedar, demo: 'b' },
+          ],
+        });
+      const id = url.split('/').at(-1);
+      return Response.json({
+        id,
+        demo: id === edit ? 'a' : 'b',
+        costCapUsd: 3,
+        ...(id === edit ? { editOf: cedar, instruction: 'Roligere' } : {}),
+        demoSpec: spec,
+        settings: { viewport: [1920, 1080], tenant: null },
+      });
+    }) as typeof fetch;
+
+    const queued = await queuedOf('https://api.example', 'k', send);
+
+    expect(queued.map((q) => [q.id, q.lines, q.costCapUsd])).toEqual([
+      [edit, [], 3],
+      [cedar, ['En.'], 3],
+    ]);
+  });
+
+  it('reads what the voice job spent on a recording, and nothing from a missing or broken file', () => {
+    const cache = mkdtempSync(join(tmpdir(), 'genki-spent-'));
+    expect(voiceSpentOf(cache, 'a')).toBe(0);
+    writeFileSync(spentFile(cache), JSON.stringify({ a: 0.42, b: -1, c: 'x' }));
+
+    expect([voiceSpentOf(cache, 'a'), voiceSpentOf(cache, 'b'), voiceSpentOf(cache, 'c')]).toEqual([
+      0.42, 0, 0,
+    ]);
+  });
+
+  it('takes a local cost approval only from DEMO_COST_CAP_USD', () => {
+    expect(spendFromEnv({})).toEqual({ spentUsd: 0 });
+    expect(spendFromEnv({ DEMO_COST_CAP_USD: '4' })).toEqual({ capUsd: 4, spentUsd: 0 });
+    expect(spendFromEnv({ DEMO_COST_CAP_USD: 'nei' })).toEqual({ spentUsd: 0 });
+    expect(spendFromEnv({ DEMO_COST_CAP_USD: '0' })).toEqual({ spentUsd: 0 });
+    expect(spendFromEnv({ DEMO_COST_CAP_USD: '-3' })).toEqual({ spentUsd: 0 });
+  });
+
   it('stops when the queue answers with an error, so nothing is recorded from a half list', async () => {
     const send = (async () => new Response('{}', { status: 401 })) as typeof fetch;
 
     await expect(queuedOf('https://api.example', 'k', send)).rejects.toThrow(/answered 401/);
+  });
+
+  it('downloads the capture, events, edit list, stills and voice clips of the film it edits, the clips into the voice folder, and nothing else', async () => {
+    const source = '44444444-4444-4444-8444-444444444444';
+    const out = mkdtempSync(join(tmpdir(), 'genki-edit-'));
+    const voices = mkdtempSync(join(tmpdir(), 'genki-voices-'));
+    const asked: [string, string | null][] = [];
+    const send = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      asked.push([url, new Headers(init?.headers).get('x-recorder-key')]);
+      if (url.endsWith(source))
+        return Response.json({
+          id: source,
+          files: [
+            'capture.mp4',
+            'events.json',
+            'edl.json',
+            'step-1.png',
+            'voice-0123456789abcdef.mp3',
+            'voice-0123456789abcdef.words.json',
+            'voice-../x.mp3',
+            'demo.mp4',
+            '../x.png',
+          ].map((name) => ({ name })),
+        });
+      return new Response(`bytes of ${decodeURIComponent(url.split('/').at(-1) ?? '')}`);
+    }) as typeof fetch;
+
+    const names = await downloadEditSource(
+      'https://api.example/',
+      'nøkkel',
+      source,
+      out,
+      voices,
+      send,
+    );
+
+    expect(names).toEqual([
+      'capture.mp4',
+      'events.json',
+      'edl.json',
+      'step-1.png',
+      'voice-0123456789abcdef.mp3',
+      'voice-0123456789abcdef.words.json',
+    ]);
+    expect(readdirSync(voices).sort()).toEqual([
+      '0123456789abcdef.mp3',
+      '0123456789abcdef.words.json',
+    ]);
+    expect(readdirSync(out).sort()).toEqual([
+      'capture.mp4',
+      'edl.json',
+      'events.json',
+      'step-1.png',
+    ]);
+    expect(readFileSync(join(out, 'edl.json'), 'utf8')).toBe('bytes of edl.json');
+    expect(asked.map(([url]) => url)).toContain(
+      `https://api.example/recorder/recordings/${source}/files/capture.mp4`,
+    );
+    expect(asked.every(([, key]) => key === 'nøkkel')).toBe(true);
+  });
+
+  it('refuses to edit a film whose capture, events or edit list is missing', async () => {
+    const out = mkdtempSync(join(tmpdir(), 'genki-edit-'));
+    const send = (async () =>
+      Response.json({ files: [{ name: 'events.json' }, { name: 'edl.json' }] })) as typeof fetch;
+
+    await expect(
+      downloadEditSource('https://api.example', 'k', 's', out, out, send),
+    ).rejects.toThrow(/no capture\.mp4/);
+    expect(readdirSync(out)).toEqual([]);
   });
 
   it('asks the managed identity for a speech token', () => {

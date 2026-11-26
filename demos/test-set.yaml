@@ -1,7 +1,7 @@
 title: Kjør et testsett og les resultatet
 language: nb-NO
 voice: nb-NO-PernilleNeural
-viewport: [1280, 720]
+viewport: [1920, 1080]
 start: https://portal.genki-test.digdir.cloud/#/services/smoke/quality
 signedIn: true
 ready: Kjøringer av testsettet

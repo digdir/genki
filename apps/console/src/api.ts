@@ -123,12 +123,24 @@ export interface DemoRecording {
   requestedBy?: string;
   upTo?: number;
   cancelledBy?: string;
+  editOf?: string;
+  instruction?: string;
+  costCapUsd?: number;
+  costUsd?: number;
 }
 
 export interface DemoStep {
   say: string;
   do?: string[][];
   hold?: number;
+  chapter?: string;
+  focus?: string[];
+}
+
+export interface DemoCard {
+  title: string;
+  subtitle?: string;
+  presenter?: string;
 }
 
 export interface DemoSpec {
@@ -142,6 +154,8 @@ export interface DemoSpec {
   path: string;
   signedIn?: boolean;
   ready?: string;
+  intro?: DemoCard;
+  outro?: DemoCard;
   steps: DemoStep[];
 }
 
@@ -633,9 +647,23 @@ export const createApiClient = ({
           ...(version === undefined ? {} : { 'if-match': String(version) }),
         },
       }),
-    requestRecording: (id: string, reason: string, upTo?: number) =>
+    requestRecording: (id: string, reason: string, upTo?: number, costCapUsd?: number) =>
       call<DemoRecording>('POST', `/operator/demos/${encodeURIComponent(id)}/recordings`, {
-        body: upTo === undefined ? {} : { upTo },
+        body: {
+          ...(upTo === undefined ? {} : { upTo }),
+          ...(costCapUsd === undefined ? {} : { costCapUsd }),
+        },
+        headers: { 'change-reason': reason },
+      }),
+    requestEdit: (
+      id: string,
+      reason: string,
+      editOf: string,
+      instruction: string,
+      costCapUsd: number,
+    ) =>
+      call<DemoRecording>('POST', `/operator/demos/${encodeURIComponent(id)}/recordings`, {
+        body: { editOf, instruction, costCapUsd },
         headers: { 'change-reason': reason },
       }),
     recording: (id: string, signal?: AbortSignal) =>

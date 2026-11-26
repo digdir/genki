@@ -641,7 +641,7 @@ describe('the demo settings', () => {
     expect(settings).toMatchObject({
       version: 0,
       voice: 'nb-NO-PernilleNeural',
-      viewport: [1280, 720],
+      viewport: [1920, 1080],
       tenant: null,
       retentionDays: 90,
       recorder: 'workflow',
@@ -820,5 +820,392 @@ describe('the scheduled recorder', () => {
 
     expect([wrong.status, operator.status, unfiltered.status]).toEqual([401, 401, 400]);
     expect(await wrong.json()).toMatchObject({ type: 'urn:genai:problem:recorder-key' });
+  });
+});
+
+describe('the studio', () => {
+  const sourceFiles = ['capture.mp4', 'events.json', 'edl.json', 'demo.mp4'];
+
+  const withFilm = async (files = sourceFiles) => {
+    const platform = await booted(async () => undefined);
+    const film = await platform.start();
+    for (const name of files)
+      await platform.record(`/recorder/recordings/${film.id}/files/${name}`, {
+        method: 'PUT',
+        body: name.endsWith('.json') ? '{"version":1}' : new Uint8Array([1, 2, 3]),
+      });
+    await platform.record(`/recorder/recordings/${film.id}/finish`, {
+      json: { status: 'recorded', seconds: 40 },
+    });
+    const edit = (body: unknown, who = 'operator', reason: string | undefined = reasonText) =>
+      platform.send('/operator/demos/playground/recordings', who, {
+        body,
+        ...(reason ? { reason } : {}),
+      });
+    return { ...platform, film, edit };
+  };
+
+  const instruction = 'Gjør zoomen på Statistikk roligere';
+  const costCapUsd = 2;
+
+  it('takes the capture, the events, the edit list and the director rounds a film is made from', async () => {
+    const { record, start } = await booted();
+    const recording = await start();
+    const names = [
+      'capture.mp4',
+      'events.json',
+      'edl.json',
+      'edl-round-0.json',
+      'edl-round-3.json',
+      'review-round-1.json',
+      'review-round-3.json',
+    ];
+
+    const answers = await Promise.all(
+      names.map((name) =>
+        record(`/recorder/recordings/${recording.id}/files/${name}`, {
+          method: 'PUT',
+          body: name.endsWith('.mp4') ? new Uint8Array([1]) : '{}',
+        }),
+      ),
+    );
+    const outOfRange = await record(`/recorder/recordings/${recording.id}/files/edl-round-4.json`, {
+      method: 'PUT',
+      body: '{}',
+    });
+
+    expect(answers.map((a) => a.status)).toEqual(names.map(() => 200));
+    expect(await answers[1]?.json()).toMatchObject({ contentType: 'application/json' });
+    expect(outOfRange.status).toBe(404);
+  });
+
+  it('refuses a director file larger than 2 MB', async () => {
+    const { record, start } = await booted();
+    const recording = await start();
+
+    const response = await record(`/recorder/recordings/${recording.id}/files/edl.json`, {
+      method: 'PUT',
+      body: new Uint8Array(2 * 1024 * 1024 + 1),
+    });
+
+    expect(response.status).toBe(413);
+  });
+
+  it('queues an edit of a recorded film with its instruction, the film it edits and its demo version, audited', async () => {
+    const { edit, film, admin, record, app } = await withFilm();
+    const saved = await app.request('/operator/demos/playground', {
+      method: 'PUT',
+      headers: {
+        authorization: 'Bearer operator',
+        'content-type': 'application/yaml',
+        'change-reason': reasonText,
+      },
+      body: demoYaml.replace('Så stiller vi', 'Nå stiller vi'),
+    });
+
+    const response = await edit({ editOf: film.id, instruction, costCapUsd });
+    const queued = await readJson<Recording & { editOf: string; instruction: string }>(response);
+
+    expect(saved.status).toBe(200);
+    expect(response.status).toBe(202);
+    expect(queued).toMatchObject({
+      status: 'queued',
+      editOf: film.id,
+      instruction,
+      demoVersion: 1,
+      narrated: true,
+    });
+    expect(
+      (await admin.audit(digdir))
+        .filter((a) => a.target === `demo-recording:${queued.id}`)
+        .map((a) => [a.action, a.reason]),
+    ).toEqual([['platform.demo.recording.start', reasonText]]);
+    expect(
+      await readJson(await record(`/recorder/recordings/${queued.id}`, { method: 'GET' })),
+    ).toMatchObject({ editOf: film.id, instruction, costCapUsd });
+    expect(
+      await readJson(await record('/recorder/recordings?status=queued', { method: 'GET' })),
+    ).toEqual({ data: [{ id: queued.id, demo: 'playground', editOf: film.id, instruction }] });
+  });
+
+  it('refuses an edit without a reason, and from someone who is not a demo editor', async () => {
+    const { edit, film } = await withFilm();
+
+    expect((await edit({ editOf: film.id, instruction, costCapUsd }, 'operator', '')).status).toBe(
+      400,
+    );
+    expect((await edit({ editOf: film.id, instruction, costCapUsd }, 'kari')).status).toBe(403);
+  });
+
+  it('refuses an edit while another recording of the demo is open', async () => {
+    const { edit, film } = await withFilm();
+    await edit({ editOf: film.id, instruction, costCapUsd });
+
+    const second = await edit({ editOf: film.id, instruction: 'Kortere pauser', costCapUsd });
+
+    expect(second.status).toBe(409);
+    expect(await second.json()).toMatchObject({ type: 'urn:genai:problem:recording-open' });
+  });
+
+  it('refuses an edit without an instruction, an instruction without an edit, and an edit cut short with upTo', async () => {
+    const { edit, film } = await withFilm();
+
+    const answers = await Promise.all([
+      edit({ editOf: film.id, costCapUsd }),
+      edit({ instruction, costCapUsd }),
+      edit({ editOf: film.id, instruction: ' ', costCapUsd }),
+      edit({ editOf: film.id, instruction: 'x'.repeat(2001), costCapUsd }),
+      edit({ editOf: film.id, instruction, upTo: 1 }),
+    ]);
+    const paths = await Promise.all(
+      answers.map(async (a) =>
+        ((await a.json()) as { errors: { path: string }[] }).errors.map((e) => e.path),
+      ),
+    );
+
+    expect(answers.map((a) => a.status)).toEqual([400, 400, 400, 400, 400]);
+    expect(paths.map((p) => p[0])).toEqual([
+      'instruction',
+      'instruction',
+      'instruction',
+      'instruction',
+      'upTo',
+    ]);
+  });
+
+  it('refuses an edit of a recorded trial, which is not a whole film', async () => {
+    const platform = await booted(async () => undefined);
+    const trial = await readJson<Recording>(
+      await platform.send('/operator/demos/playground/recordings', 'operator', {
+        body: { upTo: 1 },
+        reason: reasonText,
+      }),
+    );
+    await platform.record('/recorder/demos/playground/recordings', {
+      json: { genkiVersion: '0.44.0', narrated: false, recording: trial.id },
+    });
+    for (const name of sourceFiles)
+      await platform.record(`/recorder/recordings/${trial.id}/files/${name}`, {
+        method: 'PUT',
+        body: name.endsWith('.json') ? '{}' : new Uint8Array([1]),
+      });
+    await platform.record(`/recorder/recordings/${trial.id}/finish`, {
+      json: { status: 'recorded', seconds: 5 },
+    });
+
+    const response = await platform.send('/operator/demos/playground/recordings', 'operator', {
+      body: { editOf: trial.id, instruction, costCapUsd },
+      reason: reasonText,
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ errors: [{ path: 'editOf' }] });
+  });
+
+  it('refuses an edit of a film that lacks its capture, events or edit list', async () => {
+    const { edit, film } = await withFilm(['demo.mp4', 'events.json', 'edl.json']);
+
+    const response = await edit({ editOf: film.id, instruction, costCapUsd });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ errors: [{ path: 'editOf' }] });
+  });
+
+  it('refuses an edit of a recording that has not been recorded, or that does not exist', async () => {
+    const { edit, start, record } = await withFilm();
+    const failed = await start();
+    await record(`/recorder/recordings/${failed.id}/finish`, {
+      json: { status: 'failed', failure: { step: 1, message: 'fant ikke knappen' } },
+    });
+
+    expect((await edit({ editOf: failed.id, instruction, costCapUsd })).status).toBe(400);
+    expect((await edit({ editOf: crypto.randomUUID(), instruction, costCapUsd })).status).toBe(400);
+  });
+
+  it('keeps the edit and its instruction when the recorder takes it up', async () => {
+    const { edit, film, record } = await withFilm();
+    const queued = await readJson<Recording>(
+      await edit({ editOf: film.id, instruction, costCapUsd }),
+    );
+
+    const started = await record('/recorder/demos/playground/recordings', {
+      json: { genkiVersion: '0.44.0', narrated: true, recording: queued.id },
+    });
+
+    expect(started.status).toBe(201);
+    expect(await started.json()).toMatchObject({ status: 'running', editOf: film.id, instruction });
+  });
+
+  it('gives the recorder the files of a film only while an open edit points at it', async () => {
+    const { edit, film, record } = await withFilm();
+    const file = () => record(`/recorder/recordings/${film.id}/files/edl.json`, { method: 'GET' });
+
+    const before = await file();
+    const queued = await readJson<Recording>(
+      await edit({ editOf: film.id, instruction, costCapUsd }),
+    );
+    const during = await file();
+    const missing = await record(`/recorder/recordings/${film.id}/files/poster.jpg`, {
+      method: 'GET',
+    });
+    await record('/recorder/demos/playground/recordings', {
+      json: { genkiVersion: '0.44.0', narrated: true, recording: queued.id },
+    });
+    await record(`/recorder/recordings/${queued.id}/finish`, {
+      json: { status: 'failed', failure: { step: 0, message: 'ingen regissør' } },
+    });
+    const after = await file();
+
+    expect(before.status).toBe(404);
+    expect(during.status).toBe(200);
+    expect(during.headers.get('content-type')).toBe('application/json');
+    expect(await during.text()).toBe('{"version":1}');
+    expect(missing.status).toBe(404);
+    expect(after.status).toBe(404);
+  });
+
+  it('refuses the files of a film to a caller without the recorder key, an operator included', async () => {
+    const { app, edit, film, send } = await withFilm();
+    await edit({ editOf: film.id, instruction, costCapUsd });
+
+    const wrong = await app.request(`/recorder/recordings/${film.id}/files/edl.json`, {
+      headers: { 'x-recorder-key': 'gjettet' },
+    });
+    const operator = await send(`/recorder/recordings/${film.id}/files/edl.json`, 'operator', {
+      method: 'GET',
+    });
+
+    expect([wrong.status, operator.status]).toEqual([401, 401]);
+  });
+
+  it('refuses an edit without an approved cost, and a cost over the platform cap', async () => {
+    const { edit, film } = await withFilm();
+
+    const unapproved = await edit({ editOf: film.id, instruction });
+    const tooMuch = await edit({ editOf: film.id, instruction, costCapUsd: 26 });
+
+    expect([unapproved.status, tooMuch.status]).toEqual([400, 400]);
+    expect(await unapproved.json()).toMatchObject({ errors: [{ path: 'costCapUsd' }] });
+  });
+
+  it('takes the voice clips and their word timings a film was cut to, so an edit never voices again', async () => {
+    const { record, start } = await booted();
+    const recording = await start();
+
+    const clip = await record(
+      `/recorder/recordings/${recording.id}/files/voice-0123456789abcdef.mp3`,
+      {
+        method: 'PUT',
+        body: new Uint8Array([1]),
+      },
+    );
+    const words = await record(
+      `/recorder/recordings/${recording.id}/files/voice-0123456789abcdef.words.json`,
+      { method: 'PUT', body: '[]' },
+    );
+    const named = await record(`/recorder/recordings/${recording.id}/files/voice-../x.mp3`, {
+      method: 'PUT',
+      body: new Uint8Array([1]),
+    });
+
+    expect([clip.status, words.status]).toEqual([200, 200]);
+    expect(await clip.json()).toMatchObject({ contentType: 'audio/mpeg' });
+    expect(named.status).toBe(404);
+  });
+});
+
+describe('approving the cost of a recording', () => {
+  const cedarYaml = demoYaml.replace('voice: nb-NO-PernilleNeural', 'voice: cedar');
+
+  const withCedar = async () => {
+    const platform = await booted(async () => undefined);
+    const saved = await platform.app.request('/operator/demos/playground', {
+      method: 'PUT',
+      headers: {
+        authorization: 'Bearer operator',
+        'content-type': 'application/yaml',
+        'change-reason': reasonText,
+      },
+      body: cedarYaml,
+    });
+    expect(saved.status).toBe(200);
+    const ask = (body: unknown) =>
+      platform.send('/operator/demos/playground/recordings', 'operator', {
+        body,
+        reason: reasonText,
+      });
+    return { ...platform, ask };
+  };
+
+  it('refuses a recording read by a model voice until someone approves a cost cap', async () => {
+    const { ask } = await withCedar();
+
+    const response = await ask({});
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ errors: [{ path: 'costCapUsd' }] });
+  });
+
+  it('queues a recording with its approved cost cap, and gives the cap to the recorder', async () => {
+    const { ask, record } = await withCedar();
+
+    const queued = await readJson<Recording & { costCapUsd: number }>(await ask({ costCapUsd: 5 }));
+    const read = await readJson(
+      await record(`/recorder/recordings/${queued.id}`, { method: 'GET' }),
+    );
+
+    expect(queued).toMatchObject({ status: 'queued', costCapUsd: 5, voice: 'cedar' });
+    expect(read).toMatchObject({ costCapUsd: 5 });
+  });
+
+  it('lets a silent trial of a model voice run without a cap', async () => {
+    const { ask } = await withCedar();
+
+    const trial = await ask({ upTo: 1 });
+
+    expect(trial.status).toBe(202);
+  });
+
+  it('refuses a cost cap on a trial', async () => {
+    const { ask } = await withCedar();
+
+    expect((await ask({ upTo: 1, costCapUsd: 1 })).status).toBe(400);
+  });
+
+  it('accepts a cost cap of 25 dollars and refuses one of 0', async () => {
+    const { ask } = await withCedar();
+
+    expect((await ask({ costCapUsd: 0 })).status).toBe(400);
+    expect((await ask({ costCapUsd: 25 })).status).toBe(202);
+  });
+
+  it('refuses a negative model cost when the recorder finishes', async () => {
+    const { start, record } = await booted();
+    const recording = await start();
+    await record(`/recorder/recordings/${recording.id}/files/demo.mp4`, {
+      method: 'PUT',
+      body: new Uint8Array([1]),
+    });
+
+    const finished = await record(`/recorder/recordings/${recording.id}/finish`, {
+      json: { status: 'recorded', seconds: 12, costUsd: -1 },
+    });
+
+    expect(finished.status).toBe(400);
+  });
+
+  it('keeps what the recorder spent on models when it finishes', async () => {
+    const { start, record } = await booted();
+    const recording = await start();
+    await record(`/recorder/recordings/${recording.id}/files/demo.mp4`, {
+      method: 'PUT',
+      body: new Uint8Array([1]),
+    });
+
+    const finished = await record(`/recorder/recordings/${recording.id}/finish`, {
+      json: { status: 'recorded', seconds: 12, costUsd: 1.27 },
+    });
+
+    expect(await finished.json()).toMatchObject({ status: 'recorded', costUsd: 1.27 });
   });
 });

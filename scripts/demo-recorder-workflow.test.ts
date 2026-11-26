@@ -20,6 +20,7 @@ interface Job {
   environment: { name: string; deployment: boolean };
   permissions: Record<string, string>;
   outputs?: Record<string, string>;
+  'timeout-minutes'?: number;
   steps: Step[];
 }
 
@@ -135,7 +136,7 @@ describe('the demo-recorder workflow', () => {
 
   it('checks the speech setting in each voice step, where the environment variable is visible', () => {
     expect(voice.if).not.toContain('SPEECH_RESOURCE');
-    for (const step of voice.steps) expect(step.if).toMatch(/^vars\.SPEECH_RESOURCE [!=]= ''$/);
+    for (const step of voice.steps) expect(step.if).toMatch(/vars\.SPEECH_RESOURCE [!=]= ''/);
   });
 
   it('voices only the lines of the queued recordings, without the recorder key', () => {
@@ -147,12 +148,30 @@ describe('the demo-recorder workflow', () => {
     expect(voice.permissions).toEqual({ contents: 'read', 'id-token': 'write' });
   });
 
-  it('uploads the voiced clips from the hidden .voice folder and downloads them where recording looks', () => {
+  it('gives the model voice its endpoint and ffmpeg to hear each line back, with time for retakes', () => {
+    const voicing = voice.steps.find((s) => s.run === 'node scripts/demo.ts voice --queued');
+    expect(voicing?.env?.DEMO_AUDIO_ENDPOINT).toBe('${{ vars.DEMO_AUDIO_ENDPOINT }}');
+    expect(
+      voice.steps.some((s) => s.run?.includes('install --yes --no-install-recommends ffmpeg')),
+    ).toBe(true);
+    expect(voice['timeout-minutes']).toBe(30);
+  });
+
+  it('uploads the voiced clips, their word timings and what voicing cost from the hidden .voice folder and downloads them where recording looks', () => {
     const upload = voice.steps.find((s) => s.with?.name === 'demo-voice');
     const download = record.steps.find((s) => s.with?.name === 'demo-voice');
-    expect(upload?.with?.path).toBe('demos/out/.voice/*.mp3');
+    expect(upload?.with?.path).toBe(
+      'demos/out/.voice/*.mp3\ndemos/out/.voice/*.words.json\ndemos/out/.voice/spent.json\n',
+    );
     expect(upload?.with?.['include-hidden-files']).toBe(true);
     expect(download?.with?.path).toBe('demos/out/.voice');
+  });
+
+  it('keeps the clips and what voicing cost when voicing one recording fails, and records with them', () => {
+    const upload = voice.steps.find((s) => s.with?.name === 'demo-voice');
+    const download = record.steps.find((s) => s.with?.name === 'demo-voice');
+    expect(upload?.if).toBe("${{ !cancelled() && vars.SPEECH_RESOURCE != '' }}");
+    expect(download?.if).toBe("needs.voice.result == 'success' || needs.voice.result == 'failure'");
   });
 
   it('records the queued recordings with the key in genki-test, with read access only', () => {
@@ -160,10 +179,18 @@ describe('the demo-recorder workflow', () => {
     expect(record.steps.at(-1)?.env?.DEMO_RECORDER_KEY).toBe('${{ secrets.DEMO_RECORDER_KEY }}');
     expect(record.needs).toEqual(['queue', 'voice']);
     expect(record.if).toMatch(/^always\(\) && /);
-    for (const job of [queue, record]) {
+    for (const job of [queue, record])
       expect(job.environment).toEqual({ name: 'genki-test', deployment: false });
-      expect(job.permissions).toEqual({ contents: 'read' });
-    }
+    expect(queue.permissions).toEqual({ contents: 'read' });
+    expect(record.permissions).toEqual({ contents: 'read', 'id-token': 'write' });
+  });
+
+  it('lets the AI director log in only when its identity is configured, and sends the endpoint only then', () => {
+    const login = record.steps.find((s) => s.uses?.startsWith('azure/login@'));
+    expect(login?.if).toBe("vars.DEMO_DIRECTOR_CLIENT_ID != ''");
+    expect(record.steps.at(-1)?.env?.DEMO_AUDIO_ENDPOINT).toBe(
+      "${{ vars.DEMO_DIRECTOR_CLIENT_ID != '' && vars.DEMO_AUDIO_ENDPOINT || '' }}",
+    );
   });
 
   it('pins every action to a full commit SHA and checks out without keeping the token', () => {

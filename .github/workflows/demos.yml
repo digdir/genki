@@ -23,7 +23,7 @@ jobs:
   voice:
     if: github.ref == 'refs/heads/main' && inputs.narrate
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     environment: smoke-review
     permissions:
       contents: read
@@ -51,6 +51,8 @@ jobs:
         uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
       - if: vars.SPEECH_RESOURCE != ''
         run: npm ci --no-audit --no-fund
+      - if: vars.SPEECH_RESOURCE != ''
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg
       - if: vars.SPEECH_RESOURCE != ''
         env:
           SPEECH_RESOURCE: ${{ vars.SPEECH_RESOURCE }}
