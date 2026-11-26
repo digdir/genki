@@ -48,6 +48,15 @@ describe('change texts', () => {
     }
   });
 
+  it('names the tenant move in bokmål and English instead of a generic change', () => {
+    expect(changeText(row('platform.tenant.move', '312521172'), translator('nb'))).toBe(
+      'flyttet virksomhetens data hit',
+    );
+    expect(changeText(row('platform.tenant.move', '312521172'), translator('en'))).toBe(
+      "moved the organisation's data here",
+    );
+  });
+
   it('shows the object name and version instead of raw target codes', () => {
     const nb = translator('nb');
     const en = translator('en');

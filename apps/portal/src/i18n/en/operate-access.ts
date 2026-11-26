@@ -4,6 +4,8 @@ import type { accessArea as source } from '../nb/operate-access';
 const access = {
   title: 'Access',
   lead: 'Rights are given in Altinn. Here you can also limit who may use each service.',
+  leadGroups:
+    'Rights are given in your groups in Entra ID. Here you can also limit who may use each service.',
   grant: 'Give a colleague access',
   newTab: '(opens in a new tab)',
   openAltinn: 'Open Altinn',
@@ -18,7 +20,9 @@ const access = {
   altinnNoList: 'So we cannot show who has which rights right now.',
   altinnNotConnected: 'Altinn is not connected yet.',
   altinnNotConnectedText: "So you do not see your colleagues' rights here. You see them in Altinn.",
-  loadingPeople: 'Fetching the rights from Altinn',
+  fromGroups: 'Who has access is decided in Entra ID.',
+  fromGroupsText: 'So you only see your own rights here.',
+  loadingPeople: 'Fetching the rights',
   searchPerson: 'Search for a person',
   searchPlaceholder: 'Name',
   showWhoCan: 'Show those who can',
@@ -94,6 +98,7 @@ const access = {
   add: 'Add',
   noPeopleToPick:
     'So there is nobody to choose from here yet. Once Altinn is connected, you can choose who may use the service.',
+  noPeopleToPickGroups: 'So there is nobody to choose from here.',
   pickAtLeastOne:
     'Choose at least one person, or let everyone with «Bruke tjenester» use the service.',
   unsaved: 'You have unsaved changes',

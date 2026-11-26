@@ -182,8 +182,20 @@ describe('Be om mer kvote', () => {
     await renderAt('#/overview', portal(alerting, [rejected]));
 
     expect(
-      await screen.findByText(/Digdir avslo forespørselen .*: Ta det opp i januar/),
+      await screen.findByText(/Digdir avslo forespørselen .*: «Ta det opp i januar»/),
     ).toBeTruthy();
+  });
+
+  it('quotes the decline reason as written and keeps it apart from the request link on Statistikk', async () => {
+    const rejected: QuotaRequestView = {
+      ...pending,
+      state: 'rejected',
+      decision: { by: 'operator:drift', at: '2026-10-07T08:00:00Z', reason: 'Already increased' },
+    };
+    await renderAt('#/statistics', portal(alerting, [rejected]));
+
+    const request = await screen.findByRole('button', { name: 'Be om mer kvote' });
+    expect(request.parentElement?.textContent).toMatch(/: «Already increased»\. Be om mer kvote$/);
   });
 
   it('says a request is already waiting when the API refuses a second one', async () => {

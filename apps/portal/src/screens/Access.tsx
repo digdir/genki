@@ -79,6 +79,8 @@ const orgNumberText = (org: string) =>
 
 const oldTabs = new Set(['services', 'datasets', 'groups']);
 
+type NoList = 'altinn' | 'groups';
+
 const problemCode = (error: unknown) =>
   error instanceof ApiError ? (error.problem as { code?: string } | undefined)?.code : undefined;
 
@@ -338,7 +340,7 @@ const ServicesTab = ({
   tenant,
   data,
   people,
-  notConnected,
+  noList,
   openFirst,
   onDirty,
   leaveAsk,
@@ -350,7 +352,7 @@ const ServicesTab = ({
   tenant: string;
   data: Omit<AccessData, 'people'>;
   people: AccessPerson[] | undefined;
-  notConnected: boolean;
+  noList: NoList | undefined;
   openFirst: string | undefined;
   onDirty: (dirty: boolean) => void;
   leaveAsk: boolean;
@@ -540,7 +542,7 @@ const ServicesTab = ({
                   service={openService}
                   draft={current(s.id)}
                   people={people ?? []}
-                  notConnected={notConnected}
+                  noList={noList}
                   whoAll={whoAll}
                   nameOf={(id) => nameOf(id, limitOf(data.limits, s.id))}
                   pick={pick}
@@ -606,7 +608,7 @@ const ServiceEditor = ({
   service,
   draft,
   people,
-  notConnected,
+  noList,
   whoAll,
   nameOf,
   pick,
@@ -620,7 +622,7 @@ const ServiceEditor = ({
   service: ServiceSummaryView;
   draft: Draft;
   people: AccessPerson[];
-  notConnected: boolean;
+  noList: NoList | undefined;
   whoAll: string;
   nameOf: (id: string) => string;
   pick: string;
@@ -674,9 +676,11 @@ const ServiceEditor = ({
             <ul className="plain-list member-list" aria-label={t('access.modeSome')}>
               {draft.members.map((id) => {
                 const person = byId.get(id);
-                const warn = !canUse(person);
+                const warn = !noList && !canUse(person);
                 const note = !person
-                  ? t('access.memberGone')
+                  ? noList
+                    ? ''
+                    : t('access.memberGone')
                   : warn
                     ? `${rightsText(person)}. ${t('access.memberLacksUseNote')}`
                     : rightsText(person);
@@ -724,12 +728,14 @@ const ServiceEditor = ({
               </div>
             </div>
           ) : null}
-          {notConnected ? (
+          {noList ? (
             <Alert data-color="info" data-size="sm">
               <Heading level={3} data-size="2xs">
-                {t('access.altinnNotConnected')}
+                {t(noList === 'groups' ? 'access.fromGroups' : 'access.altinnNotConnected')}
               </Heading>
-              <Paragraph data-size="sm">{t('access.noPeopleToPick')}</Paragraph>
+              <Paragraph data-size="sm">
+                {t(noList === 'groups' ? 'access.noPeopleToPickGroups' : 'access.noPeopleToPick')}
+              </Paragraph>
             </Alert>
           ) : (
             <div className="add-person">
@@ -998,6 +1004,8 @@ export const Access = ({ api, tenant, tenantName, route, live }: ScreenProps) =>
     (peopleState.status === 'error' && !notConnected) ||
     (peopleState.status === 'ready' && peopleState.data.stale);
   const people = peopleState.status === 'ready' ? peopleState.data : undefined;
+  const fromGroups = people?.source === 'entra-groups';
+  const noList: NoList | undefined = notConnected ? 'altinn' : fromGroups ? 'groups' : undefined;
 
   const body = () => {
     if (restState.status === 'loading')
@@ -1023,8 +1031,8 @@ export const Access = ({ api, tenant, tenantName, route, live }: ScreenProps) =>
             api={api}
             tenant={tenant}
             data={restState.data}
-            people={people?.people}
-            notConnected={notConnected}
+            people={fromGroups ? undefined : people?.people}
+            noList={noList}
             openFirst={route.query.get('open') ?? undefined}
             onDirty={setDirty}
             leaveAsk={leaveAsk}
@@ -1036,6 +1044,18 @@ export const Access = ({ api, tenant, tenantName, route, live }: ScreenProps) =>
       );
     if (peopleState.status === 'loading')
       return <Loading label={t('access.loadingPeople')} shape="list" onRetry={retryPeople} />;
+    if (fromGroups)
+      return (
+        <div className="access-stack">
+          <Alert data-color="info">
+            <Heading level={2} data-size="xs">
+              {t('access.fromGroups')}
+            </Heading>
+            <Paragraph>{t('access.fromGroupsText')}</Paragraph>
+          </Alert>
+          <OwnRights />
+        </div>
+      );
     if (notConnected)
       return (
         <div className="access-stack">
@@ -1076,9 +1096,11 @@ export const Access = ({ api, tenant, tenantName, route, live }: ScreenProps) =>
           <Heading level={1} data-size="lg">
             {t('access.title')}
           </Heading>
-          <p className="lead">{t('access.lead')}</p>
+          <p className="lead">{t(fromGroups ? 'access.leadGroups' : 'access.lead')}</p>
         </div>
-        <Button onClick={() => guarded(() => setGranting(true))}>{t('access.grant')}</Button>
+        {fromGroups || peopleState.status === 'loading' ? null : (
+          <Button onClick={() => guarded(() => setGranting(true))}>{t('access.grant')}</Button>
+        )}
       </div>
 
       {altinnDown && (peopleError === undefined || peopleError === 'altinn_unavailable') ? (

@@ -55,7 +55,7 @@ export const statusArea = {
     doneTitle: 'The request is sent to Digdir.',
     doneText: 'It also shows in Log, Changes.',
     approved: 'Digdir approved {amount} million tokens per month {when}.',
-    rejected: 'Digdir turned the request down {when}: {reason}',
+    rejected: 'Digdir turned the request down {when}: “{reason}”.',
     pending:
       'Waiting for Digdir to answer the request for {amount} million tokens per month, sent {when}.',
     overviewText:

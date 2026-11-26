@@ -174,6 +174,7 @@ export const changes = {
   settingPin: 'pinned the edition of',
   tenantImport: 'imported',
   tenantCreate: 'registered the organisation',
+  tenantMove: "moved the organisation's data here",
   supportOpen: 'opened support access',
   contentRead: 'viewed content',
   contentReason: 'gave a reason to see content',

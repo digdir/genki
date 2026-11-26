@@ -164,6 +164,17 @@ describe('Tilgang: personer', () => {
     expect(screen.queryByText('Vi fikk ikke kontakt med Altinn.')).toBeNull();
     expect(screen.getByRole('heading', { level: 2, name: 'Kari Nordmann' })).toBeTruthy();
   });
+
+  it('says rights come from Entra ID, with no Altinn text or link, when Entra groups give the rights', async () => {
+    await renderAt('#/access', withAccess({ altinn: 'entra-groups' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Hvem som har tilgang, bestemmes i Entra ID.' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Kari Nordmann' })).toBeTruthy();
+    expect(screen.queryByText(/Altinn/)).toBeNull();
+    expect(screen.queryByRole('link', { name: /Altinn/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Gi en kollega tilgang' })).toBeNull();
+  });
 });
 
 describe('Tilgang: tjenester', () => {
@@ -240,6 +251,17 @@ describe('Tilgang: tjenester', () => {
     ).toBeTruthy();
     expect(screen.queryByLabelText('Legg til person')).toBeNull();
     expect(screen.queryByText('Vi fikk ikke kontakt med Altinn.')).toBeNull();
+  });
+
+  it('offers nobody to choose and claims no missing Altinn rights for members when Entra groups give the rights', async () => {
+    await renderAt('#/access/services', withAccess({ altinn: 'entra-groups' }));
+    await openService('Rapportassistenten');
+    expect(
+      screen.getByRole('heading', { name: 'Hvem som har tilgang, bestemmes i Entra ID.' }),
+    ).toBeTruthy();
+    expect(screen.getByText('Derfor er det ingen å velge blant her.')).toBeTruthy();
+    expect(screen.queryByLabelText('Legg til person')).toBeNull();
+    expect(screen.queryByText(/Altinn/)).toBeNull();
   });
 
   it('says a limit controls who can use a service, not who can read or copy its setup', async () => {
@@ -387,6 +409,16 @@ describe('Tilgang: tjenester', () => {
 });
 
 describe('Tilgang: gi en kollega tilgang', () => {
+  it('shows the grant button only once the people list has arrived', async () => {
+    const held = heldFetch(/access\/people/);
+    await renderAt('#/access', held.fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Tilgang' });
+    expect(screen.queryByRole('button', { name: 'Gi en kollega tilgang' })).toBeNull();
+    await held.release();
+    await peopleReady();
+    expect(screen.getByRole('button', { name: 'Gi en kollega tilgang' })).toBeTruthy();
+  });
+
   it('writes the Altinn message for the chosen rights instead of granting', async () => {
     const calls = recording();
     await renderAt('#/access', calls.fetch);
