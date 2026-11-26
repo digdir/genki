@@ -26,6 +26,7 @@ describe('answer cleanup on adversarial input', () => {
       `|${'-'.repeat(100_000)}x`,
       `${'- '.repeat(50_000)}x`,
       `**${'a'.repeat(100_000)}`,
+      `${'*'.repeat(100_000)}x`,
       ` [${'1'.repeat(100_000)}`,
       '\n'.repeat(100_000),
     ])

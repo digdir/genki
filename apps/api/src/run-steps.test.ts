@@ -677,6 +677,17 @@ describe('the run mapper', () => {
     expect(mapper.steps.filter((s) => s.type === 'note')).toEqual([]);
   });
 
+  it('replaces an answer that got markers on its uncited blocks without a warning step', () => {
+    const mapper = new RunMapper({ details: true });
+    const changes = [
+      notice(0, { stage: 'answer-discarded', reason: 'uncited-blocks' }),
+      at(1, 'kernel.part.delta', { text: 'Svar [1].\n\nMer [2].' }),
+    ].flatMap((e) => mapper.push(e));
+
+    expect(changes).toContainEqual({ kind: 'retract', reason: 'discarded' });
+    expect(mapper.steps.filter((s) => s.type === 'note')).toEqual([]);
+  });
+
   it('shows a decline cut to its decline and offer as a cut, not as a rewrite for citations', () => {
     const mapper = new RunMapper({ details: true });
     [

@@ -31,7 +31,7 @@ const isTableSeparator = (line: string) => {
 const ownLine = (line: string) =>
   line.trimStart().startsWith('#') || line.trimStart().startsWith('|') || listItem.test(line);
 
-/** The answer's blocks: a heading, list item or table row is one line; other lines join until a blank line. */
+/** The answer's blocks: a heading or table row is one line; a list item and other lines join the lines after them until a blank line or a line of their own. */
 export const answerBlocks = (text: string): Block[] => {
   const blocks: Block[] = [];
   let open: Block | undefined;
@@ -42,8 +42,10 @@ export const answerBlocks = (text: string): Block[] => {
     const line = text.slice(at, end);
     if (line.trim() === '') open = undefined;
     else if (ownLine(line)) {
-      open = undefined;
-      blocks.push({ start: at, end });
+      const block = { start: at, end };
+      blocks.push(block);
+      // A list item's next line that starts no block of its own continues it.
+      open = listItem.test(line) ? block : undefined;
     } else if (open) open.end = end;
     else {
       open = { start: at, end };
@@ -60,11 +62,25 @@ const letter = /\p{L}/u;
 // A line that is only bold or italic text, such as «**Strategi og organisering mangler**».
 const emphasisOnly = /^[*_]{1,3}[^*_\n]{1,200}[*_]{1,3}:?$/;
 
-const needsCitation = (block: string, nextLine: string | undefined) => {
+/** The text without the bold or italic marks at its end, cut by a loop so long runs stay linear. */
+const withoutTrailingEmphasis = (t: string) => {
+  let end = t.length;
+  while (end > 0 && (t[end - 1] === '*' || t[end - 1] === '_')) end--;
+  return t.slice(0, end).trimEnd();
+};
+
+/** A lead-in ending in ':' is not a claim, but the lines before it in the same block can be. */
+const withoutLeadIn = (block: string) => {
   const t = block.trim();
-  const plain = t.replace(/[*_]+$/, '').trimEnd();
+  if (!withoutTrailingEmphasis(t).endsWith(':')) return t;
+  const nl = t.lastIndexOf('\n');
+  return nl < 0 ? '' : t.slice(0, nl).trim();
+};
+
+const needsCitation = (block: string, nextLine: string | undefined) => {
+  const t = withoutLeadIn(block);
   if (!letter.test(t)) return false;
-  if (t.startsWith('#') || emphasisOnly.test(t) || plain.endsWith(':')) return false;
+  if (t.startsWith('#') || emphasisOnly.test(t)) return false;
   if (isTableSeparator(t)) return false;
   // A table's header row comes right before its separator.
   if (t.startsWith('|') && nextLine !== undefined && isTableSeparator(nextLine)) return false;
@@ -103,8 +119,13 @@ const readChunks = (workspace: Workspace): Chunk[] => {
   ];
 };
 
-/** Numbers for the excerpts: the answer's own markers first, the rest after them. */
-const numbering = (workspace: Workspace) => {
+/**
+ * Numbers for the excerpts: the answer's own markers first, the rest after them. A marker that
+ * quotes a sentence (#971) is never reused, since its footnote highlights that sentence; such an
+ * excerpt gets a fresh number. A new number comes after every number in the index and the text,
+ * so a marker that leads nowhere never becomes one.
+ */
+const numbering = (workspace: Workspace, text: string, quoted: ReadonlySet<number>) => {
   const chunkOf = (id: string) =>
     workspace.chunks.get(id) ?? workspace.sourceOrder.find((c) => c.chunkId === id);
   const byNumber = new Map<number, Chunk>();
@@ -113,9 +134,11 @@ const numbering = (workspace: Workspace) => {
     const c = chunkOf(id);
     if (!c) continue;
     byNumber.set(n, c);
-    if (!numberOf.has(id)) numberOf.set(id, n);
+    if (!quoted.has(n) && !numberOf.has(id)) numberOf.set(id, n);
   }
-  let next = Math.max(0, ...byNumber.keys()) + 1;
+  let next = 1;
+  for (const n of workspace.citationIndex.keys()) next = Math.max(next, n + 1);
+  for (const m of text.matchAll(marker)) next = Math.max(next, Number(m[1]) + 1);
   const add = (c: Chunk) => {
     const known = numberOf.get(c.chunkId);
     if (known !== undefined) return known;
@@ -124,7 +147,9 @@ const numbering = (workspace: Workspace) => {
     numberOf.set(c.chunkId, n);
     return n;
   };
-  return { byNumber, numberOf, add };
+  /** The numbers a new marker may use: one per excerpt, none that quotes a sentence. */
+  const offered = () => new Set(numberOf.values());
+  return { byNumber, numberOf, add, offered };
 };
 
 const coversPage = (c: Chunk, page: number) =>
@@ -153,8 +178,9 @@ const citePages = (
   });
 };
 
-const excerptContext = (byNumber: Map<number, Chunk>) =>
-  [...byNumber]
+const excerptContext = (numbers: ReturnType<typeof numbering>) =>
+  [...numbers.offered()]
+    .map((n) => [n, numbers.byNumber.get(n) as Chunk] as const)
     .sort(([a], [b]) => a - b)
     .map(([n, c]) => {
       const page = pageField(c);
@@ -195,6 +221,9 @@ const plain = (text: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// A marker between two letters or digits, such as «Turn[2]over», splits a word.
+const insideWord = /[\p{L}\p{N}]\[\d{1,3}\][\p{L}\p{N}]/u;
+
 /** One model call that cites the gap blocks; only those blocks change, and only by markers. */
 const citeGapsByModel = async (
   env: ToolEnvironment,
@@ -205,7 +234,7 @@ const citeGapsByModel = async (
   const written = await env.synthesize(
     env.systemPrompt + skillsSection([...env.workspace.loadedSkills.values()]),
     citeGapsPrompt(
-      excerptContext(numbers.byNumber),
+      excerptContext(numbers),
       untrustedData('answer', text),
       untrustedData('uncited', gaps.map((b) => text.slice(b.start, b.end)).join('\n')),
     ),
@@ -221,11 +250,16 @@ const citeGapsByModel = async (
   const ownBlocks = answerBlocks(text);
   if (replyBlocks.length !== ownBlocks.length) return undefined;
   const replyOf = new Map(ownBlocks.map((b, i) => [b.start, replyBlocks[i] as Block]));
+  const offered = numbers.offered();
   return replaceBlocks(text, gaps, (b) => {
     const own = text.slice(b.start, b.end);
     const r = replyOf.get(b.start);
-    const theirs = r ? reply.slice(r.start, r.end) : own;
-    return plain(theirs) === plain(own) ? theirs : own;
+    // A gap gets only the numbers offered to it, never one that quotes another sentence.
+    const theirs = (r ? reply.slice(r.start, r.end) : own).replace(
+      / ?\[(\d{1,3})\]/g,
+      (whole, n: string) => (offered.has(Number(n)) ? whole : ''),
+    );
+    return plain(theirs) === plain(own) && !insideWord.test(theirs) ? theirs : own;
   });
 };
 
@@ -241,7 +275,9 @@ export interface FilledGaps {
  */
 export const citeGaps = async (env: ToolEnvironment, answer: string): Promise<FilledGaps> => {
   const { workspace } = env;
-  const numbers = numbering(workspace);
+  const quoted =
+    answer === workspace.quotedText ? new Set(workspace.citationQuotes.keys()) : new Set<number>();
+  const numbers = numbering(workspace, answer, quoted);
   let text = citePages(answer, workspace, numbers);
   const adopt = (next: string) => {
     for (const [n, c] of numbers.byNumber) {

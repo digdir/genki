@@ -56,6 +56,9 @@ const deltas = (out: Awaited<ReturnType<typeof run>>) =>
     .filter((e) => e.type === 'kernel.part.delta')
     .map((e) => (e.data as { text: string }).text);
 
+const citationsOf = (out: Awaited<ReturnType<typeof run>>) =>
+  (out.meta?.citations ?? []) as { index: number; chunkId: string; quote?: unknown }[];
+
 const gapNotice = (out: Awaited<ReturnType<typeof run>>) =>
   out.notices.find((n) => n.stage === 'sentence-citations');
 
@@ -180,6 +183,141 @@ describe('citing every factual block of an excerpt answer', () => {
     expect(synths(out)).toHaveLength(1);
     expect(out.text).toBe(text);
     expect(gapNotice(out)).toMatchObject({ uncited: 0 });
+  });
+
+  describe('when the gap call fails', () => {
+    it.each([
+      [
+        'throws',
+        () => {
+          throw new Error('model down');
+        },
+      ],
+      ['returns nothing', () => ''],
+    ])('keeps the answer as written and counts its gaps when the gap call %s', async (_, fail) => {
+      const out = await run({
+        retrieval: retrieval({}, storeOf(sick, turnover, budget, waiting)).impl,
+        config: byExcerpt(),
+        scripts: {
+          primary: {
+            loop: readThem(['c1', 'c2', 'c3', 'c4']),
+            synth: [() => partly, fail],
+          },
+        },
+      });
+
+      expect(synths(out)).toHaveLength(2);
+      expect(out.text).toBe(partly);
+      expect(out.sources.map((s) => s.chunkId)).toEqual(['c1']);
+      expect(gapNotice(out)).toMatchObject({ uncited: 3, cited: 1 });
+    });
+  });
+
+  it('gives a page a fresh marker with no quote when the excerpt it cites already has a marker quoting another sentence', async () => {
+    const both = chunk(2, {
+      document: 'd1',
+      content: 'Turnover var 8 prosent. Budsjettet var 120 millioner.',
+      page: 25,
+    });
+    const out = await answer(storeOf(sick, both), [
+      'Sykefraværet var 5,1 prosent [1].\n\nTurnover var 8 prosent [2:1].\n\nBudsjettet var 120 millioner (s. 25).',
+    ]);
+
+    expect(out.text).toBe(
+      'Sykefraværet var 5,1 prosent [1].\n\nTurnover var 8 prosent [2].\n\nBudsjettet var 120 millioner [3] (s. 25).',
+    );
+    expect(synths(out)).toHaveLength(1);
+    expect(out.meta?.citations).toEqual([
+      expect.objectContaining({ index: 1, chunkId: 'c1' }),
+      expect.objectContaining({
+        index: 2,
+        chunkId: 'c2',
+        quote: expect.objectContaining({ exact: 'Turnover var 8 prosent.' }),
+      }),
+      expect.not.objectContaining({ quote: expect.anything() }),
+    ]);
+    expect(citationsOf(out)[2]).toMatchObject({ index: 3, chunkId: 'c2' });
+  });
+
+  it('shows the gap call each excerpt once, under a number with no quote', async () => {
+    const both = chunk(2, {
+      document: 'd1',
+      content: 'Turnover var 8 prosent. Budsjettet var 120 millioner.',
+    });
+    const out = await answer(storeOf(sick, both), [
+      'Sykefraværet var 5,1 prosent [1].\n\nTurnover var 8 prosent [2:1].\n\nBudsjettet var 120 millioner.',
+      'Sykefraværet var 5,1 prosent [1].\n\nTurnover var 8 prosent [2].\n\nBudsjettet var 120 millioner [3].',
+    ]);
+
+    expect(synths(out)[1]).toMatch(
+      /\[3\] <untrusted_data kind="source"[^>]*>\nTurnover var 8 prosent\./,
+    );
+    expect(synths(out)[1]).not.toMatch(/\[2\] <untrusted_data/);
+    expect(out.text).toBe(
+      'Sykefraværet var 5,1 prosent [1].\n\nTurnover var 8 prosent [2].\n\nBudsjettet var 120 millioner [3].',
+    );
+    expect(citationsOf(out)[2]).toMatchObject({ index: 3, chunkId: 'c2' });
+    expect(citationsOf(out)[2]).not.toHaveProperty('quote');
+  });
+
+  it('never binds a marker that leads nowhere to an excerpt the gap step numbers', async () => {
+    const a = chunk(1, { content: 'A'.repeat(39), contentLength: 39 });
+    const b = chunk(2, { content: 'B'.repeat(39), contentLength: 39 });
+    const cut = chunk(3, { content: 'Turnover var 8 prosent i Rapport 3.....', contentLength: 39 });
+    const draft = 'Første funn [1][3].\n\nTurnover var 8 prosent.';
+    const out = await run({
+      retrieval: retrieval({}, storeOf(a, b, cut)).impl,
+      config: byExcerpt(100),
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['turnover'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c3'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c2'] })]),
+            () => result('', [call('generate_response', { query: 'turnover' })]),
+          ],
+          read: [
+            () => readSignal('gap-remaining'),
+            () => readSignal('gap-remaining', { scope_assessment: 'ambiguous' }),
+          ],
+          synth: [() => draft, () => draft],
+        },
+      },
+    });
+
+    expect(out.text).toBe('Første funn [1].\n\nTurnover var 8 prosent.');
+    expect(out.sources.map((s) => s.chunkId)).toEqual(['c1']);
+  });
+
+  it('asks the gap call for markers only, with no pages', async () => {
+    const out = await answer(storeOf(sick, turnover, budget, waiting), [partly, fully]);
+
+    expect(synths(out)[1]).not.toContain('[12] (s. 25)');
+    expect(synths(out)[1]).toContain('Add only [N] markers');
+  });
+
+  it('refuses a marker the gap call puts inside a word', async () => {
+    const out = await answer(storeOf(sick, turnover), [
+      'Sykefraværet var 5,1 prosent [1].\n\nTurnover var 8 prosent.',
+      'Sykefraværet var 5,1 prosent [1].\n\nTurn[2]over var 8 prosent.',
+    ]);
+
+    expect(out.text).toBe('Sykefraværet var 5,1 prosent [1].\n\nTurnover var 8 prosent.');
+    expect(gapNotice(out)).toMatchObject({ uncited: 1 });
+  });
+
+  it("looks for gaps in the lines before a lead-in ending in ':', and reads a list item's continuation line as part of the item", async () => {
+    const withLeadIn = await answer(storeOf(sick, turnover), [
+      'Sykefraværet var 5,1 prosent [1].\n\nTurnover var 8 prosent.\nTo tall til:',
+      'Sykefraværet var 5,1 prosent [1].\n\nTurnover var 8 prosent [2].\nTo tall til:',
+    ]);
+    expect(synths(withLeadIn)).toHaveLength(2);
+    expect(withLeadIn.sources.map((s) => s.chunkId)).toEqual(['c1', 'c2']);
+
+    const item = '- Sykefraværet var 5,1 prosent\n  i 2024 [1].\n- Turnover var 8 prosent [2].';
+    const continued = await answer(storeOf(sick, turnover), [item]);
+    expect(synths(continued)).toHaveLength(1);
+    expect(continued.text).toBe(item);
   });
 
   describe("fills gaps in the agent's own final message, the add-citations result and the chunk-id answer as in generate_response's", () => {
