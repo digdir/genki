@@ -99,7 +99,9 @@ param ansattportenIssuer = !empty(issuer) && !contains(['https://test.ansattport
   : productionLogin && hostnamesStage != 'certificates'
       ? fail('production Ansattporten knows only login.apps.genki.digdir.cloud; set HOSTNAMES_STAGE=certificates first')
       : issuer
-param altinnResource = readEnvironmentVariable('ALTINN_RESOURCE', 'urn:altinn:resource:digdir-genai-platform')
+param altinnResource = productionLogin
+  ? 'urn:altinn:resource:digdir-genai-platform'
+  : 'urn:altinn:resource:digdir-genai-platform-test'
 param altinnPdpUrl = productionLogin && !empty(altinnPdp)
   ? fail('test signs in through production Ansattporten without Altinn; delete ALTINN_PDP_URL')
   : altinnPdp
