@@ -40,7 +40,7 @@ export interface Problem {
   status: number;
   detail?: string;
   error?: string;
-  errors?: { path: string; message: string }[];
+  errors?: { path: string; message: string; id?: string }[];
 }
 
 export interface Organisation {

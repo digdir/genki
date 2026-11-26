@@ -200,6 +200,7 @@ export const problems = defineNamespace({
   serviceUsedByService: 'Tjenesten {service} bruker tjenesten',
   serviceUsedByOthers: '{count} tjenester hos andre virksomheter bruker tjenesten',
   serviceUsedByInternal: '{count} interne tjenester bruker tjenesten',
+  serviceAddressNotRemoved: 'Adressen genki laget for tjenesten ble ikke fjernet. Prøv igjen.',
   serviceOutdatedTitle: 'Tjenesten bruker noe som ikke finnes lenger',
   hostNotFoundTitle: 'Ingen tjeneste på dette vertsnavnet',
   bffProxyRefused: 'Forespørselen kom ikke gjennom vertens mellomtjener',
