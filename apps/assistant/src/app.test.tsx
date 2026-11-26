@@ -110,6 +110,8 @@ describe('the assistant host', () => {
 
     expect(await screen.findByText('Innlogging er ikke satt opp her.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Logg inn' })).toBeNull();
+    expect(screen.queryByText('Du kan lese sidene under.')).toBeNull();
+    expect(screen.queryByRole('navigation')).toBeNull();
   });
 
   it('follows the person’s language in the service’s texts', async () => {
