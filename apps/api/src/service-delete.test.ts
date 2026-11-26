@@ -324,9 +324,9 @@ describe('deleting a service', () => {
     expect(await refused.json()).toMatchObject({
       type: 'urn:genai:problem:service-in-use',
       errors: [
-        { path: 'frontends', message: expect.stringContaining('Testappen') },
-        { path: 'apiKeys', message: expect.stringContaining('Backend') },
-        { path: 'services', message: expect.stringContaining('kaller') },
+        { path: 'frontends', id: 'test-web', message: expect.stringContaining('Testappen') },
+        { path: 'apiKeys', id: expect.any(String), message: expect.stringContaining('Backend') },
+        { path: 'services', id: 'kaller', message: expect.stringContaining('kaller') },
       ],
     });
     expect(await stored('Service', 'testtjeneste')).toHaveLength(1);

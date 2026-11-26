@@ -211,6 +211,17 @@ export const LifecycleDialog = ({
   );
 };
 
+type Refusal = { message: string; href?: string };
+
+const placeOf = ({ path, id }: { path: string; id?: string }) =>
+  path === 'frontends'
+    ? '#/developer/frontends'
+    : path === 'apiKeys'
+      ? '#/developer/keys'
+      : path === 'services' && id
+        ? `#/services/${encodeURIComponent(id)}`
+        : undefined;
+
 export const DeleteServiceDialog = ({
   api,
   tenant,
@@ -228,7 +239,7 @@ export const DeleteServiceDialog = ({
   const [typed, setTyped] = useState('');
   const [reason, setReason] = useState('');
   const [showErrors, setShowErrors] = useState(false);
-  const [refusals, setRefusals] = useState<string[]>();
+  const [refusals, setRefusals] = useState<Refusal[]>();
   const [busy, setBusy] = useState(false);
   const mismatch =
     showErrors && typed.trim() !== id ? t('serviceLifecycle.deleteMismatch') : undefined;
@@ -247,9 +258,14 @@ export const DeleteServiceDialog = ({
       onClose();
       navigate('/services');
     } catch (error) {
-      const messages =
-        error instanceof ApiError ? (error.problem?.errors ?? []).map((e) => e.message) : [];
-      setRefusals(messages.length > 0 ? messages : [t('serviceLifecycle.deleteFailed')]);
+      const found: Refusal[] =
+        error instanceof ApiError
+          ? (error.problem?.errors ?? []).map((e) => {
+              const href = placeOf(e);
+              return href ? { message: e.message, href } : { message: e.message };
+            })
+          : [];
+      setRefusals(found.length > 0 ? found : [{ message: t('serviceLifecycle.deleteFailed') }]);
       setBusy(false);
     }
   };
@@ -280,9 +296,9 @@ export const DeleteServiceDialog = ({
         />
         {refusals ? (
           <Alert data-color="danger" data-size="sm" role="alert">
-            {refusals.map((message) => (
+            {refusals.map(({ message, href }) => (
               <Paragraph key={message} data-size="sm">
-                {message}
+                {href ? <a href={href}>{message}</a> : message}
               </Paragraph>
             ))}
           </Alert>
