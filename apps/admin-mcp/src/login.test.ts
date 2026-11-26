@@ -5,6 +5,7 @@ import {
   browserLogin,
   codeChallenge,
   devLoginSource,
+  loginOptionsFrom,
   sessionToken,
   type LoginOptions,
 } from './login.js';
@@ -83,10 +84,27 @@ describe('logging in through the browser', () => {
     expect(query?.get('resource')).toBe('digdir:genai');
     expect(query?.get('code_challenge_method')).toBe('S256');
     expect(query?.get('authorization_details')).toContain('digdir-genai-platform-test');
+    expect(query?.get('acr_values')).toBeNull();
     const exchange = provider.exchanges[0];
     expect(exchange?.get('code')).toBe('the-code');
     expect(codeChallenge(exchange?.get('code_verifier') ?? '')).toBe(query?.get('code_challenge'));
     expect(tokens).toMatchObject({ accessToken: 'person-token', refreshToken: 'r1' });
+  });
+
+  it('asks for an Entra ID login and no Altinn resource when none is configured', async () => {
+    const provider = fakeProvider();
+    let asked: URL | undefined;
+    const settings = options(provider, (authorize) => {
+      asked = authorize;
+      return approve(authorize);
+    });
+    delete settings.altinnResource;
+
+    await browserLogin(settings);
+
+    expect(asked?.searchParams.get('acr_values')).toBe('entraid');
+    expect(asked?.searchParams.has('authorization_details')).toBe(false);
+    expect(asked?.searchParams.get('resource')).toBe('digdir:genai');
   });
 
   it('listens on both loopback addresses when the registered callback says localhost', async () => {
@@ -256,6 +274,76 @@ describe('logging in through the browser', () => {
     expect(later).toBe('refreshed-1');
     expect(renewed).toBe('refreshed-2');
     expect(logins).toBe(1);
+  });
+
+  it('uses the refresh token from each refresh for the next one, as one-time refresh tokens need', async () => {
+    const used: string[] = [];
+    let issued = 0;
+    const provider = fakeProvider();
+    const rotating = {
+      ...provider,
+      fetch: (async (url: string, init?: RequestInit) => {
+        const form = new URLSearchParams(String(init?.body));
+        if (form.get('grant_type') !== 'refresh_token') return provider.fetch(url, init);
+        used.push(form.get('refresh_token') ?? '');
+        issued += 1;
+        return Response.json({
+          access_token: `a${issued}`,
+          refresh_token: `r${issued + 1}`,
+          expires_in: 120,
+        });
+      }) as typeof fetch,
+    };
+    let clock = 0;
+    const token = sessionToken(options(rotating, approve, { now: () => clock }));
+
+    await token.get();
+    clock += 10 * 60_000;
+    await token.get();
+    clock += 10 * 60_000;
+    await token.get();
+
+    expect(used).toEqual(['r1', 'r2']);
+  });
+});
+
+describe('login settings from the environment', () => {
+  const open = () => undefined;
+
+  it('defaults to production Ansattporten, the API audience, the 5173 callback and no Altinn resource', () => {
+    expect(loginOptionsFrom({}, 'the-client', open)).toEqual({
+      issuer: 'https://ansattporten.no',
+      clientId: 'the-client',
+      audience: 'digdir:genai',
+      redirectUri: 'http://127.0.0.1:5173/callback',
+      open,
+    });
+  });
+
+  it('takes the issuer and a trimmed Altinn resource from the environment', () => {
+    const settings = loginOptionsFrom(
+      {
+        ANSATTPORTEN_ISSUER: 'https://test.ansattporten.no',
+        GENKI_ALTINN_RESOURCE: ' urn:altinn:resource:digdir-genai-platform-test ',
+      },
+      'the-client',
+      open,
+    );
+
+    expect(settings.issuer).toBe('https://test.ansattporten.no');
+    expect(settings.altinnResource).toBe('urn:altinn:resource:digdir-genai-platform-test');
+  });
+
+  it('asks for no Altinn resource when GENKI_ALTINN_RESOURCE is blank', () => {
+    expect(loginOptionsFrom({ GENKI_ALTINN_RESOURCE: '  ' }, 'c', open)).not.toHaveProperty(
+      'altinnResource',
+    );
+  });
+
+  it('refuses a login issuer over plain http that is not on this machine', () => {
+    expect(() =>
+      loginOptionsFrom({ ANSATTPORTEN_ISSUER: 'http://ansattporten.no' }, 'c', open),
+    ).toThrow(/https/);
   });
 });
 

@@ -82,6 +82,8 @@ export interface ConversationProps {
    * `search` among its actions. Without it, the row holds those two alone.
    */
   actions?: ((turn: ConversationAnswer, parts: ConversationActionParts) => ReactNode) | undefined;
+  /** When each answer came, under it. On by default; off, `end` is empty. */
+  time?: boolean | undefined;
   /**
    * «Søk i svaret» under each finished answer, and the search strip over the conversation. Off
    * unless asked for: kunnskapsassistenten took it out (digdir/kunnskapsassistenten#209).
@@ -214,6 +216,7 @@ export const Conversation = ({
   target,
   header,
   actions,
+  time = true,
   search = false,
   follow = true,
   scrollContainer,
@@ -458,7 +461,8 @@ export const Conversation = ({
   );
 
   const rowFor = (turn: ConversationAnswer): ReactNode => {
-    const end = turn.createdAt === undefined ? null : <AnswerTime at={turn.createdAt} now={now} />;
+    const end =
+      !time || turn.createdAt === undefined ? null : <AnswerTime at={turn.createdAt} now={now} />;
     if (turn.status !== 'complete') return end ?? undefined;
     const searchButton = search ? (
       <Button

@@ -10,6 +10,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ApiClient } from '../../../api';
 import { useT } from '../../../i18n';
+import { useServiceAddress } from '../../service/service-address';
 import { BlocksFullscreen, BlocksStep, useBlocksState } from './BlocksStep';
 import { draftChannels } from './channels';
 import { useDatasetFilters } from './datasetFilters';
@@ -67,6 +68,7 @@ export const InterfaceTab = ({
   onExitFullscreen: () => void;
   pins?: PinActions | undefined;
 }) => {
+  const t = useT();
   const studio = useFlag('blockStudio');
   const flagsReady = useFlags().ready;
   const datasets = useMemo(() => datasetsOfDefinition(definition), [definition]);
@@ -91,8 +93,9 @@ export const InterfaceTab = ({
     () => ({ api, tenant, source: { definition, files }, pinned, refBlocks }),
     [api, tenant, definition, files, pinned, refBlocks],
   );
-  const id = (definition.metadata as { id?: unknown } | undefined)?.id;
-  const address = `${typeof id === 'string' && id ? id : service}.genki.no`;
+  // The address Åpne tjenesten opens; a fresh service has none to look up yet.
+  const { address: serviceUrl } = useServiceAddress(api, tenant, service, !simple);
+  const address = serviceUrl ? new URL(serviceUrl).host : t('builderBlocks.noAddress');
 
   const written = useRef(storedJson);
   const [generation, setGeneration] = useState(0);

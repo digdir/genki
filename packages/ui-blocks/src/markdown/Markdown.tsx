@@ -138,8 +138,8 @@ const inlinePattern = new RegExp(
   `(${[
     String.raw`\\[!-\/:-@\[-\x60{-~]`,
     String.raw`\x60[^\x60\n]+\x60`,
-    String.raw`!\[[^\]\n]*\]${destination}`,
-    String.raw`\[[^\]\n]+\]${destination}`,
+    String.raw`!\[[^\[\]\n]*\]${destination}`,
+    String.raw`\[[^\[\]\n]+\]${destination}`,
     String.raw`\[\d+(?:\s*,\s*\d+)*\]`,
     String.raw`<https?:\/\/[^<>\s]+>`,
     String.raw`<sup>[^<\n]*<\/sup>|<sub>[^<\n]*<\/sub>|<br\s*\/?>`,
@@ -342,6 +342,33 @@ const citeGroup = /\[(\d+(?:\s*,\s*\d+)+)\]/g;
 
 /** What a footnote `[n]` is copied as: another number, nothing, or `undefined` for itself. */
 export type FootnoteLabel = (n: number) => number | null | undefined;
+
+const nested = /^(\*\*|__|~~|<sup>|<sub>|\*|_)([\s\S]*?)(\*\*|__|~~|<\/sup>|<\/sub>|\*|_)$/;
+
+/** A line's markdown as written, only the footnotes the screen reads renumbered as `label` says. */
+export const markdownFootnotes = (line: string, label: FootnoteLabel): string => {
+  let out = '';
+  line.split(inlinePattern).forEach((part, i) => {
+    const wrapped = i % 2 && !part.startsWith('[') ? nested.exec(part) : null;
+    const cites = i % 2 ? citesPart.exec(part) : null;
+    if (wrapped) out += `${wrapped[1]}${markdownFootnotes(wrapped[2] ?? '', label)}${wrapped[3]}`;
+    else if (!cites) out += part;
+    else
+      part
+        .slice(1, -1)
+        .split(',')
+        .forEach((digits, j) => {
+          const n = Number(digits);
+          const shown = n < 1000 ? label(n) : undefined;
+          if (j) out += ' ';
+          // A footnote copied as nothing takes the one blank written right before it along.
+          if (shown === null)
+            out = out.endsWith(' ') || out.endsWith('\t') ? out.slice(0, -1) : out;
+          else out += `[${shown ?? digits.trim()}]`;
+        });
+  });
+  return out;
+};
 
 /** A line's words as drawn, without inline syntax; `label` renumbers or drops only footnotes. */
 export const inlineText = (line: string, label?: FootnoteLabel) => {

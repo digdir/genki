@@ -811,6 +811,20 @@ describe('the slots', () => {
     const time = screen.getByText('14:32').closest('time');
     expect(time?.parentElement?.classList.contains('uib-answer-row-slot')).toBe(true);
   });
+
+  it('draw no time at all with `time` off, and hand the app an empty end', () => {
+    const ends: unknown[] = [];
+    const { container } = draw({
+      time: false,
+      actions: (_turn, parts) => {
+        ends.push(parts.end);
+        return <button type="button">Kopier</button>;
+      },
+    });
+    expect(container.querySelector('time')).toBeNull();
+    expect(ends.length).toBeGreaterThan(0);
+    expect(ends.every((end) => end === null)).toBe(true);
+  });
 });
 
 describe('the time an answer came', () => {

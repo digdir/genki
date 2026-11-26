@@ -4,7 +4,7 @@ import type { MockHandler } from '../mock';
 export interface AccessMockOptions {
   people?: AccessPerson[];
   limits?: ServiceAccess[];
-  altinn?: 'ok' | 'stale' | 'down' | 'not-configured';
+  altinn?: 'ok' | 'stale' | 'down' | 'not-configured' | 'entra-groups';
   servicesFail?: boolean;
   at?: string;
 }
@@ -61,6 +61,8 @@ export const accessMock = (options: AccessMockOptions = {}): MockHandler => {
     if (/^\/tenants\/[^/]+\/access\/people$/.test(req.path)) {
       if (options.altinn === 'not-configured')
         return req.json(problem(503, 'Altinn is not connected', 'altinn_not_configured'), 503);
+      if (options.altinn === 'entra-groups')
+        return req.json({ people: [], at, stale: false, source: 'entra-groups' });
       if (options.altinn === 'down')
         return req.json(problem(503, 'Altinn did not answer', 'altinn_unavailable'), 503);
       return req.json({ people, at, stale: options.altinn === 'stale', source: 'test-data' });

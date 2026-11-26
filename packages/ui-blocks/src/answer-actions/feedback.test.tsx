@@ -25,7 +25,8 @@ const draw = (status?: AnswerFeedbackStatus) => {
   return { sent, redraw, container: view.container };
 };
 
-const group = () => screen.getByRole('group', { name: 'Tilbakemelding på svaret' });
+// The whole block: the thumbs stand in its row, the form and the status under it.
+const group = () => document.querySelector('.uib-answer-actions') as HTMLElement;
 const button = (name: string) => within(group()).getByRole('button', { name });
 const status = () => within(group()).getByRole('status');
 
@@ -35,13 +36,25 @@ describe('the feedback on an answer', () => {
     expect(container.innerHTML).toBe('');
     cleanup();
     render(<AnswerActions onCopyAnswer={() => {}} onFeedback={() => {}} />);
-    expect(screen.queryByRole('group', { name: 'Tilbakemelding på svaret' })).toBeNull();
-    expect(screen.queryByText('Var svaret nyttig?')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Var svaret nyttig?' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Nyttig' })).toBeNull();
+  });
+
+  it('draws the thumbs as icons named «Nyttig» and «Ikke nyttig», in a group that asks the question', () => {
+    draw();
+    const thumbs = screen.getByRole('group', { name: 'Var svaret nyttig?' });
+    const named = within(thumbs)
+      .getAllByRole('button')
+      .map((b) => [b.getAttribute('aria-label'), b.textContent]);
+    expect(named).toEqual([
+      ['Nyttig', ''],
+      ['Ikke nyttig', ''],
+    ]);
   });
 
   it('sends the rating on the click, before any reason or comment', () => {
     const { sent, redraw } = draw();
-    const yes = button('Ja');
+    const yes = button('Nyttig');
     expect(yes.getAttribute('aria-pressed')).toBe('false');
 
     fireEvent.click(yes);
@@ -58,7 +71,7 @@ describe('the feedback on an answer', () => {
 
   it('sends reasons and a comment afterwards with the rating again, for the service', () => {
     const { sent, redraw, container } = draw();
-    fireEvent.click(button('Nei'));
+    fireEvent.click(button('Ikke nyttig'));
     redraw('sending');
     redraw('sent');
     fireEvent.click(within(group()).getByRole('checkbox', { name: 'Mangler kilde' }));
@@ -88,12 +101,12 @@ describe('the feedback on an answer', () => {
     );
     expect(within(group()).queryByRole('textbox')).toBeNull();
     // «Send» is gone, so focus goes to the chosen thumb rather than the page.
-    expect(document.activeElement).toBe(button('Nei'));
+    expect(document.activeElement).toBe(button('Ikke nyttig'));
   });
 
   it('changes the rating with the other thumb, sending the details already sent with it', () => {
     const { sent, redraw } = draw();
-    fireEvent.click(button('Nei'));
+    fireEvent.click(button('Ikke nyttig'));
     redraw('sending');
     redraw('sent');
     fireEvent.click(within(group()).getByRole('checkbox', { name: 'Utdatert' }));
@@ -102,26 +115,26 @@ describe('the feedback on an answer', () => {
     redraw('sending');
     redraw('sent');
 
-    fireEvent.click(button('Ja'));
-    expect(button('Ja').getAttribute('aria-pressed')).toBe('true');
-    expect(button('Nei').getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(button('Nyttig'));
+    expect(button('Nyttig').getAttribute('aria-pressed')).toBe('true');
+    expect(button('Ikke nyttig').getAttribute('aria-pressed')).toBe('false');
     // The platform keeps the latest feedback, so the comment goes with the new rating; the
     // reasons are for a no.
     expect(sent.at(-1)).toEqual({ rating: 'up', reasons: [], comment: 'Gammel lov' });
     redraw('sending');
     redraw('sent');
-    fireEvent.click(button('Nei'));
+    fireEvent.click(button('Ikke nyttig'));
     expect(sent.at(-1)).toEqual({ rating: 'down', reasons: ['Utdatert'], comment: 'Gammel lov' });
   });
 
   it('sends nothing more when the chosen thumb is clicked again', () => {
     const { sent, redraw } = draw();
-    fireEvent.click(button('Ja'));
+    fireEvent.click(button('Nyttig'));
     redraw('sending');
     redraw('sent');
-    fireEvent.click(button('Ja'));
+    fireEvent.click(button('Nyttig'));
     expect(sent).toHaveLength(1);
-    expect(button('Ja').getAttribute('aria-pressed')).toBe('true');
+    expect(button('Nyttig').getAttribute('aria-pressed')).toBe('true');
   });
 
   it('brings the form into sight once when the person opens it, above a docked question field', () => {
@@ -132,10 +145,10 @@ describe('the feedback on an answer', () => {
     };
     try {
       draw();
-      fireEvent.click(button('Nei'));
+      fireEvent.click(button('Ikke nyttig'));
       expect(scrolled).toHaveLength(1);
       expect(within(scrolled[0] as HTMLElement).getByRole('button', { name: 'Send' })).toBeTruthy();
-      fireEvent.click(button('Ja'));
+      fireEvent.click(button('Nyttig'));
       expect(scrolled).toHaveLength(1);
     } finally {
       Element.prototype.scrollIntoView = original;
@@ -144,7 +157,7 @@ describe('the feedback on an answer', () => {
 
   it('closes the details without sending more when the person skips them', () => {
     const { sent, redraw } = draw();
-    fireEvent.click(button('Ja'));
+    fireEvent.click(button('Nyttig'));
     redraw('sending');
     redraw('sent');
     const skip = button('Hopp over');
@@ -153,12 +166,12 @@ describe('the feedback on an answer', () => {
     expect(sent).toEqual([{ rating: 'up', reasons: [], comment: '' }]);
     expect(within(group()).queryByRole('textbox')).toBeNull();
     expect(status().textContent).toBe('Takk!');
-    expect(document.activeElement).toBe(button('Ja'));
+    expect(document.activeElement).toBe(button('Nyttig'));
   });
 
   it('says nothing is sent until the app says so', () => {
     const { sent } = draw();
-    fireEvent.click(button('Ja'));
+    fireEvent.click(button('Nyttig'));
     fireEvent.click(button('Send'));
     expect(sent).toHaveLength(2);
     expect(status().textContent).toBe('');
@@ -167,12 +180,12 @@ describe('the feedback on an answer', () => {
 
   it('tells the person when the app could not send it, and lets them try again', () => {
     const { sent, redraw } = draw();
-    fireEvent.click(button('Ja'));
+    fireEvent.click(button('Nyttig'));
     redraw('sending');
     redraw('failed');
     expect(status().textContent).toBe('Tilbakemeldingen ble ikke sendt. Prøv igjen om litt.');
     // The same thumb again sends the rating again.
-    fireEvent.click(button('Ja'));
+    fireEvent.click(button('Nyttig'));
     expect(sent).toEqual([
       { rating: 'up', reasons: [], comment: '' },
       { rating: 'up', reasons: [], comment: '' },
@@ -192,17 +205,17 @@ describe('the feedback on an answer', () => {
 
   it('sends once while the app is sending', () => {
     const { sent, redraw } = draw();
-    fireEvent.click(button('Nei'));
+    fireEvent.click(button('Ikke nyttig'));
     redraw('sending');
-    fireEvent.click(button('Ja'));
+    fireEvent.click(button('Nyttig'));
     fireEvent.click(button('Send'));
     expect(sent).toHaveLength(1);
-    expect(button('Nei').getAttribute('aria-pressed')).toBe('true');
+    expect(button('Ikke nyttig').getAttribute('aria-pressed')).toBe('true');
   });
 
   it('keeps a comment within the workspace’s limit', () => {
     draw();
-    fireEvent.click(button('Ja'));
+    fireEvent.click(button('Nyttig'));
     expect(within(group()).getByRole('textbox').getAttribute('maxlength')).toBe(
       String(FEEDBACK_MAX_LENGTH),
     );
@@ -215,10 +228,11 @@ describe('the feedback on an answer', () => {
         <AnswerActions feedback onFeedback={(f) => sent.push(f)} />
       </InLocale>,
     );
-    const feedback = screen.getByRole('group', { name: 'Feedback on the answer' });
-    fireEvent.click(within(feedback).getByRole('button', { name: 'No' }));
-    fireEvent.click(within(feedback).getByRole('checkbox', { name: 'Missing source' }));
-    fireEvent.click(within(feedback).getByRole('button', { name: 'Send' }));
+    const thumbs = screen.getByRole('group', { name: 'Was the answer useful?' });
+    fireEvent.click(within(thumbs).getByRole('button', { name: 'Not useful' }));
+    const form = screen.getByRole('group', { name: 'Feedback on the answer' });
+    fireEvent.click(within(form).getByRole('checkbox', { name: 'Missing source' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Send' }));
     expect(sent.at(-1)).toEqual({ rating: 'down', reasons: ['Mangler kilde'], comment: '' });
   });
 
@@ -226,7 +240,7 @@ describe('the feedback on an answer', () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
     const { sent } = draw();
-    fireEvent.click(button('Ja'));
+    fireEvent.click(button('Nyttig'));
     fireEvent.click(button('Send'));
     expect(sent).toHaveLength(2);
     expect(fetch).not.toHaveBeenCalled();

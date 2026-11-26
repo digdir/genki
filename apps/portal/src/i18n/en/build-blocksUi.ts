@@ -41,6 +41,7 @@ export const blocksUi = {
     tryNotReady:
       'The setup is not ready to try yet. {problems} Fill in what is missing in Setup, and try again. {notStored}',
     reload: 'Start the conversation again',
+    noAddress: 'Preview',
     fullscreen: 'Show larger',
     exitFullscreen: 'Show smaller',
     backToBuilder: 'Back to the builder',

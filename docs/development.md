@@ -139,7 +139,7 @@ Without the Foundry settings, the seeded services (Kunnskapsassistenten, Klarspr
 **Pulling a published service from genki-test.** The seed publishes a service only when it is missing, so a local database keeps the version it first got while genki-test moves on. To bring a newer published version into a running local genki in development mode:
 
 ```sh
-ADMIN_MCP_CLIENT_ID=<the console's client id> npm run service:pull -- <service> --from genki-test --tenant <organisation number>
+ADMIN_MCP_CLIENT_ID=<the genki-admin production client's id> npm run service:pull -- <service> --from genki-test --tenant <organisation number>
 ```
 
 - It logs in to genki-test as you, in the browser, as the [genki-admin MCP server](../apps/admin-mcp/README.md#against-genki-test) does. For a run without a browser, put your own access token in `GENKI_SOURCE_TOKEN` instead; it must be a login token (a JWT), never an API key. Set it in your environment or `.env.local`, never as a flag, so it stays out of shell history. Without either, the command refuses to run. The token is never printed or sent anywhere but genki-test.

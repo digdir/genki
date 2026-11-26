@@ -41,6 +41,7 @@ export const blocksUi = {
     tryNotReady:
       'Oppsettet er ikke klart til å prøves ennå. {problems} Fyll ut det som mangler i Oppsett, og prøv igjen. {notStored}',
     reload: 'Start samtalen på nytt',
+    noAddress: 'Forhåndsvisning',
     fullscreen: 'Vis større',
     exitFullscreen: 'Vis mindre',
     backToBuilder: 'Tilbake til byggeren',

@@ -11,7 +11,7 @@ export interface AccessPeopleView {
   people: AccessPerson[];
   at: string;
   stale: boolean;
-  source: 'altinn' | 'test-data';
+  source: 'altinn' | 'test-data' | 'entra-groups';
 }
 
 export interface AccessMember {

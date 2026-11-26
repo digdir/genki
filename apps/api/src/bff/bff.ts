@@ -9,6 +9,7 @@ import {
   type ClientStore,
 } from '@genai/identity';
 import { openingOf, type HostingRules } from '../hosts.js';
+import { organisationNames, type OrganisationNameSources } from '../organisation-names.js';
 import { t, translatorFor } from '../i18n/index.js';
 import { actAsPlatformApp, actFor, type PlatformApp } from './acting.js';
 import {
@@ -167,15 +168,21 @@ export const personName = (claims: Record<string, unknown>) =>
   text(claims.name) ??
   ([text(claims.given_name), text(claims.family_name)].filter(Boolean).join(' ') || undefined);
 
-/** The organisations a login may act for, each by its name where Altinn gave one. */
-export const organisationsOf = (principal: {
-  authorizedFor?: readonly { org: string }[] | undefined;
-  orgNames?: Readonly<Record<string, string>> | undefined;
-}): Organisation[] =>
-  [...new Set((principal.authorizedFor ?? []).map((a) => a.org))].map((orgNumber) => {
-    const name = principal.orgNames?.[orgNumber];
+/** The organisations a login may act for, each by its name where one is known. */
+export const organisationsOf = async (
+  principal: {
+    authorizedFor?: readonly { org: string }[] | undefined;
+    orgNames?: Readonly<Record<string, string>> | undefined;
+  },
+  sources: OrganisationNameSources,
+): Promise<Organisation[]> => {
+  const orgs = [...new Set((principal.authorizedFor ?? []).map((a) => a.org))];
+  const names = await organisationNames(orgs, principal.orgNames, sources);
+  return orgs.map((orgNumber, i) => {
+    const name = names[i];
     return { orgNumber, ...(name ? { name } : {}) };
   });
+};
 
 const cookie = (name: string, value: string, maxAgeSeconds: number) =>
   `${name}=${value}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}`;

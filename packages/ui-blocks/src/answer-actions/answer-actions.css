@@ -15,7 +15,7 @@
     font-family: var(--genai-answer-actions-font-family, var(--ds-font-family)), sans-serif;
   }
 
-  /* The copy buttons, the app's own actions, and what sits at the far end. */
+  /* The thumbs, «Kopier», the app's own actions, and what sits at the far end. */
   .uib-answer-actions-row {
     display: flex;
     flex-wrap: wrap;
@@ -41,29 +41,13 @@
     scroll-margin-block-end: var(--genai-answer-actions-receipt-scroll-margin-block-end, 0);
   }
 
-  /* The feedback, as genki's workspace draws it: a rule above, helper text, a form on a
-     tinted ground and its field on the page's ground, all pinned to neutral as there. */
-  .uib-answer-actions-feedback {
-    display: flex;
-    flex-direction: column;
-    gap: var(--genai-answer-actions-feedback-gap, var(--ds-size-2));
-    padding-block-start: var(--genai-answer-actions-feedback-padding-block-start, var(--ds-size-2));
-    border-block-start: var(
-        --genai-answer-actions-feedback-border-width,
-        var(--ds-border-width-default)
-      )
-      solid var(--genai-answer-actions-feedback-border-color, var(--ds-color-neutral-border-subtle));
-  }
-  .uib-answer-actions-feedback-row {
-    display: flex;
-    flex-wrap: wrap;
+  /* The thumbs first in the row, close together as one group. */
+  .uib-answer-actions-thumbs {
+    display: inline-flex;
     align-items: center;
-    gap: var(--genai-answer-actions-feedback-row-gap, var(--ds-size-2));
+    gap: var(--genai-answer-actions-thumbs-gap, var(--ds-size-1));
   }
-  .uib-answer-actions-question {
-    color: var(--genai-answer-actions-question-color, var(--ds-color-neutral-text-subtle));
-    font-size: var(--genai-answer-actions-question-font-size, var(--ds-font-size-2));
-  }
+  /* The reasons and comment under the row, pinned to neutral as in genki's workspace. */
   .uib-answer-actions-form {
     display: flex;
     flex-direction: column;
@@ -96,6 +80,10 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--genai-answer-actions-form-actions-gap, var(--ds-size-2));
+  }
+  /* Empty, it stays for its live region but takes back the gap above it. */
+  .uib-answer-actions-status:empty {
+    margin-block-start: calc(-1 * var(--genai-answer-actions-gap, var(--ds-size-2)));
   }
   .uib-answer-actions-status {
     margin: 0;

@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { rightsFromEntraGroups } from '@genai/composition';
 import type { Principal } from '@genai/contracts';
 import {
   altinnDirectory,
@@ -17,6 +18,7 @@ import type { Context } from 'hono';
 import type { JWK } from 'jose';
 import { enterTenant } from './access.js';
 import { actorOf, type AdminHandler, type AdminOutcome } from './admin.js';
+import { mockRightsWanted } from './altinn-pdp.js';
 import { isDevMode } from './boot-guard.js';
 import { appendVersion, serialized, type ConfigEntryStore } from './config-store.js';
 import { changeReasonOf } from './http.js';
@@ -75,7 +77,7 @@ export const selectedPeople =
 
 export type PeopleSource =
   | { kind: 'test-data' | 'altinn'; directory: AltinnDirectory; key: PersonKey }
-  | { kind: 'not-configured'; key: PersonKey };
+  | { kind: 'not-configured' | 'entra-groups'; key: PersonKey };
 
 const privateKeyOf = (raw: string): JWK => {
   const key = JSON.parse(raw) as JWK;
@@ -107,6 +109,8 @@ export const peopleSourceFrom = (
 ): PeopleSource => {
   const secret = env.ACCESS_PERSON_KEY_SECRET;
   if (!env.ALTINN_PEOPLE_URL) {
+    if (!env.ALTINN_PDP_URL && rightsFromEntraGroups(env) && !mockRightsWanted(env))
+      return { kind: 'entra-groups', key: personKeys(secret ?? randomBytes(32).toString('hex')) };
     if (!isDevMode(env))
       return { kind: 'not-configured', key: personKeys(secret ?? randomBytes(32).toString('hex')) };
     const key = personKeys(secret ?? 'local-dev-person-key');
@@ -279,6 +283,13 @@ export const createAccessPeopleModule =
         app.get('/tenants/:tenant/access/people', async (c) => {
           const guard = await entered(c);
           if ('response' in guard) return guard.response;
+          if (source.kind === 'entra-groups')
+            return c.json({
+              people: [],
+              at: new Date(now()).toISOString(),
+              stale: false,
+              source: source.kind,
+            });
           if (!directory)
             return problem(c, 503, 'Altinn is not connected', [], 'altinn_not_configured');
           const view = await peopleOf(guard.tenant);
