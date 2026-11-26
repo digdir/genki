@@ -881,6 +881,34 @@ describe("a tenant's change list", () => {
 });
 
 describe('the signed-in person', () => {
+  it('answers /me with the token’s organisation name over the directory’s', async () => {
+    const { store, admin, settings } = setup();
+    const altinn: Principal = {
+      kind: 'employee',
+      issuer: 'test',
+      subject: 'kari',
+      authorizedFor: [{ org: digdir }],
+      orgNames: { [digdir]: 'Digdir' },
+    };
+    const app = createApp('test', {
+      platform: {
+        store,
+        plugins,
+        settings,
+        admin,
+        auth: { authenticate: async () => altinn },
+        tasks: { task: async () => undefined, events: async () => [] },
+        tenantDirectory: async () => [{ orgNumber: digdir, name: 'Digitaliseringsdirektoratet' }],
+      },
+    });
+
+    const me = await body<{ organisations: { orgNumber: string; name: string }[] }>(
+      await app.request('/me', { headers: { authorization: 'Bearer altinn' } }),
+    );
+
+    expect(me.organisations.map((o) => [o.orgNumber, o.name])).toEqual([[digdir, 'Digdir']]);
+  });
+
   it('answers /me with the email the login carried, and without one when it carried none', async () => {
     const { send } = await bootPlatform({
       people: {

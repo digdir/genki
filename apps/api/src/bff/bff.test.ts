@@ -568,12 +568,15 @@ describe('who a login names', () => {
     expect(personName({ pid: PID, sub: 'x' })).toBeUndefined();
   });
 
-  it('names each organisation once, by the name Altinn gave where it gave one', () => {
+  it('names each organisation once, by the name Altinn gave where it gave one', async () => {
     expect(
-      organisationsOf({
-        authorizedFor: [{ org: ORG_A }, { org: ORG_A }, { org: ORG_B }],
-        orgNames: { [ORG_A]: 'Digitaliseringsdirektoratet' },
-      }),
+      await organisationsOf(
+        {
+          authorizedFor: [{ org: ORG_A }, { org: ORG_A }, { org: ORG_B }],
+          orgNames: { [ORG_A]: 'Digitaliseringsdirektoratet' },
+        },
+        {},
+      ),
     ).toEqual([{ orgNumber: ORG_A, name: 'Digitaliseringsdirektoratet' }, { orgNumber: ORG_B }]);
   });
 });
