@@ -15,6 +15,7 @@ import {
   hostView,
   reservedDomainsFrom,
 } from './hosts.js';
+import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import { attachSessionUpgrade } from './session-upgrade.js';
 import { mockClientSync } from './mock-clients.js';
@@ -64,12 +65,18 @@ import { evalSlotLimitsFromEnv, shutdownGraceFromEnv } from './eval-slots.js';
 import { drainBeforeExit } from './shutdown.js';
 import { blockOriginFrom, blockPortFrom, frameAncestorsFrom } from './block-origin.js';
 import { createBlockFrames } from './block-frames.js';
-import { createAdmin, platformActor } from './admin.js';
+import { createAdmin, platformActor, type AuditEntry } from './admin.js';
 import { createAccessPeopleModule, peopleSourceFrom, selectedPeople } from './access-people.js';
 import { draftServices } from './access-draft-services.js';
 import { InMemoryTenantApiKeys, type TenantApiKeys } from './routes/portal-routes.js';
 import type { PriceSpec, Principal } from '@genai/contracts';
 import { postgresKeyPolicies, postgresTenantKeys } from './tenant-keys.js';
+import {
+  forgetsTestIdEraRevocation,
+  forgetTestIdEraRevocation,
+  revokeTestIdEra,
+  revokesTestIdEra,
+} from './testid-era.js';
 import { clientRegistry, notifyingClients, type ClientListener } from './frontends.js';
 import { actorNames } from './actor-names.js';
 import {
@@ -700,6 +707,33 @@ const platform = await createPlatform({
   ...(documentConverter ? { documentConverter } : {}),
   ...(phraseArchive ? { phraseArchive } : {}),
 });
+if (db) {
+  const switchDeps = {
+    platformTenant,
+    config: configEntries,
+    audit: (entry: AuditEntry) => db.adminRecords.appendAudit(entry),
+    now: () => new Date(),
+    newId: () => randomUUID(),
+  };
+  if (revokesTestIdEra(process.env, entraOnly)) {
+    const revoked = await revokeTestIdEra({
+      ...switchDeps,
+      apiKeys: {
+        unadmitted: () => db.apiKeys.unadmitted(),
+        revoke: tenantKeys.revoke.bind(tenantKeys),
+      },
+      configuredKeys,
+      definitions: platform.definitions,
+      audited: (tenant) => db.adminRecords.audit(tenant),
+    });
+    if (revoked)
+      log('TestID-era credentials revoked at the production login switch', { ...revoked });
+  } else if (
+    forgetsTestIdEraRevocation(process.env) &&
+    (await forgetTestIdEraRevocation(switchDeps))
+  )
+    log('back on test Ansattporten: the next production login switch revokes again');
+}
 
 const learnAndAnnounce = async (actor?: Principal) => {
   const result = await platform.learnModelCapabilities(actor);

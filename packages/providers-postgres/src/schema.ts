@@ -110,6 +110,7 @@ const definerFunctions = [
   'find_hostname_claim(text)',
   'hostname_claim_holder(text)',
   'end_bff_sessions_by_logout_keys(text[])',
+  'unadmitted_api_keys()',
 ];
 
 const platformAccess = `coalesce(current_setting('app.platform_access', true), '') <> ''`;
@@ -739,6 +740,17 @@ const migrations: string[] = [
   `alter table legacy_api_keys add column if not exists created_by text`,
   `alter table legacy_api_keys add column if not exists test_runner boolean not null default false`,
   `alter table legacy_api_keys add column if not exists environments text[] not null default '{}'`,
+  `create or replace function unadmitted_api_keys()
+     returns table (tenant text, id text, digest text)
+     language plpgsql security definer set search_path = public
+     as $$
+     declare previous text := current_setting('app.platform_access', true);
+     begin
+       perform set_config('app.platform_access', 'unadmitted-api-keys', true);
+       return query select k.tenant::text, k.id, k.digest::text from legacy_api_keys k
+         where k.revoked_at is null and not k.admitted_in_lockdown order by k.tenant, k.id;
+       perform set_config('app.platform_access', coalesce(previous, ''), true);
+     end $$`,
   `create table if not exists clients (
      tenant text not null,
      id text not null,

@@ -346,6 +346,7 @@ export const changes = {
   toolsRegister: 'registered the tool',
   toolsSync: 'synced the tools from',
   triggerPause: 'paused the trigger',
+  productionLoginReset: 'reset the clean-up at the switch to production Ansattporten',
 } satisfies Translation<typeof changesSource>;
 
 export const servicesScreen = {

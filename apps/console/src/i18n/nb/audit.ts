@@ -87,6 +87,7 @@ export const audit = defineNamespace({
   actionRecipeShare: 'Delte en oppskrift med alle virksomheter',
   actionRecipeUnshare: 'Sluttet å dele en oppskrift',
   actionTriggerPause: 'Satte trigger på pause',
+  actionProductionLoginReset: 'Nullstilte oppryddingen ved bytte til produksjons-Ansattporten',
   actionDescriptorUpload: 'Lastet opp oppskrift',
   actionDescriptorStatus: 'Endret status på oppskrift',
   actionDescriptorWithdraw: 'Trakk tilbake oppskrift',

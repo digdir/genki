@@ -123,6 +123,12 @@ export class InMemoryTenantApiKeys implements TenantApiKeys, ApiKeyStore, KeyPol
     return structuredClone(this.#withPolicy(revoked));
   }
 
+  async unadmitted() {
+    return [...this.#keys.values()]
+      .filter((k) => !k.revokedAt && !k.admittedInLockdown && k.tenant)
+      .map((k) => ({ tenant: k.tenant as string, id: k.id, digest: k.digest }));
+  }
+
   async findByDigest(digest: string) {
     const found = [...this.#keys.values()].find((k) => k.digest === digest);
     return found && structuredClone(this.#withPolicy(found));

@@ -230,6 +230,72 @@ From a nightly copy, when the server and its backups are gone: download the newe
 
 `.github/workflows/platform-restore-drill.yml` runs on the first day of each quarter and on demand (`gh workflow run platform-restore-drill.yml`), in test only, in a concurrency group of its own. It restores the platform server as of 10 minutes earlier to `genai-<env>-pg-restore-drill`, writes how long it took to the run's summary, runs the job `genai-<env>-pg-restore-check`, which counts the rows of every table on both servers and fails when a table is missing or the restored server is empty, and deletes the restored server even when a step failed. A drill costs about 5 kr. By hand in the same quarter: restore one uploaded file from the share backup and compare its checksum, and recover a throwaway Key Vault secret. Write the times into issue #44; the target is met while restore plus repointing stays under 4 hours.
 
+## Production Ansattporten
+
+genki-test signs in through production Ansattporten with genki's production client `c0e4a5af-b2e1-4bba-9324-4caf55be8db5`, rights from the Entra groups, no Altinn and no lockdown ([ADR 0033](adr/0033-locked-test-environment.md#rights-from-entra-groups)). One GitHub variable switches it, once `ALTINN_PDP_URL` is deleted: with `ANSATTPORTEN_ISSUER=https://ansattporten.no`, `infra/env/test.bicepparam` takes the production client, its secret `platform-login-client-secret-prod` and `lockdown = false`. It refuses the production issuer before `HOSTNAMES_STAGE=certificates`, since the production client knows only `login.apps.genki.digdir.cloud`, and while `ALTINN_PDP_URL` is set. Local development keeps test Ansattporten through `.env.local`.
+
+### Before you start
+
+- The pull request that gives rights from Entra groups without Altinn (#1038) and this one are merged and deployed.
+- `HOSTNAMES_STAGE` is `certificates` and deployed: `curl -fsS https://login.apps.genki.digdir.cloud/auth/logged-out` answers a signed-out page.
+- The secret is in the vault: `az keyvault secret show --vault-name genai-test-kv-q63pldec6l -n platform-login-client-secret-prod --query id -o tsv`.
+- `OPERATOR_ENTRA_GROUPS`, `MEMBER_ENTRA_GROUPS`, `SERVICE_ENTRA_GROUPS` and `ENTRA_EMAIL_DOMAIN` are set in `test` (`gh variable list --env test`).
+- Production Ansattporten describes itself as the API expects: `curl -fsS https://ansattporten.no/.well-known/openid-configuration | jq '{issuer, jwks_uri, token_endpoint}'` shows `https://ansattporten.no`, `https://ansattporten.no/jwks.json` and a token endpoint on `https://ansattporten.no`. The API reads its keys from `<issuer>/jwks.json`, and the BFF sends genki's secret only to the issuer's origin.
+- Know that the API's first start on production Ansattporten revokes what the TestID era left: every API key and Maskinporten client without the admitted mark, in every organisation, and the schedule of every ingestion pipeline and every schedule trigger outside `PLATFORM_TENANT` (`apps/api/src/testid-era.ts`). Keys and clients made by an Entra login in the groups carry the mark and stay. It runs once (a crash midway is finished by the next start), and each step is in the audit log with the reason "TestID-era credential revoked at the production login switch". No Maskinporten login works on test anyway: `test.bicepparam` sets no `MASKINPORTEN_JWKS_URI`, so the API trusts no Maskinporten issuer.
+- Everyone who uses them knows that clients registered in test Ansattporten stop working at the switch: the genki-admin MCP server and scripts in `OPERATOR_CLIENT_IDS`, and Kunnskapsassistenten's backend (`797debdd-1a80-4cee-9b31-272d94a19e2c`) in `SERVICE_ENTRA_CLIENT_IDS`. Kunnskapsassistenten's backend path and the admin MCP server are down until production clients exist (below).
+- No hosted Client, in any organisation, keeps its own `oidc`: its client is a test Ansattporten client, which production does not know. Remove it as in [infra/README.md](../infra/README.md#platform-login), "A service moves to the platform login".
+
+### Steps
+
+1. **Fences to Audit** (an owner), since the host app's `ANSATTPORTEN_ISSUER` changes. This lowers both the host fence and the `apps.` zone fence:
+
+   ```sh
+   az deployment sub create -l westeurope -n genki-hostname-binder-access -f infra/hostname-binder-access.bicep \
+     -p environmentName=test resourceGroupName=rg-genki-test-weu dnsZoneName=genki.digdir.cloud policyEffect=Audit
+   ```
+
+2. **Variables**:
+
+   ```sh
+   gh variable set ANSATTPORTEN_ISSUER --env test --body https://ansattporten.no
+   gh variable delete ALTINN_PDP_URL --env test
+   ```
+
+3. **Deploy**: `gh workflow run deploy.yml --ref main`, then `gh run watch`. The deploy stops before any change if the stage or `ALTINN_PDP_URL` is wrong. Once past that, the candidate deploy already points the API's login secret at the production one, so a failed gate leaves the switch half applied: run the undo below. `rollback.yml` only moves traffic and does not undo the switch.
+4. **Fences back to Deny**, also when the deploy failed: the command in step 1 without `policyEffect=Audit`.
+
+### Watch at the switch
+
+- Keys without the admitted mark in `PLATFORM_TENANT` are revoked too, for good: the undo does not bring them back. That includes a smoke test-runner key given by an operator outside the groups. Give a new key to anyone who needs one, and a new test-runner key for the smoke test.
+- Paused triggers and pipelines without a schedule stay so after an undo; turn on again by hand any that someone still needs.
+
+### Checks after
+
+- `curl -fsS https://api.genki.digdir.cloud/health | jq .lockdown` is `false`.
+- The API log has `TestID-era credentials revoked at the production login switch` with the counts of keys, clients, schedules and triggers, and the audit log has one entry for each with that reason. Give anyone who needs one of them a new key.
+- Sign in on `https://portal.genki.digdir.cloud`, `https://workspace.genki.digdir.cloud` and `https://console.genki.digdir.cloud` as a member of the operator group: the login page is `login.ansattporten.no`, goes straight to Entra ID, and comes back signed in. The console shows the operator.
+- Open a hosted assistant, such as `https://kunnskap.apps.genki.digdir.cloud`, as a member of the service group, and ask one question.
+- Sign in as a person in none of the groups: the BFF shows the page that says the person has no access (403), and no session starts.
+- A member, not an operator, is refused in the console.
+- Stay signed in for more than two minutes and use the portal: the session refreshes the 120 s access token without a new login.
+- In the logs, no `bff login failed` or `bff platform login refused` with `provider-error`. A `provider-error` right after the switch means production Ansattporten refused the `resource` `digdir:genai`: undo, and ask for the audience on the client.
+
+Clients registered in test Ansattporten stop working at the switch, since the API trusts one issuer: the clients in `OPERATOR_CLIENT_IDS` (the genki-admin MCP server and scripts) and `SERVICE_ENTRA_CLIENT_IDS` (Kunnskapsassistenten's backend). Replace them with production clients and update the variables; a new id in `SERVICE_ENTRA_CLIENT_IDS` is also registered in `PLATFORM_TENANT` as a frontend of its service. The genki-admin MCP server, `scripts/service-pull.ts` and `scripts/engine-benchmark.ts` still ask for the Altinn resource and not for Entra ID, so they need a change before they log in to production. `OPERATOR_SUBJECTS` pairs with `https://test.ansattporten.no` stop matching too; operators come from `OPERATOR_ENTRA_GROUPS`, so delete the variable, or the API refuses to start once `OPERATOR_CLIENT_IDS` is emptied.
+
+A person's threads, preferences and tasks belong to the issuer and their subject, so everyone starts with none after the switch; the undo brings them back. The production client has no back-channel logout yet, so signing out of Ansattporten elsewhere leaves a genki session until it ends.
+
+### Undo
+
+```sh
+az deployment sub create -l westeurope -n genki-hostname-binder-access -f infra/hostname-binder-access.bicep \
+  -p environmentName=test resourceGroupName=rg-genki-test-weu dnsZoneName=genki.digdir.cloud policyEffect=Audit
+gh variable set ANSATTPORTEN_ISSUER --env test --body https://test.ansattporten.no
+gh variable set ALTINN_PDP_URL --env test --body https://platform.tt02.altinn.no
+gh workflow run deploy.yml --ref main
+```
+
+Then apply the fences again without `policyEffect=Audit`, also when the deploy failed. Test Ansattporten, its client, Altinn and lockdown come back; everyone signs in once more. The first start on test Ansattporten logs `platform.production-login.reset` to the platform organisation's audit log, so the next switch revokes keys and clients made during the undo.
+
 ## Hostname binder
 
 The job `genai-<env>-hostname-binder` binds the hostnames service owners claim on the assistant host, every minute ([ADR 0062](adr/0062-a-service-owner-adds-a-hostname.md), [infra/README.md](../infra/README.md#hostname-binder)). It asks the API what to do, does one step per hostname and reports it.
@@ -323,7 +389,7 @@ Then move the team's own domain with the steps below.
 - The assistant host runs in the environment (`assistantHostEnabled`), and the service draws 1:1 on a genki hostname.
 - The service's Client in genki is hosted and has the **same Ansattporten client id** as the old frontend. A thread's owner is the tenant and `issuer|sub` (`userKey` in `packages/conversations/src/routes.ts`), and Ansattporten's `sub` is pairwise per client, so threads stay only if all three match:
   - the client id: the old app's `ANSATTPORTEN_CLIENT_ID` is the Client's `spec.oidc.clientId`;
-  - the issuer: the old app's `ANSATTPORTEN_ISSUER` is genki's `ANSATTPORTEN_ISSUER` (`https://test.ansattporten.no` on genki-test), character for character, trailing slash included;
+  - the issuer: the old app's `ANSATTPORTEN_ISSUER` is genki's `ANSATTPORTEN_ISSUER` (`https://test.ansattporten.no` on genki-test until the switch in "Production Ansattporten", then `https://ansattporten.no`), character for character, trailing slash included;
   - the tenant: the organisation the threads are stored under is the one the person lands in on genki. In lockdown that is `PLATFORM_TENANT`, as it was for the old app.
 
   Compare the values by reading them in the portal or with `az containerapp show ... --query "properties.template.containers[0].env[?name=='ANSATTPORTEN_ISSUER']"` one name at a time; never list all of the app's settings, which include secrets.

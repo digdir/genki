@@ -111,6 +111,7 @@ export const actionKey: Record<string, PlainKey> = {
   'platform.recipe.share': 'audit.actionRecipeShare',
   'platform.recipe.unshare': 'audit.actionRecipeUnshare',
   'platform.trigger.pause': 'audit.actionTriggerPause',
+  'platform.production-login.reset': 'audit.actionProductionLoginReset',
   'platform.operations.descriptor-upload': 'audit.actionDescriptorUpload',
   'platform.operations.descriptor-status': 'audit.actionDescriptorStatus',
   'platform.operations.descriptor-withdraw': 'audit.actionDescriptorWithdraw',

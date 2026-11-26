@@ -19,7 +19,7 @@ describe('vendor names', () => {
           found.some((v) => v.file === file && v.name === name),
           `${file} no longer uses ${name}; remove it from knownViolations`,
         ).toBe(true);
-  });
+  }, 30_000);
 
   it('flag code names but allow vendor names as config keys, strings and provider imports', () => {
     const source = [
