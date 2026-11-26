@@ -150,7 +150,7 @@ describe('the answer actions', () => {
   it('speak English when the person does', () => {
     render(
       <InLocale locale="en">
-        <AnswerActions {...all} linkOnlyHere copied={{ kind: 'link' }} />
+        <AnswerActions {...all} copied={{ kind: 'link' }} />
       </InLocale>,
     );
     expect(screen.getByRole('button', { name: 'Copy' })).toBeTruthy();
@@ -159,55 +159,23 @@ describe('the answer actions', () => {
       'The answer with the source list',
       'Link to the thread',
     ]);
-    expect(receipt().textContent).toBe(
-      'The link to the thread is copied. Works only for you, in this browser.',
-    );
+    expect(receipt().textContent).toBe('The link to the thread is copied.');
   });
 });
 
-/**
- * digdir/kunnskapsassistenten#119: in kunnskapsassistenten, a thread's address opens the
- * thread only in the browser it was made in. The limit is a description and not part of
- * the name, and the receipt says it too.
- */
-describe('the link that works only here', () => {
-  it('is named by what the choice does, with the limit shown under it as its description', () => {
-    draw({ ...all, linkOnlyHere: true });
-    const link = choice('Lenke til tråden');
-    const note = document.getElementById(link.getAttribute('aria-describedby') ?? '');
-    expect(note?.textContent).toBe('Virker bare for deg, i denne nettleseren.');
-    expect(note?.hidden).toBe(false);
-    expect(note?.closest('li')).toBe(link.closest('li'));
-    expect(link.textContent).toBe('Lenke til tråden');
-  });
-
-  it('says both halves in the receipt, where it is read aloud', () => {
-    draw({ ...all, linkOnlyHere: true, copied: { kind: 'link' } });
-    expect(receipt().textContent).toBe(
-      'Lenken til tråden er kopiert. Virker bare for deg, i denne nettleseren.',
-    );
-  });
-
-  it('is not claimed when the app has not said the link is limited', () => {
+// A thread's link carries no limit: sharing it within the organisation is #1045.
+describe('the link to the thread', () => {
+  it('says only that the link is copied, with no note under the choice or in the receipt', () => {
     draw({ ...all, copied: { kind: 'link' } });
     expect(choice('Lenke til tråden').hasAttribute('aria-describedby')).toBe(false);
-    expect(document.querySelector('.uib-answer-actions-note')).toBeNull();
+    expect(document.body.textContent).not.toContain('Virker bare');
     expect(receipt().textContent).toBe('Lenken til tråden er kopiert.');
   });
 
-  it('gives every control a name and points only at what exists', () => {
-    const { container } = draw({
-      ...all,
-      linkOnlyHere: true,
-      feedback: true,
-      onFeedback: () => {},
-    });
+  it('gives every control a name', () => {
+    const { container } = draw({ ...all, feedback: true, onFeedback: () => {} });
     for (const button of within(container).getAllByRole('button', { hidden: true }))
       expect((button.getAttribute('aria-label') ?? button.textContent)?.trim()).not.toBe('');
-    for (const element of container.querySelectorAll('[aria-describedby]'))
-      expect(
-        document.getElementById(element.getAttribute('aria-describedby') ?? ''),
-      ).not.toBeNull();
   });
 });
 

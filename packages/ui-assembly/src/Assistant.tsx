@@ -213,8 +213,6 @@ const AnswerRow = ({
                     void copy(new URL(a.hrefOf(a.currentId), location.href).href, {
                       kind: 'link',
                     }),
-                  // The next look keeps the answer's time but no note that the link works only here.
-                  linkOnlyHere: a.look !== 'next',
                 }
               : {}),
           }

@@ -24,7 +24,6 @@ const neutralPins = [
   '--genai-answer-actions-counter-color',
   '--genai-answer-actions-end-color',
   '--genai-answer-actions-form-background',
-  '--genai-answer-actions-note-color',
   '--genai-answer-actions-receipt-color',
   '--genai-answer-actions-status-color',
 ];

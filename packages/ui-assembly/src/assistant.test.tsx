@@ -1871,7 +1871,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     expect(document.querySelector('.uib-answer-actions time')).toBeNull();
   });
 
-  it('copies the thread’s link with no note that it works only here', async () => {
+  it('copies the thread’s link with no note that it works only here, in the next look', async () => {
     const clipboard: string[] = [];
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -1881,7 +1881,6 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     drawNext();
     const copyLink = await screen.findByRole('button', { name: 'Lenke til tråden', hidden: true });
     expect(copyLink.hasAttribute('aria-describedby')).toBe(false);
-    expect(document.querySelector('.uib-answer-actions-note')).toBeNull();
     await act(async () => {
       fireEvent.click(copyLink);
     });
@@ -1892,12 +1891,12 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     expect(document.body.textContent).not.toContain('Virker bare for deg');
   });
 
-  it('leaves «Kunnskapsassistenten»’s note on the thread’s link as it was', async () => {
+  it('puts no note on the thread’s link in «Kunnskapsassistenten» either', async () => {
     history.replaceState(null, '', '/?t=t-old');
     drawNext(reader, fromTemplate('knowledge-assistant').layout);
     const copyLink = await screen.findByRole('button', { name: 'Lenke til tråden', hidden: true });
-    const note = document.getElementById(copyLink.getAttribute('aria-describedby') ?? '');
-    expect(note?.textContent).toBe('Virker bare for deg, i denne nettleseren.');
+    expect(copyLink.hasAttribute('aria-describedby')).toBe(false);
+    expect(document.body.textContent).not.toContain('Virker bare for deg');
   });
 
   it('leaves «Kunnskapsassistenten» as it was: flush, the hidden name as the h1, the filter first, the links in the foot', async () => {

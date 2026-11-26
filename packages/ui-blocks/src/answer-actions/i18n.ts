@@ -6,7 +6,6 @@ export const nbAnswerActions = defineNamespace({
   copyAnswer: 'Kun svaret',
   copyWithSources: 'Svaret med kildeliste',
   copyLink: 'Lenke til tråden',
-  linkOnlyHere: 'Virker bare for deg, i denne nettleseren',
   copied: 'Svaret er kopiert.',
   copiedWithSources: {
     one: 'Svaret og {count} kilde er kopiert.',
@@ -37,7 +36,6 @@ export const enAnswerActions = {
   copyAnswer: 'Only the answer',
   copyWithSources: 'The answer with the source list',
   copyLink: 'Link to the thread',
-  linkOnlyHere: 'Works only for you, in this browser',
   copied: 'The answer is copied.',
   copiedWithSources: {
     one: 'The answer and {count} source are copied.',

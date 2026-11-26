@@ -33,14 +33,6 @@
 
   /* A line of its own under the buttons. Pinned to neutral, as kunnskapsassistenten draws it.
      A host with a sticky field under the conversation sets the scroll margin to its height. */
-  /* Under «Lenke til tråden» in the menu, in line with its words. Pinned to neutral, as the receipt. */
-  .uib-answer-actions-note {
-    display: block;
-    padding-inline: var(--genai-answer-actions-note-padding-inline, var(--ds-size-4));
-    padding-block-end: var(--genai-answer-actions-note-padding-block-end, var(--ds-size-2));
-    color: var(--genai-answer-actions-note-color, var(--ds-color-neutral-text-subtle));
-    font-size: var(--genai-answer-actions-note-font-size, var(--ds-font-size-1));
-  }
   .uib-answer-actions-receipt {
     flex-basis: 100%;
     margin: 0;

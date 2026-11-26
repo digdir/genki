@@ -7,7 +7,7 @@ import {
   LinkIcon,
   ClipboardIcon,
 } from '@navikt/aksel-icons';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { classes } from '../dom.js';
 import { useFeedback } from './Feedback.js';
 import { useT } from './i18n.js';
@@ -20,8 +20,6 @@ export interface AnswerActionsProps {
   onCopyWithSources?: (() => void) | undefined;
   /** «Lenke til tråden» in «Kopier»; without it the choice is drawn disabled. */
   onCopyLink?: (() => void) | undefined;
-  /** The link opens the thread only for this person, in this browser, and the block says so. */
-  linkOnlyHere?: boolean | undefined;
   /** What the app's last copy did. Pass a new object for each copy; the receipt clears itself. */
   copied?: AnswerCopied | undefined;
   /**
@@ -70,7 +68,6 @@ export const AnswerActions = ({
   onCopyAnswer,
   onCopyWithSources,
   onCopyLink,
-  linkOnlyHere,
   copied,
   feedback = false,
   onFeedback,
@@ -81,13 +78,11 @@ export const AnswerActions = ({
   className,
 }: AnswerActionsProps) => {
   const t = useT();
-  const noteId = useId();
   const receiptRef = useRef<HTMLParagraphElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const receipt = useReceipt(copied);
   // Controlled: a choice closes the menu before the app copies, so the receipt is not hidden.
   const [open, setOpen] = useState(false);
-  const note = t('answerActions.linkOnlyHere');
   const asks = feedback && onFeedback !== undefined;
   const rating = useFeedback({ status: feedbackStatus, onSend: onFeedback ?? (() => {}) });
 
@@ -109,9 +104,7 @@ export const AnswerActions = ({
     : receipt.kind === 'failed'
       ? t('answerActions.copyFailed')
       : receipt.kind === 'link'
-        ? linkOnlyHere
-          ? `${t('answerActions.linkCopied')} ${note}.`
-          : t('answerActions.linkCopied')
+        ? t('answerActions.linkCopied')
         : receipt.sources
           ? t('answerActions.copiedWithSources', { count: receipt.sources })
           : t('answerActions.copied');
@@ -122,27 +115,12 @@ export const AnswerActions = ({
     triggerRef.current?.focus();
     action();
   };
-  const choice = (
-    label: string,
-    icon: ReactNode,
-    action: (() => void) | undefined,
-    note?: string,
-  ) => (
+  const choice = (label: string, icon: ReactNode, action: (() => void) | undefined) => (
     <Dropdown.Item>
-      <Dropdown.Button
-        disabled={!action}
-        aria-describedby={note ? noteId : undefined}
-        onClick={action ? () => choose(action) : undefined}
-      >
+      <Dropdown.Button disabled={!action} onClick={action ? () => choose(action) : undefined}>
         {icon}
         {label}
       </Dropdown.Button>
-      {/* Seen under the choice and read as its description, not part of its name. */}
-      {note ? (
-        <span id={noteId} className="uib-answer-actions-note">
-          {note}
-        </span>
-      ) : null}
     </Dropdown.Item>
   );
 
@@ -180,12 +158,7 @@ export const AnswerActions = ({
                       onCopyWithSources,
                     )
                   : null}
-                {choice(
-                  t('answerActions.copyLink'),
-                  <LinkIcon aria-hidden />,
-                  onCopyLink,
-                  onCopyLink && linkOnlyHere ? `${note}.` : undefined,
-                )}
+                {choice(t('answerActions.copyLink'), <LinkIcon aria-hidden />, onCopyLink)}
               </Dropdown.List>
             </Dropdown>
           </Dropdown.TriggerContext>

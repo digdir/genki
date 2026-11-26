@@ -124,10 +124,6 @@
                 itself after four seconds.
               </li>
               <li>
-                <code>linkOnlyHere</code>: the link opens the thread only for this person, in this
-                browser, and the block says so.
-              </li>
-              <li>
                 <code>feedback</code> and <code>onFeedback</code>: the form, off by default, and
                 <code>{ rating, reasons, comment }</code>, the platform's feedback without the task
                 id, which the app adds. It comes on the click on a thumb, with no reasons or
@@ -243,26 +239,6 @@
                   <td>space between the reasons</td>
                 </tr>
                 <tr>
-                  <td><code>--genai-answer-actions-note-color</code></td>
-                  <td><code>--ds-color-neutral-text-subtle</code></td>
-                  <td>the link's limit under «Lenke til tråden», pinned to neutral</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-answer-actions-note-font-size</code></td>
-                  <td><code>--ds-font-size-1</code></td>
-                  <td>size of the link's limit</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-answer-actions-note-padding-block-end</code></td>
-                  <td><code>--ds-size-2</code></td>
-                  <td>space under the link's limit</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-answer-actions-note-padding-inline</code></td>
-                  <td><code>--ds-size-4</code></td>
-                  <td>in line with the words of the choice above it</td>
-                </tr>
-                <tr>
                   <td><code>--genai-answer-actions-receipt-color</code></td>
                   <td><code>--ds-color-neutral-text-subtle</code></td>
                   <td>the line that says what was copied</td>
@@ -315,8 +291,8 @@
               </li>
               <li>
                 In kunnskapsassistenten, a thread's link opens it only in the browser it was made in
-                (kunnskapsassistenten#119). The limit stands under the choice in the menu as its
-                description, not its name, and the receipt says the same sentence.
+                (kunnskapsassistenten#119). The block no longer says so: the link is meant to be
+                shared, and opening it for colleagues in the same organisation is genki#1045.
               </li>
               <li>
                 The receipt is a polite live region that is always in the page, even empty. A region
