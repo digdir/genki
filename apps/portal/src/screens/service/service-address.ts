@@ -16,11 +16,7 @@ export const serviceAddress = (
   return name ? `https://${name.hostname}/` : undefined;
 };
 
-/**
- * The address Åpne tjenesten opens: an active claimed domain first, else a hosted browser
- * Client's. `known` is true once both sources answered and neither failed, so a missing
- * address is a fact rather than a request still on its way.
- */
+/** The address Åpne tjenesten opens, and whether both lookups answered so none is known. */
 export const useServiceAddress = (
   api: ApiClient,
   tenant: string,
