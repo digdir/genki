@@ -47,6 +47,7 @@ export const InterfaceTab = ({
   onFullscreen,
   onExitFullscreen,
   pins,
+  published = false,
 }: {
   api: ApiClient;
   tenant: string;
@@ -67,6 +68,8 @@ export const InterfaceTab = ({
   onFullscreen: () => void;
   onExitFullscreen: () => void;
   pins?: PinActions | undefined;
+  /** Published once, so it may have an address to look up. */
+  published?: boolean;
 }) => {
   const t = useT();
   const studio = useFlag('blockStudio');
@@ -93,8 +96,8 @@ export const InterfaceTab = ({
     () => ({ api, tenant, source: { definition, files }, pinned, refBlocks }),
     [api, tenant, definition, files, pinned, refBlocks],
   );
-  // The address Åpne tjenesten opens; a fresh service has none to look up yet.
-  const { address: serviceUrl } = useServiceAddress(api, tenant, service, !simple);
+  // The address Åpne tjenesten opens; a service never published has none to look up yet.
+  const { address: serviceUrl } = useServiceAddress(api, tenant, service, published);
   const address = serviceUrl ? new URL(serviceUrl).host : t('builderBlocks.noAddress');
 
   const written = useRef(storedJson);

@@ -1931,6 +1931,7 @@ export const Builder = ({
           onAdded={clearAdding}
           onFullscreen={() => go('interface', '/preview')}
           onExitFullscreen={() => go('interface')}
+          published={!isNew}
         />
       );
     if (section === 'advanced') {
