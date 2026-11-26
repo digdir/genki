@@ -101,6 +101,10 @@ export const altinnPdpFrom = (
   };
 };
 
+/** Entra ID shows on Ansattporten's login page only when `acr_values` names it. */
+export const loginAcrValues = (entraOnly: boolean, entraGroups: boolean) =>
+  entraOnly ? 'entraid' : entraGroups ? 'substantial entraid' : undefined;
+
 export const withPdpActions = <V extends { verify(token: string): Promise<VerifiedIdentity> }>(
   verifier: V,
   pdp: Pick<AltinnPdpChoice, 'authorization'>,

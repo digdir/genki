@@ -10,6 +10,7 @@ import {
   traceContentRequirement,
   unmetOutsideDevMode,
 } from '@genai/composition';
+import { altinnEnvironmentProblems } from './altinn-environment.js';
 import { operatorSubjectProblems } from './operators.js';
 
 export {
@@ -30,6 +31,7 @@ export const bootProblems = (env: Env): string[] => [
   ...entraGroupProblems(env),
   ...operatorSubjectProblems(env),
   ...flagEnvProblems(env),
+  ...altinnEnvironmentProblems(env),
   ...unmetOutsideDevMode(env, [
     {
       met: hasIdentityProvider(env),

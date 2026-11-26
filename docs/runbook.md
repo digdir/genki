@@ -242,7 +242,7 @@ Set `PLATFORM_TENANT`, never clear it: an empty value means `991825827`, which h
 
 ## Production Ansattporten
 
-genki-test signs in through production Ansattporten with genki's production client `c0e4a5af-b2e1-4bba-9324-4caf55be8db5`, rights from the Entra groups, no Altinn and no lockdown ([ADR 0033](adr/0033-locked-test-environment.md#rights-from-entra-groups)). One GitHub variable switches it, once `ALTINN_PDP_URL` is deleted: with `ANSATTPORTEN_ISSUER=https://ansattporten.no`, `infra/env/test.bicepparam` takes the production client, its secret `platform-login-client-secret-prod` and `lockdown = false`. It refuses the production issuer before `HOSTNAMES_STAGE=certificates`, since the production client knows only `login.apps.genki.digdir.cloud`, and while `ALTINN_PDP_URL` is set. Local development keeps test Ansattporten through `.env.local`.
+genki-test signs in through production Ansattporten with genki's production client `c0e4a5af-b2e1-4bba-9324-4caf55be8db5`, rights from the Entra groups, no Altinn and no lockdown ([ADR 0033](adr/0033-locked-test-environment.md#rights-from-entra-groups)). One GitHub variable switches it, with `ALTINN_PDP_URL` deleted or set to production Altinn: with `ANSATTPORTEN_ISSUER=https://ansattporten.no`, `infra/env/test.bicepparam` takes the production client, its secret `platform-login-client-secret-prod` and `lockdown = false`. It refuses the production issuer before `HOSTNAMES_STAGE=certificates`, since the production client knows only `login.apps.genki.digdir.cloud`, and with any `ALTINN_PDP_URL` but `https://platform.altinn.no` ([Production Altinn](#production-altinn)). Local development keeps test Ansattporten through `.env.local`.
 
 ### Before you start
 
@@ -308,6 +308,69 @@ gh workflow run deploy.yml --ref main
 ```
 
 Then apply the fences again without `policyEffect=Audit`, also when the deploy failed. Test Ansattporten, its client, Altinn and lockdown come back; everyone signs in once more. The first start on test Ansattporten logs `platform.production-login.reset` to the platform organisation's audit log, so the next switch revokes keys and clients made during the undo.
+
+## Production Altinn
+
+genki-test signs in through production Ansattporten with rights from the Entra groups only. Setting `ALTINN_PDP_URL` to production Altinn adds rights from Altinn for people who sign in with ID-porten (BankID, MinID) and keeps the Entra groups for Entra ID logins: the BFF then sends, for every login it makes (the platform apps and hosted Clients alike), `acr_values=substantial entraid` with `authorization_details` for `urn:altinn:resource:digdir-genai-platform`, and Ansattporten offers both ([ADR 0033](adr/0033-locked-test-environment.md#rights-from-entra-groups), [ADR 0027](adr/0027-platform-rights.md)). An Entra login never carries Altinn rights: Ansattporten gives `ansattporten:altinn:resource` only to ID-porten logins, so a person outside the groups who picks Entra ID is still refused.
+
+### Before you start
+
+- Know that `infra/env/test.bicepparam` accepts only `https://platform.altinn.no` as `ALTINN_PDP_URL` with production Ansattporten, and takes `urn:altinn:resource:digdir-genai-platform` as the resource there (`scripts/production-login-infra.test.ts`).
+- The resource is published in production Altinn, delegable, with the five actions: `curl -fsS https://platform.altinn.no/resourceregistry/api/v1/resource/digdir-genai-platform | jq '{identifier, delegable, resourceType}'`.
+- Digdir has a production Maskinporten client with `altinn:authorization/authorize`, its private JWK in a local file, and a production Altinn subscription key in another.
+- Someone with a delegated right is ready to test with BankID, and someone else is ready to delegate and revoke in Altinn.
+
+### Steps
+
+1. **Secrets**. Note the current versions first, for the undo, then add the production values as new versions from the files, never on the command line:
+
+   ```sh
+   KV=genai-test-kv-q63pldec6l
+   for s in altinn-pdp-maskinporten-key altinn-subscription-key; do
+     az keyvault secret list-versions --vault-name $KV -n $s --query "[?attributes.enabled].id" -o tsv
+   done
+   az keyvault secret set --vault-name $KV -n altinn-pdp-maskinporten-key --file <prod-client-jwk.json> --query id -o tsv
+   az keyvault secret set --vault-name $KV -n altinn-subscription-key --file <prod-subscription-key.txt> --query id -o tsv
+   ```
+
+   Delete the local files afterwards.
+
+2. **Variables**:
+
+   ```sh
+   gh variable set MASKINPORTEN_ISSUER --env test --body https://maskinporten.no/
+   gh variable set MASKINPORTEN_TOKEN_URL --env test --body https://maskinporten.no/token
+   gh variable set ALTINN_PDP_MASKINPORTEN_CLIENT_ID --env test --body <prod client id>
+   gh variable set ALTINN_PDP_URL --env test --body https://platform.altinn.no
+   ```
+
+   The API refuses to start when Altinn, Maskinporten (`MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`) and Ansattporten are from different environments, so a forgotten one of those stops the revision instead of failing every lookup. A wrong client id or key is not caught at start: it shows as `altinn token not fetched at boot`.
+
+3. **Deploy**: `gh workflow run deploy.yml --ref main`, then `gh run watch`.
+
+### Checks after
+
+- The API log has `altinn pdp` with `kind: altinn` and `baseURL: https://platform.altinn.no`, and no `altinn token not fetched at boot`.
+- Sign in on the portal: Ansattporten offers ID-porten and Entra ID. Entra ID as a member of the operator group works as before.
+- Sign in with BankID as a person with Bruke tjenester delegated on the resource for Digdir: the profile shows that right and no other, and a service answers.
+- Sign in with BankID as a person with nothing delegated: no access to Digdir.
+- Revoke the delegation in Altinn: the right is gone within about four minutes (two caches of two minutes).
+- In the logs, no `altinn actions failed` and no `bff login failed` with `provider-error`. A `provider-error` for every login means Ansattporten refused `authorization_details` together with `acr_values=substantial entraid`: undo.
+
+A person's threads belong to the issuer and their subject, and an ID-porten login has another subject than the same person's Entra login, so the two start apart. Tilgang still says Altinn is not connected until the people list is set up ([infra/README.md](../infra/README.md#tilgang-people-list)).
+
+### Undo
+
+```sh
+gh variable delete ALTINN_PDP_URL --env test
+gh workflow run deploy.yml --ref main
+```
+
+Rights come only from the Entra groups again and logins go straight to Entra ID. The Maskinporten variables and the new secret versions do nothing without `ALTINN_PDP_URL` and can stay, unless you later go back to test Ansattporten with tt02 as in [Production Ansattporten](#undo): then set `MASKINPORTEN_ISSUER` and `MASKINPORTEN_TOKEN_URL` back to `https://test.maskinporten.no/` and `https://test.maskinporten.no/token`, the client id back to the test client, and both secrets back, or the API refuses to start; to put an old secret back, copy it through a file from the version id noted in step 1, so the value never is a command argument:
+
+```sh
+(umask 077; f=$(mktemp); az keyvault secret show --id <old version id> --query value -o tsv > "$f"; az keyvault secret set --vault-name $KV -n <name> --file "$f" --query id -o tsv; rm -f "$f")
+```
 
 ## Hostname binder
 
