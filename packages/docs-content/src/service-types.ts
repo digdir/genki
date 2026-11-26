@@ -26,10 +26,10 @@ export const serviceTypes: ServiceType[] = [
     nameEn: 'Assistants',
     tagline: 'Hjelper en ansatt med en oppgave, med virksomhetens egne kilder',
     intro:
-      'En assistent er en KI-tjeneste for ansatte: den svarer på spørsmål, finner fram i dokumenter, skriver utkast og forklarer, alltid med kilder. Den brukes i arbeidsflaten eller rett i fagsystemet, og den ansatte har siste ord.',
+      'En assistent er en KI-tjeneste for ansatte: den svarer på spørsmål, finner fram i dokumenter, skriver utkast og forklarer, alltid med kilder. Den brukes i sin egen assistent eller rett i fagsystemet, og den ansatte har siste ord.',
     description: [
       'Assistenter er den vanligste typen KI-tjeneste i forvaltningen. De bygger på virksomhetens egne data gjennom RAG, svarer med nummererte kilder og er tilgjengelige der den ansatte allerede jobber. Kunnskapsassistenten i Genki er et eksempel: den svarer på spørsmål om offentlige rapporter med kilder fra Kudos.',
-      'Forskjellen fra en chatbot er hvem den er for og hva den har tilgang til. En assistent er for innloggede ansatte, kjenner identiteten deres gjennom Ansattporten, og kan derfor søke i interne dokumenter den ansatte har rett til å se.',
+      'Forskjellen fra en chatbot er hvem den er for og hva den har tilgang til. En assistent er for innloggede ansatte, kjenner identiteten deres gjennom Ansattporten, og kan derfor søke i interne datasett.',
       'Forskjellen fra en agent er at assistenten svarer og foreslår, men ikke handler. Den skriver et utkast, men sender det ikke. Den finner saken, men fordeler den ikke.',
     ],
     fits: [
@@ -51,17 +51,17 @@ export const serviceTypes: ServiceType[] = [
       },
       {
         label: 'Data',
-        text: 'Ett eller flere datasett fra virksomhetens kilder, med tilgangsfilter på dokumentnivå',
+        text: 'Ett eller flere datasett fra virksomhetens kilder',
         block: 'rag',
       },
       {
         label: 'Identitet',
-        text: 'Ansattporten for pålogging, Altinn for hvem som får bruke tjenesten',
+        text: 'Ansattporten for pålogging, rettigheter for hvem som får bruke tjenesten',
         block: 'autentisering',
       },
       {
         label: 'Kanal',
-        text: 'Arbeidsflaten, KI-komponenter i fagsystemet, eller OpenAI-kompatibelt API fra eksisterende verktøy',
+        text: 'Tjenestens egen assistent, KI-komponenter i fagsystemet, eller OpenAI-kompatibelt API fra eksisterende verktøy',
         block: 'kanaler',
       },
       {
@@ -89,7 +89,7 @@ export const serviceTypes: ServiceType[] = [
     nameEn: 'Chatbots',
     tagline: 'Svarer innbyggere og virksomheter på et nettsted, åpent for alle',
     intro:
-      'En chatbot er en KI-tjeneste mot publikum: den svarer på spørsmål om innholdet på et nettsted eller om en tjeneste, uten innlogging, døgnet rundt. Den må være trygg, holde seg til det den vet, og si tydelig fra når den ikke kan svare.',
+      'En chatbot er en KI-tjeneste mot publikum: den svarer på spørsmål om innholdet på et nettsted eller om en tjeneste, uten innlogging, døgnet rundt. Plattformen har ingen åpne tjenester uten innlogging ennå. En chatbot må være trygg, holde seg til det den vet, og si tydelig fra når den ikke kan svare.',
     description: [
       'Chatboter møter folk som ikke er logget inn og som ikke kjenner forvaltningen. De må svare presist på det de har grunnlag for, vise kilden, og henvise videre når spørsmålet går utenfor. Fordi kanalen er åpen, må plattformen begrense trafikk og kostnad per kanal, og logge uten persondata.',
       'Grunnlaget er typisk et datasett høstet fra nettstedet ved hver publisering, så chatboten alltid svarer i tråd med det som står der. Guardrails på inndata og utdata er strengere enn for en assistent, og svarene er alltid merket som laget med KI.',
@@ -249,7 +249,7 @@ export const serviceTypes: ServiceType[] = [
       },
       {
         label: 'Kanal',
-        text: 'A2A fra andre systemer, MCP fra andre agenter, arbeidsflaten for ansatte',
+        text: 'A2A fra andre systemer, MCP fra andre agenter, egen assistent for ansatte',
         block: 'kanaler',
       },
       {

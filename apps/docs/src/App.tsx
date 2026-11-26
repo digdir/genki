@@ -154,8 +154,8 @@ export function App() {
         <footer className="app-footer">
           <div className="app-footer-inner">
             <Paragraph data-size="sm" style={{ margin: 0 }}>
-              Genki er en åpen fellesløsning fra Digdir (MIT-lisens), under utvikling. Innholdet her
-              er hentet fra <a href={links.repo}>repoet</a> og dets ADR-er per oktober 2026.
+              Genki er en utforskning (MIT-lisens), ikke en tjeneste i drift. Innholdet her er
+              hentet fra <a href={links.repo}>repoet</a> og dets ADR-er.
             </Paragraph>
             <Paragraph data-size="sm" style={{ margin: 0 }}>
               Bygd med <a href={links.designsystemet}>Designsystemet</a>.

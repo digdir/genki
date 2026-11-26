@@ -105,7 +105,7 @@ describe('screens in English', () => {
     expect(screen.getByRole('textbox').textContent).toContain('give me the right "Use services"');
     expect(screen.getByText('Manage document collections')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
-    expect(screen.getByRole('button', { name: 'Checking Altinn' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Checking your access' })).toBeTruthy();
   });
 
   it('shows the signed-in portal shell and overview in English', async () => {

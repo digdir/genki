@@ -48,6 +48,8 @@ export const adrFiles: Record<string, string> = {
   '0036': '0036-delegating-platform-rights.md',
   '0037': '0037-simple-and-developer-view.md',
   '0038': '0038-ai-gateway.md',
+  '0042': '0042-the-knowledge-database.md',
+  '0061': '0061-genki-hosts-a-services-assistant.md',
 };
 
 export const adrUrl = (adr: Adr) => {
@@ -66,7 +68,7 @@ export const blocks: Block[] = [
     color: 'warning',
     status: 'bygd',
     description: [
-      'Ingen egen brukerdatabase. Innbyggere logger inn med ID-porten, ansatte med Ansattporten gjennom sin egen virksomhets identitetsleverandør, og systemer bruker Maskinporten med virksomhetssertifikat. Digdirs operatører logger inn med Entra ID.',
+      'Ingen egen brukerdatabase. Innbyggere logger inn med ID-porten, ansatte med Ansattporten gjennom sin egen virksomhets identitetsleverandør, og systemer bruker Maskinporten med virksomhetssertifikat. Plattformens operatører logger inn med Entra ID.',
       'Alle påloggingene ender i samme principal-modell: hvert kall vet hvem det handler på vegne av og for hvilken organisasjon. For klienter som ikke kan bruke Maskinporten utsteder portalen API-nøkler som bærer en principal.',
       'Lokalt er fellesløsningene mocket, med testpersoner som Kari Testansatt og Hensynsløs Måke, så alle kan kjøre plattformen uten avtaler.',
     ],
@@ -74,7 +76,7 @@ export const blocks: Block[] = [
       'ID-porten for innbyggere, Ansattporten for ansatte, Maskinporten for systemer',
       'Én principal-modell uansett kanal',
       'API-nøkler med principal og policy',
-      'Entra ID for Digdirs operatører',
+      'Entra ID for plattformens operatører',
       'Kortlevde tokens og utlogging mot fellesløsningen',
       'Mock-pålogging og testpersoner i utviklingsmodus',
     ],
@@ -95,16 +97,15 @@ export const blocks: Block[] = [
     color: 'warning',
     status: 'bygd',
     description: [
-      'Rettigheter hentes fra Altinn Autorisasjon for hver organisasjon, basert på roller fra Enhetsregisteret og delegeringer virksomheten selv har gjort. KI-tjenester registreres som ressurser i Ressursregisteret, så virksomheten styrer tilgang med de samme verktøyene som for andre offentlige tjenester.',
-      'Inne i plattformen er rettighetene eksplisitte: å administrere tjenester, datasett, tilgang og forbruk er hver sin rett, og de kan delegeres. Tilgang til data håndheves helt ned på dokumentnivå i søket, og tenant-isolasjon i databasen sikrer at ingen spørring krysser organisasjonsgrenser.',
+      'Rettigheter kan hentes fra Altinn Autorisasjon for hver organisasjon, basert på roller fra Enhetsregisteret og delegeringer virksomheten selv har gjort. I testmiljøet er Altinn slått av for nå, og rettighetene kommer fra Entra-grupper. Målet er at KI-tjenester registreres som ressurser i Ressursregisteret, så virksomheten styrer tilgang med de samme verktøyene som for andre offentlige tjenester.',
+      'Inne i plattformen er rettighetene eksplisitte: å administrere tjenester, datasett, tilgang og forbruk er hver sin rett, og de kan delegeres. Tilgang til data styres per datasett, ikke per dokument, og tenant-isolasjon i databasen sikrer at ingen spørring krysser organisasjonsgrenser.',
       'Hver tilgangsbeslutning logges, så det alltid går an å svare på hvem som brukte hva, når og på vegne av hvem.',
     ],
     capabilities: [
-      'Rettigheter fra Altinn Autorisasjon per organisasjon',
-      'KI-tjenester som ressurser i Ressursregisteret',
+      'Rettigheter fra Altinn Autorisasjon per organisasjon, eller fra Entra-grupper',
       'Tilgangspakker, roller og systembrukere',
       'Plattformrettigheter som kan delegeres',
-      'Tilgang på datasett- og dokumentnivå, filtrert før rangering',
+      'Tilgang per datasett',
       'Beslutningslogg og revisjon',
     ],
     packages: ['identity'],
@@ -120,19 +121,19 @@ export const blocks: Block[] = [
     name: 'Brukergrensesnitt',
     nameEn: 'User interfaces',
     tagline:
-      'Veiene inn: der mennesker og systemer bruker tjenestene, i arbeidsflaten, egne frontender eller over API, MCP og A2A',
+      'Veiene inn: der mennesker og systemer bruker tjenestene, i tjenestens egen assistent, egne frontender eller over API, MCP og A2A',
     color: 'brand1',
     status: 'bygd',
     description: [
       'Dette er veiene inn til Genki, for mennesker og for systemer. Verktøyene Genki selv bruker når agentene skal gjøre noe, ligger under Verktøy. Plattformen er headless. Hver kanal oversetter sin protokoll til samme type forespørsel, så en tjeneste oppfører seg likt enten den kalles fra et chatverktøy, en agent eller en integrasjon.',
-      'Tre webapper bruker API-et: arbeidsflaten der ansatte bruker tjenestene, portalen der virksomheter bygger, tester og publiserer, og konsollet der Digdir drifter plattformen. Egne frontender bygges fra publiserte skjemaer: to ble bygd fra kontrakten alene, uten tilgang til koden.',
+      'Webappene bruker API-et: portalen der virksomheter bygger, tester og publiserer, konsollet der operatørene drifter plattformen, og en assistent som plattformen tegner for en tjeneste på et eget vertsnavn. Egne frontender bygges fra publiserte skjemaer: to ble bygd fra kontrakten alene, uten tilgang til koden.',
     ],
     capabilities: [
       'OpenAI-kompatibel: GET /v1/models og POST /v1/chat/completions',
       'MCP: POST /api/mcp, ett verktøy per variant',
       'A2A: agentkort og POST /a2a/:agent',
       'REST: datasett, fasetter, samtaler og tilbakemelding',
-      'Arbeidsflate, portal og konsoll som ferdige klienter',
+      'Portal, konsoll og tjenestens egen assistent som klienter',
       'Input-skjema og output som JSON Schema for egne frontender',
     ],
     packages: [
@@ -141,16 +142,17 @@ export const blocks: Block[] = [
       'adapter-a2a',
       'adapter-rest',
       'client',
-      'apps/workspace',
       'apps/portal',
       'apps/console',
+      'apps/assistant',
     ],
     adrs: [
       { id: '0030', title: 'Frontends from schemas' },
       { id: '0032', title: 'The portal is one client' },
+      { id: '0061', title: "genki hosts a service's assistant" },
     ],
     reuse:
-      'Et verktøy som allerede snakker OpenAI, MCP eller A2A kan bruke en KI-tjeneste på Genki i dag, uten integrasjonsarbeid.',
+      'Et verktøy som allerede snakker OpenAI, MCP eller A2A kan bruke en KI-tjeneste, uten integrasjonsarbeid.',
   },
   {
     id: 'definisjoner',
@@ -233,12 +235,12 @@ export const blocks: Block[] = [
     color: 'brand2',
     status: 'bygd',
     description: [
-      'En virksomhet legger til sine data som datasett. Innhenting (ingest) henter dokumenter fra filer, Parquet, Postgres, HTTP eller MCP, deler dem i biter, lager embeddings og skriver til en søkemotor. PDF-er gjøres om til Markdown med Marker.',
-      'Søket er leverandørnøytralt bak en port. Typesense og Postgres med pgvector er innebygd. Reranking har en port, og en reranker kobles til som en modell, men ingen er satt opp ennå. Hvert svar er merket som laget med KI og har nummererte kilder.',
+      'En virksomhet legger til sine data som datasett. Innhenting (ingest) henter dokumenter fra filer, Parquet, Postgres, HTTP eller MCP, deler dem i biter, lager embeddings og skriver til en søkemotor. PDF-er gjøres om til Markdown med Docling.',
+      'Søket er leverandørnøytralt bak en port. Datasettene ligger på kunnskapsserveren, Postgres med pgvector. Reranking har en port, og en reranker kobles til som en modell, men ingen er satt opp ennå. Hvert svar er merket som laget med KI og har nummererte kilder.',
       'Kunnskapsassistenten, som svarer med kilder fra offentlige rapporter i Kudos, er eksempeltjenesten. Den er definert som alle andre tjenester, i konfigurasjon.',
     ],
     capabilities: [
-      'Datasett på Typesense, pgvector, Postgres, HTTP eller MCP',
+      'Datasett på kunnskapsserveren (pgvector), eller på en annen kilde over HTTP eller MCP',
       'Innhenting fra filer, Parquet, Postgres og MCP, med PDF til Markdown',
       'Chunking, embeddings og fasetter',
       'Port for reranking, ingen reranker satt opp ennå',
@@ -251,16 +253,16 @@ export const blocks: Block[] = [
       'port-knowledge',
       'port-embedding',
       'port-rerank',
-      'providers-typesense',
       'providers-pgvector',
       'providers-documents',
     ],
     adrs: [
+      { id: '0042', title: 'The knowledge database' },
       { id: '0025', title: 'Search engine switching' },
       { id: '0017', title: 'Parity scope and intentional divergences' },
     ],
     reuse:
-      'Hver virksomhet kobler egne kilder på, og får søk, reranking og kildehenvisning uten å bygge en RAG-pipeline selv.',
+      'Hver virksomhet kobler egne kilder på, og får søk og kildehenvisning uten å bygge en RAG-pipeline selv.',
   },
   {
     id: 'verktoy',
@@ -271,14 +273,14 @@ export const blocks: Block[] = [
     color: 'brand3',
     status: 'bygd',
     description: [
-      'Dette er veiene ut fra agentene: det de kan slå opp i og gjøre, det som på engelsk kalles tools og tool calling. Hvordan andre bruker KI-tjenestene som verktøy, ligger under Brukergrensesnitt. Åpne protokoller er innebygd. Alt som snakker MCP, OpenAPI eller A2A kan kobles på som verktøy uten endring i plattformen. En virksomhet registrerer en verktøytilkobling med egne hemmeligheter, og Digdir kan løfte den til den delte katalogen.',
+      'Dette er veiene ut fra agentene: det de kan slå opp i og gjøre, det som på engelsk kalles tools og tool calling. Hvordan andre bruker KI-tjenestene som verktøy, ligger under Brukergrensesnitt. Åpne protokoller er innebygd. Alt som snakker MCP, OpenAPI eller A2A kan kobles på som verktøy uten endring i plattformen. En virksomhet registrerer en verktøytilkobling med egne hemmeligheter, og operatørene kan løfte den til den delte katalogen.',
       'Skills følger Agent Skills-formatet og er en egen definisjonstype. En tjeneste kan laste skills som gir modellen instruksjoner og prosedyrer, og en agentløkke tar lastede skills med inn i svaret.',
       'Hver plugin har et manifest som sier hvilke verter og hemmeligheter den får bruke. En egress-guard håndhever det på hvert kall.',
     ],
     capabilities: [
       'Verktøy fra MCP-servere, OpenAPI-spesifikasjoner og A2A-agenter',
       'Skills i Agent Skills-formatet',
-      'Katalog over byggeklosser per virksomhet, med Digdir-godkjenning der policy krever det',
+      'Katalog over byggeklosser per virksomhet, med godkjenning der policy krever det',
       'Manifest med tillatte verter og hemmeligheter, håndhevet av egress-guard',
       'Kontrakttester kjøres ved registrering, en plugin som feiler avvises',
     ],
@@ -306,7 +308,7 @@ export const blocks: Block[] = [
     status: 'bygd',
     description: [
       'Evaluering er en del av plattformen, ikke et verktøy ved siden av. En evalueringskjøring er en oppgave som kaller tjenesten for hver testcase, som enhver annen bruker. Evaluatorer er plugins: deterministiske, modellbaserte eller menneskelige.',
-      'Testsett eies av virksomheten og er versjonert, med cases delt i train, validation og locked. Publiseringsporter ligger i tjenestedefinisjonen: en versjon med en feilende port kan ikke publiseres til produksjon. Hvert resultat husker kodeversjon, data, modell og dommer, så likt sammenlignes med likt.',
+      'Testsett eies av virksomheten og er versjonert, med cases delt i train, validation og locked. Publiseringsporter ligger i tjenestedefinisjonen: en versjon med en feilende port kan ikke publiseres. Hvert resultat husker kodeversjon, data, modell og dommer, så likt sammenlignes med likt.',
       'Parity-harnesset sammenligner svar med digdir-headless-rag. Sporing går til Langfuse etter OpenTelemetry GenAI-konvensjonene, og playground i portalen lar en tjenesteeier prøve en variant før publisering.',
     ],
     capabilities: [
@@ -329,11 +331,11 @@ export const blocks: Block[] = [
     id: 'plattform',
     name: 'Applikasjonsplattform',
     nameEn: 'Application platform',
-    tagline: 'Digdirs applikasjonsplattform (DIS): der fellesløsningene kjører, Genki inkludert',
+    tagline: 'Digdirs applikasjonsplattform (DIS): der fellesløsningene kjører',
     color: 'neutral',
     status: 'delvis',
     description: [
-      'Applikasjonsplattformen er Digdirs felles plattform for drift av fellesløsninger og tjenester, kalt DIS. Genki er én av applikasjonene som kjører der, side om side med andre fellesløsninger. Plattformen gir kjøremiljø, utrulling, logging, overvåking, lagring, hemmeligheter og nettverk, så Genki slipper å løse drift selv.',
+      'Applikasjonsplattformen er Digdirs felles plattform for drift av fellesløsninger og tjenester, kalt DIS. Den er tenkt som et mulig sted å kjøre plattformen, side om side med andre fellesløsninger. I dag kjører testmiljøet i et eget oppsett i Azure.',
       'For Genki betyr det at API og worker kjører som containere, Postgres er primærlager med row-level security per organisasjon, varige jobber kjører fra en kø, og alle admin-operasjoner har begrunnelse og revisjon. Infrastrukturen er beskrevet som kode og rulles ut gjennom pipeline.',
       'Dette er ikke det samme som infrastruktur for KI. Språkmodellene kjører hos Sigma2, Telenor AI Factory, i sky eller i egen drift, og nås gjennom KI-porten. Applikasjonsplattformen drifter applikasjonen, ikke modellene.',
     ],
@@ -527,7 +529,7 @@ const kunnskapsassistentSteps: FlowStep[] = [
   {
     id: 'palogging',
     title: 'Identitet og rettigheter sjekkes',
-    text: 'Ansattporten sier hvem du er. Og Altinn finner ut av hvilke tjenester du har tilgang til i denne organisasjonen.',
+    text: 'Ansattporten sier hvem du er. Rettighetene dine i organisasjonen avgjør hvilke tjenester du har tilgang til.',
     block: 'autentisering',
     node: 'identitet',
   },
@@ -555,7 +557,7 @@ const kunnskapsassistentSteps: FlowStep[] = [
   {
     id: 'sok',
     title: 'Agenten planlegger og søker',
-    text: 'Agenten leter i kildene som er valgt for tjenesten, leser det som er mest relevant, og sender jobben videre til en såkalt "reranker" for å snevre ned det som svarer best på spørsmålet ditt. Både før og etter disse prosessene kan såkalte "Hooks" gripe inn.',
+    text: 'Agenten leter i kildene som er valgt for tjenesten, og leser det som er mest relevant for spørsmålet ditt. Både før og etter disse prosessene kan såkalte "Hooks" gripe inn.',
     block: 'rag',
     node: 'data',
   },
@@ -991,8 +993,8 @@ const kunnskapsassistentSetup: FlowStep[] = [
   },
   {
     id: 'modell',
-    title: 'Velg modell og reranker',
-    text: 'En sterk modell for svar og en reranker for kildene velges fra katalogen, begge innenfor residenskravet EU.',
+    title: 'Velg modell',
+    text: 'En sterk modell for svar velges fra katalogen, innenfor residenskravet EU.',
     block: 'ki-gateway',
     node: 'modeller',
   },
@@ -1006,14 +1008,14 @@ const kunnskapsassistentSetup: FlowStep[] = [
   {
     id: 'tilgang',
     title: 'Bestem hvem som får bruke den',
-    text: 'Tjenesten registreres i Ressursregisteret. Virksomheter gir sine ansatte tilgang gjennom Altinn.',
+    text: 'Tjenesteeier bestemmer hvem som får bruke tjenesten. I testmiljøet styres det av Entra-grupper.',
     block: 'tilgangsstyring',
     node: 'tilgang',
   },
   {
     id: 'publiser',
-    title: 'Publiser til arbeidsflaten og API-et',
-    text: 'Portene kjøres og versjonen publiseres. Tjenesten dukker opp i arbeidsflaten, som modell i det OpenAI-kompatible API-et og som MCP-verktøy.',
+    title: 'Publiser til assistenten og API-et',
+    text: 'Portene kjøres og versjonen publiseres. Tjenesten dukker opp i sin egen assistent, som modell i det OpenAI-kompatible API-et og som MCP-verktøy.',
     block: 'kanaler',
     node: 'grensesnitt',
   },
