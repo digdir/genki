@@ -94,7 +94,7 @@ In `.env.local`:
 | `MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`                    | `https://test.maskinporten.no/` and `https://test.maskinporten.no/token`                                                     |
 | `ALTINN_PDP_MASKINPORTEN_CLIENT_ID`, `ALTINN_PDP_MASKINPORTEN_KEY` | The Maskinporten client that asks the PDP, and its private JWK                                                               |
 | `ALTINN_RESOURCE`                                                  | `urn:altinn:resource:digdir-genai-platform-test`                                                                             |
-| `PLATFORM_TENANT`                                                  | The synthetic organisation that plays Digdir in TT02, as in genki-test                                                       |
+| `PLATFORM_TENANT`                                                  | The platform organisation; genki-test uses Digdir's `991825827`                                                              |
 | `OPERATOR_ENTRA_GROUPS`, `ENTRA_EMAIL_DOMAIN`                      | The Entra group, `digdir.no`: needed to log in with Entra ID (below)                                                         |
 | `MEMBER_ENTRA_GROUPS`                                              | Optional: an Entra group whose members get the whole platform organisation, but are not operators (below)                    |
 | `SERVICE_ENTRA_GROUPS`, `SERVICE_ENTRA_CLIENT_IDS`                 | Optional: an Entra group whose members may only invoke the service of a listed, registered client or a hosted Client (below) |

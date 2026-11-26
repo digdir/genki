@@ -71,6 +71,7 @@ jobs:
           SMOKE_API_URL: ${{ vars.SMOKE_API_URL }}
           SMOKE_PORTAL_URL: ${{ vars.SMOKE_PORTAL_URL }}
           SMOKE_CONSOLE_URL: ${{ vars.SMOKE_CONSOLE_URL }}
+          SMOKE_TENANT: ${{ vars.SMOKE_TENANT }}
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/smoke/run.ts
       - if: always()
@@ -160,6 +161,7 @@ jobs:
           SMOKE_API_URL: ${{ vars.SMOKE_API_URL }}
           SMOKE_PORTAL_URL: ${{ vars.SMOKE_PORTAL_URL }}
           SMOKE_CONSOLE_URL: ${{ vars.SMOKE_CONSOLE_URL }}
+          SMOKE_TENANT: ${{ vars.SMOKE_TENANT }}
         run: node scripts/smoke/extra.ts
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

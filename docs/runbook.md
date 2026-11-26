@@ -230,6 +230,15 @@ From a nightly copy, when the server and its backups are gone: download the newe
 
 `.github/workflows/platform-restore-drill.yml` runs on the first day of each quarter and on demand (`gh workflow run platform-restore-drill.yml`), in test only, in a concurrency group of its own. It restores the platform server as of 10 minutes earlier to `genai-<env>-pg-restore-drill`, writes how long it took to the run's summary, runs the job `genai-<env>-pg-restore-check`, which counts the rows of every table on both servers and fails when a table is missing or the restored server is empty, and deletes the restored server even when a step failed. A drill costs about 5 kr. By hand in the same quarter: restore one uploaded file from the share backup and compare its checksum, and recover a throwaway Key Vault secret. Write the times into issue #44; the target is met while restore plus repointing stays under 4 hours.
 
+## Moving genki-test's tenant
+
+genki-test runs as the synthetic `312521172` until its data moves to Digdir's `991825827` (#464). The `kunnskap` hostname follows `PLATFORM_TENANT` and the smoke test follows `SMOKE_TENANT`, so the cutover is:
+
+1. Close the API and move the data: the platform database, the uploaded files and the knowledge datasets. An operator does this by hand with their own move scripts; they are not in this repository.
+2. Set `PLATFORM_TENANT=991825827` in the GitHub environment `test` and `SMOKE_TENANT=991825827` in `genki-test`, then deploy test.
+
+Set `PLATFORM_TENANT`, never clear it: an empty value means `991825827`, which hides which tenant test runs as, and a rollback needs it set back to `312521172`.
+
 ## Production Ansattporten
 
 genki-test signs in through production Ansattporten with genki's production client `c0e4a5af-b2e1-4bba-9324-4caf55be8db5`, rights from the Entra groups, no Altinn and no lockdown ([ADR 0033](adr/0033-locked-test-environment.md#rights-from-entra-groups)). One GitHub variable switches it, once `ALTINN_PDP_URL` is deleted: with `ANSATTPORTEN_ISSUER=https://ansattporten.no`, `infra/env/test.bicepparam` takes the production client, its secret `platform-login-client-secret-prod` and `lockdown = false`. It refuses the production issuer before `HOSTNAMES_STAGE=certificates`, since the production client knows only `login.apps.genki.digdir.cloud`, and while `ALTINN_PDP_URL` is set. Local development keeps test Ansattporten through `.env.local`.

@@ -255,6 +255,7 @@ jobs:
           SMOKE_LANES: ${{ vars.SMOKE_LANES }}
           SMOKE_PORTAL_URL: ${{ vars.SMOKE_PORTAL_URL }}
           SMOKE_CONSOLE_URL: ${{ vars.SMOKE_CONSOLE_URL }}
+          SMOKE_TENANT: ${{ vars.SMOKE_TENANT }}
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/smoke/run.ts
       - name: no failed check
