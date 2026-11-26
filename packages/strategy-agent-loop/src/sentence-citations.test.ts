@@ -130,6 +130,7 @@ describe('citing the sentences of an excerpt', () => {
       located: 0,
       missed: 1,
       cited: 1,
+      uncited: 0,
     });
   });
 
@@ -141,6 +142,7 @@ describe('citing the sentences of an excerpt', () => {
       located: 1,
       missed: 0,
       cited: 2,
+      uncited: 0,
     });
   });
 
@@ -261,6 +263,7 @@ describe('citing the sentences of an excerpt', () => {
       located: 1,
       missed: 1,
       cited: 2,
+      uncited: 0,
     });
   });
 
