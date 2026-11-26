@@ -29,16 +29,6 @@ body {
   text-decoration: none;
 }
 
-.ah-menu {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--ds-size-4);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
 .ah-main {
   padding: var(--ds-size-6);
 }
