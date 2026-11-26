@@ -2018,9 +2018,11 @@ export const Builder = ({
           footer={
             <div className="stack">
               <div className="stack-xs">
-                <Paragraph data-size="sm" className="meta">
-                  {t('service.draftNote')}
-                </Paragraph>
+                {isNew ? (
+                  <Paragraph data-size="sm" className="meta">
+                    {t('service.draftNote')}
+                  </Paragraph>
+                ) : null}
                 <Paragraph data-size="sm" className="meta">
                   {t('setupList.savedNote')}
                 </Paragraph>

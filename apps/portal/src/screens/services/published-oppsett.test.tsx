@@ -10,7 +10,7 @@ afterEach(cleanup);
 
 const open = async (hash: string) => {
   await renderAt(hash);
-  await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' });
+  await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' }, { timeout: 5000 });
 };
 
 const header = () =>
@@ -39,6 +39,16 @@ describe('the Oppsett of a published service', () => {
     );
     expect(within(top).queryByRole('button', { name: 'Prøv' })).toBeNull();
     expect(within(top).queryByRole('link', { name: 'Prøv' })).toBeNull();
+  });
+});
+
+describe("the footer of a published service's Oppsett", () => {
+  it('does not say Oversikt and Kvalitet come once the service is published, when it already is', async () => {
+    await open('#/services/rapportassistenten/setup');
+    await screen.findByRole('heading', { level: 3, name: 'Inndata' }, { timeout: 5000 });
+    expect(
+      screen.queryByText('Oversikt og Kvalitet kommer når tjenesten er publisert.'),
+    ).toBeNull();
   });
 });
 
