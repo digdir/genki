@@ -85,7 +85,7 @@ Open the portal at <http://localhost:5173>, log in as **Kari Testansatt**, open 
 
 ## Repository layout
 
-- **`apps/`**: the API, the worker, the portal, the console, the hosted assistant (`assistant`), the MCP server for coding agents (`admin-mcp`), `docs` (the documentation site), and `parity` (compares answers with headless-rag)
+- **`apps/`**: the API, the worker, the portal, the console, the hosted assistant (`assistant`), the MCP server for coding agents (`admin-mcp`), `docs` (the documentation site), and `parity` (compares answers with headless-rag). `workspace` is being retired, replaced by each service's own hosted assistant ([ADR 0061](docs/adr/0061-genki-hosts-a-services-assistant.md))
 - **`apps/api/config/local/`**: the definitions the API publishes at startup: services, flows, models, prices, datasets, test persons. Services in `dev-services/` are published only in development mode
 - **`packages/`**: the kernel, definitions, ports, providers, strategies, channel adapters and platform services, each behind a contract ([layout](docs/development.md#repository-layout))
 - **`docs/`**: the API guides, frontend contract, ADRs and the System Atlas
@@ -106,11 +106,12 @@ npm start
 
 **Docker must be running**, or setup stops at Postgres. `npm start` runs `npm run setup` (dependencies, Postgres with pgvector and the knowledge server in Docker, and a `.env.local` with a local database, generated keys and the local test model), then `npm run dev:all` (the API, the worker and the apps in one terminal). If a port is taken, it names the port; [docs/development.md](docs/development.md) shows how to move every port.
 
-| Address                           | App           | For                                             |
-| --------------------------------- | ------------- | ----------------------------------------------- |
-| <http://localhost:5173>           | Portal        | Organisations: build, test and publish services |
-| <http://localhost:5174>           | Console       | Operators: tenants, models, shared services     |
-| <http://localhost:8080/reference> | API reference | Developers: every operation, searchable         |
+| Address                           | App           | For                                                                       |
+| --------------------------------- | ------------- | ------------------------------------------------------------------------- |
+| <http://localhost:5173>           | Portal        | Organisations: build, test and publish services                           |
+| <http://localhost:5174>           | Console       | Operators: tenants, models, shared services                               |
+| <http://localhost:5176>           | Workspace     | Being retired, replaced by each service's own hosted assistant (ADR 0061) |
+| <http://localhost:8080/reference> | API reference | Developers: every operation, searchable                                   |
 
 <details>
 <summary><strong>Log in and try a service</strong></summary>
