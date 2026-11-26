@@ -294,6 +294,24 @@ describe('citing every factual block of an excerpt answer', () => {
     expect(citationsOf(out)[2]).not.toHaveProperty('quote');
   });
 
+  it('drops a number the gap call reuses when that number quotes another sentence', async () => {
+    const both = chunk(2, {
+      document: 'd1',
+      content: 'Turnover var 8 prosent. Budsjettet var 120 millioner.',
+    });
+    const draft =
+      'Sykefraværet var 5,1 prosent [1].\n\nTurnover var 8 prosent [2:1].\n\nBudsjettet var 120 millioner.';
+    const out = await answer(storeOf(sick, both), [
+      draft,
+      'Sykefraværet var 5,1 prosent [1].\n\nTurnover var 8 prosent [2].\n\nBudsjettet var 120 millioner [2].',
+    ]);
+
+    expect(out.text).toBe(
+      'Sykefraværet var 5,1 prosent [1].\n\nTurnover var 8 prosent [2].\n\nBudsjettet var 120 millioner.',
+    );
+    expect(gapNotice(out)).toMatchObject({ uncited: 1 });
+  });
+
   it('never binds a marker that leads nowhere to an excerpt the gap step numbers', async () => {
     const a = chunk(1, { content: 'A'.repeat(39), contentLength: 39 });
     const b = chunk(2, { content: 'B'.repeat(39), contentLength: 39 });
