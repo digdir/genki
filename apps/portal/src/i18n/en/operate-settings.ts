@@ -25,13 +25,9 @@ const settings = {
   tabCommon: 'Common',
   loadFailedNoDefaults:
     'The services still use what you have saved. We do not show the defaults instead, because they would look like yours.',
-  tabAll: 'All settings',
   allIntro:
-    'Every setting with its key and where the value comes from. Owners change the most common ones under Common.',
+    'Every setting with its key and where the value comes from. Owners change the most common ones under Settings.',
   transferHeading: 'Export and import',
-  leaveAsk: 'You have unsaved changes. Leave the page without saving?',
-  leaveGo: 'Leave without saving',
-  leaveStay: 'Stay here',
   commonAnswers: 'Language and answers',
   commonLanguage: 'Language the services answer in',
   commonLanguageHelp:
@@ -66,7 +62,7 @@ const settings = {
   commonSeeUsage: 'See usage in Statistics',
   commonSetByDigdir: 'Digdir sets this for every organisation.',
   commonAllLink:
-    'Every setting as a table with keys and inheritance is under <all>All settings</all>.',
+    'Every setting as a table with keys and inheritance is under <all>Setting keys</all> in Integrations.',
   commonReadOnly: 'You can see the settings, but not change them.',
   commonSaved: 'Saved at {time}.',
   commonSeeLog: 'See the change in Log',

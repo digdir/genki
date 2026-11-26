@@ -41,19 +41,12 @@ afterEach(cleanup);
 describe('Innstillinger for virksomheten', () => {
   it('lists every setting with its key, the value that applies and where it comes from', async () => {
     const { calls, fetch } = recording();
-    await renderAt('#/settings/all', fetch);
+    await renderAt('#/developer/settings', fetch);
 
     const region = await allTable();
     expect(calls.some((c) => c.url.endsWith('/settings') && c.method === 'GET')).toBe(true);
-    expect(screen.getByRole('heading', { level: 1, name: 'Innstillinger' })).toBeTruthy();
-    expect(
-      screen.getByText(
-        'Gjelder alle tjenestene i Testetaten, med mindre en tjeneste sier noe annet.',
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole('tab', { name: 'Alle innstillinger' }).getAttribute('aria-selected'),
-    ).toBe('true');
+    expect(screen.getByRole('heading', { level: 2, name: 'Innstillingsnøkler' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Alle innstillinger' })).toBeNull();
 
     const heads = within(region)
       .getAllByRole('columnheader')
@@ -74,13 +67,13 @@ describe('Innstillinger for virksomheten', () => {
   });
 
   it('keeps the open setting in the address, and opens it again from the address', async () => {
-    await renderAt('#/settings/all');
+    await renderAt('#/developer/settings');
     const region = await allTable();
     fireEvent.click(within(region).getByRole('button', { name: 'Antall treff som leses' }));
-    expect(window.location.hash).toBe('#/settings/all?setting=search.top_k');
+    expect(window.location.hash).toBe('#/developer/settings?setting=search.top_k');
 
     cleanup();
-    await renderAt('#/settings/all?setting=search.top_k');
+    await renderAt('#/developer/settings?setting=search.top_k');
     const again = await allTable();
     expect(
       within(again)
@@ -90,7 +83,7 @@ describe('Innstillinger for virksomheten', () => {
   });
 
   it('keeps sensitivity, type, allowed values and the layers behind Tekniske detaljer in the panel', async () => {
-    await renderAt('#/settings/all');
+    await renderAt('#/developer/settings');
     const region = await allTable();
     fireEvent.click(within(region).getByRole('button', { name: 'Antall treff som leses' }));
     const details = (await screen.findByText('Tekniske detaljer')).closest('details');
@@ -99,7 +92,7 @@ describe('Innstillinger for virksomheten', () => {
   });
 
   it('marks the setting whose panel is open as expanded', async () => {
-    await renderAt('#/settings/all');
+    await renderAt('#/developer/settings');
     const region = await allTable();
     const button = within(region).getByRole('button', { name: 'Antall treff som leses' });
     expect(button.getAttribute('aria-expanded')).toBe('false');
@@ -108,7 +101,7 @@ describe('Innstillinger for virksomheten', () => {
   });
 
   it('filters by name or key and by changed settings, and resets both', async () => {
-    await renderAt('#/settings/all');
+    await renderAt('#/developer/settings');
     await allTable();
     const total = /Viser (\d+) av (\d+) innstillinger/.exec(document.body.textContent ?? '');
     expect(total?.[1]).toBe(total?.[2]);
@@ -141,7 +134,7 @@ describe('Innstillinger for virksomheten', () => {
 
   it('previews a tenant value through the API and saves it with a reason', async () => {
     const { calls, fetch } = recording();
-    await renderAt('#/settings/all', fetch);
+    await renderAt('#/developer/settings', fetch);
     const side = await open('Antall treff som leses');
 
     expect(
@@ -202,7 +195,7 @@ describe('Innstillinger for virksomheten', () => {
   });
 
   it('shows the API call for a tenant change', async () => {
-    await renderAt('#/settings/all');
+    await renderAt('#/developer/settings');
     const side = await open('Antall treff som leses');
     fireEvent.change(within(side).getByLabelText('Verdi (treff)'), { target: { value: '12' } });
     fireEvent.click(within(side).getByRole('button', { name: 'Forhåndsvis endring' }));
@@ -214,7 +207,7 @@ describe('Innstillinger for virksomheten', () => {
   });
 
   it('blocks saving when the preview API fails', async () => {
-    await renderAt('#/settings/all', failingFetch(/dryRun=true/));
+    await renderAt('#/developer/settings', failingFetch(/dryRun=true/));
     const side = await open('Antall treff som leses');
     fireEvent.change(within(side).getByLabelText('Verdi (treff)'), { target: { value: '12' } });
     fireEvent.click(within(side).getByRole('button', { name: 'Forhåndsvis endring' }));
@@ -227,7 +220,7 @@ describe('Innstillinger for virksomheten', () => {
   });
 
   it('blocks a limit that would stop a service', async () => {
-    await renderAt('#/settings/all');
+    await renderAt('#/developer/settings');
     const side = await open('Maks tokens per kjøring');
     fireEvent.change(within(side).getByLabelText('Verdi (tokens)'), { target: { value: '16000' } });
     fireEvent.click(within(side).getByRole('button', { name: 'Forhåndsvis endring' }));
@@ -240,7 +233,7 @@ describe('Innstillinger for virksomheten', () => {
   });
 
   it('lists the categories of personal data for both PII settings', async () => {
-    await renderAt('#/settings/all');
+    await renderAt('#/developer/settings');
     let side = await open('Fjern personopplysninger før modellkall');
     let cats = within(side).getByRole('list', { name: 'Kategorier av personopplysninger' });
     expect(within(cats).getByText('Fødselsnummer og D-nummer')).toBeTruthy();
@@ -255,7 +248,7 @@ describe('Innstillinger for virksomheten', () => {
   });
 
   it('sets retention with one value per risk level', async () => {
-    await renderAt('#/settings/all');
+    await renderAt('#/developer/settings');
     const side = await open('Oppbevaring av logg');
     expect(within(side).getByText('Ikke bestemt')).toBeTruthy();
     expect(within(side).getByText('Én verdi per risikonivå')).toBeTruthy();
@@ -275,17 +268,19 @@ describe('Innstillinger for virksomheten', () => {
     let fail = true;
     const ok = mockFetch();
     const broken = failingFetch(/\/settings$/);
-    await renderAt('#/settings/all', (input, init) =>
+    await renderAt('#/developer/settings', (input, init) =>
       fail ? broken(input, init) : ok(input, init),
     );
-    expect(await screen.findByRole('heading', { level: 1, name: 'Innstillinger' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Innstillingsnøkler' }),
+    ).toBeTruthy();
     expect(
       screen.getByRole('heading', { level: 2, name: 'Vi fikk ikke hentet innstillingene deres' }),
     ).toBeTruthy();
     fail = false;
     fireEvent.click(await screen.findByRole('button', { name: 'Prøv igjen' }));
     await allTable();
-    expect(screen.getByRole('heading', { level: 1, name: 'Innstillinger' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Innstillingsnøkler' })).toBeTruthy();
   });
 });
 
@@ -393,7 +388,7 @@ describe('Eksporter og importer', () => {
   it('exports a YAML file', async () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     URL.createObjectURL ??= () => 'blob:settings';
-    await renderAt('#/settings/all');
+    await renderAt('#/developer/settings');
     expect(await screen.findByRole('heading', { name: 'Eksporter og importer' })).toBeTruthy();
     expect(screen.getByText(/Hemmeligheter eksporteres aldri/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Neste' }));
@@ -405,7 +400,7 @@ describe('Eksporter og importer', () => {
   });
 
   it('runs a dry run before importing and needs a reason', async () => {
-    await renderAt('#/settings/all');
+    await renderAt('#/developer/settings');
     fireEvent.click(await screen.findByRole('radio', { name: 'Importer fra fil' }));
     fireEvent.click(screen.getByRole('button', { name: 'Kjør prøvekjøring' }));
     expect(screen.getByText('Velg en fil, eller bruk eksempelfilen.')).toBeTruthy();

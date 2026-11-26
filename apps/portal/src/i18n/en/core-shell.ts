@@ -100,6 +100,7 @@ export const devTools = {
   guardrailsDesc:
     'Rules the organisation shares. Rules marked as mandatory apply to every service; each service chooses the others itself.',
   guardrailsNotAvailable: 'Shared rules are shown when the portal is connected to the platform.',
+  settings: 'Setting keys',
   api: 'API reference and documentation',
   apiDesc: 'The API reference and documentation for developers.',
   openLog: 'Open Log',

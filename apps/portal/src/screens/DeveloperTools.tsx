@@ -1,6 +1,7 @@
 import {
   BranchingIcon,
   CodeIcon,
+  CogIcon,
   KeyHorizontalIcon,
   LightningIcon,
   LinkIcon,
@@ -78,6 +79,11 @@ const tools: readonly Tool[] = [
     id: 'guardrails',
     label: 'devTools.guardrails',
     icon: ShieldIcon,
+  },
+  {
+    id: 'settings',
+    label: 'devTools.settings',
+    icon: CogIcon,
   },
   {
     id: 'api',
@@ -206,8 +212,12 @@ const movedPages: Readonly<Record<string, string>> = { runs: 'tracing' };
 
 export const DeveloperTools = ({
   integrations,
+  settings,
   ...props
-}: ScreenProps & { integrations: (props: ScreenProps) => ReactNode }) => {
+}: ScreenProps & {
+  integrations: (props: ScreenProps) => ReactNode;
+  settings: (props: ScreenProps) => ReactNode;
+}) => {
   const { api, route, tenant } = props;
   const t = useT();
   const attention = useAttention(api, tenant);
@@ -238,6 +248,8 @@ export const DeveloperTools = ({
             <DevStatus api={api} tenant={tenant} />
           ) : current.id === 'guardrails' ? (
             <Guardrails api={api} tenant={tenant} tenantName={props.tenantName} />
+          ) : current.id === 'settings' ? (
+            settings(props)
           ) : current.id === 'tracing' ? (
             <TracingPage api={api} tenant={tenant} />
           ) : developerTabs[current.id] ? (

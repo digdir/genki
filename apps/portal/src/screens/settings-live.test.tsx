@@ -326,7 +326,7 @@ afterEach(cleanup);
 describe('live settings', () => {
   it('shows platform settings with Norwegian names, effective value and source', async () => {
     const { fetch } = platform();
-    await renderLive('#/settings/all', fetch);
+    await renderLive('#/developer/settings', fetch);
     const region = await allTable();
 
     const row = within(region)
@@ -338,7 +338,7 @@ describe('live settings', () => {
 
   it('shows a limit Digdir sets read-only to the organisation, with a note that Digdir sets it', async () => {
     const { calls, fetch } = platform();
-    await renderLive('#/settings/all', fetch);
+    await renderLive('#/developer/settings', fetch);
     fireEvent.click(
       await within(await allTable()).findByRole('button', { name: 'Tokens per måned' }),
     );
@@ -353,7 +353,7 @@ describe('live settings', () => {
 
   it('saves a tenant value with a reason and lists the changelog from the platform', async () => {
     const { calls, fetch } = platform();
-    await renderLive('#/settings/all', fetch);
+    await renderLive('#/developer/settings', fetch);
     fireEvent.click(
       await within(await allTable()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
     );
@@ -441,7 +441,8 @@ describe('Innstillinger: Vanlige', () => {
   it('opens on Vanlige and saves a changed written standard with the reason', async () => {
     const { calls, fetch } = platform();
     await renderLive('#/settings', fetch);
-    expect(await screen.findByRole('tab', { name: 'Vanlige', selected: true })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Innstillinger' })).toBeTruthy();
+    expect(screen.queryByRole('tab')).toBeNull();
     const select = await screen.findByLabelText('Språk tjenestene svarer på');
     expect((select as HTMLSelectElement).value).toBe('user');
 
@@ -575,18 +576,18 @@ describe('Innstillinger: Vanlige', () => {
     expect(screen.getByRole('button', { name: 'Prøv igjen' })).toBeTruthy();
   });
 
-  it('asks before switching tab with unsaved changes', async () => {
+  it('points from Innstillinger to the setting keys under Integrasjoner', async () => {
     const { fetch } = platform();
     await renderLive('#/settings', fetch);
-    fireEvent.change(await screen.findByLabelText('Språk tjenestene svarer på'), {
-      target: { value: 'bokmal' },
-    });
-    fireEvent.click(screen.getByRole('tab', { name: 'Alle innstillinger' }));
-    expect(screen.getByText(/Vil du forlate siden uten å lagre/)).toBeTruthy();
-    expect(window.location.hash).toBe('#/settings');
-    fireEvent.click(screen.getByRole('button', { name: 'Forlat uten å lagre' }));
+    const link = await screen.findByRole('link', { name: 'Innstillingsnøkler' });
+    expect(link.getAttribute('href')).toBe('#/developer/settings');
+  });
+
+  it('sends the old Alle innstillinger address on to Innstillingsnøkler', async () => {
+    const { fetch } = platform();
+    await renderLive('#/settings/all', fetch);
     expect(await allTable()).toBeTruthy();
-    expect(window.location.hash).toBe('#/settings/all');
+    expect(window.location.hash).toBe('#/developer/settings');
   });
 
   it('shows the quota Digdir sets as text, not as a field', async () => {
@@ -680,11 +681,11 @@ describe('Innstillinger: Vanlige', () => {
     expect(screen.getByText(/Varsel når kvoten nesten er brukt opp kommer senere/)).toBeTruthy();
   });
 
-  it('sends the old export address on to Alle innstillinger', async () => {
+  it('sends the old export address on to Innstillingsnøkler', async () => {
     const { fetch } = platform();
     await renderLive('#/settings?tab=transfer', fetch);
     expect(await allTable()).toBeTruthy();
-    expect(window.location.hash).toBe('#/settings/all');
+    expect(window.location.hash).toBe('#/developer/settings');
     expect(screen.getByRole('heading', { name: 'Eksporter og importer' })).toBeTruthy();
   });
 });
@@ -692,7 +693,7 @@ describe('Innstillinger: Vanlige', () => {
 describe('Innstillinger: ærlig lagring i tabellen', () => {
   it('does not offer to save a secret value the portal cannot send', async () => {
     const { calls, fetch } = platform({ secret: true });
-    await renderLive('#/settings/all', fetch);
+    await renderLive('#/developer/settings', fetch);
     fireEvent.click(
       await within(await allTable()).findByRole('button', { name: 'tools.lovdata.key' }),
     );
@@ -710,7 +711,7 @@ describe('Innstillinger: ærlig lagring i tabellen', () => {
           ? new Response(JSON.stringify({ title: 'Forbidden', status: 403 }), { status: 403 })
           : undefined,
     });
-    await renderLive('#/settings/all', fetch);
+    await renderLive('#/developer/settings', fetch);
     fireEvent.click(
       await within(await allTable()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
     );
@@ -743,7 +744,7 @@ describe('Innstillinger: ærlig lagring i tabellen', () => {
             })
           : undefined,
     });
-    await renderLive('#/settings/all', fetch);
+    await renderLive('#/developer/settings', fetch);
     fireEvent.click(
       await within(await allTable()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
     );
@@ -782,7 +783,7 @@ describe('Innstillinger: ærlig lagring i tabellen', () => {
           : undefined,
       audit: [otherSave('retrieval.retrieveTopK', 'Færre treff for KA')],
     });
-    await renderLive('#/settings/all', fetch);
+    await renderLive('#/developer/settings', fetch);
     fireEvent.click(
       await within(await allTable()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
     );

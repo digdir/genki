@@ -24,13 +24,9 @@ const settings = defineNamespace({
   tabCommon: 'Vanlige',
   loadFailedNoDefaults:
     'Tjenestene bruker fortsatt det dere har lagret. Vi viser ikke standardverdiene i stedet, for de ville sett ut som deres.',
-  tabAll: 'Alle innstillinger',
   allIntro:
-    'Hver innstilling med nøkkel og hvor verdien kommer fra. De vanligste endrer eierne under Vanlige.',
+    'Hver innstilling med nøkkel og hvor verdien kommer fra. De vanligste endrer eierne under Innstillinger.',
   transferHeading: 'Eksporter og importer',
-  leaveAsk: 'Du har endringer som ikke er lagret. Vil du forlate siden uten å lagre?',
-  leaveGo: 'Forlat uten å lagre',
-  leaveStay: 'Bli her',
   commonAnswers: 'Språk og svar',
   commonLanguage: 'Språk tjenestene svarer på',
   commonLanguageHelp:
@@ -65,7 +61,7 @@ const settings = defineNamespace({
   commonSeeUsage: 'Se forbruket i Statistikk',
   commonSetByDigdir: 'Digdir setter denne for alle virksomheter.',
   commonAllLink:
-    'Alle innstillingene som tabell med nøkler og arv ligger under <all>Alle innstillinger</all>.',
+    'Alle innstillingene som tabell med nøkler og arv ligger under <all>Innstillingsnøkler</all> i Integrasjoner.',
   commonReadOnly: 'Du kan se innstillingene, men ikke endre dem.',
   commonSaved: 'Lagret kl. {time}.',
   commonSeeLog: 'Se endringen i Logg',

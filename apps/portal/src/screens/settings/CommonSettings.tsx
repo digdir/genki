@@ -431,7 +431,7 @@ export const CommonSettings = ({
       </section>
       {quotaSection}
       <Paragraph data-size="sm">
-        {t.rich('settings.commonAllLink', { all: (c) => <a href="#/settings/all">{c}</a> })}
+        {t.rich('settings.commonAllLink', { all: (c) => <a href="#/developer/settings">{c}</a> })}
       </Paragraph>
       {dirty ? (
         <section className="common-save-bar stack-sm" aria-label={t('settings.commonUnsaved')}>

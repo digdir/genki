@@ -28,9 +28,9 @@ const renderEnglish = async (path: string) => {
 
 describe('settings in English', () => {
   it('shows the grid, the panel and the preview in English', async () => {
-    await renderEnglish('#/settings/all');
+    await renderEnglish('#/developer/settings');
     const region = await screen.findByRole('region', { name: 'All settings' });
-    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Setting keys' })).toBeTruthy();
     expect(
       within(region)
         .getAllByRole('columnheader')
@@ -50,7 +50,7 @@ describe('settings in English', () => {
   });
 
   it('offers export and import in English', async () => {
-    await renderEnglish('#/settings/all');
+    await renderEnglish('#/developer/settings');
     expect(await screen.findByText('What do you want to do?')).toBeTruthy();
     fireEvent.click(screen.getByRole('radio', { name: 'Import from file' }));
     expect(screen.getByText('Configuration file (YAML)')).toBeTruthy();
