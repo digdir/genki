@@ -175,18 +175,6 @@ const publishFromHeader = async (fetch: typeof globalThis.fetch) => {
 };
 
 describe('publishing the draft in live mode', () => {
-  it('offers Publiser only when there is a draft', async () => {
-    const { fetch } = platform({}, false);
-    const auth = mockAnsattporten(kari);
-    await auth.login();
-    window.location.hash = '#/services/klarsprak';
-    render(<App auth={auth} fetch={fetch} live />);
-    await screen.findByRole('heading', { level: 1, name: 'Klarspråk' });
-    expect(
-      (await screen.findByRole('button', { name: 'Publiser' })).getAttribute('aria-disabled'),
-    ).toBe('true');
-  });
-
   it('says users get everything in the test edition and goes back to Oppsett on Avbryt without publishing', async () => {
     const { fetch, posts } = platform({});
     await openPublishPage(fetch);

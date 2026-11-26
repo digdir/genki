@@ -1019,6 +1019,8 @@ export const Builder = ({
   );
   const hasDraft = draftRevision > 0 || changeList.length > 0;
   const canSend = hasDraft || unpublished.length > 0;
+  // A published service sets its risk and Sikkerhetsregler on the publish page, so it opens with nothing changed.
+  const canOpenPublish = canSend || !isNew;
   const listedChanges = unpublished.filter((c) => c.topic !== 'riskConfirmation');
   const overviewPublished = inUseEdition ?? remoteLatest;
   const [checks, retryChecks] = useAsync(
@@ -2263,10 +2265,10 @@ export const Builder = ({
                 <Button
                   variant="primary"
                   data-size="sm"
-                  aria-disabled={!canSend || missingCount > 0 || undefined}
+                  aria-disabled={!canOpenPublish || missingCount > 0 || undefined}
                   onClick={() => {
                     setPublishTried(true);
-                    if (canSend && missingCount === 0) go('setup', '/publish');
+                    if (canOpenPublish && missingCount === 0) go('setup', '/publish');
                   }}
                 >
                   {t('edition.publish')}

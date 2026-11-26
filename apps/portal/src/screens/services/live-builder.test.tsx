@@ -503,6 +503,37 @@ describe('the live builder and the server draft', () => {
     expect(draftWrites(calls, 'DELETE')[0]?.body).toEqual({ revision: 1 });
   });
 
+  it('opens the publish page from Publiser with nothing changed, so a published service can change only a Sikkerhetsregel', async () => {
+    const { calls } = await openService('#/services/rapportassistenten/setup/instructions');
+    await screen.findByLabelText('Instruksjoner til tjenesten', {}, { timeout: 5000 });
+    const header = screen
+      .getByRole('heading', { level: 1, name: 'Rapportassistenten' })
+      .closest('header') as HTMLElement;
+    const open = within(header).getByRole('button', { name: 'Publiser' });
+    expect(open.getAttribute('aria-disabled')).not.toBe('true');
+    fireEvent.click(open);
+    await screen.findByRole('heading', { level: 1, name: 'Publiser Rapportassistenten' });
+
+    const guards = screen.getByRole('region', { name: 'Sikkerhetsregler' });
+    fireEvent.click(within(guards).getByRole('button', { name: 'Legg til sikkerhetsregel' }));
+    fireEvent.click(await screen.findByRole('switch', { name: /^Fjern personopplysninger/ }));
+    await waitFor(() => expect(draftWrites(calls, 'PUT').length).toBeGreaterThan(0));
+    fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
+    fireEvent.change(screen.getByLabelText(/^Hva er endret, og hvorfor\?/), {
+      target: { value: 'Filtrer personopplysninger' },
+    });
+    await publishOnPage(document.body);
+
+    await waitFor(() =>
+      expect(
+        calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/definitions')),
+      ).toBeTruthy(),
+    );
+    const sent = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/definitions'))
+      ?.body as { definition: { spec: Spec } };
+    expect(sent.definition.spec.guardrails['pii-before-model']).toBeTruthy();
+  });
+
   it('publishes a service in use from the publish page, saves a new edition and returns to Oppsett', async () => {
     const { calls } = await openService('#/services/rapportassistenten/setup/instructions');
     await screen.findByLabelText('Instruksjoner til tjenesten');
