@@ -1,4 +1,5 @@
 import type { MiddlewareHandler } from 'hono';
+import { servedByConnector } from './design-connector/settings.js';
 import { t } from './i18n/index.js';
 
 export const keepsOwnErrorShape = (path: string) =>
@@ -6,7 +7,8 @@ export const keepsOwnErrorShape = (path: string) =>
   path.startsWith('/v1/') ||
   path === '/a2a' ||
   path.startsWith('/a2a/') ||
-  path === '/api/mcp';
+  path === '/api/mcp' ||
+  servedByConnector(path);
 
 const statusTitles = {
   400: 'problems.status400',

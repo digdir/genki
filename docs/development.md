@@ -66,6 +66,8 @@ The apps talk to the live API through a Vite proxy on `/api` and `/auth/`, which
 
 **Logging in.** The portal, workspace and console sign in through genki's platform login and the BFF in the API, as in Azure (ADR 0034, ADR 0061): the page holds no token, only a session cookie. Each app has a hostname of its own, `portal.localhost`, `workspace.localhost` and `console.localhost`, so their cookies stay apart; plain `localhost` on the portal's port is the login host, and a page opened there moves to `portal.localhost`. `npm start` and `npm run dev:all` set `GENAI_PROXY_KEY`, `PLATFORM_LOGIN_CLIENT_ID` (`genki-platform-login-local`), a random `PLATFORM_LOGIN_CLIENT_SECRET`, `PLATFORM_LOGIN_HOSTNAME=localhost`, `PLATFORM_LOGIN_ORIGIN` and `PLATFORM_APP_ORIGINS` unless `.env.local` sets them; http origins on `*.localhost` and a `localhost` login host are accepted only in dev mode. Starting the API alone with `npm run dev`, set them yourself, or the apps cannot sign in. The console lets only operators in.
 
+**Claude connector.** `npm start` sets `GENAI_PUBLIC_API_URL` to the local API, so Block Studio's «Koble til Claude» shows `http://localhost:8080/mcp/design`, which Claude Code can add with `claude mcp add --transport http genki-design <url>`. claude.ai cannot reach a local API; it needs a deployed one (ADR 0073).
+
 In dev mode without `ANSATTPORTEN_ISSUER`, the API runs a mock Ansattporten at `/mock/ansattporten` with a person picker, and a mock Altinn at `/mock/altinn`, and registers the platform login client there with its secret and the login host's callback. Test persons are in `apps/api/config/local/identity.yaml`:
 
 | Person          | Use it for                                    |

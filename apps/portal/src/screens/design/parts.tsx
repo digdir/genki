@@ -1,5 +1,5 @@
 import { Heading, Paragraph, Tag } from '@digdir/designsystemet-react';
-import type { BlockDetail } from '@genai/contracts/blocks';
+import { isFromClaude, type BlockDetail } from '@genai/contracts/blocks';
 import { useLocale } from '@genai/i18n/react';
 import type { ReactNode } from 'react';
 import { useT } from '../../i18n';
@@ -59,6 +59,11 @@ export const BlockTags = ({ detail, brief = false }: { detail: BlockDetail; brie
           <Tag data-size="sm" data-color="neutral">
             {versionName(t, detail.edition.version)}
           </Tag>
+          {isFromClaude(detail.edition.reason) ? (
+            <Tag data-size="sm" data-color="info">
+              {t('design.fromClaude')}
+            </Tag>
+          ) : null}
         </>
       )}
     </span>

@@ -134,6 +134,7 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
             ? {
                 GENAI_BLOCK_ORIGIN: `http://localhost:${ports.block}`,
                 GENAI_BLOCK_PORT: String(ports.block),
+                GENAI_PUBLIC_API_URL: api,
               }
             : {}),
         }),

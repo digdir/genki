@@ -10,6 +10,7 @@ import type {
   BlockZone,
   RefBlockPayload,
 } from '@genai/contracts/blocks';
+import { isFromClaude } from '@genai/contracts/blocks';
 import type { ImportResult } from '../api/design';
 import type { MockHandler, MockRequest } from '../mock';
 import { starterDeclarative, type BlockDraft } from '../screens/design/definitions';
@@ -247,7 +248,7 @@ export const exampleDesignBlocks = (): MockBlock[] => [
       edition(
         1,
         '2026-11-18T09:00:00Z',
-        'Første utgave',
+        'Importert fra Claude: Spørsmålskort',
         starterDeclarative(ownTenant, 'sporsmal-kort', 'Spørsmålskort'),
       ),
     ],
@@ -358,7 +359,11 @@ export const designMock = (options: DesignMockOptions = {}): MockHandler => {
       title: latest.definition.spec.title,
       zones: latest.definition.spec.zones,
       sharing: latest.sharing,
-      latest: { version: latest.version, publishedAt: latest.publishedAt },
+      latest: {
+        version: latest.version,
+        publishedAt: latest.publishedAt,
+        ...(isFromClaude(latest.reason) ? { fromClaude: true } : {}),
+      },
       editions: editions.length,
       usedBy: block.usedIn?.length ?? 0,
     };
@@ -493,9 +498,41 @@ export const designMock = (options: DesignMockOptions = {}): MockHandler => {
     return req.json(result);
   };
 
+  const connector = (req: MockRequest, rest: string[]) => {
+    const { method } = req;
+    if (method === 'GET' && rest.length === 0)
+      return req.json({ url: 'http://localhost:8080/mcp/design' });
+    if (rest[0] === 'requests' && rest[1] === 'gone') return req.notFound();
+    if (method === 'GET' && rest[0] === 'requests' && rest[1])
+      return req.json({
+        client: 'Claude',
+        redirect: 'claude.ai',
+        scope: 'design',
+        startedAt: new Date().toISOString(),
+      });
+    if (method === 'POST' && rest[0] === 'requests' && rest[1]) {
+      if (!req.reason) return req.reasonMissing();
+      const { decision } = req.body<{ decision?: string }>();
+      return req.json({
+        redirect:
+          decision === 'allow'
+            ? `http://localhost:8080/oauth/design/finish/${encodeURIComponent(rest[1])}`
+            : 'https://claude.ai/api/mcp/auth_callback?error=access_denied&state=s',
+      });
+    }
+    if (method === 'DELETE' && rest[0] === 'grants') return req.json({ ended: 2 });
+    return req.notFound();
+  };
+
   return (req) => {
     const { path, method } = req;
     if (method === 'POST' && path === '/definitions') return save(req);
+    const connecting = /^\/tenants\/[^/]+\/design-connector(?:\/(.*))?$/.exec(path);
+    if (connecting)
+      return connector(
+        req,
+        (connecting[1] ?? '').split('/').filter(Boolean).map(decodeURIComponent),
+      );
     const pinned = pinKey.exec(path);
     if (pinned && (method === 'PUT' || method === 'DELETE')) return pin(req, pinned);
     const version = /^\/tenants\/([^/]+)\/definitions\/blocks\/([^/]+)\/versions\/(\d+)$/.exec(

@@ -9,6 +9,7 @@ import {
   skillDefinitionRoutes,
 } from '../content-reason.js';
 import { keepsOwnErrorShape } from '../problem-responses.js';
+import { servedByConnector } from '../design-connector/settings.js';
 import { apiTags, tagOf } from './tags.js';
 
 type Operation = {
@@ -109,6 +110,7 @@ describe('openapi.json', () => {
     );
     const missing = (await operations())
       .filter(({ key }) => /^(post|put|patch|delete) /.test(key) && !free.has(key))
+      .filter(({ key }) => !servedByConnector(key.split(' ')[1] ?? ''))
       .filter(
         ({ op }) =>
           !op.parameters?.some(

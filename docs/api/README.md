@@ -46,15 +46,15 @@ Every change is a platform task, and the audit log is the event log ([ADR 0010](
 
 - Every audited change requires `change-reason: <why>`, at least 10 characters. URL-encode it when it has characters outside ASCII (`æøå`). One check in front of all routes enforces it (`apps/api/src/change-reason.ts`), so no route stores a default text any more.
 - A missing or short reason answers `400` problem+json with `errors: [{ "path": "change-reason", ... }]`, before the route changes anything. A request without a valid credential still gets `401` first.
-- The header is not needed on writes that change nothing an administrator owns: runs and calls (`/v1`, `/api/mcp`, `/api/tools/call`, A2A, playground, assistant turns, test and eval runs), checks and previews, a person's own preferences and conversations, feedback, and an access application (`POST /onboarding/requests`, whose `purpose` is its reason). The list is `reasonFreeWrites` in `change-reason.ts`, and `/openapi.json` marks the header as required on every other write.
+- The header is not needed on writes that change nothing an administrator owns: runs and calls (`/v1`, `/api/mcp`, `/api/tools/call`, A2A, playground, assistant turns, test and eval runs), checks and previews, a person's own preferences and conversations, feedback, an access application (`POST /onboarding/requests`, whose `purpose` is its reason), and ending one's own Claude connections (`DELETE /tenants/{tenant}/design-connector/grants`, audited with the reason given or a fixed text). The list is `reasonFreeWrites` in `change-reason.ts`, and `/openapi.json` marks the header as required on every other write.
 - `POST /operator/tenants/{tenant}/content-reason` and `POST /tenants/{tenant}/clients/{client}/hostnames` also accept the reason as `reason` in the body. No other route reads a reason from the body.
 - Read the log with `GET /tenants/{tenant}/audit` and one entry with `GET /tenants/{tenant}/audit/{task}`. Each entry has actor, action, target, outcome and reason. Operators see all tenants with `GET /operator/audit`.
 
 ## Errors
 
-- Every error outside `/v1`, A2A and MCP answers `application/problem+json`: `{ "type", "title", "status", "detail"?, "errors"?: [{ "path", "message" }] }`. Some add a `code` or another member, such as `requirements`. A response that a route did not shape as a problem is turned into one in front of the client (`apps/api/src/problem-responses.ts`), keeping its members.
+- Every error outside `/v1`, A2A, MCP and the design connector's OAuth endpoints answers `application/problem+json`: `{ "type", "title", "status", "detail"?, "errors"?: [{ "path", "message" }] }`. Some add a `code` or another member, such as `requirements`. A response that a route did not shape as a problem is turned into one in front of the client (`apps/api/src/problem-responses.ts`), keeping its members.
 - `title`, `detail` and `errors[].message` come from the API's bokmål and English catalogues and follow `Accept-Language`.
-- `/v1/*` answers OpenAI's shape: `{ "error": { "message", "type", "code", "param" } }`, so OpenAI clients work unchanged. A2A and `/api/mcp` answer JSON-RPC errors.
+- `/v1/*` answers OpenAI's shape: `{ "error": { "message", "type", "code", "param" } }`, so OpenAI clients work unchanged. A2A, `/api/mcp` and the design connector's `/mcp/design` answer JSON-RPC errors; its OAuth endpoints under `/oauth/design` answer RFC 6749 errors (`{ "error", "error_description" }`).
 - `/api/*` (conversations, feedback, datasets, facets, tools) answers problem+json with a `code`. The body also keeps headless-rag's `error` member with the message text, for older clients ([ADR 0017](../adr/0017-parity-scope-and-intentional-divergences.md)).
 
 ## Lists
@@ -74,6 +74,12 @@ The public `/v1` routes are what other systems build on, so CI refuses a breakin
 To announce one, add a line to a new dated entry below that names the operation in backticks as the method and path, such as `` `POST /v1/chat/completions` ``. Only lines added in the same change count. Changes outside `/v1` are listed here too, but CI does not check them, nor path parameter schemas or `additionalProperties`.
 
 `npm run definitions:compat` checks every YAML or JSON file in the repository that is a service, step flow, skill or block definition (seeds, examples and fixtures) against the current schema, including the strategy, tool and guardrail settings. Models, datasets, rerankers, tools and blocks are not looked up, since each environment has its own. Give it the path to a tenant export (`GET /tenants/{tenant}/export`) or a folder of definitions to check those instead.
+
+### 2026-11-26: the design connector for Claude
+
+- New, when `GENAI_PUBLIC_API_URL` is set and only on that host: `POST /mcp/design` (MCP with `list_design_elements`, `get_design_element` and `import_design`, as the person who approved the connection, in that organisation), `POST /oauth/design/register`, `GET /oauth/design/authorize`, `GET /oauth/design/finish/{request}` (issues the code only in the browser that started the connection), `POST /oauth/design/token`, `POST /oauth/design/revoke`, and the metadata at `/.well-known/oauth-protected-resource/mcp/design` and `/.well-known/oauth-authorization-server/oauth/design` ([ADR 0073](../adr/0073-design-connector-for-claude.md)).
+- New, while `blockStudio` is on for the caller: `GET /tenants/{tenant}/design-connector` (the address), `GET` and `POST /tenants/{tenant}/design-connector/requests/{request}` (approve or deny a connection started in the last five minutes; manage-services, `change-reason`, audited as `platform.design-connector.connect`; on allow it answers the finish address), `GET /tenants/{tenant}/design-connector/grant-check` (the connector's own check on every refresh) and `DELETE /tenants/{tenant}/design-connector/grants` (ends the caller's connections; audited as `platform.design-connector.disconnect`).
+- `GET /tenants/{tenant}/blocks` and a block's detail add `latest.fromClaude` when the newest edition came through the connector.
 
 ### 2026-11-25: archiving a block
 

@@ -14,20 +14,30 @@ import type { MiddlewareHandler } from 'hono';
 import { blockImport as enBlockImport } from './en/block-import.js';
 import { templateErrors as enTemplateErrors } from './en/block-template.js';
 import { content as enContent } from './en/content.js';
+import { designConnector as enDesignConnector } from './en/design-connector.js';
 import { errors as enErrors } from './en/errors.js';
 import { problems as enProblems } from './en/problems.js';
 import { blockImport } from './nb/block-import.js';
 import { templateErrors } from './nb/block-template.js';
 import { content } from './nb/content.js';
+import { designConnector } from './nb/design-connector.js';
 import { errors } from './nb/errors.js';
 import { problems } from './nb/problems.js';
 
-export const nb = defineCatalogue({ problems, ...errors, templateErrors, blockImport, ...content });
+export const nb = defineCatalogue({
+  problems,
+  ...errors,
+  templateErrors,
+  blockImport,
+  designConnector,
+  ...content,
+});
 export const en = {
   problems: enProblems,
   ...enErrors,
   templateErrors: enTemplateErrors,
   blockImport: enBlockImport,
+  designConnector: enDesignConnector,
   ...enContent,
 } satisfies Translation<typeof nb>;
 export type ApiKey = MessageKey<typeof nb>;

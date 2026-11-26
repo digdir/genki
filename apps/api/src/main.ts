@@ -98,6 +98,9 @@ import {
 import { buildTimeOf, createApp } from './app.js';
 import { defaultSlowRequestMs } from './request-timing.js';
 import { sharedLimiter } from './rate-limit.js';
+import { designConnectorModule } from './design-connector/consent.js';
+import { createDesignConnector } from './design-connector/oauth.js';
+import { designConnectorFrom } from './design-connector/settings.js';
 import { kernelTaskReader } from './timeline.js';
 import { followChanges, refreshEverywhere } from './change-feed.js';
 import { postgresTaskIndex, postgresTenantDirectory } from './postgres-adapters.js';
@@ -248,6 +251,28 @@ if (platformLogin)
     subjectsKept: platformLogin.subjectKeyKept,
     apps: platformLogin.apps.map((a) => a.app),
   });
+const designConnectorSettings = designConnectorFrom(
+  process.env,
+  platformLogin?.apps.find((a) => a.app === 'portal')?.origin,
+);
+const designConnector =
+  designConnectorSettings &&
+  createDesignConnector({
+    settings: designConnectorSettings,
+    store: db?.bffSessions ?? new InMemoryBffSessions(),
+    partition: platformTenant,
+    inner: (request) => app.fetch(request),
+    ...(db
+      ? {
+          limiter: sharedLimiter(db.rateLimits, (error) =>
+            log('shared rate limit unavailable', { error: String(error) }),
+          ),
+        }
+      : {}),
+    log,
+  });
+if (designConnectorSettings)
+  log('design connector for Claude', { resource: designConnectorSettings.resource });
 const registeredClients = clientRegistry(
   clients,
   platformLogin && { ...platformLogin, current: actingClient },
@@ -563,6 +588,9 @@ const platform = await createPlatform({
     ...platformModules,
     createDefinitionSourcesModule(definitionSources, platformTenant),
     createAccessPeopleModule(accessPeople),
+    ...(designConnector && designConnectorSettings
+      ? [designConnectorModule(designConnector, designConnectorSettings)]
+      : []),
   ],
   settings,
   verifyPluginsOnBoot: true,
@@ -992,7 +1020,13 @@ const bff = createBff({
 });
 
 const server = serve(
-  { fetch: (request, env) => bff.handle(request, (r) => app.fetch(r, env)), port },
+  {
+    fetch: (request, env) =>
+      designConnector?.handles(new URL(request.url))
+        ? designConnector.fetch(request, env)
+        : bff.handle(request, (r) => app.fetch(r, env)),
+    port,
+  },
   (info) => {
     log('api listening', { port: info.port, version, mockLogin: Boolean(mock) });
   },

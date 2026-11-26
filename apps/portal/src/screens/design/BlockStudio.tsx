@@ -88,6 +88,7 @@ interface Saved {
 export const BlockStudio = ({
   api,
   tenant,
+  tenantName,
   publisher,
   id,
 }: ScreenProps & { publisher: string; id: string }) => {
@@ -141,9 +142,9 @@ export const BlockStudio = ({
             </div>
           </div>
           <StudioActionsFor
-            prompt={t('design.claudeBlockPrompt', {
-              ref: `${detail.publisher}/${detail.id}@${detail.edition.version}`,
-            })}
+            api={api}
+            tenant={tenant}
+            tenantName={tenantName}
             versions={`#${versionsPath(detail.publisher, detail.id)}`}
           />
         </div>
