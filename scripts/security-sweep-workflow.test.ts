@@ -33,6 +33,10 @@ describe('the security sweep workflow', () => {
     expect(workflow.on.schedule).toEqual([{ cron: '17 3 * * 1' }]);
   });
 
+  it('lets the merge queue start the scheduled run, and no other bot', () => {
+    for (const step of models) expect(step.with?.allowed_bots).toBe('github-merge-queue');
+  });
+
   it('runs only in the repository itself, never in a fork', () => {
     expect(job.if).toBe("github.repository == 'digdir/genki'");
   });
