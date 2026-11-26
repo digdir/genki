@@ -140,10 +140,13 @@ import {
   advancedItemOf,
   advancedItems,
   availableSections,
+  editionPath,
   editionView,
   servicePath,
+  serviceTabs,
   subSections,
   switchPaths,
+  tabLabels,
   tabOf,
   usesNewSetup,
   type Edition,
@@ -1623,6 +1626,8 @@ export const Builder = ({
   const sections = archived
     ? availableSections({ isNew }).filter((s) => archivedSections.includes(s))
     : availableSections({ isNew });
+  const tabs = serviceTabs(sections);
+  const nextTab = tabs[tabs.findIndex((each) => each.tab === tabOf(section)) + 1];
   const withAssistant = !readOnly && ((section === 'setup' && !setupLayout) || section === 'test');
   const datasetNames =
     datasetOptions.status === 'ready'
@@ -2200,18 +2205,26 @@ export const Builder = ({
                   {t('setupList.savedNote')}
                 </Paragraph>
               </div>
-              {canDelete && !deleting ? (
-                <Button
-                  variant="secondary"
-                  data-color="danger"
-                  data-size="sm"
-                  className="align-start"
-                  onClick={() => setDeleting('asking')}
-                >
-                  <Icon icon={TrashIcon} />
-                  {t('services.deleteDraft')}
-                </Button>
-              ) : null}
+              <div className="row-wrap spread">
+                {nextTab ? (
+                  <Button asChild variant="primary" data-size="sm">
+                    <a href={`#${editionPath(routeId, nextTab.target, edition)}`}>
+                      {t('service.continueTo', { tab: t(tabLabels[nextTab.tab]) })}
+                    </a>
+                  </Button>
+                ) : null}
+                {canDelete && !deleting ? (
+                  <Button
+                    variant="tertiary"
+                    data-color="danger"
+                    data-size="sm"
+                    onClick={() => setDeleting('asking')}
+                  >
+                    <Icon icon={TrashIcon} />
+                    {t('services.deleteDraft')}
+                  </Button>
+                ) : null}
+              </div>
               {deleteQuestion}
             </div>
           }

@@ -8,6 +8,7 @@ export const serviceUi = {
     navLabel: 'Faner for {name}',
     sectionOverview: 'Oversikt',
     draftNote: 'Oversikt og Kvalitet kommer når tjenesten er publisert.',
+    continueTo: 'Videre til {tab}',
     sectionSetup: 'Oppsett',
     sectionInterface: 'Utforming',
     sectionTest: 'Prøv',
