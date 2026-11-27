@@ -356,6 +356,46 @@ describe('the live builder', () => {
     expect(within(page).queryByText(/Teknisk tekst/)).toBeNull();
   });
 
+  it("publishes a new service's first edition as a new service, so the platform refuses an id another service has", async () => {
+    const { calls, fetch } = recorded();
+    await startBuilder(fetch);
+    await publishFirst();
+    const published = await waitFor(() => {
+      const call = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/definitions'));
+      expect(call).toBeTruthy();
+      return call?.body as { newService?: boolean };
+    });
+    expect(published.newService).toBe(true);
+  });
+
+  it('warns that the id is taken when the platform refuses a new service under it, and links to that service', async () => {
+    const { fetch: base } = recorded();
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (init?.method === 'POST' && url.endsWith('/api/definitions'))
+        return new Response(
+          JSON.stringify({
+            type: 'urn:genai:problem:service-id-taken',
+            title: 'Navnet er i bruk',
+            status: 409,
+            id: 'ny-tjeneste',
+          }),
+          { status: 409, headers: { 'content-type': 'application/problem+json' } },
+        );
+      return base(input, init);
+    };
+    await startBuilder(fetch);
+    const page = await publishFirst();
+    expect(
+      await within(page).findByText(
+        'Tjenesten «ny-tjeneste» finnes allerede, kanskje arkivert. Gi den nye tjenesten et annet navn under Formål og målgruppe, og publiser igjen.',
+      ),
+    ).toBeTruthy();
+    expect(
+      within(page).getByRole('link', { name: 'Åpne tjenesten ny-tjeneste' }).getAttribute('href'),
+    ).toBe('#/services/ny-tjeneste');
+  });
+
   it('checks the definition again when the risk level is fixed on the first publish page, and then publishes', async () => {
     const riskError = 'a service that decides about people needs the high risk class';
     const { calls, fetch } = recorded((body) =>
@@ -616,6 +656,22 @@ describe('the live builder and the server draft', () => {
     expect(published[0]?.body).toMatchObject({
       definition: { spec: { strategy: { config: { instructions: 'Svar kort.' } } } },
     });
+  });
+
+  it('publishes a service in use as its next version, not as a new service', async () => {
+    const { calls } = await openService('#/services/rapportassistenten/setup/instructions');
+    await screen.findByLabelText('Instruksjoner til tjenesten');
+    fireEvent.change(instructions(), { target: { value: 'Svar kort.' } });
+    await waitFor(() => expect(draftWrites(calls, 'PUT').length).toBeGreaterThan(0));
+
+    await publishOnPage(await publishPage('Kortere svar til brukerne'));
+
+    const published = await waitFor(() => {
+      const call = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/definitions'));
+      expect(call).toBeTruthy();
+      return call?.body as Record<string, unknown>;
+    });
+    expect(published).not.toHaveProperty('newService');
   });
 
   it('publishes nothing when the person cancels on the publish page of a service in use', async () => {

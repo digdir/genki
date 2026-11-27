@@ -1186,6 +1186,7 @@ export const Builder = ({
     refusedByGates: boolean;
     outdated?: true;
     archivedId?: string;
+    takenId?: string;
   }>();
   const rebasedDraft = useRef<ServiceDraft | undefined>(undefined);
 
@@ -1414,6 +1415,7 @@ export const Builder = ({
       files,
       reason,
       serverDraft && revisionRef.current > 0 ? revisionRef.current : undefined,
+      isNew,
     );
     if (!outcome.ok) {
       draftBlocked.current = false;
@@ -1432,9 +1434,11 @@ export const Builder = ({
       });
       setProblems(outcome);
       throw new Error(
-        outcome.archivedId !== undefined
-          ? tRef.current('services.archivedId')
-          : (outcome.errors[0]?.message ?? tRef.current('services.publishFailed')),
+        outcome.takenId !== undefined
+          ? tRef.current('services.takenId', { id: outcome.takenId })
+          : outcome.archivedId !== undefined
+            ? tRef.current('services.archivedId')
+            : (outcome.errors[0]?.message ?? tRef.current('services.publishFailed')),
       );
     }
     unsaved.current = false;
@@ -2147,6 +2151,15 @@ export const Builder = ({
           onRebase={rebaseDraft}
           onResolve={resolveConflicts}
         />
+      ) : problems?.takenId !== undefined ? (
+        <Alert data-color="danger" data-size="sm" role="alert">
+          <Paragraph data-size="sm">{t('services.takenId', { id: problems.takenId })}</Paragraph>
+          <Paragraph data-size="sm">
+            <Link href={`#${servicePath(problems.takenId)}`}>
+              {t('services.takenIdOpen', { id: problems.takenId })}
+            </Link>
+          </Paragraph>
+        </Alert>
       ) : problems?.archivedId !== undefined ? (
         <Alert data-color="danger" data-size="sm" role="alert">
           <Paragraph data-size="sm">{t('services.archivedId')}</Paragraph>
