@@ -45,7 +45,7 @@ import {
 } from './prompts.js';
 import { cardFactsCache, collectCardFacts, serviceCardText } from './service-card.js';
 import { executionMetadata, judgedInsufficient } from './execution.js';
-import { evaluateRead } from './read-signals.js';
+import { evaluateRead, type ReadSignal } from './read-signals.js';
 import {
   backfillCitations,
   citationsFor,
@@ -726,6 +726,41 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       );
     };
 
+    // The read check of the chunks read in one turn runs alongside the model's next turn (#984).
+    let readCheck: { chunkIds: string[]; signal: Promise<ReadSignal> } | undefined;
+    const startReadCheck = () => {
+      const pending = workspace.drainPendingEval();
+      if (!pending.length) return;
+      const signal = evaluateRead({
+        query,
+        intent: workspace.queryIntent ?? inferQueryIntent(query, history),
+        plan: workspace.evidencePlan,
+        openClaims: workspace.readEvaluations.length
+          ? workspace.openGaps
+          : (workspace.evidencePlan?.requiredClaims ?? []),
+        chunks: pending,
+        llm: evaluator,
+        signal: ctx.signal,
+      });
+      // A run that ends while the check runs (cancelled, failed) leaves no unhandled rejection.
+      signal.catch(() => undefined);
+      readCheck = { chunkIds: pending.map((c) => c.chunkId), signal };
+    };
+    const applyReadCheck = async (): Promise<Emitted | undefined> => {
+      const check = readCheck;
+      if (!check) return undefined;
+      readCheck = undefined;
+      const signal = await check.signal;
+      recordReadEvaluation(workspace, { ...signal, chunkIds: check.chunkIds });
+      workspace.shadowDecisions.push(
+        aggregateReadSignals(workspace, { roundsLeft: toolRounds - iteration - 1 }),
+      );
+      return {
+        type: 'kernel.notice',
+        data: { stage: 'read-signal', status: signal.status, degraded: signal.degraded },
+      };
+    };
+
     for (; iteration < toolRounds && !finalized; iteration += 1) {
       if (ctx.signal.aborted) throw new Error('cancelled');
       if (secondsLeft() === 0) {
@@ -805,6 +840,10 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           type: 'kernel.notice',
           data: { event: 'agent/thinking', iteration, reasoning: turn.content },
         };
+      // The read check of the turn before ran alongside this model call; its result is applied
+      // before this turn's tools, so they and this turn's gates see it.
+      const checkedFirst = await applyReadCheck();
+      if (checkedFirst) yield checkedFirst;
       let results: ToolCallResult[] = [];
       const toolCalls: Record<string, unknown>[] = [];
       let generated = false;
@@ -911,32 +950,18 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       }
 
       const spent = judgesOff();
-      if (!ablated.has('read-signal-eval') && !spent) {
-        const pending = workspace.drainPendingEval();
-        if (pending.length) {
-          const signal = await evaluateRead({
-            query,
-            intent: workspace.queryIntent ?? inferQueryIntent(query, history),
-            plan: workspace.evidencePlan,
-            openClaims: workspace.readEvaluations.length
-              ? workspace.openGaps
-              : (workspace.evidencePlan?.requiredClaims ?? []),
-            chunks: pending,
-            llm: evaluator,
-            signal: ctx.signal,
-          });
-          recordReadEvaluation(workspace, { ...signal, chunkIds: pending.map((c) => c.chunkId) });
-          workspace.shadowDecisions.push(
-            aggregateReadSignals(workspace, { roundsLeft: toolRounds - iteration - 1 }),
-          );
-          yield {
-            type: 'kernel.notice',
-            data: { stage: 'read-signal', status: signal.status, degraded: signal.degraded },
-          };
-        }
-      }
+      if (!ablated.has('read-signal-eval') && !spent) startReadCheck();
+      // A turn that wrote an answer is judged on every read, and the turn before the last has no
+      // turn after with the judges on, so both wait for their own check.
+      const checkedNow =
+        generated || iteration + 1 >= toolRounds - 1 ? await applyReadCheck() : undefined;
+      if (checkedNow) yield checkedNow;
+      const checked = Boolean(checkedFirst ?? checkedNow);
+      // A turn whose reads are the first unchecked ones has no check to gate on yet: its gates
+      // wait for the turn after. A turn that applied a check gates on it.
+      const gatesWait = readCheck !== undefined && !checked;
 
-      const relevant = gateRelevant(results);
+      const relevant = !gatesWait && (gateRelevant(results) || checked);
       const draft = blank(drafted) ? undefined : drafted;
       const citedDraft = draft !== undefined && Boolean(workspace.citationValidation?.grounded);
       const draftJudged =
@@ -960,12 +985,14 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           : undefined;
       const lastStatus = workspace.lastReadSignal?.status;
       if (
-        results.some((r) => r.name === 'read_chunks') &&
+        checked &&
+        (!generated || results.some((r) => r.name === 'read_chunks')) &&
         (lastStatus === 'gap-remaining' || lastStatus === 'unclear' || lastStatus === 'conflicting')
       ) {
         const suggestion = rangeReadSuggestion(workspace);
         if (suggestion) {
-          const index = results.findIndex((r) => r.name === 'read_chunks');
+          const readAt = results.findIndex((r) => r.name === 'read_chunks');
+          const index = readAt === -1 ? results.length - 1 : readAt;
           results = results.map((r, i) =>
             i === index ? { ...r, content: r.content + rangeReadHintText(suggestion) } : r,
           );
@@ -1078,6 +1105,8 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         answer = generatedResponse;
         finalized = true;
       } else if (active?.suggestedStrategy === 'finalize' && !generated) {
+        const last = await applyReadCheck();
+        if (last) yield last;
         const outcome: ToolOutcome = yield* withDeltas((push) =>
           runBuiltinTool(
             'generate_response',
@@ -1116,6 +1145,9 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       } else phase = 'default';
     }
 
+    // A check still running when the loop ends is applied, so the answer turn sees its gaps.
+    const lastCheck = await applyReadCheck();
+    if (lastCheck) yield lastCheck;
     const finalizeStarted = Date.now();
     if (!clarification && blank(answer)) {
       const stored = workspace.lastGeneratedResponse?.trim()

@@ -108,7 +108,7 @@ describe('the read check after a cut read', () => {
       ['dA', 0, 9],
       ['dA', 10, 16],
     ]);
-    expect(shadowGates(out)).toHaveLength(1);
+    expect(shadowGates(out).filter((g) => g.status === 'sufficient')).toEqual([]);
   });
 
   it('a cut read whose left-out hits all score below the returned hits finalizes', async () => {
@@ -119,7 +119,8 @@ describe('the read check after a cut read', () => {
       scripts: { primary: { loop: readThenLeftOut, read: [supportFound] } },
     });
 
-    expect(ranges(r)).toEqual([['dA', 0, 9]]);
+    // The check runs alongside the model's next turn, which reads on; its gate finalizes after it.
+    expect(ranges(r)).toHaveLength(2);
     expect(shadowGates(out)[0]).toMatchObject({ status: 'sufficient', strategy: 'finalize' });
   });
 

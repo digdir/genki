@@ -59,7 +59,8 @@ describe('synthesis context selection', () => {
       expect(r.calls.filter((c) => c.op === 'read')[0]?.args).toEqual(
         earlier.map((c) => c.chunkId),
       );
-      expect(out.loops).toHaveLength(finalizer === 'sufficiency gate' ? 3 : 4);
+      // The last read's check runs alongside the fourth turn, so the gate finalizes after it.
+      expect(out.loops).toHaveLength(4);
       expect(promptFrom(out)).toContain(decisive.content);
       for (const c of earlier) expect(promptFrom(out)).toContain(c.content);
       expect(promptFrom(out)).not.toContain(unread.content);

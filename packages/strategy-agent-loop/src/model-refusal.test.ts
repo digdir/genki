@@ -138,6 +138,8 @@ describe('a model refusal', () => {
           loop: [
             () => result('', [call('search', { queries: ['x'] })]),
             () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c2', 'c3', 'c4', 'c5'] })]),
+            // The read check runs alongside this turn and gives its verdict after it.
+            () => result('', [call('search', { queries: ['y'] })]),
             () => result('Svar.'),
           ],
           read: [allSupported],
