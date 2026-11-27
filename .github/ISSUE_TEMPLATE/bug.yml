@@ -32,7 +32,6 @@ body:
         - API
         - Portal
         - Console
-        - Workspace
         - Worker
         - Local setup
         - Docs

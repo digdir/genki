@@ -268,14 +268,14 @@ describe('console routes', () => {
 
   it('lists the services that run on a model protocol or search engine plugin as its users', async () => {
     const { send } = await setup({
-      pluginUsage: async () => new Map([['knowledge.typesense', [`${digdir}/klarsprak`]]]),
+      pluginUsage: async () => new Map([['knowledge.pgvector', [`${digdir}/klarsprak`]]]),
     });
 
     const body = await readJson<{ blocks: { ref: string; usedBy: string[] }[] }>(
       await send('/operator/building-blocks', 'operator'),
     );
 
-    expect(body.blocks.find((b) => b.ref === 'knowledge.typesense')?.usedBy).toEqual([
+    expect(body.blocks.find((b) => b.ref === 'knowledge.pgvector')?.usedBy).toEqual([
       `${digdir}/klarsprak`,
     ]);
   });

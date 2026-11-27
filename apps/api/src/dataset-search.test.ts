@@ -550,7 +550,7 @@ describe('the dataset search on the platform', () => {
   const closedPort = {
     endpoints: {
       search: {
-        engine: 'typesense',
+        engine: 'http-search',
         baseURL: 'http://127.0.0.1:9',
         auth: { kind: 'api-key', secret: 'secret://env/search-key' },
       },
@@ -560,10 +560,7 @@ describe('the dataset search on the platform', () => {
         id: 'digdir/kudos',
         endpoint: 'search',
         residency: 'norway',
-        options: {
-          collections: { docs: 'docs', chunks: 'chunks' },
-          profiles: { content: { collection: 'chunks', queryBy: ['text'], textField: 'text' } },
-        },
+        options: {},
       },
     ],
   };

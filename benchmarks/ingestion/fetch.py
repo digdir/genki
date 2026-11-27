@@ -3,7 +3,7 @@
 KUDOS text  -> .data/kudos/<uuid>.txt      (GET /documents/<uuid>/contents)
 PDF         -> .data/pdf/<doc_num>.pdf     (sha256 checked against the pair)
 
-Our chunks (.data/ours/<doc_num>.jsonl) came from the shared Typesense server, which genki no
+Our chunks (.data/ours/<doc_num>.jsonl) came from the shared search server genki used before, which it no
 longer configures (#690), so they can no longer be fetched; checks.py reads them from disk.
 
 Files already on disk are kept, so a rerun only fetches what is missing.

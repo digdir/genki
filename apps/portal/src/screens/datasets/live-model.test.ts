@@ -25,7 +25,7 @@ const view: DatasetView = {
   name: 'Kudos',
   editable: false,
   state: 'external',
-  index: { endpoint: 'kudos-typesense', collections: { docs: 'KUDOS_documents' } },
+  index: { endpoint: 'kudos-elastic', collections: { docs: 'KUDOS_documents' } },
   source: 'none',
   documents: 45321,
   chunks: null,
@@ -49,7 +49,7 @@ describe('a shared dataset ingested outside the platform in the list', () => {
     const item = listItemOf(translator('nb'), createFormat('nb'), view);
 
     expect(item.status).toBe('Utenfor plattformen');
-    expect(item.sourceText).toBe('kudos-typesense, samling KUDOS_documents');
+    expect(item.sourceText).toBe('kudos-elastic, samling KUDOS_documents');
     expect(item.docsText).toBe('45 321');
     expect(item.lastText).toBe('Ukjent, utenfor plattformen');
   });
@@ -57,7 +57,7 @@ describe('a shared dataset ingested outside the platform in the list', () => {
   it('says the same in English', () => {
     const item = listItemOf(translator('en'), createFormat('en'), view);
 
-    expect(item.sourceText).toBe('kudos-typesense, collection KUDOS_documents');
+    expect(item.sourceText).toBe('kudos-elastic, collection KUDOS_documents');
     expect(item.lastText).toBe('Unknown, outside the platform');
   });
 

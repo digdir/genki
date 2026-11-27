@@ -139,7 +139,7 @@ const boot = async (
       'change-reason': 'Testendring',
     },
     body: JSON.stringify({
-      engine: 'typesense',
+      engine: 'http-search',
       baseURL: 'https://sok.testetaten.example.no',
       auth: { kind: 'bearer', secret: `secret://tenant/${digdir}/search-token` },
     }),
@@ -148,7 +148,7 @@ const boot = async (
     id: 'kudos',
     name: 'Kudos',
     residency: 'norway',
-    index: { endpoint: 'sok', collections: { docs: 'k_docs', chunks: 'k_chunks' } },
+    index: { endpoint: 'sok' },
   });
   expect(created.status).toBe(201);
   return { call, admin, enrichment, platform };

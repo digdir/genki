@@ -71,7 +71,6 @@ describe('plug-in registry', () => {
       contractTests: null,
     });
     expect(data.find((p) => p.id === 'step-block.model')).toMatchObject({ version: '1' });
-    expect(data.find((p) => p.id === 'knowledge.typesense')).toMatchObject({ verifiable: true });
   });
 
   it('runs the real suite from the building-blocks route and records the result per version', async () => {
@@ -110,7 +109,7 @@ describe('plug-in registry', () => {
         reason: 'Kjører kontrakttestene',
       });
     expect((await post('finnes-ikke')).status).toBe(404);
-    expect((await post('knowledge.typesense')).status).toBe(200);
+    expect((await post('blob.memory')).status).toBe(200);
     expect((await post('model.openai-chat', 'kari')).status).toBe(403);
     expect((await send('/operator/plugins', 'kari')).status).toBe(403);
   });

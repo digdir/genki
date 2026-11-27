@@ -42,8 +42,6 @@
     "@genai/providers-openai": "0.0.0",
     "@genai/providers-openapi-tools": "0.0.0",
     "@genai/providers-pgvector": "0.0.0",
-    "@genai/providers-typesense": "0.0.0",
-    "@genai/providers-typesense-writer": "0.0.0",
     "@genai/retrieval": "0.0.0",
     "@genai/strategy-agent-loop": "0.0.0",
     "@genai/strategy-rag": "0.0.0",

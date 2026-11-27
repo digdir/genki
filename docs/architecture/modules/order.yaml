@@ -1,7 +1,6 @@
 - ka
 - mcp-clients
 - client
-- workspace
 - assistant-host
 - portal
 - console
@@ -50,8 +49,6 @@
 - port-usage
 - providers-openai
 - providers-anthropic
-- providers-typesense
-- providers-typesense-writer
 - providers-documents
 - providers-mcp-client
 - providers-a2a-client

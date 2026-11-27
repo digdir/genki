@@ -1,14 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { envSecrets } from '@genai/kernel';
-import { KnowledgeRouter } from '@genai/port-knowledge';
-import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
-import { typesense } from '@genai/providers-typesense';
+import { KnowledgeRouter, type DatasetConfig, type KnowledgeAdapter } from '@genai/port-knowledge';
+import { memoryEngine } from '@genai/port-knowledge/testing';
 import { cachedDocumentCount } from './configurables.js';
-
-const servers: FakeServer[] = [];
-afterEach(async () => {
-  await Promise.all(servers.splice(0).map((s) => s.close()));
-});
 
 const principal = {
   kind: 'employee',
@@ -17,93 +11,70 @@ const principal = {
   tenant: '991825827',
 } as const;
 
-describe('counting the documents of a shared dataset on a search-only engine', () => {
-  it('reads the count from one search on the documents collection and keeps it for a while', async () => {
-    const server = await fakeHttp(() => ({
-      status: 200,
-      json: { results: [{ found: 45321, hits: [] }] },
-    }));
-    servers.push(server);
-    const router = new KnowledgeRouter({
-      catalog: {
-        endpoints: {
-          ts: {
-            engine: 'typesense',
-            baseURL: server.url,
-            auth: { kind: 'api-key', secret: 'secret://env/key' },
-          },
+const engineWith = async (dataset: string, count: number) => {
+  const { adapter, writer } = memoryEngine();
+  const store = writer.connect({ engine: 'memory' } as never, {
+    signal: new AbortController().signal,
+  });
+  const config = { id: dataset, filters: {}, options: {} } as DatasetConfig<never>;
+  await store.prepare(config, 'g1');
+  await store.promote(config, 'g1');
+  const add = async (n: number) => {
+    for (let i = 0; i < n; i++)
+      await store.store(config, 'g1', {
+        id: `${dataset}-${crypto.randomUUID()}`,
+        fields: {},
+        chunks: [{ id: crypto.randomUUID(), position: 0, text: 'tekst' }],
+        phrases: [],
+      });
+  };
+  await add(count);
+  const reads = { documents: 0 };
+  const counted: KnowledgeAdapter = {
+    ...(adapter as KnowledgeAdapter),
+    connect: (endpoint) => {
+      const inner = (adapter as KnowledgeAdapter).connect(endpoint);
+      return {
+        ...inner,
+        documents: (d, request, signal) => {
+          reads.documents += 1;
+          if (!inner.documents) throw new Error('the memory engine lists documents');
+          return inner.documents(d, request, signal);
         },
-        datasets: [
-          {
-            id: 'digdir/kudos',
-            endpoint: 'ts',
-            residency: 'norway',
-            options: {
-              collections: { docs: 'kudos_docs', chunks: 'kudos_chunks' },
-              profiles: {
-                content: {
-                  collection: 'chunks',
-                  queryBy: ['content_markdown'],
-                  textField: 'content_markdown',
-                },
-              },
-            },
-          },
-        ],
-      },
-      adapters: [typesense],
-      secrets: envSecrets({ KEY: 'search-only' }),
-    });
+      };
+    },
+  };
+  const router = new KnowledgeRouter({
+    catalog: {
+      endpoints: { lokal: { engine: 'memory' } },
+      datasets: [{ id: dataset, endpoint: 'lokal', residency: 'norway', options: {} }],
+    },
+    adapters: [counted],
+    secrets: envSecrets({}),
+  });
+  return { router, reads, add };
+};
+
+describe('counting the documents of a dataset', () => {
+  it('reads the count from one document listing and keeps it for a while', async () => {
+    const { router, reads } = await engineWith('digdir/kudos', 3);
     const count = cachedDocumentCount(router);
     const input = { dataset: 'digdir/kudos', tenant: '991825827', principal };
 
-    expect(await count(input)).toBe(45321);
-    expect(await count(input)).toBe(45321);
-    expect(server.seen).toHaveLength(1);
-    const search = (server.seen[0]?.body as { searches: Record<string, unknown>[] }).searches[0];
-    expect(search).toMatchObject({ collection: 'kudos_docs', q: '*', per_page: 1 });
+    expect(await count(input)).toBe(3);
+    expect(await count(input)).toBe(3);
+    expect(reads.documents).toBe(1);
   });
 
   it('reads an empty dataset again, so its first read-in shows its documents at once', async () => {
-    let found = 0;
-    const server = await fakeHttp(() => ({
-      status: 200,
-      json: { results: [{ found, hits: [] }] },
-    }));
-    servers.push(server);
-    const router = new KnowledgeRouter({
-      catalog: {
-        endpoints: {
-          ts: {
-            engine: 'typesense',
-            baseURL: server.url,
-            auth: { kind: 'api-key', secret: 'secret://env/key' },
-          },
-        },
-        datasets: [
-          {
-            id: 'digdir/ny',
-            endpoint: 'ts',
-            residency: 'norway',
-            options: {
-              collections: { docs: 'ny_docs', chunks: 'ny_chunks' },
-              profiles: {
-                content: { collection: 'chunks', queryBy: ['text'], textField: 'text' },
-              },
-            },
-          },
-        ],
-      },
-      adapters: [typesense],
-      secrets: envSecrets({ KEY: 'search-only' }),
-    });
+    const { router, reads, add } = await engineWith('digdir/ny', 0);
     const count = cachedDocumentCount(router);
     const input = { dataset: 'digdir/ny', tenant: '991825827', principal };
 
     expect(await count(input)).toBe(0);
-    found = 1;
+    await add(1);
     expect(await count(input)).toBe(1);
     expect(await count(input)).toBe(1);
-    expect(server.seen).toHaveLength(2);
+    expect(reads.documents).toBe(2);
   });
 });

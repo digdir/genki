@@ -111,7 +111,7 @@ const Loaded = ({
     { target: string; model: string; estimate: SwitchEstimate } | undefined
   >();
   const modelId = useId();
-  // A dataset with no embedding of its own, such as one on Typesense, gets one chosen here (#366).
+  // A dataset with no embedding of its own, such as one on an external engine, gets one chosen here (#366).
   const [model, setModel] = useState('');
   const [named, setNamed] = useState('');
 

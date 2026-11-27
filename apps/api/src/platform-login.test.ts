@@ -93,7 +93,7 @@ describe('the platform login settings', () => {
     PLATFORM_LOGIN_HOSTNAME: 'login.apps.genki-test.digdir.cloud',
   };
 
-  it('gives the portal, workspace and console the origins in PLATFORM_APP_ORIGINS', () => {
+  it('gives the portal and console the origins in PLATFORM_APP_ORIGINS', () => {
     const settings = platformLoginFrom(
       {
         ...login,
@@ -121,6 +121,7 @@ describe('the platform login settings', () => {
     ['an http origin', 'portal=http://portal.example.no'],
     ['an origin with a path', 'portal=https://portal.example.no/app'],
     ['an unknown app', 'admin=https://admin.example.no'],
+    ['the retired workspace', 'workspace=https://workspace.example.no'],
     ['an app twice', 'portal=https://a.example.no,portal=https://b.example.no'],
     ['two apps on one hostname', 'portal=https://a.example.no,console=https://a.example.no'],
     ['an app on the login host', 'portal=https://login.apps.genki-test.digdir.cloud'],

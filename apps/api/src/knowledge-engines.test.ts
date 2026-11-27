@@ -7,8 +7,7 @@ import { envSecrets } from '@genai/kernel';
 import { secretRef, type KnowledgeAdapter } from '@genai/port-knowledge';
 import { memoryEngine } from '@genai/port-knowledge/testing';
 import { pgvectorEngine } from '@genai/providers-pgvector';
-import { typesense } from '@genai/providers-typesense';
-import { typesenseIndexWriter } from '@genai/providers-typesense-writer';
+import { httpSearchAdapter } from './external-search.js';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
 import { describeEngines, type EngineDescription } from './knowledge-engines.js';
@@ -59,19 +58,13 @@ describe('knowledge engine descriptions', () => {
     });
     expect(response.status).toBe(200);
     const { data } = (await response.json()) as { data: EngineDescription[] };
-    expect(data.find((e) => e.engine === 'typesense')).toMatchObject({
-      title: 'Typesense',
-      tech: 'Typesense',
-      builtin: false,
-      probe: true,
-      requiresBaseURL: true,
-      writeKeyRequired: true,
-    });
-    expect(data.find((e) => e.engine === 'typesense')).not.toHaveProperty('runsAt');
     expect(data.find((e) => e.engine === 'http-search')).toMatchObject({
+      title: 'Søk over HTTP',
       builtin: false,
+      requiresBaseURL: true,
       writeKeyRequired: false,
     });
+    expect(data.find((e) => e.engine === 'http-search')).not.toHaveProperty('runsAt');
     for (const engine of data) expect(engine.title).toBeTruthy();
 
     const local = describeEngines([pgvector.adapter], [pgvector.writer], {
@@ -104,9 +97,9 @@ describe('knowledge engine descriptions', () => {
         }),
       }),
     } as KnowledgeAdapter;
-    const [egen, pg, ts] = describeEngines(
-      [custom, pgvector.adapter, typesense],
-      [typesenseIndexWriter()],
+    const [egen, http, pg] = describeEngines(
+      [custom, pgvector.adapter, httpSearchAdapter(async () => ({ status: 200, body: '{}' }))],
+      [],
     ) as [EngineDescription, EngineDescription, EngineDescription];
 
     const options = egen.endpointOptions as Schema;
@@ -119,12 +112,12 @@ describe('knowledge engine descriptions', () => {
       'x-secret': true,
     });
 
-    const auth = (ts.endpoint as Schema).properties?.auth as Schema;
+    const auth = (http.endpoint as Schema).properties?.auth as Schema;
     const kinds = (auth.oneOf ?? auth.anyOf ?? []) as Schema[];
     expect(kinds.length).toBeGreaterThan(1);
     for (const kind of kinds.filter((k) => k.properties?.secret))
       expect(kind.properties?.secret).toMatchObject({ 'x-secret': true });
-    expect((ts.endpoint as Schema).properties?.baseURL).toMatchObject({ format: 'uri' });
+    expect((http.endpoint as Schema).properties?.baseURL).toMatchObject({ format: 'uri' });
 
     expect((pg.endpoint as Schema).properties).not.toHaveProperty('auth');
     expect((pg.endpointOptions as Schema).properties?.connection).toMatchObject({

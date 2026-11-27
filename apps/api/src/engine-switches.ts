@@ -41,7 +41,6 @@ import {
   type CapabilitySummary,
   type SearchModuleExtras,
 } from './knowledge-endpoints.js';
-import { writeKeyEngines } from './knowledge-engines.js';
 import type { MountDeps, ModuleDeps, PlatformModule } from './platform-modules.js';
 import { enterTenant } from './access.js';
 import { t, translateMessage } from './i18n/index.js';
@@ -539,8 +538,6 @@ export const createEngineSwitchesModule =
       if (target.id === item.spec.endpoint)
         throw new Refusal(409, t('operations.switchSameEngine'));
       const engine = String(target.spec.engine);
-      if (writeKeyEngines.has(engine))
-        throw new Refusal(409, t('operations.switchWriteKeyRequired'));
       if (!deps.writers.engines().includes(engine))
         throw new Refusal(409, t('operations.switchCannotWrite'));
       // A built-in engine keeps one store: two pgvector endpoints share the knowledge server.
@@ -1467,8 +1464,7 @@ export const createEngineSwitchesModule =
       const engine = String(catalog.get('knowledge-endpoint', endpoint)?.spec.engine ?? '');
       return (
         catalog.get('dataset', spec.dataset)?.spec.endpoint !== endpoint &&
-        deps.writers.engines().includes(engine) &&
-        !writeKeyEngines.has(engine)
+        deps.writers.engines().includes(engine)
       );
     };
 

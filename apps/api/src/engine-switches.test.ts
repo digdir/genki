@@ -1,18 +1,21 @@
 import { createHash } from 'node:crypto';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { Hono } from 'hono';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { testSet } from '@genai/eval';
 import { onePage } from '@genai/ingest';
 import { envSecrets } from '@genai/kernel';
 import { fakeEmbeddingAdapter, testContext } from '@genai/port-embedding/testing';
-import type { IndexDocument, KnowledgeAdapter } from '@genai/port-knowledge';
+import type {
+  DatasetConfig,
+  Hit,
+  IndexDocument,
+  IndexWriterAdapter,
+  KnowledgeAdapter,
+} from '@genai/port-knowledge';
 import { memoryEngine } from '@genai/port-knowledge/testing';
-import { typesense } from '@genai/providers-typesense';
 import { createPool } from '@genai/providers-postgres';
 import { PLATFORM_RIGHTS, trustedEntraScope } from '@genai/identity';
 import { createAdmin } from './admin.js';
@@ -107,71 +110,112 @@ const chunks = [
 
 let container: StartedPostgreSqlContainer;
 let pool: ReturnType<typeof createPool>;
-let typesenseServer: Server;
-let typesenseUrl: string;
-const writes: string[] = [];
 
-const exported = (collection: string, filter: string | null) => {
-  const rows = collection.endsWith('docs') ? docs : collection.endsWith('chunks') ? chunks : [];
-  const ids = filter ? [...filter.matchAll(/`([^`]+)`/g)].map((m) => m[1]) : undefined;
-  return rows.filter((r) => !ids || ids.includes(r.doc_num));
+const sourceDocuments = (): IndexDocument[] =>
+  docs.map((d) => ({
+    id: d.doc_num,
+    title: d.title,
+    url: d.url,
+    fields: {},
+    chunks: chunks
+      .filter((c) => c.doc_num === d.doc_num)
+      .map((c) => ({ id: c.chunk_id, position: c.chunk_index, text: c.content_markdown })),
+    phrases: [],
+  }));
+
+const ghost: Hit = {
+  id: 'spokelse-0',
+  score: 99,
+  text: 'x',
+  document: 'spokelse',
+  position: 0,
+  fields: {},
 };
 
-const searched = (collection: string, q: string) => {
-  const words = q.toLowerCase().split(/\W+/).filter(Boolean);
-  const found = chunks
-    .filter((c) => words.some((w) => c.content_markdown.toLowerCase().includes(w)))
-    .map((c) => ({ ...c, title: docs.find((d) => d.doc_num === c.doc_num)?.title }));
-  const hits = collection.startsWith('ghost')
-    ? [
-        { chunk_id: 'spokelse-0', doc_num: 'spokelse', chunk_index: 0, content_markdown: 'x' },
-        ...found,
-      ]
-    : found;
-  return {
-    hits: hits.map((document) => ({ document, text_match_info: { score: 1 } })),
-    found: hits.length,
-  };
+const remote = memoryEngine({ engine: 'kilde' });
+const remoteStore = remote.writer.connect({ engine: 'kilde' } as never, {
+  signal: new AbortController().signal,
+});
+const sourceAdapter: KnowledgeAdapter = {
+  ...(remote.adapter as KnowledgeAdapter),
+  title: 'Kildesøk',
+  requiresBaseURL: true,
+  connect: (endpoint) => {
+    const inner = (remote.adapter as KnowledgeAdapter).connect(endpoint);
+    const indexOf = (dataset: DatasetConfig) =>
+      (dataset.options as { index?: string }).index ?? dataset.id;
+    return {
+      ...inner,
+      search: async (dataset, requests, signal) => {
+        const results = await inner.search(dataset, requests, signal);
+        return indexOf(dataset) === 'ghost'
+          ? results.map((r) => ({ ...r, hits: [ghost, ...r.hits] }))
+          : results;
+      },
+      export: {
+        vectors: false,
+        documents: (dataset) => {
+          if (!remoteStore.read) throw new Error('the memory engine reads its index back');
+          return remoteStore.read({ ...dataset, options: { index: 'ka' } } as DatasetConfig<never>);
+        },
+        count: async (_dataset, cap) => Math.min(docs.length, cap),
+      },
+    };
+  },
+};
+const writes: string[] = [];
+const recordingSource: IndexWriterAdapter = {
+  ...remote.writer,
+  connect: (endpoint, context) => {
+    const inner = (remote.writer as IndexWriterAdapter).connect(endpoint, context);
+    return {
+      ...inner,
+      prepare: async (dataset, generation) => {
+        writes.push(`prepare ${generation}`);
+        return inner.prepare(dataset, generation);
+      },
+      store: async (dataset, generation, doc) => {
+        writes.push(`store ${doc.id}`);
+        return inner.store(dataset, generation, doc);
+      },
+      promote: async (dataset, generation) => {
+        writes.push(`promote ${generation}`);
+        return inner.promote(dataset, generation);
+      },
+      drop: async (dataset, generation, options) => {
+        writes.push(`drop ${generation}`);
+        return inner.drop(dataset, generation, options);
+      },
+    };
+  },
+};
+
+const readOnly = memoryEngine({ engine: 'lesekilde' });
+const readOnlyEngine = {
+  adapter: { ...(readOnly.adapter as KnowledgeAdapter), title: 'Lesekilde' },
+  writer: { ...readOnly.writer, engine: 'lesekilde-uten-skriving' },
 };
 
 beforeAll(async () => {
   container = await new PostgreSqlContainer('pgvector/pgvector:0.8.2-pg17').start();
   pool = createPool({ connectionString: container.getConnectionUri() });
-  typesenseServer = createServer((request, response) => {
-    const url = new URL(request.url ?? '/', 'http://typesense');
-    const send = (status: number, body: string, type = 'application/json') => {
-      response.writeHead(status, { 'content-type': type });
-      response.end(body);
-    };
-    if (request.method === 'POST' && url.pathname === '/multi_search') {
-      let raw = '';
-      request.on('data', (part: Buffer) => (raw += part.toString()));
-      request.on('end', () => {
-        const { searches } = JSON.parse(raw) as { searches: { collection: string; q: string }[] };
-        send(200, JSON.stringify({ results: searches.map((s) => searched(s.collection, s.q)) }));
-      });
-      return;
-    }
-    if (request.method !== 'GET') {
-      writes.push(`${request.method} ${url.pathname}`);
-      send(403, '{}');
-      return;
-    }
-    if (url.pathname === '/health') return send(200, '{"ok":true}');
-    if (url.pathname === '/collections') return send(200, '[]');
-    const match = /^\/collections\/([^/]+)\/documents\/export$/.exec(url.pathname);
-    if (!match) return send(404, '{}');
-    const rows = exported(match[1] as string, url.searchParams.get('filter_by'));
-    send(200, rows.map((r) => JSON.stringify(r)).join('\n'), 'application/jsonl');
-  });
-  await new Promise<void>((resolve) => typesenseServer.listen(0, '127.0.0.1', resolve));
-  typesenseUrl = `http://127.0.0.1:${(typesenseServer.address() as AddressInfo).port}`;
 }, 120_000);
+
+beforeEach(async () => {
+  for (const index of ['ka', 'ghost']) {
+    const dataset = { id: index, filters: {}, options: { index } } as DatasetConfig<never>;
+    if ((await remoteStore.active(dataset)) !== undefined) continue;
+    const generation = `g${crypto.randomUUID()}`;
+    await remoteStore.prepare(dataset, generation);
+    for (const doc of sourceDocuments()) await remoteStore.store(dataset, generation, doc);
+    await remoteStore.promote(dataset, generation);
+  }
+  writes.length = 0;
+});
 
 afterAll(async () => {
   await pool?.end();
   await stopPostgres(container);
-  await new Promise((resolve) => typesenseServer?.close(resolve));
 });
 
 /** The engine datasets switch to, kept across boots as a database would be. */
@@ -188,7 +232,7 @@ const embeddingModel = (id: string) => ({
 const boot = async (
   shared: { entries?: InMemoryConfigEntryStore; clock?: { now: Date }; lockdown?: boolean } = {},
 ) => {
-  const secrets = envSecrets({ TS_KEY: 'k', EMBED_KEY: 'k' });
+  const secrets = envSecrets({ SOURCE_KEY: 'k', EMBED_KEY: 'k' });
   const clock = shared.clock ?? { now: new Date('2026-10-07T10:00:00Z') };
   const late: { platform?: Awaited<ReturnType<typeof createPlatform>> } = {};
   const platform = await createPlatform({
@@ -196,12 +240,13 @@ const boot = async (
       models: { endpoints: {}, models: [] },
       knowledge: {
         endpoints: {
-          'ka-typesense': {
-            engine: 'typesense',
-            baseURL: typesenseUrl,
-            auth: { kind: 'api-key', secret: 'secret://env/ts-key' },
+          'ka-kilde': {
+            engine: 'kilde',
+            baseURL: 'http://127.0.0.1:9',
+            auth: { kind: 'api-key', secret: 'secret://env/source-key' },
             sharing: { tenants: '*' },
           },
+          'ka-lesekilde': { engine: 'lesekilde', sharing: { tenants: '*' } },
           // The engine datasets switch to and from: an in-memory one, as platform-pg went with issue 151.
           lokal: { engine: 'memory', sharing: { tenants: '*' } },
           'knowledge-pg': {
@@ -231,7 +276,11 @@ const boot = async (
       const principal = principals[request.headers.get('authorization')?.slice(7) ?? ''];
       return principal ? { principal } : undefined;
     },
-    knowledgeEngines: [localEngine],
+    knowledgeEngines: [
+      localEngine,
+      { adapter: sourceAdapter, writer: recordingSource },
+      readOnlyEngine,
+    ],
     knowledgeServer: { reader: pool },
     embeddingAdapters: [fakeEmbeddingAdapter()],
     documentConverter: {
@@ -244,7 +293,6 @@ const boot = async (
     modules: [
       knowledgeEndpointsModule,
       createEngineSwitchesModule({
-        knowledgeAdapters: [typesense as KnowledgeAdapter],
         secrets,
         embedders: {
           has: (model) => Boolean(late.platform?.embedders.describe().some((e) => e.id === model)),
@@ -287,7 +335,7 @@ const base = (dataset: string) => `/tenants/${digdir}/datasets/${dataset}`;
 const createDataset = async (
   { call, platform }: Booted,
   id: string,
-  collections = { docs: 'ka_docs', chunks: 'ka_chunks' },
+  index = 'ka',
   extra: Record<string, unknown> = {},
 ) => {
   const created = await call(`/tenants/${digdir}/datasets`, {
@@ -295,7 +343,7 @@ const createDataset = async (
       id,
       name: 'Kunnskapsassistenten',
       residency: 'norway',
-      index: { endpoint: 'ka-typesense', collections },
+      index: { endpoint: 'ka-kilde', options: { index } },
       ...extra,
     },
   });
@@ -319,7 +367,7 @@ const createDataset = async (
             split: 'validation',
             input: 'Hvorfor flytter etaten til skyplattform?',
             expected: {
-              sources: [{ document: collections.docs.startsWith('ghost') ? 'spokelse' : 'sky' }],
+              sources: [{ document: index === 'ghost' ? 'spokelse' : 'sky' }],
             },
           },
         ],
@@ -349,7 +397,7 @@ const switchTo = async (booted: Booted, dataset: string) => {
   });
   expect(started.status).toBe(202);
   const view = await json<EngineSwitchView>(started);
-  expect(view).toMatchObject({ state: 'running', from: 'ka-typesense', to: 'lokal' });
+  expect(view).toMatchObject({ state: 'running', from: 'ka-kilde', to: 'lokal' });
   return settled(booted, dataset, view.sid);
 };
 
@@ -380,7 +428,7 @@ const placeSwitch = async (
   const at = clock.now.toISOString();
   const spec: EngineSwitchSpec = {
     dataset: `${digdir}/${dataset}`,
-    from: 'ka-typesense',
+    from: 'ka-kilde',
     to: 'lokal',
     method: 'copy',
     state: 'running',
@@ -491,11 +539,11 @@ describe('switching the search engine of a dataset', () => {
       comparison: { cases: 2, testSets: ['ka-kopi-sporsmal'] },
     });
     expect(ready.comparison?.hitAt5[0]).toBe(1);
-    expect(engineOf(platform, 'ka-kopi')).toBe('typesense');
+    expect(engineOf(platform, 'ka-kopi')).toBe('kilde');
     const before = await json<DatasetEngineView>(await call(`${base('ka-kopi')}/engine`));
     expect(before).toMatchObject({
-      endpoint: 'ka-typesense',
-      engine: 'typesense',
+      endpoint: 'ka-kilde',
+      engine: 'kilde',
       runsAt: '127.0.0.1',
       embedding: null,
       canSwitch: true,
@@ -531,8 +579,8 @@ describe('switching the search engine of a dataset', () => {
       embedding: { model: 'fake/embed', dimensions: 8 },
       retentionDays: 14,
       previous: {
-        endpoint: 'ka-typesense',
-        title: 'Typesense',
+        endpoint: 'ka-kilde',
+        title: 'Kildesøk',
         keptUntil: '2026-10-21T10:00:00.000Z',
       },
     });
@@ -543,12 +591,12 @@ describe('switching the search engine of a dataset', () => {
       body: { reason: 'Tjenestene svarer dårligere nå' },
     });
     expect(back.status).toBe(200);
-    expect(engineOf(platform, 'ka-kopi')).toBe('typesense');
+    expect(engineOf(platform, 'ka-kopi')).toBe('kilde');
   });
 
   it('activating a worse engine needs a 20-character reason', async () => {
     const booted = await boot();
-    await createDataset(booted, 'ka-svakere', { docs: 'ghost_docs', chunks: 'ghost_chunks' });
+    await createDataset(booted, 'ka-svakere', 'ghost');
     const ready = await switchTo(booted, 'ka-svakere');
     expect(ready).toMatchObject({ state: 'ready', minimumReasonLength: 20 });
     expect(ready.comparison).toMatchObject({ verdict: 'worse', hitAt5: [1, 0.5] });
@@ -579,7 +627,7 @@ describe('switching the search engine of a dataset', () => {
     const refused = await booted.call(
       `${base('ka-oppbevaring')}/engine-switches/${ready.sid}/rollback`,
       {
-        body: { reason: 'Vil tilbake til Typesense' },
+        body: { reason: 'Vil tilbake til kilden' },
       },
     );
     expect(refused.status).toBe(409);
@@ -669,7 +717,7 @@ describe('switching the search engine of a dataset', () => {
     const item = booted.platform.catalog.get('dataset', `${digdir}/ka-gammel`);
     await placeSwitch(booted, 'ka-gammel', {
       from: 'lokal',
-      to: 'ka-typesense',
+      to: 'ka-kilde',
       state: 'active',
       previous: {
         endpoint: 'lokal',
@@ -733,7 +781,7 @@ describe('switching the search engine of a dataset', () => {
     expect(JSON.stringify(await refused.json())).toContain('Kopiering krever samme vektormodell');
   });
 
-  it('switching to Typesense needs its own write key', async () => {
+  it('switching to an engine the platform cannot write to is refused', async () => {
     const booted = await boot();
     await createDataset(booted, 'ka-tilbake');
     const ready = await switchTo(booted, 'ka-tilbake');
@@ -741,10 +789,12 @@ describe('switching the search engine of a dataset', () => {
       body: { reason: 'Bedre treff i testsettet' },
     });
     const refused = await booted.call(`${base('ka-tilbake')}/engine-switches`, {
-      body: { to: 'ka-typesense', method: 'copy' },
+      body: { to: 'ka-lesekilde', method: 'copy' },
     });
     expect(refused.status).toBe(409);
-    expect(await refused.json()).toMatchObject({ title: 'Krever egen skrivenøkkel' });
+    expect(await refused.json()).toMatchObject({
+      title: 'Plattformen kan ikke skrive til denne søkemotoren.',
+    });
     expect(writes).toEqual([]);
   });
 
@@ -779,7 +829,7 @@ describe('switching the search engine of a dataset', () => {
     await a.call(`${base('ka-delt')}/engine-switches/${ready.sid}/activate`, {
       body: { reason: 'Bedre treff i testsettet' },
     });
-    expect(engineOf(b.platform, 'ka-delt')).toBe('typesense');
+    expect(engineOf(b.platform, 'ka-delt')).toBe('kilde');
 
     await feed.emit('config-entries');
 
@@ -799,7 +849,7 @@ describe('operators switching the engine of a platform dataset', () => {
         id,
         name: 'Kudos',
         residency: 'norway',
-        index: { endpoint: 'ka-typesense', collections: { docs: 'ka_docs', chunks: 'ka_chunks' } },
+        index: { endpoint: 'ka-kilde', options: { index: 'ka' } },
       },
     });
     expect(created.status).toBe(201);
@@ -822,7 +872,7 @@ describe('operators switching the engine of a platform dataset', () => {
       .info().engine;
   };
 
-  it('copies a platform dataset from the shared Typesense to another engine, activates and rolls back', async () => {
+  it('copies a platform dataset from a read-only engine to another engine, activates and rolls back', async () => {
     const booted = await boot();
     const { call, platform } = booted;
     await createPlatformDataset(booted, 'digdir/kudos-kopi');
@@ -850,7 +900,7 @@ describe('operators switching the engine of a platform dataset', () => {
     const view = await json<EngineSwitchView>(started);
     const ready = await settledAt(booted, id, view.sid);
     expect(ready).toMatchObject({ state: 'ready', progress: { percent: 100, documents: 2 } });
-    expect(platformEngineOf(platform, id)).toBe('typesense');
+    expect(platformEngineOf(platform, id)).toBe('kilde');
 
     const activated = await call(`${operatorBase(id)}/engine-switches/${ready.sid}/activate`, {
       as: 'drift',
@@ -865,10 +915,10 @@ describe('operators switching the engine of a platform dataset', () => {
 
     const back = await call(`${operatorBase(id)}/engine-switches/${ready.sid}/rollback`, {
       as: 'drift',
-      body: { reason: 'Tilbake til Typesense for nå' },
+      body: { reason: 'Tilbake til kilden for nå' },
     });
     expect(back.status).toBe(200);
-    expect(platformEngineOf(platform, id)).toBe('typesense');
+    expect(platformEngineOf(platform, id)).toBe('kilde');
     expect(writes).toEqual([]);
   });
 

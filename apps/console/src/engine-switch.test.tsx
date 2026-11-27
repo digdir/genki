@@ -74,8 +74,8 @@ const entry = (id: string, spec: Record<string, unknown>) => ({
 
 const endpoints = {
   data: [
-    entry('kudos-typesense', {
-      engine: 'typesense',
+    entry('kudos-elastic', {
+      engine: 'elasticsearch',
       baseURL: 'https://kudos-ts.example',
       sharing: { tenants: '*' },
     }),
@@ -84,7 +84,7 @@ const endpoints = {
       options: { connection: 'knowledge' },
       sharing: { tenants: '*' },
     }),
-    entry('typesense-digdir', { engine: 'typesense', baseURL: 'https://ts.example' }),
+    entry('elastic-digdir', { engine: 'elasticsearch', baseURL: 'https://elastic.example' }),
   ],
 };
 
@@ -93,7 +93,7 @@ const switchView = (state: string, extra: Record<string, unknown> = {}) => ({
   sid: 's1',
   version: 1,
   dataset,
-  from: 'kudos-typesense',
+  from: 'kudos-elastic',
   to: 'knowledge-pg',
   method: 'reingest',
   state,
@@ -120,7 +120,7 @@ const sequence = (...states: [string, Record<string, unknown>?][]) => {
 
 const estimate = (reingest: Record<string, unknown> = {}) => ({
   dataset,
-  from: 'kudos-typesense',
+  from: 'kudos-elastic',
   to: 'knowledge-pg',
   estimate: true,
   basis: { documents: 301, counted: true },
@@ -144,7 +144,7 @@ const startMove = async (reason = 'Flytter dokumentasjonen til kunnskapsdatabase
 describe('engine switch of a platform dataset in the console', () => {
   it('a platform dataset moves to a knowledge endpoint and is followed to ready', async () => {
     const { api, calls } = platform({
-      [`GET ${base}/engine`]: () => [200, engineOn('kudos-typesense')],
+      [`GET ${base}/engine`]: () => [200, engineOn('kudos-elastic')],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
       [estimateRoute]: () => [200, estimate()],
       [`POST ${base}/engine-switches`]: () => [202, switchView('running')],
@@ -156,7 +156,7 @@ describe('engine switch of a platform dataset in the console', () => {
     });
     render(<EngineSwitchSection api={api} base={base} pollMs={1} />);
 
-    expect(await screen.findByText(/Søkemotor nå: kudos-typesense/)).toBeTruthy();
+    expect(await screen.findByText(/Søkemotor nå: kudos-elastic/)).toBeTruthy();
     await startMove();
 
     const start = calls.find((c) => c.method === 'POST');
@@ -170,7 +170,7 @@ describe('engine switch of a platform dataset in the console', () => {
 
   it('only knowledge endpoints are offered as the target', async () => {
     const { api } = platform({
-      [`GET ${base}/engine`]: () => [200, engineOn('kudos-typesense')],
+      [`GET ${base}/engine`]: () => [200, engineOn('kudos-elastic')],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
       [estimateRoute]: () => [200, estimate()],
     });
@@ -199,13 +199,16 @@ describe('engine switch of a platform dataset in the console', () => {
 
   it('a pgvector endpoint without options is offered, since its connection defaults to the knowledge server', async () => {
     const { api } = platform({
-      [`GET ${base}/engine`]: () => [200, engineOn('kudos-typesense')],
+      [`GET ${base}/engine`]: () => [200, engineOn('kudos-elastic')],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [
         200,
         {
           data: [
             entry('kunnskapsserveren', { engine: 'pgvector', sharing: { tenants: '*' } }),
-            entry('typesense-digdir', { engine: 'typesense', baseURL: 'https://ts.example' }),
+            entry('elastic-digdir', {
+              engine: 'elasticsearch',
+              baseURL: 'https://elastic.example',
+            }),
           ],
         },
       ],
@@ -226,7 +229,7 @@ describe('engine switch of a platform dataset in the console', () => {
   });
 
   it('activating asks for a reason and then shows the knowledge endpoint as the engine', async () => {
-    let engine = engineOn('kudos-typesense', { activeSwitch: switchView('ready') });
+    let engine = engineOn('kudos-elastic', { activeSwitch: switchView('ready') });
     const { api, calls } = platform({
       [`GET ${base}/engine`]: () => [200, engine],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
@@ -235,7 +238,7 @@ describe('engine switch of a platform dataset in the console', () => {
       [`GET ${base}/engine-switches/s1`]: () => {
         engine = engineOn('knowledge-pg', {
           previous: {
-            endpoint: 'kudos-typesense',
+            endpoint: 'kudos-elastic',
             title: 'Postgres med pgvector',
             keptUntil: '2026-11-18T12:00:00Z',
             switch: `engine-switch:platform:${dataset}:s1`,
@@ -264,7 +267,7 @@ describe('engine switch of a platform dataset in the console', () => {
   it('roll back is offered while the old engine is kept', async () => {
     let engine = engineOn('knowledge-pg', {
       previous: {
-        endpoint: 'kudos-typesense',
+        endpoint: 'kudos-elastic',
         title: 'Postgres med pgvector',
         keptUntil: '2026-11-18T12:00:00Z',
         switch: `engine-switch:platform:${dataset}:s1`,
@@ -275,30 +278,30 @@ describe('engine switch of a platform dataset in the console', () => {
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
       [estimateRoute]: () => [200, estimate()],
       [`POST ${base}/engine-switches/s1/rollback`]: () => {
-        engine = engineOn('kudos-typesense');
+        engine = engineOn('kudos-elastic');
         return [200, switchView('rolled_back')];
       },
     });
     render(<EngineSwitchSection api={api} base={base} />);
 
-    expect(await screen.findByText(/kudos-typesense beholdes til 18\.11\.2026/)).toBeTruthy();
+    expect(await screen.findByText(/kudos-elastic beholdes til 18\.11\.2026/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Søket ble dårligere etter flyttingen' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Rull tilbake til kudos-typesense' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rull tilbake til kudos-elastic' }));
 
-    expect(await screen.findByText(/Søkemotor nå: kudos-typesense/)).toBeTruthy();
+    expect(await screen.findByText(/Søkemotor nå: kudos-elastic/)).toBeTruthy();
     expect(calls.find((c) => c.path.endsWith('/rollback'))?.reason).toBe(
       'Søket ble dårligere etter flyttingen',
     );
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Rull tilbake til kudos-typesense' })).toBeNull(),
+      expect(screen.queryByRole('button', { name: 'Rull tilbake til kudos-elastic' })).toBeNull(),
     );
   });
 
   it('a refused start shows its reason', async () => {
     const { api } = platform({
-      [`GET ${base}/engine`]: () => [200, engineOn('kudos-typesense')],
+      [`GET ${base}/engine`]: () => [200, engineOn('kudos-elastic')],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
       [estimateRoute]: () => [200, estimate()],
       [`POST ${base}/engine-switches`]: () => [
@@ -324,12 +327,12 @@ describe('engine switch of a platform dataset in the console', () => {
     expect(alert.textContent).toBe(
       'Vektormodellen foundry/text-embedding-3-small er ikke satt opp på plattformen.',
     );
-    expect(screen.getByText(/Søkemotor nå: kudos-typesense/)).toBeTruthy();
+    expect(screen.getByText(/Søkemotor nå: kudos-elastic/)).toBeTruthy();
   });
 
   it('the estimate shows before a move starts', async () => {
     const { api } = platform({
-      [`GET ${base}/engine`]: () => [200, engineOn('kudos-typesense')],
+      [`GET ${base}/engine`]: () => [200, engineOn('kudos-elastic')],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
       [estimateRoute]: () => [200, estimate()],
     });
@@ -343,7 +346,7 @@ describe('engine switch of a platform dataset in the console', () => {
 
   it('a move the estimate refuses cannot start', async () => {
     const { api, calls } = platform({
-      [`GET ${base}/engine`]: () => [200, engineOn('kudos-typesense')],
+      [`GET ${base}/engine`]: () => [200, engineOn('kudos-elastic')],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
       [estimateRoute]: () => [
         200,
@@ -374,7 +377,7 @@ describe('engine switch of a platform dataset in the console', () => {
     const { api } = platform({
       [`GET ${base}/engine`]: () => [
         200,
-        engineOn('kudos-typesense', {
+        engineOn('kudos-elastic', {
           activeSwitch: switchView('ready', { comparison, minimumReasonLength: 20 }),
         }),
       ],
@@ -384,7 +387,7 @@ describe('engine switch of a platform dataset in the console', () => {
 
     expect(
       await screen.findByText(
-        'Treff blant de fem første: kudos-typesense 90 %, knowledge-pg 80 % (10 spørsmål)',
+        'Treff blant de fem første: kudos-elastic 90 %, knowledge-pg 80 % (10 spørsmål)',
       ),
     ).toBeTruthy();
     expect(screen.getByText(/Den nye søkemotoren treffer dårligere/)).toBeTruthy();
@@ -393,7 +396,7 @@ describe('engine switch of a platform dataset in the console', () => {
   it("an agency's dataset is moved through its own routes", async () => {
     const agency = '/tenants/405003309/datasets/notater';
     const { api, calls } = platform({
-      [`GET ${agency}/engine`]: () => [200, engineOn('kudos-typesense')],
+      [`GET ${agency}/engine`]: () => [200, engineOn('kudos-elastic')],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
       [`GET ${agency}/engine-switches/estimate?to=knowledge-pg&method=reingest`]: () => [
         200,
@@ -415,7 +418,7 @@ describe('engine switch of a platform dataset in the console', () => {
     const { api, calls } = platform({
       [`GET ${base}/engine`]: () => [
         200,
-        engineOn('kudos-typesense', { activeSwitch: switchView('running') }),
+        engineOn('kudos-elastic', { activeSwitch: switchView('running') }),
       ],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
       [`GET ${base}/engine-switches/s1`]: () => [200, switchView('running')],
@@ -439,7 +442,7 @@ describe('engine switch of a platform dataset in the console', () => {
     const routes = {
       [`GET ${base}/engine`]: (): [number, unknown] => [
         200,
-        engineOn('kudos-typesense', { activeSwitch: running }),
+        engineOn('kudos-elastic', { activeSwitch: running }),
       ],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': (): [number, unknown] => [
         200,
@@ -479,7 +482,7 @@ describe('engine switch of a platform dataset in the console', () => {
     const { api, calls } = platform({
       [`GET ${base}/engine`]: () => [
         200,
-        engineOn('kudos-typesense', {
+        engineOn('kudos-elastic', {
           activeSwitch: switchView('running', { admissionRunsOutAt: '2026-11-15T07:56:00Z' }),
         }),
       ],
@@ -517,7 +520,7 @@ describe('engine switch of a platform dataset in the console', () => {
     const { api } = platform({
       [`GET ${base}/engine`]: () => [
         200,
-        engineOn('kudos-typesense', {
+        engineOn('kudos-elastic', {
           activeSwitch: switchView('failed', {
             error: { message: 'listing the source failed after its retries', percent: 0 },
           }),
@@ -536,7 +539,7 @@ describe('engine switch of a platform dataset in the console', () => {
   it("an agency's dataset is offered only knowledge endpoints shared with it", async () => {
     const agency = '/tenants/405003309/datasets/notater';
     const { api } = platform({
-      [`GET ${agency}/engine`]: () => [200, engineOn('kudos-typesense')],
+      [`GET ${agency}/engine`]: () => [200, engineOn('kudos-elastic')],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [
         200,
         {
@@ -573,7 +576,7 @@ describe('engine switch of a platform dataset in the console', () => {
 
   it("a refused estimate shows the platform's reason", async () => {
     const { api } = platform({
-      [`GET ${base}/engine`]: () => [200, engineOn('kudos-typesense')],
+      [`GET ${base}/engine`]: () => [200, engineOn('kudos-elastic')],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
       [estimateRoute]: () => [
         404,
@@ -605,7 +608,7 @@ describe('copying a dataset into the knowledge database in the console', () => {
 
   it('the console starts a copy with the chosen model when only copy is available, priced once it is chosen', async () => {
     const { api, calls } = platform({
-      [`GET ${base}/engine`]: () => [200, engineOn('kudos-typesense', kudos)],
+      [`GET ${base}/engine`]: () => [200, engineOn('kudos-elastic', kudos)],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
       [estimateRoute]: () => [200, copyEstimate()],
       [`${estimateRoute}&model=${encodeURIComponent(large.model)}`]: () => [
@@ -632,7 +635,7 @@ describe('copying a dataset into the knowledge database in the console', () => {
       ),
     ).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
-      target: { value: 'Kopierer Kudos fra Typesense' },
+      target: { value: 'Kopierer Kudos fra Elasticsearch' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Start flyttingen' }));
     await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));
@@ -645,7 +648,7 @@ describe('copying a dataset into the knowledge database in the console', () => {
 
   it('a copy of named documents is started from the console with their ids', async () => {
     const { api, calls } = platform({
-      [`GET ${base}/engine`]: () => [200, engineOn('kudos-typesense', kudos)],
+      [`GET ${base}/engine`]: () => [200, engineOn('kudos-elastic', kudos)],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
       [estimateRoute]: () => [200, copyEstimate()],
       [`${estimateRoute}&model=${encodeURIComponent(large.model)}`]: () => [
@@ -684,7 +687,7 @@ describe('copying a dataset into the knowledge database in the console', () => {
 
   it('the re-ingest note does not show while a copy estimate loads', async () => {
     const { api } = platform({
-      [`GET ${base}/engine`]: () => [200, engineOn('kudos-typesense', kudos)],
+      [`GET ${base}/engine`]: () => [200, engineOn('kudos-elastic', kudos)],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
       [estimateRoute]: () => 'pending',
     });
@@ -699,7 +702,7 @@ describe('copying a dataset into the knowledge database in the console', () => {
     const { api } = platform({
       [`GET ${base}/engine`]: () => [
         200,
-        engineOn('kudos-typesense', {
+        engineOn('kudos-elastic', {
           ...kudos,
           activeSwitch: switchView('ready', {
             method: 'copy',

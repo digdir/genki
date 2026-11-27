@@ -611,9 +611,8 @@ export const apirefArea = {
       'Price and time to copy or ingest again. Copying requires the same vector model.',
     'sm-estimate.p.to': 'The search engine you want to switch to',
     'sm-estimate.p.method': 'copy or reingest',
-    'sm-estimate.e0.title': '409 Requires its own write key',
-    'sm-estimate.e0.text':
-      'A switch to a Typesense endpoint needs a write key of its own, which the platform does not hold.',
+    'sm-estimate.e0.title': '409 The platform cannot write to it',
+    'sm-estimate.e0.text': 'A switch to a search engine the platform cannot write to is refused.',
     'sm-start.summary': 'Start a switch of search engine',
     'sm-start.desc':
       'Fills the new search engine alongside the old one and compares them on the test set. The services use the old one until you start using the new one. GET on the same path lists the switches.',

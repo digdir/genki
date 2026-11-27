@@ -27,7 +27,7 @@ const kinds = [
   {
     kind: 'knowledge-endpoint',
     label: 'config.kindKnowledgeEndpoint',
-    template: { engine: 'typesense', baseURL: 'https://', auth: { kind: 'api-key', secret: '' } },
+    template: { engine: 'http-search', baseURL: 'https://', auth: { kind: 'api-key', secret: '' } },
   },
   {
     kind: 'model-endpoint',

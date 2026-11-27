@@ -599,8 +599,8 @@
               <li>
                 A run of the same step one after another is one line with a count, «Lette etter
                 steder som handler om spørsmålet (2 ganger)», or, for a reading run that knows its
-                excerpts, «Leste 12 utdrag nøye». The workspace already sends a tool called again in
-                a row as one step, so it draws no count.
+                excerpts, «Leste 12 utdrag nøye». The hosted assistant already sends a tool called
+                again in a row as one step, so it draws no count.
               </li>
               <li>
                 Each step is done, in progress or waiting. The status is always text: «· pågår» and
@@ -620,7 +620,8 @@
                 sources the answer used. The link is shown only when the app can open it.
               </li>
               <li>
-                The steps come from the platform, never from the component. The workspace asks for
+                The steps come from the platform, never from the component. The hosted assistant
+                asks for
                 <code>genai_steps</code>, shows a label as sent, and translates the tool names it
                 knows (<code>plan_queries</code>, <code>inspect_filters</code>, <code>search</code>,
                 <code>read_chunks</code>, <code>rerank_results</code>, <code>report_gaps</code>,
@@ -638,19 +639,19 @@
                 the tool name. Services with a fixed retrieval flow send none, so they show no card.
               </li>
               <li>
-                Until the platform sends more, the workspace's example data shows the whole card,
-                with the text from the design, so it can be seen and tested in full.
+                Until the platform sends more, the UI blocks preview shows the whole card, with the
+                text from the design, so it can be seen and tested in full.
               </li>
               <li>
                 Where «Vis de 38 som ble lest» and «Utdyp hva som mangler» lead is not designed yet,
-                so the workspace shows neither link.
+                so the hosted assistant shows neither link.
               </li>
             </ul>
             <h3>Proposed step frame</h3>
             <p>
               What the card needs in each <code>genai_step</code> frame, on top of
-              <code>tool</code> and <code>label</code>. The workspace reads these already
-              (<code>apps/workspace/src/procedure.ts</code>); the platform needs to send them.
+              <code>tool</code> and <code>label</code>. The hosted assistant reads these already
+              (<code>packages/ui-assembly/src/procedure.ts</code>); the platform needs to send them.
             </p>
             <ul>
               <li>
@@ -669,8 +670,8 @@
               </li>
               <li><code>sources-used</code>: the source numbers the answer used.</li>
               <li>
-                <code>missing</code>: the step says what was not found. The workspace titles a tool
-                named <code>report_gaps</code> as this step; no strategy has that tool yet.
+                <code>missing</code>: the step says what was not found. The hosted assistant titles
+                a tool named <code>report_gaps</code> as this step; no strategy has that tool yet.
               </li>
             </ul>
           </div>

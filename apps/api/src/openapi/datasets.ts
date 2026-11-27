@@ -2125,7 +2125,7 @@ const DatasetDocumentDetail = DatasetDocument.extend({
 }).openapi('DatasetDocumentDetail');
 
 const documentsOrder =
-  "Documents come in a fixed order, the same for every page: by document id on the knowledge database, and in the collection's own order (its default sorting field, else the order they were indexed) on Typesense.";
+  "Documents come in a fixed order, the same for every page: by document id on the knowledge database, and in the engine's own order on another engine.";
 
 const documentRoutes: RouteConfig[] = [
   createRoute({

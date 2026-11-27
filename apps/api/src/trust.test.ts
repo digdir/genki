@@ -57,7 +57,7 @@ const boot = async (
       knowledge: {
         endpoints: {
           ka: {
-            engine: 'typesense',
+            engine: 'http-search',
             baseURL: 'http://127.0.0.1:9',
             auth: { kind: 'api-key', secret: 'secret://env/model-key' },
             sharing: { tenants: '*' },
@@ -88,19 +88,13 @@ const boot = async (
             endpoint: 'ka',
             residency: 'norway',
             embedding: { model: 'test/embed', dimensions: 8 },
-            options: {
-              collections: { docs: 'd', chunks: 'c' },
-              profiles: { content: { collection: 'chunks', queryBy: ['text'], textField: 'text' } },
-            },
+            options: {},
           },
           {
             id: 'digdir/kudos',
             endpoint: 'ka',
             residency: 'norway',
-            options: {
-              collections: { docs: 'd', chunks: 'c' },
-              profiles: { content: { collection: 'chunks', queryBy: ['text'], textField: 'text' } },
-            },
+            options: {},
           },
         ],
       },
@@ -505,7 +499,7 @@ describe('pausing and archiving a service', () => {
     expect((await call('/v1/chat/completions', { body: ask })).status).toBe(200);
   });
 
-  it('lists a paused service in /v1/models as paused with the reason, and leaves an archived one out, which is what the workspace reads', async () => {
+  it('lists a paused service in /v1/models as paused with the reason, and leaves an archived one out', async () => {
     const { platform, call, app } = await boot();
     await platform.definitions.publish(service(), 'test', 'test');
     const listed = async () =>

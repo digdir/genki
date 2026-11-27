@@ -10,7 +10,7 @@ import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
 import { resolveCatalog } from './catalogs.js';
 import { createPlatform } from './composition.js';
-import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
+import { seededKnowledge, seedOnMemory } from '@genai/composition/memory-seed.test-utils';
 
 const tenant = '991825827';
 const config = join(import.meta.dirname, '..', 'config', 'local');
@@ -95,16 +95,6 @@ const sample = (schema: Schema): unknown => {
   return 'Altinn Studio';
 };
 
-const chunk = (id: string, index: number) => ({
-  id,
-  chunk_id: id,
-  doc_num: 'd1',
-  chunk_index: index,
-  content_markdown: `Altinn Studio-dokumentasjonen sier ${id}.`,
-  content_length: 40,
-  metadata: '{"Header 1" "Altinn Studio"}',
-});
-
 const fakes: FakeServer[] = [];
 afterEach(async () => {
   await Promise.all(fakes.splice(0).map((s) => s.close()));
@@ -139,34 +129,12 @@ const boot = async () => {
       },
     };
   });
-  const search = await fakeHttp((body) => ({
-    status: 200,
-    json: {
-      results: (body.searches as Record<string, unknown>[]).map((s) =>
-        s.facet_by
-          ? { facet_counts: [], hits: [] }
-          : String(s.collection).includes('phrases')
-            ? {
-                hits: ['c1', 'c2'].map((id) => ({
-                  document: { chunk_id: id, search_phrase: id, doc_num: 'd1' },
-                  hybrid_search_info: { rank_fusion_score: 0.8 },
-                })),
-              }
-            : {
-                hits: ['c1', 'c2'].map((id, i) => ({
-                  document: chunk(id, i),
-                  text_match_info: { score: '10' },
-                })),
-              },
-      ),
-    },
-  }));
-  fakes.push(model, search);
+  const search = await seededKnowledge();
+  fakes.push(model);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
-    TYPESENSE_URL: search.url,
   };
-  const knowledge = seedOnTypesense(yaml('knowledge.yaml'));
+  const knowledge = seedOnMemory(yaml('knowledge.yaml'));
   const kari = {
     kind: 'employee',
     issuer: 'test',
@@ -180,7 +148,8 @@ const boot = async () => {
       knowledge: resolveCatalog(knowledge, 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm' }),
+    knowledgeEngines: [search.engine],
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: { decide: async () => ({ allow: true }) },
     authenticate: async (request) =>

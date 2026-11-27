@@ -39,20 +39,20 @@ describe('matching a source', () => {
   });
 
   it('a source copied under a new chunk id matches by its document and position', () => {
-    const typesense = sourceRef.parse({
+    const chunkRef = sourceRef.parse({
       chunkId: 'f0932e68f724',
       document: '377252',
       position: 437,
     });
-    expect(sameSource(typesense, { chunkId: 'f0932e68f724' })).toBe(true);
+    expect(sameSource(chunkRef, { chunkId: 'f0932e68f724' })).toBe(true);
     expect(
-      sameSource(typesense, { chunkId: '9c1d0b7e2a44', document: '377252', position: 437 }),
+      sameSource(chunkRef, { chunkId: '9c1d0b7e2a44', document: '377252', position: 437 }),
     ).toBe(true);
     expect(
-      sameSource(typesense, { chunkId: '9c1d0b7e2a44', document: '377252', position: 438 }),
+      sameSource(chunkRef, { chunkId: '9c1d0b7e2a44', document: '377252', position: 438 }),
     ).toBe(false);
     expect(
-      sameSource(typesense, { chunkId: '9c1d0b7e2a44', document: '377253', position: 437 }),
+      sameSource(chunkRef, { chunkId: '9c1d0b7e2a44', document: '377253', position: 437 }),
     ).toBe(false);
   });
 

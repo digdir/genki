@@ -88,16 +88,16 @@ describe('who and numbers shown for versions', () => {
     expect(defaultKeyCallsPerMinute).toBe(120);
   });
 
-  it('name the workspace as the workspace and list registered own frontends in the start summary', () => {
+  it("name the platform's chat and list registered own frontends in the start summary", () => {
     const c = applySpec(definition({}), { exposure: { chat: true } });
 
     expect(summaries(t, c, undefined, undefined, ['Kunnskapsassistenten']).start).toBe(
-      'KI-arbeidsflaten (plattformens chat), egne løsninger: Kunnskapsassistenten',
+      'Plattformens chat, egne løsninger: Kunnskapsassistenten',
     );
     expect(summaries(en, c, undefined, undefined, ['Kunnskapsassistenten']).start).toBe(
-      "AI workspace (the platform's chat), own frontends: Kunnskapsassistenten",
+      "The platform's chat, own frontends: Kunnskapsassistenten",
     );
-    expect(summaries(t, c).start).toBe('KI-arbeidsflaten (plattformens chat)');
+    expect(summaries(t, c).start).toBe('Plattformens chat');
   });
 
   it('show a registered own frontend even when no start is ticked', () => {

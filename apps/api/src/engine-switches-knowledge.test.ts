@@ -1334,7 +1334,7 @@ describe('operators switching a platform dataset into the knowledge database', (
   });
 });
 
-const typesenseDocs = (n: number, chunks = 1, chars = 10): IndexDocument[] =>
+const sourceDocs = (n: number, chunks = 1, chars = 10): IndexDocument[] =>
   Array.from({ length: n }, (_, i) => ({
     id: String(377252 + i),
     title: `Rapport ${i}`,
@@ -1351,7 +1351,7 @@ const typesenseDocs = (n: number, chunks = 1, chars = 10): IndexDocument[] =>
 const copyDataset = async (
   booted: Booted,
   id: string,
-  docs: IndexDocument[] = typesenseDocs(3),
+  docs: IndexDocument[] = sourceDocs(3),
   sources: SourceRef[] = [{ document: 'veileder' }],
 ) => {
   const created = await booted.call(`/tenants/${digdir}/datasets`, {
@@ -1483,7 +1483,7 @@ describe('copying a dataset into the knowledge database', () => {
 
   it("a switch's comparison matches a hit by its page range, whatever its position", async () => {
     const booted = await boot();
-    await copyDataset(booted, 'sider', typesenseDocs(3), [
+    await copyDataset(booted, 'sider', sourceDocs(3), [
       { document: 'veileder', position: 7, page: 3 },
     ]);
     const ready = await copiedToReady(booted, 'sider');
@@ -1533,7 +1533,7 @@ describe('copying a dataset into the knowledge database', () => {
   it("the copy estimate scales the first documents' chunks and characters to the whole dataset", async () => {
     const booted = await boot();
     // 250 documents of 10 chunks of 3,500 characters: 2,500 chunks, about 2.5 M tokens.
-    await copyDataset(booted, 'anslag', typesenseDocs(250, 10, 3500));
+    await copyDataset(booted, 'anslag', sourceDocs(250, 10, 3500));
     const estimate = await json<SwitchEstimate>(
       await booted.call(
         `${base('anslag')}/engine-switches/estimate?to=knowledge-pg&model=fake/embed`,

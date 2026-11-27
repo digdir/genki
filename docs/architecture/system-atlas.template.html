@@ -1589,7 +1589,7 @@
           `<p class="lead">Every edge whose kind today differs from its target. Each row is an integration that runs against a fake now and must be switched to the real national service.</p>` +
             `<div class="edge-list">${changingEdges.map((e) => edgeRow(e, `<span>${link(e.from)} → ${link(e.to)}</span>`)).join('')}</div>` +
             `<div class="detail-section"><h3>Not in this set</h3><ul class="bullets">
-          <li><b>${counts('http')}</b> HTTP edges already reach real systems: Azure AI Foundry, Typesense, Langfuse, tenant MCP servers and the frontends.</li>
+          <li><b>${counts('http')}</b> HTTP edges already reach real systems: Azure AI Foundry, Langfuse, tenant MCP servers and the frontends.</li>
           <li><b>${counts('sql')}</b> SQL edge to Postgres, used when DATABASE_URL is set; memory stores otherwise.</li>
           <li><b>${counts('call')}</b> in-process imports between workspace packages, each matched to a real import by the atlas test.</li>
         </ul></div>`,

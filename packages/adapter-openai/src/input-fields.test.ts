@@ -188,7 +188,7 @@ describe('service input forms on the REST tool', () => {
     expect(text).not.toContain('"user-query"');
   });
 
-  it('lists the fields on /v1/models for the workspace form', async () => {
+  it('lists the fields on /v1/models for a service form', async () => {
     const response = await setup().app.request('/v1/models');
     const body = (await response.json()) as { data: { id: string; input_fields?: unknown }[] };
 

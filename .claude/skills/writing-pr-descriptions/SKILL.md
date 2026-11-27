@@ -101,7 +101,7 @@ stateDiagram-v2
 - The new tests by name, in quotes, since each name states a rule.
 - What shows the change does something: how many tests fail with it switched off, or how the bug was reproduced first (a probe against genki-test, the route that answered 404).
 - Checks by hand, and in which environment.
-- For a change to the portal, console, workspace or System Atlas, a short numbered list a reviewer can follow after `npm start`: the app and port, the test person to log in as, what to do, what to see, and how it differs from main or genki-test. Ports are in `docs/development.md`, test persons in `apps/api/config/local/identity.yaml`.
+- For a change to the portal, console or System Atlas, a short numbered list a reviewer can follow after `npm start`: the app and port, the test person to log in as, what to do, what to see, and how it differs from main or genki-test. Ports are in `docs/development.md`, test persons in `apps/api/config/local/identity.yaml`.
 
 ## Checklist
 

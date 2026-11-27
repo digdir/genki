@@ -1211,14 +1211,14 @@ describe('search engines in the catalogue', () => {
       spec: { engine, name: id, ...(sharing ? { sharing } : {}) },
     });
     const items = [
-      endpoint('kudos-typesense', 'typesense'),
+      endpoint('kudos-sok', 'http-search'),
       endpoint('kunnskapsserveren', 'pgvector', { tenants: '*' }),
       {
         kind: 'dataset' as const,
         id: 'digdir/kudos',
         scope: platformScope,
         version: 1,
-        spec: { name: 'Kudos', endpoint: 'kudos-typesense' },
+        spec: { name: 'Kudos', endpoint: 'kudos-sok' },
       },
     ];
     const catalog = {
@@ -1242,8 +1242,8 @@ describe('search engines in the catalogue', () => {
 
     const list = await json<BuildingBlockList>(await send(`${base}?kind=search_engine`, 'kari'));
 
-    expect(list.data.map((b) => b.id).sort()).toEqual(['kudos-typesense', 'kunnskapsserveren']);
-    expect(list.data.find((b) => b.id === 'kudos-typesense')).toMatchObject({
+    expect(list.data.map((b) => b.id).sort()).toEqual(['kudos-sok', 'kunnskapsserveren']);
+    expect(list.data.find((b) => b.id === 'kudos-sok')).toMatchObject({
       version: '3',
       kind: 'search_engine',
       usedBy: [{ id: 'ka' }],

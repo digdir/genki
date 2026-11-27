@@ -102,6 +102,16 @@ describe('the demo library', () => {
     expect(within(failed as HTMLElement).getByText(/stoppet på steg 4 av 6/)).toBeTruthy();
   });
 
+  it('lists a stored demo of an app genki no longer has under the app name it was saved with', async () => {
+    const retired = demo({ id: 'old', title: 'En gammel demo', app: 'workspace' as Demo['app'] });
+    render(
+      <Demos api={apiFor({ '/operator/demos': { genkiVersion: '0.43.0', data: [retired] } })} />,
+    );
+
+    const card = (await screen.findByRole('link', { name: 'En gammel demo' })).closest('li');
+    expect(within(card as HTMLElement).getByText(/^workspace ·/)).toBeTruthy();
+  });
+
   it('filters by state and area together', async () => {
     render(<Demos api={apiFor({ '/operator/demos': library })} />);
     await screen.findByText('1 demo er utdatert');

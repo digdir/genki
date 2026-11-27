@@ -122,7 +122,6 @@ var hostnamesStage = empty(stage) ? 'none' : stage
 param hostnames = {
   api: 'api.genki.digdir.cloud'
   portal: 'portal.genki.digdir.cloud'
-  workspace: 'workspace.genki.digdir.cloud'
   console: 'console.genki.digdir.cloud'
   assistant: 'assistant.genki.digdir.cloud'
 }

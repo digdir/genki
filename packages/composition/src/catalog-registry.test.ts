@@ -13,7 +13,7 @@ const adapter = (engine: string): KnowledgeAdapter => ({
     throw new Error('not used');
   },
 });
-const adapters = [adapter('typesense'), adapter('pgvector')];
+const adapters = [adapter('http-search'), adapter('pgvector')];
 
 const problemsOf = (catalog: unknown): CatalogProblem[] => {
   const parsed = parseKnowledgeCatalog(catalog, adapters);
@@ -21,7 +21,7 @@ const problemsOf = (catalog: unknown): CatalogProblem[] => {
 };
 
 const knowledgeServer = { engine: 'pgvector', options: { connection: 'knowledge' } };
-const typesense = { engine: 'typesense' };
+const remote = { engine: 'http-search' };
 const dataset = (endpoint: string, extra: Record<string, unknown> = {}) => ({
   endpoint,
   residency: 'norway',
@@ -110,11 +110,38 @@ describe('catalog replay', () => {
     expect(registry.skipped()).toEqual([]);
   });
 
+  it('an endpoint stored with sharing fields the schema no longer has stays shared, and a new save refuses them', async () => {
+    const store = new InMemoryConfigEntryStore();
+    const stored = { tenants: '*', collectionPrefixes: ['digdir_'] };
+    await save(
+      store,
+      'knowledge-endpoint',
+      'server',
+      { ...knowledgeServer, sharing: stored },
+      '2026-11-05T08:26:00Z',
+    );
+    const registry = registryOn(store);
+    await registry.initialize();
+
+    expect(
+      registry.sharedWith(registry.sharingOf('knowledge-endpoint', 'server'), '991825827'),
+    ).toBe(true);
+    const saved = await registry.publish({
+      kind: 'knowledge-endpoint',
+      scope: platformScope,
+      id: 'server',
+      spec: { ...knowledgeServer, sharing: stored },
+      by: 'drift',
+      reason: 'share it',
+    });
+    expect(saved.ok).toBe(false);
+  });
+
   it('a dataset replayed from the knowledge database over a seed on another engine keeps its generation', async () => {
     const store = new InMemoryConfigEntryStore();
     const seed = seedWith({
-      endpoints: { 'kudos-typesense': typesense },
-      datasets: [{ id: 'digdir/kudos', ...dataset('kudos-typesense') }],
+      endpoints: { 'kudos-sok': remote },
+      datasets: [{ id: 'digdir/kudos', ...dataset('kudos-sok') }],
     });
     await save(
       store,
@@ -202,16 +229,16 @@ describe('catalog replay', () => {
   it('an entry that only fits after a later entry is placed on a second pass', async () => {
     const store = new InMemoryConfigEntryStore();
     const seed = seedWith({
-      endpoints: { old: typesense },
+      endpoints: { old: remote },
       datasets: [{ id: 'digdir/docs', ...dataset('old') }],
     });
-    await save(store, 'knowledge-endpoint', 'new', typesense, '2026-11-01T00:00:00Z');
+    await save(store, 'knowledge-endpoint', 'new', remote, '2026-11-01T00:00:00Z');
     await store.append({
       kind: 'knowledge-endpoint',
       scope: platformScope,
       id: 'old',
       version: 1,
-      spec: typesense,
+      spec: remote,
       deleted: true,
       by: 'drift',
       reason: 'test',
@@ -280,7 +307,7 @@ describe('skipped entries', () => {
 
   it('a skipped model a dataset embeds with is not marked unused', async () => {
     const store = new InMemoryConfigEntryStore();
-    await save(store, 'knowledge-endpoint', 'server', typesense, '2026-11-05T08:26:00Z');
+    await save(store, 'knowledge-endpoint', 'server', remote, '2026-11-05T08:26:00Z');
     await save(
       store,
       'dataset',

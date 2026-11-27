@@ -5,7 +5,7 @@ const real = {
   ANSATTPORTEN_ISSUER: 'https://ansattporten.no',
   DATABASE_URL: 'postgres://db/genai',
   ALTINN_PDP_URL: 'https://platform.altinn.no',
-  EMPLOYEE_CLIENT_IDS: 'genki-portal,genki-workspace,genki-console',
+  EMPLOYEE_CLIENT_IDS: 'genki-portal,genki-console',
 };
 const dev = { GENAI_DEV_MODE: 'true' };
 const platformLogin = {
@@ -84,7 +84,7 @@ describe('booting the API', () => {
     expect(bootProblems(dev)).toEqual([]);
   });
 
-  it('starts without EMPLOYEE_CLIENT_IDS when the portal, workspace and console sign in through the platform login', () => {
+  it('starts without EMPLOYEE_CLIENT_IDS when the portal and console sign in through the platform login', () => {
     const untrusted = { ...real, EMPLOYEE_CLIENT_IDS: undefined };
     expect(
       bootProblems({

@@ -24,7 +24,6 @@ export const demos = defineNamespace({
   stateCount: '{state} {count}',
   appPortal: 'Portal',
   appConsole: 'Konsoll',
-  appWorkspace: 'Arbeidsflate',
   audienceMunicipality: 'Kommune',
   audienceStateAgency: 'Statlig virksomhet',
   audienceInternal: 'Intern',

@@ -76,13 +76,13 @@ describe("the tenant's own datasets and endpoints", () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Ny' }));
     fill('Id', 'handboker');
-    fill('Innhold (JSON)', JSON.stringify({ name: 'Håndbøker', endpoint: 'egen-typesense' }));
+    fill('Innhold (JSON)', JSON.stringify({ name: 'Håndbøker', endpoint: 'eget-elastic' }));
     fill(/Begrunnelse/, 'Egne håndbøker');
     fireEvent.click(screen.getByRole('button', { name: 'Opprett' }));
 
     expect(await screen.findByText(/handboker er lagret/)).toBeTruthy();
     const put = calls.find((c) => c.method === 'PUT');
-    expect(put?.body).toEqual({ name: 'Håndbøker', endpoint: 'egen-typesense' });
+    expect(put?.body).toEqual({ name: 'Håndbøker', endpoint: 'eget-elastic' });
     expect(decodeURIComponent(put?.headers.get('change-reason') ?? '')).toBe('Egne håndbøker');
   });
 
@@ -135,7 +135,7 @@ describe("the tenant's own datasets and endpoints", () => {
         200,
         {
           data: [{ id: 'nettsider', version: 1, spec: { name: 'Nettsider' } }],
-          backend: { name: 'typesense', available: false, reason: 'no write key' },
+          backend: { name: 'elasticsearch', available: false, reason: 'no write key' },
         },
       ],
       [`GET ${pipelines}/nettsider/versions`]: () => [200, { data: [] }],

@@ -22,7 +22,7 @@ Checks (plan rule / tuned rule):
   duplicated      a sentence (>= 40 chars) repeated within the page, either / KUDOS more than ours
   text layer      PyMuPDF: does the page have a native text layer (>= 50 chars); reported, not flagged
 
-Our text is rebuilt from the Typesense chunks: chunks in chunk_index order, with the heading
+Our text is rebuilt from the old index's chunks: chunks in chunk_index order, with the heading
 lines the chunker stripped put back from each chunk's metadata, split on Marker's page markers.
 """
 import collections
@@ -570,7 +570,7 @@ def main():
         side_settings={
             "kudos": {"source": f"{KUDOS_API}/{{uuid}}/contents",
                       "text": record.tree_hash([DATA / "kudos" / f'{s["uuid"]}.txt' for s in sample])},
-            "ours": {"source": f"Typesense {TS_CHUNKS}, chunks rebuilt into pages",
+            "ours": {"source": f"Old search index {TS_CHUNKS}, chunks rebuilt into pages",
                      "chunks": record.tree_hash([DATA / "ours" / f'{s["doc_num"]}.jsonl' for s in sample])}},
         settings={"shingle_min": SHINGLE_MIN, "lang_min": LANG_MIN, "dictionaries": DICTIONARIES},
         packages=("lingua-language-detector", "PyMuPDF", "RapidFuzz", "spylls")))

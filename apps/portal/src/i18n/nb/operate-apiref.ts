@@ -599,9 +599,9 @@ export const apirefArea = {
       'Pris og tid for å kopiere eller lese inn på nytt. Kopiering krever samme vektormodell.',
     'sm-estimate.p.to': 'Søkemotoren du vil bytte til',
     'sm-estimate.p.method': 'copy eller reingest',
-    'sm-estimate.e0.title': '409 Krever egen skrivenøkkel',
+    'sm-estimate.e0.title': '409 Plattformen kan ikke skrive dit',
     'sm-estimate.e0.text':
-      'Et bytte til et Typesense-endepunkt krever en egen skrivenøkkel, som plattformen ikke har.',
+      'Et bytte til en søkemotor plattformen ikke kan skrive til, blir avvist.',
     'sm-start.summary': 'Start et bytte av søkemotor',
     'sm-start.desc':
       'Fyller den nye søkemotoren ved siden av den gamle og sammenligner dem på testsettet. Tjenestene bruker den gamle til du tar den nye i bruk. GET på samme sti lister byttene.',

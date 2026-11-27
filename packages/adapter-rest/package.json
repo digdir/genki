@@ -22,7 +22,6 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@genai/port-model": "0.0.0",
-    "@genai/providers-typesense": "0.0.0"
+    "@genai/port-model": "0.0.0"
   }
 }

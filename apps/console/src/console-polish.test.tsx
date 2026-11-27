@@ -116,7 +116,7 @@ describe('console polish', () => {
     } as KnowledgeEngine;
     expect(localizedEngine(engine, translator('en')).title).toBe('Built-in search');
     expect(localizedEngine(engine, translator('nb')).title).toBe('Innebygd søk');
-    const other = { ...engine, engine: 'typesense', title: 'Typesense' };
-    expect(localizedEngine(other, translator('en')).title).toBe('Typesense');
+    const other = { ...engine, engine: 'elasticsearch', title: 'Elasticsearch' };
+    expect(localizedEngine(other, translator('en')).title).toBe('Elasticsearch');
   });
 });

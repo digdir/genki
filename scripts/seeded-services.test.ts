@@ -55,18 +55,6 @@ const knowledgeSeed = () =>
   )[0]?.toJS() as SeedCatalog;
 
 describe('seeded knowledge catalog', () => {
-  it('no seeded dataset names a Typesense endpoint', () => {
-    const seed = knowledgeSeed();
-    const typesense = Object.entries(seed.endpoints)
-      .filter(([, endpoint]) => endpoint.engine === 'typesense')
-      .map(([id]) => id);
-
-    expect(typesense).toEqual([]);
-    expect(
-      seed.datasets.filter((d) => typesense.includes(d.endpoint) || d.options?.collections),
-    ).toEqual([]);
-  });
-
   it('the seeded Kudos and public-docs are on kunnskapsserveren', () => {
     const seed = knowledgeSeed();
 

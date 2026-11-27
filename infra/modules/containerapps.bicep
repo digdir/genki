@@ -17,7 +17,7 @@ param bffProxyKey bool = false
 param platformLoginSecret bool = false
 @description('The Key Vault secret that holds the platform login client\'s secret.')
 param platformLoginSecretName string = 'platform-login-client-secret'
-@description('Gives the portal, workspace and console the proxy key, so their nginx sends /auth/ and /api/ through the BFF (ADR 0034, ADR 0061).')
+@description('Gives the portal and console the proxy key, so their nginx sends /auth/ and /api/ through the BFF (ADR 0034, ADR 0061).')
 param platformAppsBff bool = false
 param apiImage string
 param apiRevisionSuffix string = ''
@@ -53,7 +53,7 @@ param platformBackup object = {}
 param storageAccountName string
 param storageShareName string
 
-@description('Custom hostnames per app: api, portal, workspace, console. Empty strings are skipped.')
+@description('Custom hostnames per app: api, portal, console. Empty strings are skipped.')
 param hostnames object
 
 @allowed(['none', 'hostnames', 'certificates'])
@@ -126,7 +126,7 @@ resource dataStorage 'Microsoft.App/managedEnvironments/storages@2025-02-02-prev
   }
 }
 
-var appNames = ['api', 'portal', 'workspace', 'console']
+var appNames = ['api', 'portal', 'console']
 var withHost = filter(appNames, app => !empty(hostnames[app]))
 
 var certificateNames = toObject(appNames, app => app, app => existingCertificates[?app] ?? replace(hostnames[app], '.', '-'))
@@ -259,9 +259,6 @@ var platformLoginSecretEnv = platformLoginSecret
   ? [{ name: 'PLATFORM_LOGIN_CLIENT_SECRET', secretRef: 'platform-login-client-secret' }]
   : []
 
-// The API's revision from before #690 still reads typesense-key, so the secret stays with no env var; it goes in a later PR once that revision is gone.
-var typesenseKeySecret = { name: 'typesense-key', keyVaultUrl: '${keyVaultUri}secrets/typesense-key', identity: identityId }
-
 var apiAppName = '${name}-api'
 var apiCandidateRevision = empty(apiRevisionSuffix) ? '' : '${apiAppName}--${apiRevisionSuffix}'
 var apiCandidateLabelled = !empty(apiCandidateRevision) && !contains([apiLiveRevision, apiPreviousRevision], apiCandidateRevision)
@@ -298,7 +295,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
         traffic: apiTraffic
       }
       registries: [{ server: registryServer, identity: identityId }]
-      secrets: concat(secrets, proxyKeySecret, platformLoginSecretRef, [typesenseKeySecret])
+      secrets: concat(secrets, proxyKeySecret, platformLoginSecretRef)
     }
     template: {
       revisionSuffix: empty(apiRevisionSuffix) ? null : apiRevisionSuffix
@@ -622,7 +619,6 @@ resource restoreCheckJob 'Microsoft.App/jobs@2025-02-02-preview' = if (backupOn)
 }
 
 var apiPublicUrl = empty(liveHostnames.api) ? 'https://${api.properties.configuration.ingress.fqdn}' : 'https://${liveHostnames.api}'
-var portalUrl = empty(liveHostnames.portal) ? '' : 'https://${liveHostnames.portal}'
 
 var webProxyKeySecret = platformAppsBff ? proxyKeySecret : []
 var webProxyKeyEnv = platformAppsBff ? proxyKeyEnv : []
@@ -631,12 +627,6 @@ var webApps = [
   {
     app: 'portal'
     env: {}
-  }
-  {
-    app: 'workspace'
-    env: {
-      PORTAL_URL: portalUrl
-    }
   }
   {
     app: 'console'
@@ -721,6 +711,5 @@ output apiCandidateUrl string = !empty(apiLiveRevision) && apiCandidateLabelled
 output defaultFqdns object = {
   api: api.properties.configuration.ingress.fqdn
   portal: web[0].properties.configuration.ingress.fqdn
-  workspace: web[1].properties.configuration.ingress.fqdn
-  console: web[2].properties.configuration.ingress.fqdn
+  console: web[1].properties.configuration.ingress.fqdn
 }

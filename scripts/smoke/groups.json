@@ -60,7 +60,6 @@
         "packages/port-knowledge/",
         "packages/port-embedding/",
         "packages/port-rerank/",
-        "packages/providers-typesense/",
         "packages/providers-pgvector/",
         "apps/api/src/external-search.ts",
         "apps/api/src/knowledge-endpoints.ts"

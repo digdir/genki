@@ -103,7 +103,7 @@ const boot = async () => {
   await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
     method: 'PUT',
     body: {
-      engine: 'typesense',
+      engine: 'http-search',
       baseURL: 'https://sok.testetaten.example.no',
       auth: { kind: 'bearer', secret: `secret://tenant/${digdir}/search-token` },
     },
@@ -113,7 +113,7 @@ const boot = async () => {
       id: 'opplastet',
       name: 'Opplastede filer',
       residency: 'norway',
-      index: { endpoint: 'sok', collections: { docs: 'filer_docs', chunks: 'filer_chunks' } },
+      index: { endpoint: 'sok' },
     },
   });
   expect(created.status).toBe(201);

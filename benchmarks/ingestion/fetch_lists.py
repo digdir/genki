@@ -4,8 +4,8 @@ fetch_lists.py dictionaries listing
 .data/kudos-listing.jsonl   every KUDOS prod document (GET /documents, 50 a page)
 .data/dict/                 nb and nn Hunspell dictionaries, pinned LibreOffice commit
 
-.data/ts-documents.jsonl, every Kudos document in our Typesense index, came from the shared
-Typesense server, which genki no longer configures (#690); pair.py reads it from disk.
+.data/ts-documents.jsonl, every Kudos document in our old search index, came from the shared
+search server, which genki no longer configures (#690); pair.py reads it from disk.
 
 /documents/search stops paging after 10,000 results, so the listing uses /documents. Each page
 lands in .data/listing/<n>.json first, so a rerun resumes where it stopped. Two workers, each

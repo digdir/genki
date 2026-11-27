@@ -67,14 +67,14 @@ param operatorSubjects string = ''
 @description('Organisation number that plays Digdir: owns the seeded services, shared services and platform tasks. Empty means Digdir.')
 param platformTenant string = ''
 
-@description('Custom hostnames: api, portal, workspace, console, and assistant for the assistant host. Empty strings use the generated Container Apps hostnames.')
-param hostnames object = { api: '', portal: '', workspace: '', console: '', assistant: '' }
+@description('Custom hostnames: api, portal, console, and assistant for the assistant host. Empty strings use the generated Container Apps hostnames. Other keys are ignored.')
+param hostnames object = { api: '', portal: '', console: '', assistant: '' }
 
 @description('none: no custom domains. hostnames: add them without certificates (DNS must exist). certificates: managed certificates, run after hostnames.')
 @allowed(['none', 'hostnames', 'certificates'])
 param customDomainsStage string = 'none'
 
-@description('Managed certificates that already exist in the environment, by app (api, portal, workspace, console). The certificates stage binds these instead of creating its own.')
+@description('Managed certificates that already exist in the environment, by app (api, portal, console). The certificates stage binds these instead of creating its own.')
 param existingCertificates object = {}
 
 @description('Create an Azure DNS zone for the hostnames, with the CNAME and validation records. Delegate it from the parent zone.')
@@ -212,7 +212,7 @@ param assistantBffEnabled bool = false
 @allowed(['none', 'hostnames', 'certificates'])
 param assistantHostnameStage string = customDomainsStage
 
-@description('genki\'s own Ansattporten client that the portal, workspace, console and a hosted Client without oidc log in through (ADR 0061). Empty turns the platform login off, and the three apps cannot sign in.')
+@description('genki\'s own Ansattporten client that the portal, console and a hosted Client without oidc log in through (ADR 0061). Empty turns the platform login off, and the portal and console cannot sign in.')
 param platformLoginClientId string = ''
 
 @description('The Key Vault secret in genki\'s vault that holds the platform login client\'s secret, so a change of client is a parameter change.')
@@ -285,7 +285,7 @@ var liveHostnames = toObject(
 var previousLogin = previousOn && platformLoginOn ? 'login.apps.${toLower(previousDnsZoneName)}' : ''
 var liveLoginHostname = !empty(previousLogin) && platformLoginStage != 'certificates' ? previousLogin : platformLoginHostname
 var appOrigins = filter(
-  map(['portal', 'workspace', 'console'], app => empty(liveHostnames[?app] ?? '') ? '' : '${app}=https://${liveHostnames[app]}'),
+  map(['portal', 'console'], app => empty(liveHostnames[?app] ?? '') ? '' : '${app}=https://${liveHostnames[app]}'),
   entry => !empty(entry)
 )
 var loginNames = platformLoginOn ? [{ hostname: platformLoginHostname, tenant: '', stage: platformLoginStage }] : []
@@ -847,7 +847,7 @@ resource platformBackupLock 'Microsoft.Authorization/locks@2020-05-01' = if (loc
   dependsOn: [platformBackup]
 }
 
-var zoneApps = filter(['api', 'portal', 'workspace', 'console'], app => !empty(hostnames[app]) && endsWith(hostnames[app], zoneSuffix))
+var zoneApps = filter(['api', 'portal', 'console'], app => !empty(hostnames[app]) && endsWith(hostnames[app], zoneSuffix))
 var assistantInZone = assistantHostEnabled && endsWith(hostnames.?assistant ?? '', zoneSuffix)
 var assistantRecords = assistantInZone
   ? [

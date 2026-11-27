@@ -400,7 +400,6 @@ import { compatibleRerankPlugins } from '@genai/port-rerank/contract';
 import { a2aPlugins } from '@genai/providers-a2a-client/contract';
 import { mcpPlugins } from '@genai/providers-mcp-client/contract';
 import { openApiPlugins } from '@genai/providers-openapi-tools/contract';
-import { typesensePlugins } from '@genai/providers-typesense/plugin';
 import { openAiPlugins } from '@genai/providers-openai/contract';
 import { hooksModule, type HookSender } from './hooks.js';
 import { createDiagnosticsModule, diagnosticsModule } from './diagnostics.js';
@@ -2301,7 +2300,6 @@ export const createPlatform = async (input: PlatformInput) => {
     ...mcpPlugins,
     ...a2aPlugins,
     ...openApiPlugins,
-    ...typesensePlugins,
     ...builtinPlugins(blocks, describeEngines(knowledgeAdapters, writerAdapters)),
   ])
     if (!pluginRegistry.get(plugin.manifest.id)) pluginRegistry.register(plugin);

@@ -5,8 +5,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { envSecrets } from '@genai/kernel';
-import type { KnowledgeAdapter } from '@genai/port-knowledge';
-import { typesense } from '@genai/providers-typesense';
+import { KnowledgeError, type KnowledgeAdapter } from '@genai/port-knowledge';
+import { memoryEngine } from '@genai/port-knowledge/testing';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
 import {
@@ -30,9 +30,7 @@ beforeAll(async () => {
     response.writeHead(request.url?.startsWith('/health') ? 401 : 404, {
       'content-type': 'application/json',
     });
-    response.end(
-      JSON.stringify({ message: 'Forbidden - a valid `x-typesense-api-key` header must be sent.' }),
-    );
+    response.end(JSON.stringify({ message: 'Forbidden' }));
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -44,6 +42,18 @@ afterAll(async () => {
 
 const secretValue = 'ts-verdi-som-aldri-vises';
 
+const remote = memoryEngine({ engine: 'testsok' });
+const probed: KnowledgeAdapter = {
+  ...(remote.adapter as KnowledgeAdapter),
+  title: 'Testsøk',
+  requiresBaseURL: true,
+  probe: async (endpoint, signal) => {
+    const response = await fetch(`${endpoint.baseURL}/health`, { signal });
+    if (response.status === 401)
+      throw new KnowledgeError('unauthorized', 'the search engine refused the key');
+  },
+};
+
 const boot = async () => {
   const secrets = envSecrets({ TS_KEY: secretValue });
   const platform = await createPlatform({
@@ -52,7 +62,7 @@ const boot = async () => {
       knowledge: {
         endpoints: {
           ka: {
-            engine: 'typesense',
+            engine: 'testsok',
             baseURL: url,
             auth: { kind: 'api-key', secret: 'secret://env/ts-key' },
             sharing: { tenants: ['991825827'] },
@@ -63,16 +73,14 @@ const boot = async () => {
             id: 'ka',
             endpoint: 'ka',
             residency: 'norway',
-            options: {
-              collections: { docs: 'docs', chunks: 'chunks' },
-              profiles: { content: { collection: 'chunks', queryBy: ['text'], textField: 'text' } },
-            },
+            options: {},
           },
         ],
       },
       rerank: { endpoints: {}, rerankers: [] },
     },
     secrets,
+    knowledgeEngines: [{ adapter: probed, writer: remote.writer }],
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: { decide: async () => ({ allow: true }) },
     authenticate: async (request) => {
@@ -81,7 +89,7 @@ const boot = async () => {
     },
     modules: [
       createKnowledgeEndpointsModule({
-        knowledgeAdapters: [typesense as KnowledgeAdapter],
+        knowledgeAdapters: [probed],
         secrets,
         secretNames: ['azure-search-key'],
       }),
@@ -110,13 +118,13 @@ describe('search endpoints for operators', () => {
     expect(response.status).toBe(200);
     const { data } = (await response.json()) as { data: KnowledgeEndpointView[] };
     expect(data.find((e) => e.id === 'ka')).toMatchObject({
-      engine: 'typesense',
-      title: 'Typesense',
+      engine: 'testsok',
+      title: 'Testsøk',
       builtin: false,
       runsAt: '127.0.0.1',
       datasetCount: 1,
       status: 'ok',
-      writeKeyRequired: true,
+      writeKeyRequired: false,
     });
     expect((await call('/operator/knowledge/endpoints', 'kari')).status).toBe(403);
   });
@@ -124,7 +132,7 @@ describe('search endpoints for operators', () => {
   it('the endpoint test reports a failing probe clearly', async () => {
     const call = await boot();
     const refused = await call('/operator/knowledge/endpoints/test', 'drift', {
-      engine: 'typesense',
+      engine: 'testsok',
       baseURL: url,
       auth: { kind: 'api-key', secret: 'secret://env/ts-key' },
       name: 'Nytt endepunkt',
@@ -132,13 +140,13 @@ describe('search endpoints for operators', () => {
     expect(refused.status).toBe(200);
     expect((await refused.json()) as EndpointTestResult).toMatchObject({
       ok: false,
-      engine: 'typesense',
+      engine: 'testsok',
       code: 'unauthorized',
       message: 'the search engine refused the key',
     });
 
     const incomplete = (await (
-      await call('/operator/knowledge/endpoints/test', 'drift', { engine: 'typesense' })
+      await call('/operator/knowledge/endpoints/test', 'drift', { engine: 'testsok' })
     ).json()) as EndpointTestResult;
     expect(incomplete).toMatchObject({ ok: false, code: 'bad_request' });
     expect(incomplete.message).toContain('baseURL');
@@ -163,8 +171,8 @@ describe('search endpoints for operators', () => {
     expect(response.status).toBe(200);
     const { data } = (await response.json()) as { data: KnowledgeEndpointView[] };
     expect(data.find((e) => e.id === 'ka')).toMatchObject({
-      engine: 'typesense',
-      writeKeyRequired: true,
+      engine: 'testsok',
+      writeKeyRequired: false,
       capabilities: { supported: expect.arrayContaining(['text_search']) as unknown },
     });
     expect(JSON.stringify(data)).not.toContain('secret://');

@@ -59,7 +59,7 @@ describe('the service setup in English', () => {
     expect(screen.getByText('Purpose and audience')).toBeTruthy();
     expect(screen.getByText('Limited risk')).toBeTruthy();
     expect(screen.getByText('Risk level under the AI Act')).toBeTruthy();
-    expect(screen.getByText("AI workspace (the platform's chat)")).toBeTruthy();
+    expect(screen.getByText("The platform's chat")).toBeTruthy();
     expect(screen.queryByText('Formål og målgruppe')).toBeNull();
   });
 });

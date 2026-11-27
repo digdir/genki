@@ -70,7 +70,6 @@ param platformTenant = ''
 param hostnames = {
   api: 'api.genki.digdir.cloud'
   portal: 'portal.genki.digdir.cloud'
-  workspace: 'workspace.genki.digdir.cloud'
   console: 'console.genki.digdir.cloud'
 }
 param customDomainsStage = readEnvironmentVariable('CUSTOM_DOMAINS_STAGE', 'none')

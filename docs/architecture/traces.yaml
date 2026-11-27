@@ -27,7 +27,7 @@
         module: port-knowledge,
         text: "The knowledge port routes the search to the dataset's endpoint, with a timeout.",
       }
-    - { module: providers-typesense, text: 'The search-only Typesense adapter runs multi_search.' }
+    - { module: providers-pgvector, text: 'The pgvector engine searches the knowledge server.' }
     - {
         module: port-model,
         text: 'The model router checks residency and capabilities, then calls the model.',
@@ -68,9 +68,10 @@
         text: 'The store saves an immutable version with the next integer.',
       }
 - id: employee-chat
-  name: An employee chats in Workspace
+  name: An employee chats in a service's assistant
   steps:
-    - { module: workspace, text: 'An employee signs in and picks a published service.' }
+    - { module: assistant-host, text: "An employee signs in on the service's hostname." }
+    - { module: ui-assembly, text: 'The assistant sends the question through the client.' }
     - {
         module: adapter-openai,
         text: '/v1/chat/completions resolves the model name to a capability.',

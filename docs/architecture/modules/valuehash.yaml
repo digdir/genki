@@ -8,8 +8,8 @@ status: Library
 packages:
   - '@genai/valuehash'
 summary: Hashes values exactly like the Clojure library, so ids and collection names match headless-rag.
-description: Fixture-tested against the Clojure implementation. Used by ingest and the Typesense
-  writer so re-ingested documents keep their ids.
+description: Fixture-tested against the Clojure implementation. Used by ingest so re-ingested
+  documents keep their ids.
 responsibilities:
   - Byte-exact value hashing
   - Collection suffixes compatible with headless-rag

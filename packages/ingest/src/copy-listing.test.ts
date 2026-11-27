@@ -66,7 +66,7 @@ describe('copying a dataset from its engine', () => {
     expect(listed?.earlierIds).toBeUndefined();
   });
 
-  it("two Typesense documents with one UUID copy the higher number's text and keep both numbers as earlier ids", async () => {
+  it("two source documents with one UUID copy the higher number's text and keep both numbers as earlier ids", async () => {
     const listing = copyListing({
       source: sourceOf([doc('2447', ['Nyere tekst']), doc('33', ['Eldre tekst'])]),
       ids: 'kudos',

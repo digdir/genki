@@ -151,8 +151,9 @@ export const catalogSecretRef = (tenant: string, name: string) =>
 
 const sharing = z.strictObject({
   tenants: z.union([z.literal('*'), z.array(z.string().regex(/^\d{9}$/)).min(1)]),
-  collectionPrefixes: z.array(z.string().min(1)).optional(),
 });
+// Stored entries may still carry fields this schema dropped.
+const storedSharing = sharing.strip();
 
 type Sharing = z.infer<typeof sharing>;
 
@@ -439,7 +440,7 @@ export class CatalogRegistry {
   sharingOf(kind: CatalogKind, id: string): Sharing | undefined {
     const slot = this.#slots.get(keyOf(kind, id));
     if (!slot || slot.scope !== platformScope) return undefined;
-    const parsed = sharing.safeParse(slot.spec.sharing);
+    const parsed = storedSharing.safeParse(slot.spec.sharing);
     return parsed.success ? parsed.data : undefined;
   }
 
@@ -653,17 +654,6 @@ export class CatalogRegistry {
           path: 'spec.endpoint',
           message: `endpoint ${ref} is not shared with ${scope}`,
         });
-      else if (kind === 'dataset' && rule?.collectionPrefixes) {
-        const collections = Object.values(record(record(out.options).collections)).map(String);
-        const outside = collections.filter(
-          (c) => !rule.collectionPrefixes?.some((p) => c.startsWith(p)),
-        );
-        if (outside.length > 0)
-          errors.push({
-            path: 'spec.options.collections',
-            message: `collections outside the shared prefixes: ${outside.join(', ')}`,
-          });
-      }
     }
     return { spec: out, errors };
   }

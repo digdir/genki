@@ -23,7 +23,7 @@ import { platformScope } from './config-store.js';
 import { localeMiddleware } from './i18n/index.js';
 import type { TaskIndex } from './extensions.js';
 import type { PlaygroundOptions, PlaygroundRunResponse } from './playground.js';
-import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
+import { seededKnowledge, seedOnMemory } from '@genai/composition/memory-seed.test-utils';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -122,7 +122,7 @@ const service = (id: string, instructions: string) => ({
 const knowledgeWith = (
   datasets: (list: Record<string, unknown>[]) => Record<string, unknown>[],
 ) => {
-  const catalog = seedOnTypesense(yaml('knowledge.yaml')) as {
+  const catalog = seedOnMemory(yaml('knowledge.yaml')) as {
     datasets: Record<string, unknown>[];
   };
   return { ...catalog, datasets: datasets(catalog.datasets) };
@@ -162,17 +162,9 @@ const boot = async ({
   store?: (plugins: PluginSchemas) => DefinitionStore;
 } = {}) => {
   const model = await fakeHttp(modelReply);
-  const search = await fakeHttp((body) => ({
-    status: 200,
-    json: Array.isArray(body.searches)
-      ? { results: body.searches.map(() => ({ found: 0, hits: [] })) }
-      : {},
-  }));
-  servers.push(model, search);
-  const env = {
-    FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
-    TYPESENSE_URL: search.url,
-  };
+  const search = await seededKnowledge({});
+  servers.push(model);
+  const env = { FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1` };
   const settings = new SettingsRegistry(platformSettings);
   const blobs = new InMemoryBlobStore();
   const platform = await createPlatform({
@@ -183,7 +175,8 @@ const boot = async ({
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     prices: { [modelId]: { inputPerThousand: 1, outputPerThousand: 2 } },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm' }),
+    knowledgeEngines: [search.engine],
     definitions: store,
     settings,
     ...(taskIndex ? { taskIndex } : {}),
@@ -1336,17 +1329,17 @@ describe('playground changes on top of a service version', () => {
       },
       input: { text: 'Hei' },
     });
-    const searched = JSON.stringify(search.seen);
+    const searched = new Set(search.searches().map((s) => s.dataset));
 
     expect(res.status).toBe(200);
-    expect(searched).toContain('website_');
-    expect(searched).not.toContain('KUDOS_');
+    expect(searched).toContain('digdir/public-docs');
+    expect(searched).not.toContain('digdir/kudos');
   });
 
   it('refuses a dataset another tenant owns on top of a service version, before any search or model call', async () => {
     const { platform, run, search, model } = await boot({ datasets: withOthersDataset });
     await platform.definitions.publish(ragService('svar'), 'test', 'første');
-    const before = { search: search.seen.length, model: model.seen.length };
+    const before = { search: search.reads.length, model: model.seen.length };
 
     const res = await run({
       setup: {
@@ -1361,7 +1354,7 @@ describe('playground changes on top of a service version', () => {
     expect(res.body).toMatchObject({
       errors: [{ path: 'setup.datasets[1]', message: expect.stringContaining('annen/hemmelig') }],
     });
-    expect({ search: search.seen.length, model: model.seen.length }).toEqual(before);
+    expect({ search: search.reads.length, model: model.seen.length }).toEqual(before);
   });
 
   it('answers a dataset another tenant owns and an unknown dataset alike, also without a service', async () => {

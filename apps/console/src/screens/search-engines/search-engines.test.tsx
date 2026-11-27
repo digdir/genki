@@ -52,7 +52,7 @@ describe('Søkemotorer', () => {
     await open();
     expect(await screen.findByRole('heading', { level: 1, name: 'Søkemotorer' })).toBeTruthy();
     const table = screen.getByRole('region', { name: 'Endepunkter' });
-    const row = within(table).getByRole('link', { name: 'typesense-digdir' }).closest('tr');
+    const row = within(table).getByRole('link', { name: 'elastic-digdir' }).closest('tr');
     expect(row?.textContent).toContain('6 av 7: ikke lese avsnitt i rekkefølge');
     expect(row?.textContent).toContain('Data i Norge');
     expect(row?.textContent).toContain('23 datasett');
@@ -62,7 +62,7 @@ describe('Søkemotorer', () => {
     const azure = within(table).getByRole('link', { name: 'azure-sverige' }).closest('tr');
     expect(within(azure as HTMLElement).getByText('Ikke i bruk')).toBeTruthy();
     expect(builtin?.textContent).toContain('Plattformens egen database');
-    expect(row?.textContent).toContain('typesense.ki.digdir.example.no');
+    expect(row?.textContent).toContain('elastic.ki.digdir.example.no');
     expect(azure?.textContent).toContain('Data i EU/EØS');
 
     fireEvent.click(screen.getByRole('button', { name: 'Vis API-kall' }));
@@ -71,39 +71,39 @@ describe('Søkemotorer', () => {
   });
 
   it('a secret field offers stored secrets and never a value', async () => {
-    await openEndpoint('typesense-digdir');
+    await openEndpoint('elastic-digdir');
     const select = screen.getByRole('combobox', { name: 'API-nøkkel' }) as HTMLSelectElement;
     const options = Array.from(select.options);
     expect(options.map((o) => o.textContent)).toEqual([
       'Velg en hemmelighet',
-      'typesense-api-key (oppdatert 2. oktober)',
+      'elastic-api-key (oppdatert 2. oktober)',
       'azure-search-key (oppdatert 14. september)',
       'opensearch-passord (oppdatert 1. august)',
     ]);
     expect(options.slice(1).every((o) => o.value.startsWith('secret://'))).toBe(true);
-    expect(select.value).toBe('secret://platform/typesense-api-key');
+    expect(select.value).toBe('secret://platform/elastic-api-key');
     expect(screen.getByText('auth.secret · string · påkrevd · hemmelighet')).toBeTruthy();
     expect(document.querySelector('input[type="password"]')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Vis API-kall' }));
     const curl = within(screen.getByRole('dialog')).getByLabelText('Forespørsel').textContent ?? '';
-    expect(curl).toContain('"secret": "secret://platform/typesense-api-key"');
+    expect(curl).toContain('"secret": "secret://platform/elastic-api-key"');
     expect(curl).toContain('PUT');
   });
 
   it('an http URL fails format uri with an error-summary link', async () => {
     await open('#/search-engines?new=1');
     expect(await screen.findByRole('heading', { level: 1, name: 'Nytt endepunkt' })).toBeTruthy();
-    expect((screen.getByRole('radio', { name: /Typesense/ }) as HTMLInputElement).checked).toBe(
+    expect((screen.getByRole('radio', { name: /Elasticsearch/ }) as HTMLInputElement).checked).toBe(
       true,
     );
     fireEvent.change(screen.getByRole('textbox', { name: 'Navn på endepunktet' }), {
-      target: { value: 'Typesense, ny klynge' },
+      target: { value: 'Elasticsearch, ny klynge' },
     });
     const url = screen.getByRole('textbox', { name: 'Adresse' });
     expect(url.getAttribute('type')).toBe('url');
     expect(screen.getByText('baseURL · string (uri) · påkrevd')).toBeTruthy();
-    fireEvent.change(url, { target: { value: 'http://typesense.ki.example.no' } });
+    fireEvent.change(url, { target: { value: 'http://elastic.ki.example.no' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Prefiks for samlinger' }), {
       target: { value: 'KI-Prod' },
     });
@@ -171,11 +171,13 @@ describe('Søkemotorer', () => {
   });
 
   it('switches booleans with a switch and tests the connection', async () => {
-    await openEndpoint('typesense-digdir');
+    await openEndpoint('elastic-digdir');
     const toggle = screen.getByRole('switch', { name: 'Vektorsøk' }) as HTMLInputElement;
     expect(toggle.checked).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Test tilkoblingen' }));
-    expect(await screen.findByText('Typesense svarte på 84 ms. Tilkoblingen virker.')).toBeTruthy();
+    expect(
+      await screen.findByText('Elasticsearch svarte på 84 ms. Tilkoblingen virker.'),
+    ).toBeTruthy();
     expect(screen.getByText('Virker')).toBeTruthy();
   });
 
@@ -199,7 +201,7 @@ describe('Søkemotorer', () => {
 
   it('saves an endpoint with a reason through the catalog route', async () => {
     const { calls, fetch } = recording();
-    await openEndpoint('typesense-digdir', fetch);
+    await openEndpoint('elastic-digdir', fetch);
     fireEvent.change(screen.getByRole('textbox', { name: 'Prefiks for samlinger' }), {
       target: { value: 'ki_test' },
     });
@@ -211,23 +213,23 @@ describe('Søkemotorer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Lagre endepunktet' }));
     expect(
       await screen.findByText(
-        'Endepunktet «typesense-digdir» er lagret. Endringen er logget i Revisjon.',
+        'Endepunktet «elastic-digdir» er lagret. Endringen er logget i Revisjon.',
       ),
     ).toBeTruthy();
     const put = calls.find((c) => c.method === 'PUT');
-    expect(put?.path).toBe('/api/operator/catalog/knowledge-endpoint/typesense-digdir');
+    expect(put?.path).toBe('/api/operator/catalog/knowledge-endpoint/elastic-digdir');
     expect(put?.reason).toBe(encodeURIComponent('Eget prefiks for testmiljøet'));
     expect(put?.body).toEqual({
-      engine: 'typesense',
-      baseURL: 'https://typesense.ki.digdir.example.no',
-      auth: { kind: 'api-key', secret: 'secret://platform/typesense-api-key' },
+      engine: 'elasticsearch',
+      baseURL: 'https://elastic.ki.digdir.example.no',
+      auth: { kind: 'api-key', secret: 'secret://platform/elastic-api-key' },
       options: { collectionPrefix: 'ki_test', connectionTimeoutSeconds: 5, vectorSearch: true },
       sharing: { tenants: '*' },
     });
     expect(
       calls.some(
         (c) =>
-          c.path === '/api/operator/catalog/knowledge-endpoint/typesense-digdir' &&
+          c.path === '/api/operator/catalog/knowledge-endpoint/elastic-digdir' &&
           c.method === 'GET',
       ),
     ).toBe(true);
@@ -256,7 +258,7 @@ describe('Søkemotorer', () => {
   });
 
   it('the search engine page lists the datasets on an endpoint', async () => {
-    await openEndpoint('typesense-digdir');
+    await openEndpoint('elastic-digdir');
 
     const list = screen.getByRole('region', { name: 'Datasett på søkemotoren' });
     await waitFor(() =>
@@ -275,8 +277,8 @@ describe('Søkemotorer', () => {
     await open();
 
     const table = await screen.findByRole('region', { name: 'Endepunkter' });
-    fireEvent.click(within(table).getByRole('button', { name: 'Fjern typesense-digdir' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Fjern typesense-digdir' });
+    fireEvent.click(within(table).getByRole('button', { name: 'Fjern elastic-digdir' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Fjern elastic-digdir' });
     fireEvent.change(within(dialog).getByLabelText('Begrunnelse'), {
       target: { value: 'Flytter alt til pgvector' },
     });
@@ -288,6 +290,6 @@ describe('Søkemotorer', () => {
     expect(within(dialog).getByText('Regelverk').closest('li')?.textContent).toBe(
       'Regelverk · Testetaten',
     );
-    expect(within(table).getByRole('link', { name: 'typesense-digdir' })).toBeTruthy();
+    expect(within(table).getByRole('link', { name: 'elastic-digdir' })).toBeTruthy();
   });
 });
