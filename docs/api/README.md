@@ -80,6 +80,14 @@ To announce one, add a line to a new dated entry below that names the operation 
 - `POST /definitions` takes an optional `newService: true` in its JSON body. The API then publishes only a version 1, and answers `409` `urn:genai:problem:service-id-taken` with the taken `id` when another service, archived ones too, already has the definition's id. A publish without it stays the next version of that id. A caller who cannot see an internal service with the id gets the `422` on `metadata.id` it got before, not the `409`.
 - The admin MCP's `publish_definition` takes the same optional `newService` argument.
 
+### 2026-11-26: the operator's inbox and organisation overview
+
+- New, operators only: `GET /operator/inbox` (quota requests, access requests, block share and building block approval requests, work instruction shares, suggestions for Digdir, open incidents, and flag overrides that expire within seven days, each with `type`, `tenant`, `what`, `from`, `waitingSince`, `blocks` and the `action` route), `GET /operator/tenants/{tenant}` (an organisation at a glance with `needsAction`), `GET /operator/tenants/{tenant}/flags`, `GET /operator/tenants/{tenant}/hostnames` and `GET /operator/failed-runs` (see [operations.md](operations.md)).
+- `GET /operator/tenants` adds `waiting` (`count`, `blocks`, `types`) to a tenant something waits for.
+- `GET /tenants/{tenant}/audit` and `GET /operator/audit` take `from`, `to`, `actor`, `action` and `by`; `GET /operator/audit` also takes `tenant`, `limit` and `offset`, and answers `total`.
+- `PUT /operator/flags/{key}` takes an optional `expiresAt`; the choice stops applying then. `GET /operator/flags` adds `expiresAt` and `expired` to a row that has one. An operator's change on `PUT /operator/flags/{key}` now carries `onBehalfOf`, so the tenant's own `GET /tenants/{tenant}/audit` shows it to its members.
+- `POST /operator/quota-requests/{tenant}/{id}/decision` takes `monthlyTokens` with `approved`, and the new decision `postponed` with `until` and an optional `note`, audited as `platform.quota.postpone` in the platform's log. A postponed request answers operators with `postponed`; the tenant's own list leaves out that field. An approval's `decision` carries the `monthlyTokens` it set.
+
 ### 2026-11-26: where rights come from, and the language of the no-access page
 
 - `GET /me` has `rightsFrom: entra-groups` when Entra ID groups give the rights instead of Altinn.

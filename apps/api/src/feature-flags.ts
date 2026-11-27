@@ -1,6 +1,12 @@
 import type { Principal } from '@genai/contracts';
 import { flags as registry, isFlagKey, type FlagKey } from '@genai/contracts/flags';
-import { flagPersonOf, type FlagPerson, type Flags } from '@genai/composition';
+import {
+  flagPersonOf,
+  isFlagRowExpired,
+  type FlagPerson,
+  type FlagRow,
+  type Flags,
+} from '@genai/composition';
 import type { Context, Env, Hono, MiddlewareHandler, Schema } from 'hono';
 import { z } from 'zod';
 import { enterTenant } from './access.js';
@@ -36,7 +42,10 @@ const Change = z.strictObject({ on: z.boolean().nullable() });
 const OperatorChange = Change.extend({
   tenant: z.string().regex(/^\d{9}$/),
   person: z.strictObject({ issuer: z.string().min(1), subject: z.string().min(1) }).optional(),
+  expiresAt: z.iso.datetime({ offset: true }).optional(),
 });
+
+export const flagExpiryWarningMs = 7 * 86_400_000;
 
 const invalid = (c: Context, issues: z.ZodIssue[]) =>
   problem(c, 400, t('problems.invalidRequest'), {
@@ -52,6 +61,19 @@ const targetOf = (key: FlagKey, person?: FlagPerson) =>
 export const featureFlagsModule: PlatformModuleFactory = (deps) => ({
   id: 'feature-flags',
   handlers: routeOnlyActions(flagActions),
+  inbox: async () =>
+    (await deps.flags.expiringWithin(flagExpiryWarningMs)).map((r) => ({
+      type: 'expiring' as const,
+      id: `${r.tenant}/${targetOf(r.key, r.person)}`,
+      tenant: r.tenant,
+      what: r.key,
+      from: r.by,
+      waitingSince: r.at,
+      due: r.expiresAt as string,
+      blocks: false,
+      action: { method: 'PUT' as const, path: `/operator/flags/${r.key}` },
+      detail: { on: r.on, ...(r.person ? { person: r.person } : {}) },
+    })),
   mount: <E extends Env, S extends Schema, B extends string>(
     app: Hono<E, S, B>,
     mounted: MountDeps,
@@ -83,20 +105,36 @@ export const featureFlagsModule: PlatformModuleFactory = (deps) => ({
       c: Context,
       principal: Principal,
       action: FlagAction,
-      input: { tenant: string; key: FlagKey; person?: FlagPerson; on: boolean | null },
+      input: {
+        tenant: string;
+        key: FlagKey;
+        person?: FlagPerson;
+        on: boolean | null;
+        expiresAt?: string;
+      },
       reason: string,
     ) => {
       try {
         const done = await mounted.admin.within(
           { ...principal, tenant: input.tenant },
           action,
-          { tenant: input.tenant, reason, key: input.key, on: input.on },
+          {
+            tenant: input.tenant,
+            reason,
+            key: input.key,
+            on: input.on,
+            ...(input.expiresAt ? { expiresAt: input.expiresAt } : {}),
+          },
           async () => {
             await deps.flags.set({ ...input, by: actorOf(principal.actor ?? principal), reason });
             return {
               value: null,
               target: targetOf(input.key, input.person),
-              audit: { level: input.person ? 'person' : 'tenant', on: input.on },
+              audit: {
+                level: input.person ? 'person' : 'tenant',
+                on: input.on,
+                ...(input.expiresAt ? { expiresAt: input.expiresAt } : {}),
+              },
             };
           },
         );
@@ -213,9 +251,62 @@ export const featureFlagsModule: PlatformModuleFactory = (deps) => ({
                 ...(byName ? { byName } : {}),
                 at: r.at,
                 reason: r.reason,
+                ...(r.expiresAt
+                  ? { expiresAt: r.expiresAt, expired: isFlagRowExpired(r, deps.flags.now()) }
+                  : {}),
               };
             }),
         })),
+      });
+    });
+
+    app.get('/operator/tenants/:tenant/flags', async (c) => {
+      const found = await operator(c);
+      if ('response' in found) return found.response;
+      const tenant = c.req.param('tenant') ?? '';
+      if (!/^\d{9}$/.test(tenant)) return problem(c, 404, t('problems.notFound'));
+      const [rows, states] = await Promise.all([
+        deps.flags.rows(tenant),
+        deps.flags.states(tenant),
+      ]);
+      const own = rows.filter((r) => r.tenant === tenant);
+      const people = own.flatMap((r) => (r.person ? [personActor(r.person)] : []));
+      const known = await names.namesOf([...new Set([...own.map((r) => r.by), ...people])]);
+      const at = deps.flags.now();
+      const rowView = (r: FlagRow) => {
+        const byName = known.get(r.by);
+        const personName = r.person && known.get(personActor(r.person));
+        return {
+          ...(r.person ? { person: r.person } : {}),
+          ...(personName ? { personName } : {}),
+          on: r.on,
+          by: r.by,
+          ...(byName ? { byName } : {}),
+          at: r.at,
+          reason: r.reason,
+          ...(r.expiresAt ? { expiresAt: r.expiresAt } : {}),
+          expired: isFlagRowExpired(r, at),
+        };
+      };
+      return c.json({
+        data: Object.entries(registry).map(([key, spec]) => {
+          const state = states.find((s) => s.key === key);
+          const tenantRow = own.find((r) => r.key === key && !r.person);
+          return {
+            key,
+            description: spec.description,
+            owner: spec.owner,
+            removeBy: spec.removeBy,
+            selfService: spec.selfService,
+            on: state?.on ?? false,
+            source: state?.source ?? 'default',
+            tenant: tenantRow ? rowView(tenantRow) : null,
+            people: own
+              .filter((r) => r.key === key && r.person)
+              .sort((a, b) => b.at.localeCompare(a.at))
+              .map(rowView),
+          };
+        }),
       });
     });
 
@@ -231,12 +322,21 @@ export const featureFlagsModule: PlatformModuleFactory = (deps) => ({
         });
       const parsed = OperatorChange.safeParse(await c.req.json().catch(() => undefined));
       if (!parsed.success) return invalid(c, parsed.error.issues);
-      const { tenant, person, on } = parsed.data;
+      const { tenant, person, on, expiresAt } = parsed.data;
+      if (
+        expiresAt !== undefined &&
+        (on === null || Date.parse(expiresAt) <= deps.flags.now().getTime())
+      )
+        return problem(c, 400, t('problems.invalidRequest'), {
+          errors: [
+            { path: 'expiresAt', message: 'expiresAt is a time in the future, and needs on' },
+          ],
+        });
       return change(
         c,
-        found.principal,
+        { ...found.principal, tenant, actor: found.principal },
         person ? 'platform.flag.person' : 'platform.flag.tenant',
-        { tenant, key, on, ...(person ? { person } : {}) },
+        { tenant, key, on, ...(person ? { person } : {}), ...(expiresAt ? { expiresAt } : {}) },
         reason,
       );
     });

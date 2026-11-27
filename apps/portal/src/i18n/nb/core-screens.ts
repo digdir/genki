@@ -326,6 +326,7 @@ export const changes = defineNamespace({
   flagForTenant: 'for hele {organisation}',
   flagForTenantUnnamed: 'for hele virksomheten',
   quotaDecide: 'avgjorde en forespørsel om kvote fra',
+  quotaPostpone: 'utsatte en forespørsel om kvote fra',
   quotaRequest: 'ba om større kvote',
   supportEnd: 'avsluttet støttetilgangen',
   supportExtend: 'forlenget støttetilgangen',

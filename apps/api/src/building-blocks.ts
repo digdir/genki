@@ -2280,6 +2280,23 @@ export const createBuildingBlocksModule =
     return {
       id: 'building-blocks',
       handlers,
+      inbox: async () =>
+        (await requests())
+          .filter((r) => r.state === 'pending' && r.approver === 'digdir')
+          .map((r) => ({
+            type: 'catalogue' as const,
+            id: r.id,
+            tenant: r.tenant,
+            what: r.blockName,
+            from: r.requestedByName ?? r.requestedBy,
+            waitingSince: r.requestedAt,
+            blocks: true,
+            action: {
+              method: 'POST' as const,
+              path: `/operator/building-blocks/approval-requests/${r.id}/decision`,
+            },
+            detail: { kind: 'building-block', block: r.block },
+          })),
       decorateCapability,
       checkPublish,
       mount: <E extends Env, S extends Schema, B extends string>(

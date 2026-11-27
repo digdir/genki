@@ -10,7 +10,7 @@ export interface QuotaRequestView {
   requestedByName?: string;
   requestedAt: string;
   state: 'pending' | 'approved' | 'rejected';
-  decision?: { by: string; byName?: string; at: string; reason: string };
+  decision?: { by: string; byName?: string; at: string; reason: string; monthlyTokens?: number };
 }
 
 export const quotaRequestsApi = ({ get, request, tenantPath }: ApiContext) => {

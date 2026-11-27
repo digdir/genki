@@ -173,6 +173,22 @@ export const createOnboardingModule =
     return {
       id: 'onboarding',
       handlers,
+      inbox: async () =>
+        (await all())
+          .filter((e) => e.spec.status === 'pending')
+          .map((e) => ({
+            type: 'access' as const,
+            id: e.spec.id,
+            tenant: e.spec.org,
+            what: e.spec.orgName,
+            from: e.spec.requesterName ?? e.spec.requestedBy,
+            waitingSince: e.spec.requestedAt,
+            blocks: true,
+            action: {
+              method: 'POST' as const,
+              path: `/operator/onboarding/requests/${e.spec.id}/decision`,
+            },
+          })),
       mount: (app, mounted) => {
         const reasonOf = (c: Context) => (changeReasonOf(c) ?? '').trim();
         const body = async (c: Context) =>

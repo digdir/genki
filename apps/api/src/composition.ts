@@ -243,7 +243,8 @@ import {
   type PipelineRuns,
 } from './operations.js';
 import { openIncidentsFor, platformStatusModule } from './platform-status.js';
-import { quotaRequestsModule } from './quota-requests.js';
+import { createQuotaRequestsModule, quotaRequestsModule } from './quota-requests.js';
+import { collectInbox, operatorInboxModule } from './operator-inbox.js';
 import { cachedOrganizationLookup, organizationLookup } from './organizations.js';
 import { locationOf } from './residency.js';
 import { retiredModelMessage, serviceHealth, type ServiceModels } from './service-health.js';
@@ -461,6 +462,7 @@ export const platformModules: PlatformModuleFactory[] = [
   resultReviewsModule,
   tenantRunCancelModule,
   quotaRequestsModule,
+  operatorInboxModule,
   platformStatusModule,
   userPreferencesModule,
   featureFlagsModule,
@@ -2305,7 +2307,11 @@ export const createPlatform = async (input: PlatformInput) => {
     ...builtinPlugins(blocks, describeEngines(knowledgeAdapters, writerAdapters)),
   ])
     if (!pluginRegistry.get(plugin.manifest.id)) pluginRegistry.register(plugin);
-  const flags = createFlags({ store: configurables.store, envOn: input.envFlags ?? [] });
+  const flags = createFlags({
+    store: configurables.store,
+    envOn: input.envFlags ?? [],
+    ...(input.now ? { now: () => new Date(input.now?.() ?? 0) } : {}),
+  });
   const moduleDeps: ModuleDeps = {
     platformTenant,
     ...(input.blockOrigin ? { blockOrigin: input.blockOrigin } : {}),
@@ -2371,6 +2377,7 @@ export const createPlatform = async (input: PlatformInput) => {
       return (await checkBeforePublish(definition, publisher, sideEffectModules)) ?? [];
     },
     tasks: taskIndex,
+    inbox: (viewer) => collectInbox(modules, viewer),
     task: hidingInternalTasks(definitions, async (id) => (await taskStore.get(id))?.task),
     events: (task) => log.read(task, 0, () => false),
     webhooks,
@@ -2427,6 +2434,9 @@ export const createPlatform = async (input: PlatformInput) => {
   const configuredReviews = clock
     ? createBlockReviewsModule({ now: () => new Date(clock()) })
     : blockReviewsModule;
+  const configuredQuotaRequests = clock
+    ? createQuotaRequestsModule({ now: () => new Date(clock()) })
+    : quotaRequestsModule;
   modules = (input.modules ?? platformModules).map((create) =>
     (create === buildingBlocksModule
       ? configuredBlocks
@@ -2434,7 +2444,9 @@ export const createPlatform = async (input: PlatformInput) => {
         ? configuredDiagnostics
         : create === blockReviewsModule
           ? configuredReviews
-          : create)(moduleDeps),
+          : create === quotaRequestsModule
+            ? configuredQuotaRequests
+            : create)(moduleDeps),
   );
   const keyPolicies =
     input.keyPolicies ??
@@ -2626,6 +2638,8 @@ export const createPlatform = async (input: PlatformInput) => {
         lifecycle: (tenant, service) => lifecycleOf(configEntries, tenant, service),
         testRunnerKeys: testRunnersAllowed,
         ...(testRunnerOperator ? { isOperator: testRunnerOperator } : {}),
+        directory: () => directory.list(),
+        inbox: (viewer) => collectInbox(modules, viewer),
       });
       registerConsoleRoutes(app, { ...consoleDeps, admin, authenticate });
       config.mount(app, admin, authenticate);
@@ -3016,6 +3030,7 @@ export const createPlatform = async (input: PlatformInput) => {
     prices,
     drafts,
     modules,
+    inbox: (viewer: Principal) => collectInbox(modules, viewer),
     evalSlots: caseSlots,
     blockOrigin: input.blockOrigin,
     flags,

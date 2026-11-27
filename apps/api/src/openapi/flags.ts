@@ -50,6 +50,20 @@ const FlagState = z
   })
   .openapi('FeatureFlagState');
 
+const FlagRowView = z
+  .object({
+    person: z.object({ issuer: z.string(), subject: z.string() }).optional(),
+    personName: z.string().optional(),
+    on: z.boolean(),
+    by: z.string(),
+    byName: z.string().optional(),
+    at: z.string(),
+    reason: z.string(),
+    expiresAt: z.string().optional(),
+    expired: z.boolean().describe('Whether expiresAt has passed, so the choice no longer applies'),
+  })
+  .openapi('FeatureFlagChoice');
+
 const Change = z.object({
   on: z.boolean().nullable().describe('true or false to choose, null to clear the choice'),
 });
@@ -135,6 +149,16 @@ export const flagRoutes: RouteConfig[] = [
                   byName: z.string().optional(),
                   at: z.string(),
                   reason: z.string(),
+                  expiresAt: z
+                    .string()
+                    .optional()
+                    .describe('When the choice stops applying; it stays listed after'),
+                  expired: z
+                    .boolean()
+                    .optional()
+                    .describe(
+                      'With expiresAt: whether it has passed, so the choice no longer applies',
+                    ),
                 }),
               ),
             }),
@@ -158,15 +182,52 @@ export const flagRoutes: RouteConfig[] = [
         Change.extend({
           tenant: z.string().regex(/^\d{9}$/),
           person: z.object({ issuer: z.string(), subject: z.string() }).optional(),
+          expiresAt: z.iso
+            .datetime({ offset: true })
+            .optional()
+            .openapi({ example: '2026-12-31T23:00:00Z' })
+            .describe(
+              'An ISO time in the future with an offset; the choice stops applying then. Only with on true or false',
+            ),
         }),
       ),
     },
     responses: {
       200: json(FlagState, 'The flag as it now applies at that level'),
-      400: problem('Missing reason, or an invalid body'),
+      400: problem('Missing reason, an invalid body, or an expiry in the past'),
       401: unauthorized,
       403: problem('Only operators'),
       404: problem('No such flag'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/tenants/{tenant}/flags',
+    summary:
+      "Every registered flag for one tenant: owner, removeBy, the value there, and the tenant's and its people's choices with who made them and when they expire (operators)",
+    request: { params: z.object({ tenant }) },
+    responses: {
+      200: json(
+        z.object({
+          data: z.array(
+            z.object({
+              key: z.string(),
+              description: z.string(),
+              owner: z.string(),
+              removeBy: z.string(),
+              selfService: z.boolean(),
+              on: z.boolean().describe('The value for the tenant, without any person choice'),
+              source: z.enum(flagSources),
+              tenant: FlagRowView.nullable().describe("The tenant's own choice"),
+              people: z.array(FlagRowView),
+            }),
+          ),
+        }),
+        'Flags',
+      ),
+      401: unauthorized,
+      403: problem('Only operators'),
+      404: problem('Not an organisation number'),
     },
   }),
 ];

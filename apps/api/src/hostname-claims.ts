@@ -830,6 +830,33 @@ export const registerHostnameRoutes = <E extends Env, S extends Schema, B extend
     });
   });
 
+  app.get('/operator/tenants/:tenant/hostnames', async (c) => {
+    const principal = await deps.authenticate(c.req.raw);
+    if (!principal) return problem(c, 401, 'Unauthorized');
+    if (principal.kind !== 'operator') return problem(c, 403, 'Forbidden');
+    const tenant = c.req.param('tenant') ?? '';
+    if (!/^\d{9}$/.test(tenant)) return problem(c, 404, 'Not found');
+    const listed = (await deps.clients.list(tenant)).filter(
+      (x) => x.definition.spec.hosted === true,
+    );
+    const hidden = await Promise.all(
+      listed.map((x) =>
+        x.definition.spec.service
+          ? isHiddenService(deps.definitions, tenant, x.definition.spec.service)
+          : false,
+      ),
+    );
+    const hosted = listed.filter((_, i) => !hidden[i]);
+    const serviceOf = new Map(
+      hosted.map((x) => [x.definition.metadata.id, x.definition.spec.service ?? null] as const),
+    );
+    const hostnames = (await viewsOf(tenant, hosted)).map((h) => ({
+      ...h,
+      service: serviceOf.get(h.client) ?? null,
+    }));
+    return c.json({ data: hostnames });
+  });
+
   app.post('/tenants/:tenant/services/:service/address', async (c) => {
     const g = await guard(c, 'manage-services');
     if (g instanceof Response) return g;

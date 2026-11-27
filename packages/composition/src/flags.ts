@@ -30,6 +30,7 @@ export interface FlagRow {
   by: string;
   at: string;
   reason: string;
+  expiresAt?: string;
 }
 
 export interface FlagAsker {
@@ -56,7 +57,8 @@ const parsedRowId = (id: string): { key: FlagKey; person?: FlagPerson } | undefi
 
 const rowOf = (entry: ConfigEntry<unknown>): FlagRow | undefined => {
   const parsed = parsedRowId(entry.id);
-  const on = (entry.spec as { on?: unknown } | null)?.on;
+  const spec = entry.spec as { on?: unknown; expiresAt?: unknown } | null;
+  const on = spec?.on;
   if (!parsed || entry.deleted || typeof on !== 'boolean') return undefined;
   return {
     tenant: entry.scope,
@@ -65,6 +67,7 @@ const rowOf = (entry: ConfigEntry<unknown>): FlagRow | undefined => {
     by: entry.by,
     at: entry.at,
     reason: entry.reason,
+    ...(typeof spec?.expiresAt === 'string' ? { expiresAt: spec.expiresAt } : {}),
   };
 };
 
@@ -97,16 +100,25 @@ export const flagEnvProblems = (env: Record<string, string | undefined>): string
 export const envFlagsIn = (env: Record<string, string | undefined>): FlagKey[] =>
   isDevMode(env) ? envFlagsOf(env).filter(isFlagKey) : [];
 
-export const createFlags = (options: { store: ConfigEntryStore; envOn?: readonly FlagKey[] }) => {
+export const isFlagRowExpired = (row: Pick<FlagRow, 'expiresAt'>, now: Date) =>
+  row.expiresAt !== undefined && Date.parse(row.expiresAt) <= now.getTime();
+
+export const createFlags = (options: {
+  store: ConfigEntryStore;
+  envOn?: readonly FlagKey[];
+  now?: () => Date;
+}) => {
   const { store } = options;
   const envOn = new Set(options.envOn ?? []);
+  const now = options.now ?? (() => new Date());
   const writes = serialized();
   const rows = async (tenant?: string) =>
     (await store.latest({ kind: featureFlagKind, ...(tenant ? { scope: tenant } : {}) }))
       .map(rowOf)
       .filter((row): row is FlagRow => row !== undefined);
   const states = async (tenant: string, person?: FlagPerson): Promise<FlagState[]> => {
-    const found = await rows(tenant);
+    const at = now();
+    const found = (await rows(tenant)).filter((r) => !isFlagRowExpired(r, at));
     return flagKeys.map((key) => {
       const tenantRow = found.find((r) => r.key === key && !r.person);
       const personRow = person && found.find((r) => r.key === key && samePerson(r.person, person));
@@ -127,9 +139,18 @@ export const createFlags = (options: { store: ConfigEntryStore; envOn?: readonly
       };
     });
   };
+  const expiringWithin = async (ms: number) => {
+    const at = now().getTime();
+    return (await rows()).filter((r) => {
+      const ends = r.expiresAt === undefined ? Number.NaN : Date.parse(r.expiresAt);
+      return ends > at && ends <= at + ms;
+    });
+  };
   return {
     states,
     rows,
+    expiringWithin,
+    now,
     on: async (asker: FlagAsker, key: FlagKey) =>
       (await states(asker.tenant, flagPersonOf(asker.principal))).some(
         (state) => state.key === key && state.on,
@@ -141,13 +162,17 @@ export const createFlags = (options: { store: ConfigEntryStore; envOn?: readonly
       on: boolean | null;
       by: string;
       reason: string;
+      expiresAt?: string;
     }) =>
       writes(() =>
-        appendVersion<{ on?: boolean }>(store, {
+        appendVersion<{ on?: boolean; expiresAt?: string }>(store, {
           kind: featureFlagKind,
           scope: change.tenant,
           id: flagRowId(change.key, change.person),
-          spec: change.on === null ? {} : { on: change.on },
+          spec:
+            change.on === null
+              ? {}
+              : { on: change.on, ...(change.expiresAt ? { expiresAt: change.expiresAt } : {}) },
           deleted: change.on === null,
           by: change.by,
           reason: change.reason,
