@@ -8,6 +8,14 @@ import {
   type KnowledgePort,
   type SearchRequest,
 } from '@genai/port-knowledge';
+import {
+  memoryEngine,
+  openTarget,
+  partsCases,
+  partsDocuments,
+  partsFiles,
+  seedCorpus,
+} from '@genai/port-knowledge/testing';
 import { RerankRouter, type RerankAdapter, type RerankRequest } from '@genai/port-rerank';
 import { createAgentRetrieval, createRagRetrieval, listDocuments } from './factories.js';
 import { FacetCache } from './pipeline.js';
@@ -230,6 +238,33 @@ describe('agent retrieval factory', () => {
     ]);
     expect(range.map((c) => c.chunkId)).toEqual(['c1', 'c2']);
     expect(s.calls).toEqual(['fetch:c3,c1', 'range:d1:0-1']);
+  });
+
+  it('reads the parts around a hit through the knowledge port', async () => {
+    const engine = memoryEngine();
+    const writer = engine.writer.connect({ options: {}, timeoutMs: 1000 }, { signal });
+    const [report, attachment] = partsFiles;
+    const ids: [string, string] = [
+      engine.conversions.store(report),
+      engine.conversions.store(attachment),
+    ];
+    const dataset = { id: 'digdir/havn', filters: {} };
+    await seedCorpus(writer, { ...dataset, options: {} }, partsDocuments(ids));
+    const agent = createAgentRetrieval({
+      knowledge: openTarget({ adapter: engine.adapter }, dataset),
+    });
+
+    const read = await agent.readParts?.('havn-rapport-5', 'units', 1, 20_000, signal);
+
+    expect(read?.parts.map((p) => p.seq)).toEqual([...partsCases.units.seqs]);
+    expect(read?.units.map((u) => u.label)).toEqual([...partsCases.units.labels]);
+  });
+
+  it('gives the agent no read around a hit where the dataset cannot read parts', async () => {
+    const engine = memoryEngine({ capabilities: ['search.text', 'fetch', 'range'] });
+    const limited = openTarget({ adapter: engine.adapter }, { id: 'digdir/havn', filters: {} });
+    expect(createAgentRetrieval({ knowledge: limited }).readParts).toBeUndefined();
+    expect(createAgentRetrieval({ knowledge: stub().knowledge }).readParts).toBeUndefined();
   });
 
   it('carries the Kudos publish date and the document version into the chunks', async () => {

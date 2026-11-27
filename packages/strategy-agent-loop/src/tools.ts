@@ -34,6 +34,9 @@ import {
   readPositions,
   readBudgetNote,
   selectChunkIdsWithinBudget,
+  maxAround,
+  maxAroundChars,
+  partReadKinds,
   trimChunksToBudget,
   type AgentRetrieval,
   type BudgetState,
@@ -41,6 +44,8 @@ import {
   type ChunkSummary,
   type ConversationTurn,
   type FilterField,
+  type PartReadKind,
+  type PartsAround,
   type ReadSource,
   type SearchAttribution,
   type SearchDetection,
@@ -215,6 +220,13 @@ const readArgs = z.object({
     .object({ from: z.number().int().optional(), to: z.number().int().optional() })
     .optional(),
   max_content_length: z.number().int().optional(),
+  around: z
+    .object({
+      chunk_id: z.string().min(1),
+      read: z.enum(partReadKinds).optional(),
+      n: z.number().int().min(0).max(maxAround).optional(),
+    })
+    .optional(),
 });
 
 const queryArgs = z.object({ query: z.string() });
@@ -794,6 +806,85 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
   };
 };
 
+/** The read's parts in order, each run headed by the page it starts on: its label, else its number. */
+const aroundText = (read: PartsAround) => {
+  const labels = new Map(read.units.map((u) => [u.unit, u.label]));
+  const blocks: string[] = [];
+  let page: number | undefined;
+  for (const part of read.parts) {
+    const unit = part.regions[0]?.unit;
+    if (unit !== undefined && unit !== page) {
+      page = unit;
+      blocks.push(`--- page=${labels.get(unit) ?? unit} ---\n${part.text}`);
+    } else blocks.push(part.text);
+  }
+  return blocks.join('\n\n');
+};
+
+/**
+ * `read_chunks` with `around`: the parts before and after a hit, its section, or its pages, read
+ * from the hit's file (ADR 0055). The read is stored as the hit's excerpt, so it can be cited.
+ */
+const readAround = async (
+  env: ToolEnvironment,
+  around: { chunk_id: string; read?: PartReadKind | undefined; n?: number | undefined },
+  maxContentLength: number | undefined,
+): Promise<ToolOutcome> => {
+  const { workspace, retrieval, signal } = env;
+  const budget = workspace.budget();
+  if (!retrieval.readParts)
+    return {
+      content:
+        'This collection cannot read around a hit. Read by chunk_ids, or by doc_num and chunk_range.',
+    };
+  const id = around.chunk_id;
+  const kind = around.read ?? 'units';
+  const n = around.n ?? 1;
+  // Page headings take a little of the room the remaining read budget leaves.
+  const chars = Math.min(
+    maxAroundChars,
+    maxContentLength ?? maxAroundChars,
+    Math.floor(budget.readCharsRemaining * 0.9),
+  );
+  if (chars < 1) return { content: readBudgetTooSmallMessage(budget) };
+  let hit: Chunk | undefined;
+  let found: PartsAround;
+  try {
+    [hit] = await retrieval.read([id], signal);
+    found = await retrieval.readParts(id, kind, n, chars, signal);
+  } catch (error) {
+    if (signal.aborted) throw error;
+    return {
+      content: `Error executing read_chunks: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+  if (!hit || found.parts.length === 0)
+    return {
+      content: found?.cut
+        ? readBudgetTooSmallMessage(budget)
+        : `There is nothing to read around chunk ${JSON.stringify(id)}: its document is read by chunk, not by its parts, or it is gone. Read it by doc_num and chunk_range instead.`,
+    };
+  const units = found.parts.flatMap((p) => p.regions.map((r) => r.unit));
+  const content = aroundText(found);
+  const chunk: Chunk = {
+    ...hit,
+    content,
+    contentLength: content.length,
+    page: Math.min(...units),
+    pageEnd: Math.max(...units),
+  };
+  const { kept, consumed } = trimChunksToBudget([chunk], budget.readCharsRemaining);
+  if (kept.length === 0) return { content: readBudgetTooSmallMessage(budget) };
+  storeRead(env, { chunkIds: [id] }, kept);
+  const cutNote = found.cut
+    ? `The ${kind} read around ${id} was cut at the read's limit of ${chars} characters, on a part boundary. Read again with a smaller n to see less, or by chunk_ids to see a later part.`
+    : undefined;
+  return {
+    content: formatReadResult(kept, consumed, workspace.readCharsUsed, cutNote),
+    read: { chunks: retrievalHits(kept), request: { chunkIds: [id] } },
+  };
+};
+
 const read = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> => {
   const { workspace, retrieval, signal } = env;
   const budget = workspace.budget();
@@ -801,6 +892,14 @@ const read = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> =>
     return { content: readBudgetExhaustedMessage(budget) };
   const args = readArgs.safeParse(raw);
   if (!args.success) return { content: 'Invalid read_chunks arguments.' };
+  if (args.data.around)
+    return readAround(
+      env,
+      args.data.around,
+      args.data.max_content_length && args.data.max_content_length > 0
+        ? args.data.max_content_length
+        : undefined,
+    );
   const { chunk_ids: chunkIds, chunk_range: chunkRange } = args.data;
   const maxContentLength =
     args.data.max_content_length && args.data.max_content_length > 0

@@ -50,6 +50,10 @@ const stub = (fail?: Error) => {
         other.push(`range:${document}:${from}-${to}`);
         return [];
       },
+      parts: async (_d, chunkId, read) => {
+        other.push(`parts:${chunkId}:${read}`);
+        return { parts: [], units: [], cut: false };
+      },
       facets: async (_d, fields) => {
         other.push(`facets:${fields.join(',')}`);
         return Object.fromEntries(fields.map((f) => [f, [{ value: 'Digdir', count: 3 }]]));
@@ -457,6 +461,7 @@ describe('knowledge capabilities', () => {
     for (const call of [
       () => port.fetch(['c1']),
       () => port.range('d1', 0, 1),
+      () => port.parts?.('c1', 'units', 1, 1000),
       () => port.facets(['type']),
       () => port.search({ query: 'x', filters: { published: { gte: '2024' } } }),
       () => port.search({ query: 'x', filters: { type: ['Årsrapport'] } }),
@@ -464,6 +469,15 @@ describe('knowledge capabilities', () => {
       await expect(call()).rejects.toMatchObject({ code: 'unsupported' });
     await port.search({ query: 'x', filters: { archived: true } });
     expect(searches).toHaveLength(1);
+    expect(other).toEqual([]);
+  });
+
+  it('a read around a hit is unsupported on an engine that declares no capabilities, as before parts', async () => {
+    const { adapter, other } = stub();
+    const port = kudos(router(adapter));
+    await expect(port.parts?.('c1', 'units', 1, 1000)).rejects.toMatchObject({
+      code: 'unsupported',
+    });
     expect(other).toEqual([]);
   });
 });

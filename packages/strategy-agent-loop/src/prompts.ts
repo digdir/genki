@@ -1,4 +1,5 @@
 import type { ToolSpec } from '@genai/port-model';
+import { maxAround, partReadKinds } from './workspace.js';
 
 export const promptSectionIds = ['role', 'reasoning', 'workflow', 'gate'] as const;
 export type PromptSectionId = (typeof promptSectionIds)[number];
@@ -196,15 +197,58 @@ export const agentTools: ToolSpec[] = [
   },
 ];
 
-/** The tools as a service that cites excerpts or documents is shown them: the page rule differs. */
-export const agentToolsFor = (citeBy: 'document' | 'excerpt' = 'document'): ToolSpec[] =>
-  citeBy === 'excerpt'
-    ? agentTools.map((t) =>
-        t.description?.includes(documentPageCite)
-          ? { ...t, description: t.description.replace(documentPageCite, excerptPageCite) }
-          : t,
-      )
-    : agentTools;
+/** `read_chunks`'s `around`, offered only where the dataset's engine reads parts (ADR 0055). */
+const aroundParameter = {
+  type: 'object',
+  properties: {
+    chunk_id: { type: 'string', description: 'The chunk_id of the hit to read around' },
+    read: {
+      type: 'string',
+      enum: [...partReadKinds],
+      description:
+        'units (default): the pages holding the hit and n pages on each side. neighbours: the hit and the n paragraphs, headings or tables before and after it. section: the section the hit is in, from its heading to the next.',
+    },
+    n: {
+      type: 'integer',
+      minimum: 0,
+      maximum: maxAround,
+      description: 'Pages or parts on each side, 0 to 5. Defaults to 1.',
+    },
+  },
+  required: ['chunk_id'],
+  description:
+    'Read the document around a hit, following its pages and headings rather than its chunks: use it to see what comes just before or after a hit. Each page starts with a line page=N, N being the page to cite. Use it instead of chunk_ids and doc_num; max_content_length then limits the whole read.',
+};
+
+const withAround = (tool: ToolSpec): ToolSpec =>
+  tool.name === 'read_chunks'
+    ? {
+        ...tool,
+        parameters: {
+          ...tool.parameters,
+          properties: {
+            ...(tool.parameters.properties as Record<string, unknown>),
+            around: aroundParameter,
+          },
+        },
+      }
+    : tool;
+
+/**
+ * The tools as a service is shown them: the page rule differs for a service that cites excerpts,
+ * and `read_chunks` reads around a hit only where the dataset can (`around`).
+ */
+export const agentToolsFor = (
+  citeBy: 'document' | 'excerpt' = 'document',
+  options: { around?: boolean } = {},
+): ToolSpec[] =>
+  agentTools
+    .map((t) =>
+      citeBy === 'excerpt' && t.description?.includes(documentPageCite)
+        ? { ...t, description: t.description.replace(documentPageCite, excerptPageCite) }
+        : t,
+    )
+    .map((t) => (options.around ? withAround(t) : t));
 
 /** Shown with excerpts whose sentences carry ids (#971). */
 export const sentenceRule =

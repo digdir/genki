@@ -12,6 +12,8 @@ import type {
   FilterValueType,
   Hit,
   KnowledgeCapability,
+  PartRead,
+  PartsRead,
   Residency,
   SearchRequest,
   SearchResult,
@@ -70,6 +72,14 @@ export interface KnowledgeConnection<D = unknown> {
     to: number,
     signal: AbortSignal,
   ): Promise<Hit[]>;
+  parts?(
+    dataset: DatasetConfig<D>,
+    chunkId: string,
+    read: PartRead,
+    n: number,
+    budget: number,
+    signal: AbortSignal,
+  ): Promise<PartsRead>;
   facets(
     dataset: DatasetConfig<D>,
     fields: string[],
