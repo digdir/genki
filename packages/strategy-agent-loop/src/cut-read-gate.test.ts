@@ -89,6 +89,14 @@ const readThenLeftOut: Script['loop'] = [
   () => result('Ferdig.'),
 ];
 
+// The turn after the cut read searches, so only the gate can ask for the left-out part.
+const readThenSearch: Script['loop'] = [
+  () => result('', [call('search', { queries: ['Tromsø kommune KI rapport'] })]),
+  () => result('', [call('read_chunks', { doc_num: 'dA', chunk_range: { from: 0, to: 16 } })]),
+  () => result('', [call('search', { queries: ['Tromsø KI evaluering'] })]),
+  () => result('Ferdig.'),
+];
+
 const ranges = (r: ReturnType<typeof retrieval>) =>
   r.calls.filter((c) => c.op === 'range').map((c) => c.args);
 
@@ -196,18 +204,16 @@ describe('the read check after a cut read', () => {
     expect(shadowGates(out)[0]).toMatchObject({ status: 'sufficient', strategy: 'finalize' });
   });
 
-  it('a cut read with two rounds left reads the rest', async () => {
+  it('a cut read with two rounds left does not finalize', async () => {
     const r = searching(case014(1.78));
-    await run({
+    const out = await run({
       retrieval: r.impl,
       config: { ...withBudget({}), strategy: { ...withBudget({}).strategy, maxIterations: 5 } },
-      scripts: { primary: { loop: readThenLeftOut, read: [supportFound] } },
+      scripts: { primary: { loop: readThenSearch, read: [supportFound] } },
     });
 
-    expect(ranges(r)).toEqual([
-      ['dA', 0, 9],
-      ['dA', 10, 16],
-    ]);
+    expect(ranges(r)).toEqual([['dA', 0, 9]]);
+    expect(shadowGates(out).filter((g) => g.status === 'sufficient')).toEqual([]);
   });
 
   it('a read-more hint after a read check that found a gap in a cut read does not name the left-out range', async () => {
@@ -245,6 +251,7 @@ describe('the read check after a cut read', () => {
           loop: [
             readThenLeftOut[0] as Script['loop'][number],
             readThenLeftOut[1] as Script['loop'][number],
+            () => result('', [call('search', { queries: ['Tromsø KI årsaker'] })]),
             () => result('Jeg fant ikke årsakene i rapporten.'),
           ],
           read: [supportFound],

@@ -3,7 +3,6 @@ import {
   baseConfig,
   call,
   chunk,
-  decision,
   readSignal,
   result,
   retrieval,
@@ -174,7 +173,6 @@ describe('range reads', () => {
             () => result('Ferdig.'),
           ],
           read: [() => readSignal('gap-remaining')],
-          sufficiency: [() => decision('insufficient', 're-search')],
         },
       },
     });

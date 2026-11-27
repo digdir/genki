@@ -47,7 +47,10 @@ describe('synthesis context selection', () => {
               () => result('', [call('search', { queries: ['AI Act'] })]),
               () => result('', [call('read_chunks', { chunk_ids: earlier.map((c) => c.chunkId) })]),
               () => result('', [call('read_chunks', { chunk_ids: [decisive.chunkId] })]),
-              () => result('', [call('generate_response', { query: 'AI Act' })]),
+              () =>
+                finalizer === 'agent'
+                  ? result('', [call('generate_response', { query: 'AI Act' })])
+                  : result('', [call('search', { queries: ['AI Act artikkel'] })]),
             ],
             read: [unsure, finalizer === 'sufficiency gate' ? allSupported : unsure],
             synth: [() => 'Svar [1].'],

@@ -1,17 +1,43 @@
 import { describe, expect, it } from 'vitest';
-import { call, decision, readSignal, result, run } from './harness.test-utils.js';
+import { ModelError } from '@genai/port-model';
+import {
+  allSupported,
+  baseConfig,
+  call,
+  decision,
+  readSignal,
+  result,
+  run,
+  toolMessages,
+} from './harness.test-utils.js';
 
-// A read check that answers only after the test has seen the given number of model turns.
-const slowCheck = (log: string[], status: string) => async () => {
+const latch = () => {
+  let open: () => void = () => undefined;
+  const opened = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { open, opened };
+};
+
+// Waits for the latch, or gives up after a second, so a loop that waits for the check
+// before opening the latch logs the check as done first instead of hanging.
+const until = (opened: Promise<void>) =>
+  Promise.race([opened, new Promise((resolve) => setTimeout(resolve, 1000))]);
+
+// A read check that answers only once the test opens its latch.
+const heldCheck = (log: string[], status: string, held: Promise<void>) => async () => {
   log.push('check started');
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await until(held);
   log.push('check done');
   return readSignal(status);
 };
 
+const hintFor = (doc: string) => `came from doc_num="${doc}"`;
+
 describe('the read check runs alongside the next turn', () => {
   it("starts the model's next turn before the read check of the turn before is done", async () => {
     const log: string[] = [];
+    const next = latch();
     await run({
       scripts: {
         primary: {
@@ -20,11 +46,12 @@ describe('the read check runs alongside the next turn', () => {
             () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
             () => {
               log.push('next turn');
+              next.open();
               return result('', [call('search', { queries: ['y'] })]);
             },
             () => result('Ferdig.'),
           ],
-          read: [slowCheck(log, 'support-found')],
+          read: [heldCheck(log, 'support-found', next.opened)],
           sufficiency: [() => decision('insufficient', 're-search')],
         },
       },
@@ -35,17 +62,21 @@ describe('the read check runs alongside the next turn', () => {
 
   it('a gap the read check finds still stops the answer written on the turn after', async () => {
     const log: string[] = [];
+    const next = latch();
     const out = await run({
       scripts: {
         primary: {
           loop: [
             () => result('', [call('search', { queries: ['x'] })]),
             () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
-            () => result('', [call('generate_response', { query: 'x' })]),
+            () => {
+              next.open();
+              return result('', [call('generate_response', { query: 'x' })]);
+            },
             () => result('', [call('search', { queries: ['y'] })]),
             () => result('Ferdig.'),
           ],
-          read: [slowCheck(log, 'gap-remaining')],
+          read: [heldCheck(log, 'gap-remaining', next.opened)],
           sufficiency: [() => decision('insufficient', 're-search')],
           synth: [() => 'Utkast [1].'],
         },
@@ -64,6 +95,32 @@ describe('the read check runs alongside the next turn', () => {
       out.notices.find((n) => n.stage === 'gate' && n.status === 'sufficient'),
     ).toBeUndefined();
     expect(out.text).not.toBe('Utkast [1].');
+  });
+
+  it('an answer written in the turn that reads is judged on that read check', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () =>
+              result('', [
+                call('read_chunks', { chunk_ids: ['c1'] }),
+                call('generate_response', { query: 'x' }),
+              ]),
+            () => result('Ferdig.'),
+          ],
+          // An answer check that rejects the draft if it is asked instead of the read check.
+          sufficiency: [() => decision('insufficient', 're-search')],
+          synth: [() => 'Utkast [1].'],
+        },
+      },
+    });
+
+    expect(out.notices.filter((n) => n.stage === 'gate')).toEqual([
+      expect.objectContaining({ source: 'shadow-read-signals', status: 'sufficient' }),
+    ]);
+    expect(out.text).toBe('Utkast [1].');
   });
 
   it('the turn that first reads a chunk gives no gate verdict before its check is in', async () => {
@@ -88,22 +145,194 @@ describe('the read check runs alongside the next turn', () => {
     expect(out.loops).toHaveLength(3);
   });
 
-  it('a read check still running when the model answers is applied before the run ends', async () => {
+  it('the sufficiency gate is not asked about reads whose check is still running', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c2', 'c3'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c4', 'c5'] })]),
+            () => result('', [call('search', { queries: ['y'] })]),
+            () => result('Ferdig.'),
+          ],
+          read: [() => readSignal('gap-remaining')],
+          sufficiency: [() => decision('sufficient', 'finalize')],
+        },
+      },
+    });
+
+    expect(out.notices.filter((n) => n.stage === 'gate')).not.toContainEqual(
+      expect.objectContaining({ source: 'llm-sufficiency-gate', status: 'sufficient' }),
+    );
+  });
+
+  it('a read that leaves at most one search and no reads gets its check in its own turn', async () => {
+    const out = await run({
+      config: {
+        ...baseConfig,
+        strategy: { budget: { searches: 2, reads: 1, readChars: 12000 } },
+      },
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result('', [call('search', { queries: ['y'] })]),
+            () => result('Ferdig fra modellen.'),
+          ],
+          synth: [() => 'Svar [1].'],
+        },
+      },
+    });
+
+    expect(out.loops).toHaveLength(2);
+    expect(out.text).toBe('Svar [1].');
+  });
+
+  it("a forced answer does not wait for the check of its own turn's reads", async () => {
     const log: string[] = [];
+    const answered = latch();
     const out = await run({
       scripts: {
         primary: {
           loop: [
             () => result('', [call('search', { queries: ['x'] })]),
             () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
-            () => result('Ferdig.'),
+            () => result('', [call('read_chunks', { chunk_ids: ['c2'] })]),
           ],
-          read: [slowCheck(log, 'support-found')],
+          read: [allSupported, heldCheck(log, 'support-found', answered.opened)],
+          synth: [
+            () => {
+              log.push('answer written');
+              answered.open();
+              return 'Svar [1].';
+            },
+          ],
+        },
+      },
+    });
+
+    expect(log).toEqual(['check started', 'answer written', 'check done']);
+    expect(out.notices.filter((n) => n.stage === 'read-signal')).toHaveLength(2);
+  });
+
+  it('a read check still running when the model answers is applied before the run ends', async () => {
+    const log: string[] = [];
+    const next = latch();
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => {
+              next.open();
+              return result('Ferdig.');
+            },
+          ],
+          read: [heldCheck(log, 'support-found', next.opened)],
         },
       },
     });
 
     expect(out.notices.filter((n) => n.stage === 'read-signal')).toHaveLength(1);
     expect(log).toEqual(['check started', 'check done']);
+  });
+
+  it('a rate limit on the read check does not fail the model turn running alongside it', async () => {
+    const turn = latch();
+    const checkFailed = latch();
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            async () => {
+              turn.open();
+              await checkFailed.opened;
+              await new Promise((resolve) => setImmediate(resolve));
+              throw new ModelError('rate_limited', 'slow down');
+            },
+          ],
+          read: [
+            async () => {
+              await turn.opened;
+              checkFailed.open();
+              throw new ModelError('rate_limited', 'slow down');
+            },
+          ],
+        },
+        fallback: { loop: [() => result('Ferdig.')] },
+      },
+    });
+
+    expect(out.task.status).toBe('completed');
+    expect(out.text).toBe('Ferdig.');
+  });
+});
+
+describe('the range-read hint after a read check', () => {
+  it('names the read the check reported the gap on', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c2'] })]),
+            () => result('Ferdig.'),
+          ],
+          read: [() => readSignal('gap-remaining'), () => readSignal('support-found')],
+        },
+      },
+    });
+
+    const hints = toolMessages(out.loops[3]).join('\n');
+    expect(hints).toContain(hintFor('d1'));
+    expect(hints).not.toContain(hintFor('d2'));
+  });
+
+  it('comes on the last result of the turn after when that turn read nothing', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () =>
+              result('', [call('search', { queries: ['y'] }), call('search', { queries: ['z'] })]),
+            () => result('Ferdig.'),
+          ],
+          read: [() => readSignal('gap-remaining')],
+          sufficiency: [() => decision('insufficient', 're-search')],
+        },
+      },
+    });
+
+    const [, , first, last] = toolMessages(out.loops[3]);
+    expect(first).not.toContain(hintFor('d1'));
+    expect(last).toContain(hintFor('d1'));
+  });
+
+  it('never goes on a written answer', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result('', [call('generate_response', { query: 'x' })]),
+            () => result('Ferdig.'),
+          ],
+          read: [() => readSignal('gap-remaining')],
+          sufficiency: [() => decision('insufficient', 're-search')],
+          synth: [() => 'Utkast [1].'],
+        },
+      },
+    });
+
+    expect(toolMessages(out.loops[3]).at(-1)).not.toContain(hintFor('d1'));
   });
 });
