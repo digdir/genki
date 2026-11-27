@@ -242,6 +242,7 @@ describe('read functions on the knowledge server', () => {
       `select * from kn_search($1, $2, 'chunks', 'text', 'lønn', null, null, '[]', 5, 50, 60)`,
       `select * from kn_fetch($1, $2, array['a#0'])`,
       `select * from kn_range($1, $2, 'a', 0, 1)`,
+      `select * from kn_parts($1, $2, 'a', 'units', 1, 1000)`,
       `select * from kn_facets($1, $2, array['type'], '[]')`,
       `select * from kn_documents($1, $2, null, '[]', 10, 0)`,
       `select * from kn_resolve_citation($1, $2, array['a'], array['hash-a'])`,

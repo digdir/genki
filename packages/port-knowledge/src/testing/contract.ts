@@ -348,6 +348,10 @@ export const knowledgeAdapterContract = (
         expect(seqs(await around(partsCases.section))).toEqual(partsCases.section.seqs);
       });
 
+      it('a section read holds every part of a hit that runs past the next heading', async () => {
+        expect(seqs(await around(partsCases.sectionAcross))).toEqual(partsCases.sectionAcross.seqs);
+      });
+
       it('a units read returns the pages around the hit with the labels a reader cites them by', async () => {
         const read = await around(partsCases.units);
         expect(seqs(read)).toEqual(partsCases.units.seqs);
@@ -384,6 +388,22 @@ export const knowledgeAdapterContract = (
         expect(none).toMatchObject({ parts: [], cut: true });
       });
 
+      it('a read over its budget keeps the hit and the parts nearest it', async () => {
+        // The hit on page 4 is the last part of its section, so a read counted from the
+        // section's start would spend the budget before it.
+        const whole = await around(partsCases.section);
+        const hit = whole.parts.find((p) => p.seq === 7);
+        const table = whole.parts.find((p) => p.seq === 5);
+        if (!hit || !table) throw new Error('the section read lost its hit or its table');
+        const length = (text: string) => [...text].length;
+        const onlyHit = await around(partsCases.section, length(hit.text) + 1);
+        expect(seqs(onlyHit)).toEqual([7]);
+        expect(onlyHit.cut).toBe(true);
+        const nearest = await around(partsCases.section, length(hit.text) + length(table.text));
+        expect(seqs(nearest)).toEqual([5, 7]);
+        expect(nearest.cut).toBe(true);
+      });
+
       it('a chunk made from pages has no parts to read', async () => {
         for (const read of partReads)
           expect(await around({ ...partsCases.pages, read, n: 5 })).toEqual({
@@ -394,8 +414,13 @@ export const knowledgeAdapterContract = (
         expect((await around({ chunk: 'finnes-ikke' })).parts).toEqual([]);
       });
 
-      it('a read around a hit refuses an unknown read, n over the limit and a budget over the limit', async () => {
+      it('a read around a hit refuses an unknown read, n or a budget out of bounds, and no chunk', async () => {
         const read = partsCases.units;
+        await expect(around({ ...read, n: -1 })).rejects.toMatchObject({ code: 'bad_request' });
+        await expect(around(read, 0)).rejects.toMatchObject({ code: 'bad_request' });
+        await expect(around({ ...read, chunk: '' })).rejects.toMatchObject({
+          code: 'bad_request',
+        });
         await expect(around({ ...read, read: 'all' as PartRead })).rejects.toMatchObject({
           code: 'bad_request',
         });

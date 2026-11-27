@@ -117,11 +117,12 @@ export const combineKnowledge = (ports: Record<string, KnowledgePort>): Knowledg
     info,
     ...(anyParts
       ? {
-          // A dataset without parts answers a read around its hit with none.
+          // A dataset that does not declare parts answers a read around its hit with none.
           parts: async (chunkId: string, read: PartRead, n: number, budget: number) => {
             const tagged = untag(chunkId);
             const port = tagged ? ports[tagged[0]] : undefined;
-            if (!tagged || !port?.parts) return { parts: [], units: [], cut: false };
+            if (!tagged || !port?.parts || !capabilitiesOf(port.info()).includes('parts'))
+              return { parts: [], units: [], cut: false };
             return port.parts(tagged[1], read, n, budget);
           },
         }

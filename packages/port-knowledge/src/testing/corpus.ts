@@ -385,6 +385,13 @@ export const partsCases = {
   neighbours: { chunk: 'havn-rapport-5', read: 'neighbours', n: 2, seqs: [5, 7, 8, 9, 10, 12, 13] },
   /** The hit on page 4 is in the section «Bakgrunn», which starts on page 2. */
   section: { chunk: 'havn-rapport-4', read: 'section', n: 0, seqs: [3, 4, 5, 7] },
+  /** The hit on page 6 starts in «Funn» and runs into «Slutt»: the read holds both, to the file's end. */
+  sectionAcross: {
+    chunk: 'havn-rapport-6',
+    read: 'section',
+    n: 0,
+    seqs: [8, 9, 10, 12, 13, 14],
+  },
   /** The pages around page 5, and the labels of the pages they cover. */
   units: {
     chunk: 'havn-rapport-5',

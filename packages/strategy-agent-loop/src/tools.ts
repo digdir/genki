@@ -806,7 +806,10 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
   };
 };
 
-/** The read's parts in order, each run headed by the page it starts on: its label, else its number. */
+/**
+ * The read's parts in order, each run headed by the PDF page it starts on, the page a citation
+ * names, with the page number printed on it beside it when it has one (ADR 0055).
+ */
 const aroundText = (read: PartsAround) => {
   const labels = new Map(read.units.map((u) => [u.unit, u.label]));
   const blocks: string[] = [];
@@ -815,15 +818,20 @@ const aroundText = (read: PartsAround) => {
     const unit = part.regions[0]?.unit;
     if (unit !== undefined && unit !== page) {
       page = unit;
-      blocks.push(`--- page=${labels.get(unit) ?? unit} ---\n${part.text}`);
+      const label = labels.get(unit);
+      const printed = label && label !== String(unit) ? ` label=${JSON.stringify(label)}` : '';
+      blocks.push(`--- page=${unit}${printed} ---\n${part.text}`);
     } else blocks.push(part.text);
   }
   return blocks.join('\n\n');
 };
 
+const codePoints = (text: string) => [...text].length;
+
 /**
  * `read_chunks` with `around`: the parts before and after a hit, its section, or its pages, read
- * from the hit's file (ADR 0055). The read is stored as the hit's excerpt, so it can be cited.
+ * from the hit's file (ADR 0055). The read is stored as the hit's excerpt, without the page
+ * headings, so it can be cited; the excerpt's pages are the PDF pages its parts lie on.
  */
 const readAround = async (
   env: ToolEnvironment,
@@ -832,7 +840,8 @@ const readAround = async (
 ): Promise<ToolOutcome> => {
   const { workspace, retrieval, signal } = env;
   const budget = workspace.budget();
-  if (!retrieval.readParts)
+  const readParts = retrieval.readParts?.bind(retrieval);
+  if (!readParts)
     return {
       content:
         'This collection cannot read around a hit. Read by chunk_ids, or by doc_num and chunk_range.',
@@ -840,18 +849,32 @@ const readAround = async (
   const id = around.chunk_id;
   const kind = around.read ?? 'units';
   const n = around.n ?? 1;
-  // Page headings take a little of the room the remaining read budget leaves.
-  const chars = Math.min(
+  const limit = Math.min(
     maxAroundChars,
     maxContentLength ?? maxAroundChars,
-    Math.floor(budget.readCharsRemaining * 0.9),
+    budget.readCharsRemaining,
   );
-  if (chars < 1) return { content: readBudgetTooSmallMessage(budget) };
+  if (limit < 1) return { content: readBudgetTooSmallMessage(budget) };
   let hit: Chunk | undefined;
   let found: PartsAround;
+  let shown: string;
   try {
     [hit] = await retrieval.read([id], signal);
-    found = await retrieval.readParts(id, kind, n, chars, signal);
+    // The page headings count against the limit too: read again with less until they fit.
+    let ask = limit;
+    for (let tries = 0; ; tries += 1) {
+      found = await readParts(id, kind, n, ask, signal);
+      shown = aroundText(found);
+      if (shown.length <= limit || found.parts.length === 0) break;
+      // Less by what the text ran over, or at least by one part when the headings were most of it.
+      const text = found.parts.reduce((sum, p) => sum + codePoints(p.text), 0);
+      const less = text - (shown.length - limit);
+      ask = less >= 1 ? less : text - 1;
+      if (ask < 1 || tries === 7) {
+        found = { ...found, parts: [], cut: true };
+        break;
+      }
+    }
   } catch (error) {
     if (signal.aborted) throw error;
     return {
@@ -860,28 +883,28 @@ const readAround = async (
   }
   if (!hit || found.parts.length === 0)
     return {
-      content: found?.cut
+      content: found.cut
         ? readBudgetTooSmallMessage(budget)
         : `There is nothing to read around chunk ${JSON.stringify(id)}: its document is read by chunk, not by its parts, or it is gone. Read it by doc_num and chunk_range instead.`,
     };
   const units = found.parts.flatMap((p) => p.regions.map((r) => r.unit));
-  const content = aroundText(found);
-  const chunk: Chunk = {
-    ...hit,
-    content,
-    contentLength: content.length,
-    page: Math.min(...units),
-    pageEnd: Math.max(...units),
-  };
-  const { kept, consumed } = trimChunksToBudget([chunk], budget.readCharsRemaining);
+  // Parts with no region keep the hit's own pages, which the read always holds.
+  const pages = units.length ? { page: Math.min(...units), pageEnd: Math.max(...units) } : {};
+  const excerpt = found.parts.map((p) => p.text).join('\n\n');
+  const stored: Chunk = { ...hit, ...pages, content: excerpt, contentLength: excerpt.length };
+  const display: Chunk = { ...stored, content: shown, contentLength: shown.length };
+  const { kept, consumed } = trimChunksToBudget([display], budget.readCharsRemaining);
   if (kept.length === 0) return { content: readBudgetTooSmallMessage(budget) };
-  storeRead(env, { chunkIds: [id] }, kept);
+  storeRead(env, { chunkIds: [id] }, [stored]);
   const cutNote = found.cut
-    ? `The ${kind} read around ${id} was cut at the read's limit of ${chars} characters, on a part boundary. Read again with a smaller n to see less, or by chunk_ids to see a later part.`
+    ? `The ${kind} read around ${id} was cut at the read's limit of ${limit} characters, on a part boundary; it keeps the parts nearest the hit. ` +
+      (kind === 'section'
+        ? 'Read units or neighbours with a small n to see less.'
+        : 'Read again with a smaller n to see less.')
     : undefined;
   return {
     content: formatReadResult(kept, consumed, workspace.readCharsUsed, cutNote),
-    read: { chunks: retrievalHits(kept), request: { chunkIds: [id] } },
+    read: { chunks: retrievalHits([stored]), request: { chunkIds: [id] } },
   };
 };
 

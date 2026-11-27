@@ -217,7 +217,7 @@ const aroundParameter = {
   },
   required: ['chunk_id'],
   description:
-    'Read the document around a hit, following its pages and headings rather than its chunks: use it to see what comes just before or after a hit. Each page starts with a line page=N, N being the page to cite. Use it instead of chunk_ids and doc_num; max_content_length then limits the whole read.',
+    'Read the document around a hit, following its pages and headings rather than its chunks: use it to see what comes just before or after a hit. Each page starts with a line page=N, N being its PDF page and the page to cite; label="…" beside it is the page number printed on the page, when it has one. Use it instead of chunk_ids and doc_num; max_content_length then limits the whole read.',
 };
 
 const withAround = (tool: ToolSpec): ToolSpec =>

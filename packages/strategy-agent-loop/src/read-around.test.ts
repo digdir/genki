@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  baseConfig,
   call,
   chunk,
   readSignal,
@@ -43,6 +44,7 @@ const readAround = (
     calls: fake.calls,
     out: run({
       retrieval: fake.impl,
+      config: { ...baseConfig, strategy: { ...baseConfig.strategy, sources: 'read' } },
       scripts: {
         primary: {
           loop: [
@@ -67,13 +69,31 @@ describe('read_chunks around a hit', () => {
     const text = toolMessages((await out).loops[2])[1] ?? '';
 
     expect(asked).toEqual([{ chunkId: 'c1', read: 'units', n: 1, budget: expect.any(Number) }]);
-    // Each run of parts is headed by the page it starts on: its printed label, else its number.
-    const pages = [...text.matchAll(/^--- page=(\S+) ---$/gm)].map((m) => m[1]);
-    expect(pages).toEqual(['3', '6', '7', '8']);
-    expect(text).toContain('--- page=3 ---\n| kai | meter |\n\n--- page=6 ---\nEtter tabellen');
-    expect(text).toContain('--- page=7 ---\nFunn\n\nFørste funn om fartøy.\n\n--- page=8 ---');
-    expect(text).toContain('--- page=8 ---\nTredje funn om fortøyning.');
-    expect(text).toMatch(/chunk_id=c1 doc_num=d1/);
+    // Each run of parts is headed by the PDF page it starts on, with its printed label beside it.
+    const pages = [...text.matchAll(/^--- page=(\d+)(?: label="(\S+)")? ---$/gm)].map((m) =>
+      m.slice(1),
+    );
+    expect(pages).toEqual([
+      ['3', undefined],
+      ['4', '6'],
+      ['5', '7'],
+      ['6', '8'],
+    ]);
+    expect(text).toContain(
+      '--- page=3 ---\n| kai | meter |\n\n--- page=4 label="6" ---\nEtter tabellen',
+    );
+    expect(text).toContain(
+      '--- page=5 label="7" ---\nFunn\n\nFørste funn om fartøy.\n\n--- page=6 label="8" ---',
+    );
+    expect(text).toMatch(/chunk_id=c1 doc_num=d1 chunk_index=0 pages=3-6/);
+  });
+
+  it('a read around a hit is cited by the PDF pages its headings name, and its excerpt has no headings', async () => {
+    const { out } = readAround(async () => around);
+    const source = (await out).sources.find((s) => s.chunkId === 'c1');
+    expect(source).toMatchObject({ page: 3, pageEnd: 6 });
+    expect(source?.text).toBe(around.parts.map((p) => p.text).join('\n\n'));
+    expect(source?.text).not.toMatch(/page=/);
   });
 
   it('a read around a hit keeps the text within max_content_length and says it was cut', async () => {
@@ -81,12 +101,18 @@ describe('read_chunks around a hit', () => {
     const { out } = readAround(
       async (_c, _r, _n, budget) => {
         asked.push(budget);
-        return { ...around, parts: around.parts.slice(0, 2), cut: true };
+        // As the reader does: the parts nearest the hit, in order, while their text fits.
+        let total = 0;
+        const parts = around.parts.filter((p) => (total += [...p.text].length) <= budget);
+        return { ...around, parts, cut: parts.length < around.parts.length };
       },
       { around: { chunk_id: 'c1', read: 'neighbours', n: 5 }, max_content_length: 60 },
     );
     const text = toolMessages((await out).loops[2])[1] ?? '';
-    expect(asked).toEqual([60]);
+    const content = text.slice(text.indexOf('---\n') + 4, text.indexOf('\n</untrusted_data>'));
+    expect(asked[0]).toBe(60);
+    expect(content.length).toBeGreaterThan(0);
+    expect(content.length).toBeLessThanOrEqual(60);
     expect(text).toMatch(/cut at the read's limit/);
   });
 

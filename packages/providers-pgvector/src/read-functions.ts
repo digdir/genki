@@ -336,8 +336,9 @@ const createFunctions = (filtered: FilteredSearch) => [
          ${docJoin('c')}, ds, g, p_document, p_from, p_to);
      end $$`,
   // The parts around a hit (ADR 0055, "Chunks and reads"), from the chunk row in the generation's
-  // partition: its conversion is never named by the caller. Only body parts, in reading order, until
-  // their text passes the budget; readPartsAround in @genai/port-knowledge states the same reads.
+  // partition: its conversion is never named by the caller. Only body parts, in reading order; the
+  // budget is spent from the hit outwards (side -1 before it, 0 in it, 1 after it, then by nearness),
+  // so a cut read keeps the hit. readPartsAround in @genai/port-knowledge states the same reads.
   `create or replace function kn_parts_sql(p_dataset text, p_generation text, p_chunk_id text, p_read text, p_n integer, p_budget integer)
      returns text language plpgsql stable set search_path = pg_catalog, public as $$
      declare
@@ -366,7 +367,7 @@ const createFunctions = (filtered: FilteredSearch) => [
          when 'section' then
            'select b.* from body b, hit
              where b.seq >= coalesce((select max(h.seq) from body h where h.heading and h.seq <= hit.seq_from), -1)
-               and b.seq < coalesce((select min(h.seq) from body h where h.heading and h.seq > hit.seq_from), 2147483647)'
+               and b.seq < coalesce((select min(h.seq) from body h where h.heading and h.seq > hit.seq_to), 2147483647)'
          when 'units' then
            'select b.* from body b, span
              where exists (select 1 from jsonb_array_elements(b.x->''regions'') r
@@ -394,9 +395,18 @@ const createFunctions = (filtered: FilteredSearch) => [
                from rows cross join lateral jsonb_array_elements(rows.parts) x
               where x->>''layer'' = ''body''),
            chosen as (%6$s),
+           sided as (
+             select c.seq, c.x,
+                    case when c.seq < hit.seq_from then -1 when c.seq > hit.seq_to then 1 else 0 end as side
+               from chosen c, hit),
+           ranked as (
+             select s.seq, s.x, case when s.side = 0 then 0 else
+                      row_number() over (partition by s.side order by s.side * s.seq) end as near
+               from sided s),
            totalled as (
-             select c.seq, c.x, sum(char_length(coalesce(c.x->>''text'', ''''))) over (order by c.seq) as total
-               from chosen c)
+             select r.seq, r.x,
+                    sum(char_length(coalesce(r.x->>''text'', ''''))) over (order by r.near, r.seq) as total
+               from ranked r)
          select t.seq, t.x->>''kind'', (t.x->>''level'')::int, coalesce(t.x->''headingPath'', ''[]''),
                 coalesce(t.x->>''text'', ''''), (t.x->>''start'')::int, (t.x->>''end'')::int,
                 coalesce(t.x->''regions'', ''[]''),
