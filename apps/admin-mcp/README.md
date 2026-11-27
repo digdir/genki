@@ -145,7 +145,7 @@ Flags are on only for the exact value `true`.
 | `list_models`          | The models the organisation can choose, whether it may use them, where data is processed and the price per 1,000 tokens                      | Reads       |
 | `search_dataset`       | Searches a dataset as a service run does, with filters, and shows the raw hits; no chat model call                                           | Reads       |
 | `validate_definition`  | Checks a definition without saving it and lists the fields that differ from the published version                                            | Reads       |
-| `publish_definition`   | Validates, then publishes the next version to the testutgave with a `reason` of at least 10 characters                                       | Writes      |
+| `publish_definition`   | Validates, then publishes the next version to the testutgave with a `reason` of at least 10 characters; `newService: true` for a new service | Writes      |
 | `run_playground`       | Runs a published version or an unsaved `yaml`, optionally next to a second setup in `compareWith`, and returns answer, sources, cost, time   | Costs money |
 | `list_runs`            | Recent service runs or playground runs (`origin`), filtered by `service` or `status`                                                         | Reads       |
 | `get_run`              | One run with its timeline, compact by default; `full: true` gives the steps as JSON; read steps name the chunks they read                    | Reads       |
@@ -194,7 +194,7 @@ Details worth knowing:
 
 1. `new_service_template` for a minimal valid definition.
 2. `list_models` and `describe_strategy` to choose a model and a strategy.
-3. Change `metadata.id`, `metadata.name` and `spec.purpose`, then validate, try and publish as above. A new service with `riskClass: minimal` can be published from the agent.
+3. Change `metadata.id`, `metadata.name` and `spec.purpose`, then validate, try and publish as above, with `newService: true`: a taken id, archived services included, is then refused instead of publishing that service's next version. A new service with `riskClass: minimal` can be published from the agent.
 
 ### Make a design element
 
