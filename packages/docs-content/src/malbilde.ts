@@ -72,7 +72,7 @@ export const malbilde = {
 
   platformTitle: 'Nasjonal fellesløsning for generativ KI',
   platformSubtitle: 'Standardiserte, modulære og gjenbrukbare byggeklosser',
-  infraText: 'En del av den nasjonale KI-infrastrukturen, i regi av Digdir.',
+  infraText: 'En del av den nasjonale KI-infrastrukturen.',
 
   /** De overordnede byggeklossene som er nye i Genki, i figurens rekkefølge. */
   newBlocks: ['kanaler', 'definisjoner', 'agent-runtime', 'rag', 'verktoy', 'evals', 'ki-gateway'],

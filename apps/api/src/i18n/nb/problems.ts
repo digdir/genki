@@ -193,6 +193,9 @@ export const problems = defineNamespace({
   status405: 'Metoden støttes ikke her',
   status409: 'Konflikt',
   serviceArchivedTitle: 'Tjenesten er arkivert',
+  serviceIdTakenTitle: 'Navnet er i bruk',
+  newServiceIdTaken:
+    'Tjenesten «{id}» finnes allerede, eventuelt arkivert. Gi den nye tjenesten et annet navn.',
   serviceNotArchivedTitle: 'Tjenesten er ikke arkivert',
   serviceInUseTitle: 'Tjenesten er i bruk',
   serviceUsedByFrontend: 'Frontenden {name} bruker tjenesten',
@@ -200,6 +203,7 @@ export const problems = defineNamespace({
   serviceUsedByService: 'Tjenesten {service} bruker tjenesten',
   serviceUsedByOthers: '{count} tjenester hos andre virksomheter bruker tjenesten',
   serviceUsedByInternal: '{count} interne tjenester bruker tjenesten',
+  serviceAddressNotRemoved: 'Adressen genki laget for tjenesten ble ikke fjernet. Prøv igjen.',
   serviceOutdatedTitle: 'Tjenesten bruker noe som ikke finnes lenger',
   hostNotFoundTitle: 'Ingen tjeneste på dette vertsnavnet',
   bffProxyRefused: 'Forespørselen kom ikke gjennom vertens mellomtjener',

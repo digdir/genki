@@ -4,7 +4,7 @@ import type { platformSecrets as source } from '../nb/platformSecrets';
 export const platformSecrets = {
   title: 'Platform secrets',
   intro:
-    "Keys and passwords the connections use, kept in the platform's secret store. Values are never shown, only whether each is set and when it last changed. Every change goes to the audit log with its reason.",
+    "Keys and passwords the connections use, kept in the platform's secret store. Values are never shown, only whether each is set and when it last changed. Every change goes to the log with its reason.",
   loading: 'Loading the secrets',
   add: 'New secret',
   tableLabel: 'Platform secrets',

@@ -4,7 +4,6 @@ import { useDocumentTitle } from '../document';
 import { useT } from '../i18n';
 
 const apps = [
-  ['localhost:5176', 'docsGetStarted.workspace', 'docsGetStarted.workspaceFor'],
   ['localhost:5173', 'docsGetStarted.portal', 'docsGetStarted.portalFor'],
   ['localhost:5174', 'docsGetStarted.console', 'docsGetStarted.consoleFor'],
   ['localhost:8080/reference', 'docsGetStarted.reference', 'docsGetStarted.referenceFor'],

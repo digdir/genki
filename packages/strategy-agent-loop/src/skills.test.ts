@@ -152,7 +152,8 @@ describe('agent-loop skills', () => {
       },
     });
 
-    expect(out.loops).toHaveLength(3);
+    // The read check runs alongside the turn after the read, and its verdict ends that turn.
+    expect(out.loops).toHaveLength(4);
     expect(out.seen.find((s) => s.kind === 'synth')?.request.messages[0]?.content).toContain(
       skillText(skill),
     );

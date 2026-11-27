@@ -21,7 +21,9 @@ export function Overview({ children }: { children?: ReactNode }) {
               {t('docsOverview.title')}
             </Heading>
           </div>
-          <p className="lede">{t('docsOverview.lede')}</p>
+          <p className="lede">
+            <strong>{t('docsOverview.notice')}</strong> {t('docsOverview.lede')}
+          </p>
           <div className="cluster">
             <Button asChild>
               <a href={href({ page: 'byggeklosser' })}>

@@ -7,6 +7,7 @@ import { EmptyState, ErrorState, Loading } from '../../states';
 import { DialogError, Flash, ReasonDialog, useFlash } from '../../ui';
 import { commandLine, describeCommand, parseCommands } from './commands';
 import {
+  CostLine,
   actorName,
   Crumbs,
   demoHref,
@@ -14,8 +15,10 @@ import {
   hasFile,
   isOpen,
   stepsDone,
+  recordingHref,
   useFileUrl,
 } from './shared';
+import { hasStudio, Studio } from './Studio';
 
 const pollMs = 2000;
 
@@ -149,21 +152,32 @@ const Running = ({
           onCancelled();
         }}
       />
-      <div className="demo-detail">
-        <section aria-labelledby="recording-shot" className="stack">
-          <Heading level={2} data-size="sm" id="recording-shot">
-            {t('demos.screenshotNow')}
+      <CostLine recording={recording} />
+      {recording.editOf ? (
+        <section aria-labelledby="recording-edit" className="card stack">
+          <Heading level={2} data-size="sm" id="recording-edit">
+            {t('demos.studioAsked')}
           </Heading>
-          <Screenshot
-            api={api}
-            recording={recording.id}
-            name={done > 0 ? `step-${done}.png` : undefined}
-            alt={t('demos.screenshotAlt', { n: done })}
-            empty={t('demos.noScreenshot')}
-          />
+          <Paragraph>{recording.instruction}</Paragraph>
+          <Link href={recordingHref(recording.editOf)}>{t('demos.studioEditOf')}</Link>
         </section>
-        <Progress recording={recording} demo={demo} />
-      </div>
+      ) : (
+        <div className="demo-detail">
+          <section aria-labelledby="recording-shot" className="stack">
+            <Heading level={2} data-size="sm" id="recording-shot">
+              {t('demos.screenshotNow')}
+            </Heading>
+            <Screenshot
+              api={api}
+              recording={recording.id}
+              name={done > 0 ? `step-${done}.png` : undefined}
+              alt={t('demos.screenshotAlt', { n: done })}
+              empty={t('demos.noScreenshot')}
+            />
+          </section>
+          <Progress recording={recording} demo={demo} />
+        </div>
+      )}
     </>
   );
 };
@@ -321,6 +335,8 @@ export const RecordingScreen = ({ api, id }: { api: ApiClient; id: string }) => 
           <Paragraph>{t('demos.cancelledText', { who: actorName(found.cancelledBy) })}</Paragraph>
           <Link href={demoHref(found.demo)}>{t('demos.toDemo')}</Link>
         </EmptyState>
+      ) : hasStudio(found) ? (
+        <Studio api={api} recording={found} demo={demo} />
       ) : (
         <EmptyState title={t('demos.recordedTitle')}>
           <Paragraph>{t('demos.recordedText')}</Paragraph>

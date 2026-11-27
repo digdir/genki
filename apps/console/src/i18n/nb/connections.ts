@@ -4,9 +4,9 @@ export const connections = defineNamespace({
   intro:
     'En tilkobling er en leverandørressurs med én nøkkel og én databehandleravtale. Modellene på den bruker ett API per type kall.',
   add: 'Ny tilkobling',
-  added: 'Tilkoblingen {id} er lagt til. Endringen er logget i Revisjon.',
-  saved: 'Tilkoblingen {id} er lagret. Endringen er logget i Revisjon.',
-  removed: 'Tilkoblingen {id} er fjernet. Endringen er logget i Revisjon.',
+  added: 'Tilkoblingen {id} er lagt til. Endringen er logget.',
+  saved: 'Tilkoblingen {id} er lagret. Endringen er logget.',
+  removed: 'Tilkoblingen {id} er fjernet. Endringen er logget.',
   loadFailed: 'Fikk ikke hentet tilkoblingene. Last siden på nytt om litt.',
   noneTitle: 'Ingen tilkoblinger ennå',
   noneText: 'Legg til en leverandørressurs, så kan du hente modellene på den.',

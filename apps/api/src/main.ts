@@ -125,7 +125,7 @@ import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
 import { readDemoSeeds, seedDemos } from './demos.js';
 import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
 import { testRunnerKeysAllowed } from './test-runner.js';
-import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
+import { altinnPdpFrom, loginAcrValues, withPdpActions } from './altinn-pdp.js';
 import { federatedAppTokens, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
 import {
   bootProblems,
@@ -1012,7 +1012,7 @@ const bff = createBff({
   isOperator: async (accessToken) =>
     operators.isOperator((await verifier.verify(accessToken)).principal),
   altinnResource: entraOnly ? undefined : resource,
-  acrValues: entraOnly ? 'entraid' : undefined,
+  acrValues: loginAcrValues(entraOnly, trustedEntra !== undefined),
   secrets: {
     value: clientSecretOf,
     hosts: (tenant, name) => platform.vault.hosts(tenant, name),

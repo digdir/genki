@@ -36,7 +36,7 @@ export const frame = {
   pageSettingsSecrets: 'Secrets',
   pageSettingsStateRegister: "The state's organisation",
   openMenu: 'Menu',
-  envTest: 'Test environment',
+  envTest: 'Test platform',
   userMenu: 'User menu',
   userMenuButton: 'User menu for {name}',
   userRole: 'Digdir · operator',

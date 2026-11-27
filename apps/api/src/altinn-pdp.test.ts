@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { exportJWK, generateKeyPair } from 'jose';
-import { altinnPdpFrom } from './altinn-pdp.js';
+import { altinnPdpFrom, loginAcrValues } from './altinn-pdp.js';
 
 const testData = {
   organisations: [{ orgno: '991825827', name: 'Digitaliseringsdirektoratet' }],
@@ -135,5 +135,19 @@ describe('Altinn PDP by configuration', () => {
     const env = { ...(await realEnv()), ALTINN_PDP_MASKINPORTEN_KEY: 'hemmelig-verdi' };
     expect(() => altinnPdpFrom(env, testData)).toThrow(/must be a private JWK/);
     expect(() => altinnPdpFrom(env, testData)).not.toThrow(/hemmelig-verdi/);
+  });
+});
+
+describe('login methods on Ansattporten', () => {
+  it('sends people straight to Entra ID when Entra groups are the only source of rights', () => {
+    expect(loginAcrValues(true, true)).toBe('entraid');
+  });
+
+  it('offers both ID-porten and Entra ID when Altinn and Entra groups both give rights', () => {
+    expect(loginAcrValues(false, true)).toBe('substantial entraid');
+  });
+
+  it('leaves the login methods to Ansattporten when only Altinn gives rights', () => {
+    expect(loginAcrValues(false, false)).toBeUndefined();
   });
 });

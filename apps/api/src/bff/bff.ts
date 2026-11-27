@@ -67,7 +67,7 @@ export interface BffDeps {
   hostActive: (hostname: string) => Promise<boolean>;
   issuer: string | undefined;
   altinnResource?: string | undefined;
-  /** Sent as `acr_values`, so a login goes straight to that method. */
+  /** Sent as `acr_values`: the login methods Ansattporten offers. */
   acrValues?: string | undefined;
   /** genki's own Ansattporten client, which a hosted Client without `oidc` and the platform apps log in through. */
   platformLogin?: PlatformLogin | undefined;

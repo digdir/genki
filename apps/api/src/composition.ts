@@ -2447,6 +2447,17 @@ export const createPlatform = async (input: PlatformInput) => {
     createServiceDeleteModule({
       clients,
       apiKeys,
+      claims: hostnameSetup.claims,
+      removeClient: async (principal, tenant, id, reason) =>
+        Boolean(
+          (
+            await claimHooks.admin?.perform(principal, 'platform.clients.remove', {
+              tenant,
+              id,
+              reason,
+            })
+          )?.ok,
+        ),
       ...(input.now ? { now: input.now } : {}),
     })(moduleDeps),
   );

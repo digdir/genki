@@ -1,4 +1,5 @@
 import type { FacetValue, FieldFilter, FilterValue, KnowledgeCapability } from '../port.js';
+import type { ConversionPart, ConversionUnit } from '../parts.js';
 import type { IndexDocument } from '../writer.js';
 
 export const quotedNote = `O'Brien sa "ja"; DROP TABLE kn_docs; --`;
@@ -237,3 +238,177 @@ export const withVectors = (documents: IndexDocument[], dimensions: number): Ind
     chunks: d.chunks.map((c) => ({ ...c, vector: fixtureVector(c.text, dimensions) })),
     phrases: d.phrases.map((p) => ({ ...p, vector: fixtureVector(p.text, dimensions) })),
   }));
+
+type FixturePart = [
+  kind: ConversionPart['kind'],
+  text: string,
+  units?: number[],
+  layer?: 'furniture',
+];
+
+/** One file's units, each a list of the parts that start in it, numbered in reading order. */
+const fixtureUnits = (pages: FixturePart[][]): ConversionUnit[] => {
+  let seq = 0;
+  let offset = 0;
+  let heading: string[] = [];
+  return pages.map((parts, i) => {
+    const unit = i + 1;
+    const built = parts.map(([kind, text, covers = [unit], given]): ConversionPart => {
+      const layer: ConversionPart['layer'] = given ?? 'body';
+      const body = layer === 'body';
+      if (body && (kind === 'section_header' || kind === 'title')) heading = [text];
+      const start = body ? offset : null;
+      if (body) offset += [...text].length + 2;
+      return {
+        seq: seq++,
+        kind,
+        layer,
+        level: kind === 'section_header' ? 1 : null,
+        headingPath: body && kind !== 'section_header' && kind !== 'title' ? heading : [],
+        text,
+        start,
+        end: start === null ? null : start + [...text].length,
+        regions: covers.map((u) => ({
+          unit: u,
+          start,
+          end: start === null ? null : start + [...text].length,
+        })),
+        native: `#/texts/${seq}`,
+      };
+    });
+    const first = built[0]?.seq ?? seq;
+    return {
+      unit,
+      kind: 'page',
+      label: String(unit + 2),
+      width: 595,
+      height: 842,
+      textStart: built.find((p) => p.start !== null)?.start ?? null,
+      textEnd: built.findLast((p) => p.end !== null)?.end ?? null,
+      unitTo: Math.max(unit, ...built.flatMap((p) => p.regions.map((r) => r.unit))),
+      seqFrom: first,
+      seqTo: first + built.length - 1,
+      parts: built,
+    };
+  });
+};
+
+/**
+ * A report and its attachment, as parts (ADR 0055): page furniture, a table that starts on page 2
+ * and runs to page 4, and sections. Page labels run two ahead of the units, as in a printed report.
+ */
+export const partsFiles: [ConversionUnit[], ConversionUnit[]] = [
+  fixtureUnits([
+    [
+      ['page_header', 'Årsrapport for havna', [1], 'furniture'],
+      ['title', 'Årsrapport for havna'],
+      ['text', 'Innledning om året som gikk.'],
+    ],
+    [
+      ['section_header', 'Bakgrunn'],
+      ['text', 'Havna fikk ny kai.'],
+      ['table', '| kai | meter |\n| --- | --- |\n| nord | 120 |', [2, 3, 4]],
+    ],
+    [['page_footer', '5', [3], 'furniture']],
+    [['text', 'Etter tabellen kommer merknadene.']],
+    [
+      ['section_header', 'Funn'],
+      ['text', 'Første funn om fartøy.'],
+      ['text', 'Andre funn om lasting.'],
+    ],
+    [
+      ['page_header', 'Årsrapport for havna', [6], 'furniture'],
+      ['text', 'Tredje funn om fortøyning.'],
+      ['section_header', 'Slutt'],
+      ['text', 'Havna ser lyst på neste år.'],
+    ],
+  ]),
+  fixtureUnits([[['text', 'Vedlegget lister kaiene.']]]),
+];
+
+/**
+ * A document whose chunks are made from the two files' parts, one chunk a page, as `parts-unit`
+ * cuts them, and a document whose one chunk is made from pages. `conversions` are the numbers
+ * the files were stored under.
+ */
+export const partsDocuments = (conversions: [string, string]): IndexDocument[] => {
+  const chunk = (file: 0 | 1, unit: number, position: number) => {
+    const parts = (partsFiles[file][unit - 1]?.parts ?? []).filter((p) => p.layer === 'body');
+    const first = parts[0];
+    const last = parts.at(-1);
+    return {
+      id: `havn-${file === 0 ? 'rapport' : 'vedlegg'}-${unit}`,
+      position,
+      text: parts.map((p) => p.text).join('\n\n'),
+      file: file === 0 ? 'rapport.pdf' : 'vedlegg.pdf',
+      pageFrom: unit,
+      pageTo: unit,
+      conversion: conversions[file],
+      seqFrom: first?.seq ?? 0,
+      seqTo: last?.seq ?? 0,
+      textStart: first?.start ?? 0,
+      textEnd: last?.end ?? 0,
+    };
+  };
+  return [
+    {
+      id: 'havn',
+      title: 'Årsrapport for havna',
+      fields: {},
+      chunks: [
+        chunk(0, 1, 0),
+        chunk(0, 2, 1),
+        chunk(0, 4, 2),
+        chunk(0, 5, 3),
+        chunk(0, 6, 4),
+        chunk(1, 1, 5),
+      ],
+      phrases: [],
+    },
+    {
+      id: 'sider',
+      title: 'Rapport lest side for side',
+      fields: {},
+      chunks: [
+        { id: 'sider-1', position: 0, text: 'En side lest uten deler.', pageFrom: 1, pageTo: 1 },
+      ],
+      phrases: [],
+    },
+  ];
+};
+
+/** The reads the contract checks on `partsDocuments`, with the `seq` each returns. */
+export const partsCases = {
+  /** Page 4 holds a table that starts on page 2. */
+  startsBefore: { chunk: 'havn-rapport-4', read: 'units', n: 0, seqs: [5, 7] },
+  /** Two body parts on each side; the page footer and header between are not counted. */
+  neighbours: { chunk: 'havn-rapport-5', read: 'neighbours', n: 2, seqs: [5, 7, 8, 9, 10, 12, 13] },
+  /** The hit on page 4 is in the section «Bakgrunn», which starts on page 2. */
+  section: { chunk: 'havn-rapport-4', read: 'section', n: 0, seqs: [3, 4, 5, 7] },
+  /** The hit on page 6 starts in «Funn» and runs into «Slutt»: the read holds both, to the file's end. */
+  sectionAcross: {
+    chunk: 'havn-rapport-6',
+    read: 'section',
+    n: 0,
+    seqs: [8, 9, 10, 12, 13, 14],
+  },
+  /** The pages around page 5, and the labels of the pages they cover. */
+  units: {
+    chunk: 'havn-rapport-5',
+    read: 'units',
+    n: 1,
+    seqs: [5, 7, 8, 9, 10, 12, 13, 14],
+    labels: ['4', '5', '6', '7', '8'],
+  },
+  /** The report's last page and its attachment's only page are each the edge of a file. */
+  lastPage: {
+    chunk: 'havn-rapport-6',
+    read: 'neighbours',
+    n: 5,
+    seqs: [5, 7, 8, 9, 10, 12, 13, 14],
+  },
+  attachment: { chunk: 'havn-vedlegg-1', read: 'neighbours', n: 5, seqs: [0] },
+  /** Every page of the report: no page header or footer comes back. */
+  whole: { chunk: 'havn-rapport-1', read: 'units', n: 5, furniture: [0, 6, 11] },
+  pages: { chunk: 'sider-1' },
+} as const;

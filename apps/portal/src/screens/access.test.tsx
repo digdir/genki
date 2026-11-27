@@ -534,7 +534,8 @@ describe('Uten tilgang', () => {
     const message = screen.getByLabelText(
       'Forslag til melding du kan sende',
     ) as HTMLTextAreaElement;
-    expect(message.value).toContain('Kan du gi meg rettigheten «Bruke tjenester» i Altinn?');
+    expect(message.value).toContain('Kan du gi meg rettigheten «Bruke tjenester»?');
+    expect(screen.queryByText(/Altinn/)).toBeNull();
     expect(message.value).toContain('Hilsen Erik Strand');
 
     fireEvent.click(screen.getByRole('button', { name: 'Kopier meldingen' }));
@@ -542,7 +543,7 @@ describe('Uten tilgang', () => {
 
     const recheck = screen.getByRole('button', { name: 'Sjekk på nytt' });
     fireEvent.click(recheck);
-    expect(screen.getByRole('button', { name: 'Sjekker Altinn' })).toBe(recheck);
+    expect(screen.getByRole('button', { name: 'Sjekker tilgangen' })).toBe(recheck);
     expect(recheck.getAttribute('aria-disabled')).toBe('true');
     await act(() => vi.advanceTimersByTimeAsync(1300));
     await waitFor(() =>

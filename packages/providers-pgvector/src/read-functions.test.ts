@@ -6,6 +6,8 @@ import {
   tombstoneHash,
   type DatasetConfig,
   type IndexDocument,
+  partReads,
+  type ConversionUnit,
   type IndexWriter,
   type KnowledgeConnection,
 } from '@genai/port-knowledge';
@@ -16,11 +18,15 @@ import {
   fixtureVector,
   indexWriterContract,
   knowledgeAdapterContract,
+  partsCases,
+  partsDocuments,
+  partsFiles,
   seedCorpus,
 } from '@genai/port-knowledge/testing';
 import { describeContract } from '@genai/plugins/testing';
 import { stopPostgres } from '@genai/providers-postgres/testing';
 import {
+  addChunkColumns,
   migrateKnowledgeServer,
   openKnowledgePools,
   partitionOf,
@@ -31,7 +37,7 @@ import {
   type QueryEmbedder,
 } from './index.js';
 import { knowledgeRoles } from './knowledge-setup.js';
-import { filterRows, notReadyCode } from './read-functions.js';
+import { filterRows, notReadyCode, readFunctions } from './read-functions.js';
 
 type Dataset = DatasetConfig<PgvectorDatasetOptions>;
 
@@ -236,6 +242,7 @@ describe('read functions on the knowledge server', () => {
       `select * from kn_search($1, $2, 'chunks', 'text', 'lønn', null, null, '[]', 5, 50, 60)`,
       `select * from kn_fetch($1, $2, array['a#0'])`,
       `select * from kn_range($1, $2, 'a', 0, 1)`,
+      `select * from kn_parts($1, $2, 'a', 'units', 1, 1000)`,
       `select * from kn_facets($1, $2, array['type'], '[]')`,
       `select * from kn_documents($1, $2, null, '[]', 10, 0)`,
       `select * from kn_resolve_citation($1, $2, array['a'], array['hash-a'])`,
@@ -1432,8 +1439,159 @@ const adapterTarget =
     };
   };
 
-knowledgeAdapterContract('pgvector on the knowledge server', adapterTarget(false));
-knowledgeAdapterContract('pgvector on the knowledge server with embedding', adapterTarget(true));
+/** Stores units as a convert job does, under a conversion number of their own, and returns it. */
+const storeUnits = async (units: ConversionUnit[], sha256: string) => {
+  const { rows } = await owner.query<{ id: string }>(
+    `insert into src_conversions (sha256, converter, version, settings_hash, derivation, derivation_version, pages)
+     values ($1, 'docling', '2', 'fixture', 'docling-parts', 1, '{}') returning id::text`,
+    [sha256],
+  );
+  const id = rows[0]?.id as string;
+  await owner.query(
+    `insert into src_conversion_units (conversion, unit, kind, label, width, height,
+       text_start, text_end, unit_to, seq_from, seq_to, parts)
+     select $1::bigint, u.unit, u.kind, u.label, u."width", u."height", u."textStart",
+            u."textEnd", u."unitTo", u."seqFrom", u."seqTo", u.parts
+       from jsonb_to_recordset($2::jsonb) as u(unit integer, kind text, label text,
+         "width" real, "height" real, "textStart" integer, "textEnd" integer,
+         "unitTo" integer, "seqFrom" integer, "seqTo" integer, parts jsonb)`,
+    [id, JSON.stringify(units)],
+  );
+  return id;
+};
+
+let storedFiles = 0;
+/** Seeds the contract's parts fixture in a generation of its own, its two files stored fresh. */
+const partsTarget = async ({ dataset: d }: { dataset: { id: string } }) => {
+  await addChunkColumns(owner);
+  storedFiles += 1;
+  const [report, attachment] = partsFiles;
+  const ids: [string, string] = [
+    await storeUnits(report, `rapport-${storedFiles}`),
+    await storeUnits(attachment, `vedlegg-${storedFiles}`),
+  ];
+  const generation = generationFor(d.id);
+  await seedCorpus(
+    writer(),
+    { id: d.id, filters: {}, options: {} },
+    partsDocuments(ids),
+    generation,
+  );
+  return { adapter: readEngine().adapter, endpoint, generation: () => generation };
+};
+
+knowledgeAdapterContract('pgvector on the knowledge server', adapterTarget(false), partsTarget);
+knowledgeAdapterContract(
+  'pgvector on the knowledge server with embedding',
+  adapterTarget(true),
+  partsTarget,
+);
+
+describe('reading the parts around a hit on the knowledge server', () => {
+  const havn = dataset('digdir/havn', 0, { filters: {} });
+  const generation = 'g-20261127-havn';
+  let gone: string;
+
+  beforeAll(async () => {
+    await addChunkColumns(owner);
+    const [report, attachment] = partsFiles;
+    const ids: [string, string] = [
+      await storeUnits(report, 'havn-rapport'),
+      await storeUnits(attachment, 'havn-vedlegg'),
+    ];
+    gone = await storeUnits(report, 'havn-slettet');
+    const [withParts, pages] = partsDocuments(ids);
+    const deleted = partsDocuments([gone, gone])[0] as IndexDocument;
+    await fill(havn, generation, [
+      withParts as IndexDocument,
+      pages as IndexDocument,
+      {
+        ...deleted,
+        id: 'slettet',
+        chunks: deleted.chunks.map((c) => ({ ...c, id: `slettet-${c.id}` })),
+      },
+    ]);
+  });
+
+  const call = `select * from kn_parts($1, $2, 'havn-rapport-5', 'units', 1, 20000)`;
+
+  it('kn_parts refuses a dataset outside app.datasets', async () => {
+    const args = [havn.id, generation];
+    expect(await refusal(() => asReader(call, args))).toBe('42501');
+    expect(await refusal(() => asReader(call, args, [kudos.id]))).toBe('42501');
+    expect(await refusal(() => asReader(call, [kudos.id, generation], [kudos.id]))).toBe(
+      notReadyCode,
+    );
+    const rows = await asReader<{ seq: number | null }>(call, args, [havn.id]);
+    expect(rows.map((r) => r.seq)).toEqual([...partsCases.units.seqs]);
+  });
+
+  it('kn_parts never reads a conversion by its hash', async () => {
+    expect(readFunctions).toContain('kn_parts(text, text, text, text, integer, integer)');
+    const { rows } = await owner.query<{ name: string; args: string[] }>(
+      `select p.proname as name, p.proargnames[1:pronargs] as args from pg_proc p
+        where p.pronamespace = 'public'::regnamespace and p.proname in ('kn_parts', 'kn_parts_sql')`,
+    );
+    for (const row of rows)
+      expect(row.args, row.name).toEqual([
+        'p_dataset',
+        'p_generation',
+        'p_chunk_id',
+        'p_read',
+        'p_n',
+        'p_budget',
+      ]);
+    expect(rows).toHaveLength(2);
+  });
+
+  it('kn_parts answers a deleted conversion as not found', async () => {
+    const connection = connectionOf();
+    const config = routed(havn, generation);
+    const before = await connection.parts?.(
+      config,
+      'slettet-havn-rapport-5',
+      'units',
+      1,
+      20_000,
+      signal,
+    );
+    expect(before?.parts.map((p) => p.seq)).toEqual([...partsCases.units.seqs]);
+    await owner.query(`delete from src_conversions where id = $1::bigint`, [gone]);
+    expect(
+      await connection.parts?.(config, 'slettet-havn-rapport-5', 'units', 1, 20_000, signal),
+    ).toEqual({ parts: [], units: [], cut: false });
+  });
+
+  it('kn_parts reads one partition', async () => {
+    for (const read of partReads) {
+      const { rows } = await owner.query<{ sql: string }>(
+        `select kn_parts_sql($1, $2, 'havn-rapport-5', $3, 1, 20000) as sql`,
+        [havn.id, generation, read],
+      );
+      const client = await owner.connect();
+      try {
+        await client.query('begin');
+        await client.query('set local enable_seqscan = off');
+        const { rows: plan } = await client.query<{ 'QUERY PLAN': [{ Plan: PlanNode }] }>(
+          `explain (format json) ${rows[0]?.sql ?? ''}`,
+        );
+        const relations = new Set<string>();
+        const walk = (node: PlanNode) => {
+          if (node['Relation Name']) relations.add(node['Relation Name']);
+          node.Plans?.forEach(walk);
+        };
+        walk(plan[0]?.['QUERY PLAN'][0].Plan as PlanNode);
+        expect(
+          [...relations].filter((r) => r.startsWith('kn_')),
+          read,
+        ).toEqual([partitionOf('kn_chunks', generation)]);
+      } finally {
+        await client.query('rollback');
+        client.release();
+      }
+    }
+  });
+});
 
 /** Generation ids are unique across datasets on the knowledge server, so each run's `g1` gets its own. */
 const catalogWriter = (inner: IndexWriter, prefix: string) => {

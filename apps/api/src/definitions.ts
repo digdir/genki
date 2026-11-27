@@ -20,6 +20,7 @@ import type { ActorNames } from './actor-names.js';
 import {
   actorOf,
   blockPublisherProblems,
+  serviceIdTakenType,
   shareOperatorOnlyType,
   sharingRefused,
   type Admin,
@@ -142,7 +143,7 @@ const ResolvedName = z
 const definitionBody = {
   required: true,
   description:
-    'A definition as JSON or YAML, or JSON {definition, files, draftRevision?} where definition may be YAML text, files maps prompts/<name>.md to its text, and draftRevision marks a publish of the service draft',
+    'A definition as JSON or YAML, or JSON {definition, files, draftRevision?, newService?} where definition may be YAML text, files maps prompts/<name>.md to its text, draftRevision marks a publish of the service draft, and newService: true publishes a new service, which only takes an id no service has',
   content: {
     'application/json': { schema: z.record(z.string(), z.unknown()) },
     'application/yaml': { schema: z.string() },
@@ -214,7 +215,7 @@ const routes = {
       },
       409: {
         content: problemContent,
-        description: `${draftOutdatedType}: the body's draftRevision names a draft started from an older version, and publishing it would undo newer published changes; rebase the draft first. ${serviceArchivedType}: the service is archived; restore it first`,
+        description: `${draftOutdatedType}: the body's draftRevision names a draft started from an older version, and publishing it would undo newer published changes; rebase the draft first. ${serviceArchivedType}: the service is archived; restore it first. ${serviceIdTakenType}: the body has newService: true, and another service, archived ones too, already has the definition's id; the problem's id names it`,
       },
       413: tooLarge,
       422: { content: problemContent, description: 'The definition is invalid' },
@@ -351,12 +352,31 @@ const fromText = (text: string, plugins: PluginSchemas, files: PromptFiles): Rea
 const isFiles = (v: unknown): v is PromptFiles =>
   typeof v === 'object' && v !== null && Object.values(v).every((x) => typeof x === 'string');
 
+const bodyOf = async (c: Context) =>
+  isYaml(c.req.header('content-type'))
+    ? undefined
+    : ((await c.req.json().catch(() => undefined)) as
+        { draftRevision?: unknown; newService?: unknown } | undefined);
+
 const draftRevisionOf = async (c: Context) => {
-  if (isYaml(c.req.header('content-type'))) return undefined;
-  const body = (await c.req.json().catch(() => undefined)) as
-    { draftRevision?: unknown } | undefined;
+  const body = await bodyOf(c);
   return typeof body?.draftRevision === 'number' ? body.draftRevision : undefined;
 };
+
+const newServiceOf = async (c: Context) => (await bodyOf(c))?.newService === true;
+
+const serviceIdTaken = (c: Context, id: string) =>
+  c.json(
+    {
+      type: serviceIdTakenType,
+      title: t('problems.serviceIdTakenTitle'),
+      status: 409,
+      detail: t('problems.newServiceIdTaken', { id }),
+      id,
+    },
+    409,
+    { 'content-type': 'application/problem+json' },
+  );
 
 export const readDefinition = async (c: Context, plugins: PluginSchemas): Promise<Read> => {
   if (isYaml(c.req.header('content-type'))) return fromText(await c.req.text(), plugins, {});
@@ -457,6 +477,9 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
       return problem(c, 422, 'Invalid definition', { errors: unconfirmed });
 
     const service = validated.definition.kind === 'Service' ? validated.definition.metadata.id : '';
+    const newService = service !== '' && (await newServiceOf(c));
+    if (newService && (await store.versions('Service', tenant, service)).length > 0)
+      return serviceIdTaken(c, service);
     const fromDraft = service !== '' && (await draftRevisionOf(c)) !== undefined;
     const behind = fromDraft ? await options.drafts?.outdated(tenant, service) : undefined;
     if (behind)
@@ -482,8 +505,10 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
       definition: confirmedBy(validated.definition, acting, now()),
       files: read.files,
       reason,
+      ...(newService ? { newService } : {}),
     });
     c.header('genai-task', result.task);
+    if (!result.ok && result.type === serviceIdTakenType) return serviceIdTaken(c, service);
     if (!result.ok && result.type === shareOperatorOnlyType)
       return sharingRefused(c, result.errors);
     if (!result.ok && result.type === serviceArchivedType) return serviceArchived(c);

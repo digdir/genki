@@ -4,7 +4,7 @@ import type { models as source } from '../nb/models';
 export const models = {
   title: 'Models',
   intro:
-    'The connections to providers, the models on each connection and the APIs the models use. Every change asks for a reason and is logged in Audit.',
+    'The connections to providers, the models on each connection and the APIs the models use. Every change asks for a reason and is logged.',
   tabConnections: 'Connections',
   tabModels: 'Models',
   tabApis: 'APIs',
@@ -15,7 +15,7 @@ export const models = {
   refresh: 'Fetch models again',
   refreshText:
     'Genki asks each connection for the models it has. New models become candidates. Genki also checks what the models can do, with up to 12 small calls that cost a little.',
-  refreshed: 'The models have been fetched again. The change is logged in Audit.',
+  refreshed: 'The models have been fetched again. The change is logged.',
   learnedCalls: {
     one: 'Genki checked what the models can do, with {count} small call.',
     other: 'Genki checked what the models can do, with {count} small calls.',
@@ -88,8 +88,8 @@ export const models = {
   setPrice: 'Set price',
   priceText: 'NOK {input} in, NOK {output} out',
   unpriced: 'Not priced',
-  priceSaved: 'The price for {model} has been saved. The change is logged in Audit.',
-  saved: '{model} has been saved. The change is logged in Audit.',
+  priceSaved: 'The price for {model} has been saved. The change is logged.',
+  saved: '{model} has been saved. The change is logged.',
   saveFailed: 'Could not save the change for {model}.',
   apisTitle: 'API per kind of call',
   apisIntro:
@@ -111,17 +111,17 @@ export const models = {
     other: 'The change applies to {count} services that use {model}.',
   },
   bindSave: 'Save change',
-  bindSaved: 'The API on {model} has been changed. The change is logged in Audit.',
+  bindSaved: 'The API on {model} has been changed. The change is logged.',
   bindFailed: 'Could not save the change.',
   enable: 'Put in use',
   enableTitle: 'Put {model} in use',
   enableText: 'Organisations can choose the model in their services.',
-  enabledDone: '{model} is in use. The change is logged in Audit.',
+  enabledDone: '{model} is in use. The change is logged.',
   retireTitle: 'Retire {model}',
   retireText:
     'The services below are paused when the model is retired. Until they get a new model, they answer "The model this service uses has been retired". No service switches to another model on its own.',
   retire: 'Retire',
-  retired: '{model} has been retired. The change is logged in Audit.',
+  retired: '{model} has been retired. The change is logged.',
   affected: 'Affected services',
   affectedCount: 'Affected services ({count})',
   usageUnknown: 'The platform does not yet show which services use the model.',

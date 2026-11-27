@@ -931,22 +931,178 @@ describe('a published service gets an address', () => {
     expect(refused.status).toBe(403);
   });
 
-  it('a service delete refused for its automatic Client names that Client by id', async () => {
-    const t = await boot();
-    expect((await t.publish(service('klarsprak'))).ok).toBe(true);
-    await t.call(`/tenants/${digdir}/services/klarsprak/lifecycle`, {
+  const archive = (t: Awaited<ReturnType<typeof boot>>, id: string) =>
+    t.call(`/tenants/${digdir}/services/${id}/lifecycle`, {
       method: 'PUT',
       as: 'kari',
       body: { state: 'archived' },
     });
-
-    const res = await t.call(`/tenants/${digdir}/services/klarsprak`, {
+  const clientIds = async (t: Awaited<ReturnType<typeof boot>>) =>
+    (
+      (await (await t.call(`/tenants/${digdir}/clients`, { as: 'kari' })).json()) as {
+        clients: { definition: { metadata: { id: string } } }[];
+      }
+    ).clients.map((c) => c.definition.metadata.id);
+  const deleteForGood = (t: Awaited<ReturnType<typeof boot>>, id: string) =>
+    t.call(`/tenants/${digdir}/services/${id}`, {
       method: 'DELETE',
       as: 'kari',
+      headers: { 'change-reason': 'Tjenesten trengs ikke lenger' },
     });
 
+  it('deleting a service for good also removes the address genki made for it', async () => {
+    const t = await boot();
+    expect((await t.publish(service('klarsprak'))).ok).toBe(true);
+    await t.bindAll(`klarsprak.apps.${zone}`);
+    await archive(t, 'klarsprak');
+
+    const res = await deleteForGood(t, 'klarsprak');
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      address: { client: 'klarsprak-host', hostnames: [`klarsprak.apps.${zone}`] },
+    });
+    expect(await clientIds(t)).toEqual([]);
+    expect(await t.work()).toEqual([
+      expect.objectContaining({ hostname: `klarsprak.apps.${zone}`, action: 'remove' }),
+    ]);
+    const audit = await t.audit();
+    for (const [action, target] of [
+      ['platform.clients.remove', `client:${digdir}/klarsprak-host`],
+      ['platform.service.delete', `service:${digdir}/klarsprak`],
+    ])
+      expect(audit.find((a) => a.action === action)).toMatchObject({
+        outcome: 'applied',
+        target,
+        reason: 'Tjenesten trengs ikke lenger',
+      });
+  });
+
+  it('a frontend someone made still blocks deleting for good, and keeps the address', async () => {
+    const t = await boot();
+    expect((await t.publish(service('klarsprak'))).ok).toBe(true);
+    await t.bindAll(`klarsprak.apps.${zone}`);
+    const own = await t.saveClient('egen-app', {
+      metadata: { name: 'Egen app' },
+      spec: {
+        service: 'klarsprak',
+        kind: 'browser',
+        channels: ['openai'],
+        allowedOrigins: ['https://app.example.no'],
+        oidc: { clientId: 'egen-app', redirectUris: ['https://app.example.no/callback'] },
+      },
+    });
+    expect(own.status).toBe(200);
+    await archive(t, 'klarsprak');
+
+    const res = await deleteForGood(t, 'klarsprak');
+
     expect(res.status).toBe(409);
-    expect(JSON.stringify(await res.json())).toContain('klarsprak-host');
+    expect((await res.json()) as unknown).toMatchObject({
+      type: 'urn:genai:problem:service-in-use',
+      errors: [{ path: 'frontends', id: 'egen-app', message: expect.stringContaining('Egen app') }],
+    });
+    expect(await clientIds(t)).toEqual(['egen-app', 'klarsprak-host']);
+    expect(await t.work()).toEqual([]);
+  });
+
+  it('a hosted frontend someone made blocks deleting for good even when genki put its address on it', async () => {
+    const t = await boot();
+    expect((await t.publish(service('klarsprak', digdir, false))).ok).toBe(true);
+    expect((await t.saveClient('klarsprak-host', hostedClient('klarsprak'))).status).toBe(200);
+    expect((await t.publish(service('klarsprak'))).ok).toBe(true);
+    expect(await t.work()).toEqual([
+      expect.objectContaining({ hostname: `klarsprak.apps.${zone}`, action: 'bind' }),
+    ]);
+    await archive(t, 'klarsprak');
+
+    const res = await deleteForGood(t, 'klarsprak');
+
+    expect(res.status).toBe(409);
+    expect((await res.json()) as unknown).toMatchObject({
+      errors: [{ path: 'frontends', id: 'klarsprak-host' }],
+    });
+  });
+
+  it('the address Client counts as a frontend once its owner set it up differently', async () => {
+    const t = await boot();
+    expect((await t.publish(service('klarsprak'))).ok).toBe(true);
+    const changed = await t.saveClient('klarsprak-host', {
+      metadata: { name: 'Klarspråk' },
+      spec: {
+        service: 'klarsprak',
+        kind: 'browser',
+        channels: ['openai', 'conversations', 'feedback', 'facets'],
+        allowedOrigins: [],
+        hosted: true,
+        hostnames: [],
+        url: 'https://klarsprak.example.no',
+      },
+    });
+    expect(changed.status).toBe(200);
+    await archive(t, 'klarsprak');
+
+    const res = await deleteForGood(t, 'klarsprak');
+
+    expect(res.status).toBe(409);
+    expect((await res.json()) as unknown).toMatchObject({
+      errors: [{ path: 'frontends', id: 'klarsprak-host' }],
+    });
+  });
+
+  it('an address frontend with a domain its owner added blocks deleting for good and keeps the domain', async () => {
+    const t = await boot();
+    expect((await t.publish(service('klarsprak'))).ok).toBe(true);
+    await t.bindAll(`klarsprak.apps.${zone}`);
+    const added = await t.claim('klarsprak-host', {
+      hostname: 'ka.example.no',
+      environment: 'prod',
+    });
+    expect(added.status).toBe(201);
+    await t.verify('ka.example.no');
+    await t.bindAll('ka.example.no');
+    await archive(t, 'klarsprak');
+
+    const res = await deleteForGood(t, 'klarsprak');
+
+    expect(res.status).toBe(409);
+    expect((await res.json()) as unknown).toMatchObject({
+      errors: [{ path: 'frontends', id: 'klarsprak-host' }],
+    });
+    expect(await clientIds(t)).toEqual(['klarsprak-host']);
+    expect((await t.claims.list(digdir)).map((c) => [c.hostname, c.state])).toEqual(
+      expect.arrayContaining([['ka.example.no', 'active']]),
+    );
+    expect(await t.work()).toEqual([]);
+  });
+
+  it('a hosted frontend set up like genki would, under a name of its own, still blocks deleting for good', async () => {
+    const t = await boot();
+    expect((await t.publish(service('klarsprak', digdir, false))).ok).toBe(true);
+    const own = await t.saveClient('egen-vert', {
+      metadata: { name: 'Egen vert' },
+      spec: {
+        service: 'klarsprak',
+        kind: 'browser',
+        channels: ['openai', 'conversations', 'feedback', 'facets'],
+        allowedOrigins: [],
+        hosted: true,
+        hostnames: [],
+      },
+    });
+    expect(own.status).toBe(200);
+    expect((await t.publish(service('klarsprak'))).ok).toBe(true);
+    expect((await t.claims.list(digdir)).map((c) => [c.client, c.assigned])).toEqual([
+      ['egen-vert', true],
+    ]);
+    await archive(t, 'klarsprak');
+
+    const res = await deleteForGood(t, 'klarsprak');
+
+    expect(res.status).toBe(409);
+    expect((await res.json()) as unknown).toMatchObject({
+      errors: [{ path: 'frontends', id: 'egen-vert' }],
+    });
   });
 
   it('removing a service environment removes the hostnames claimed for it', async () => {

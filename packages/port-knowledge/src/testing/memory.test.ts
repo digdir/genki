@@ -6,6 +6,8 @@ import {
   knowledgeAdapterContract,
   memoryEngine,
   openTarget,
+  partsDocuments,
+  partsFiles,
   seedCorpus,
 } from './index.js';
 
@@ -30,9 +32,29 @@ const seeded =
     };
   };
 
-knowledgeAdapterContract('memory', seeded(memoryEngine(), false));
+/** Stores the parts fixture's two files and seeds the documents whose chunks name them. */
+const seededParts =
+  (engine: ReturnType<typeof memoryEngine>) =>
+  async ({ dataset }: { dataset: { id: string } }) => {
+    const writer = engine.writer.connect({ options: {}, timeoutMs: 1000 }, { signal });
+    const [report, attachment] = partsFiles;
+    const ids: [string, string] = [
+      engine.conversions.store(report),
+      engine.conversions.store(attachment),
+    ];
+    await seedCorpus(writer, { id: dataset.id, filters: {}, options: {} }, partsDocuments(ids));
+    return { adapter: engine.adapter };
+  };
 
-knowledgeAdapterContract('memory with vectors', seeded(memoryEngine({ vectors: true }), true));
+const plain = memoryEngine();
+knowledgeAdapterContract('memory', seeded(plain, false), seededParts(plain));
+
+const withVectors = memoryEngine({ vectors: true });
+knowledgeAdapterContract(
+  'memory with vectors',
+  seeded(withVectors, true),
+  seededParts(withVectors),
+);
 
 knowledgeAdapterContract(
   'memory with text search and fetch only',

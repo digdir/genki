@@ -100,7 +100,7 @@ describe.skipIf(!hasAz && !process.env.CI)('genki-test on production Ansattporte
     expect(values?.platformLoginStage).toBe('certificates');
   }, 120_000);
 
-  it('refuses the production issuer while ALTINN_PDP_URL is set', () => {
+  it('refuses the production issuer with tt02 as ALTINN_PDP_URL', () => {
     const { values, error } = testParams({
       ANSATTPORTEN_ISSUER: PRODUCTION_ISSUER,
       HOSTNAMES_STAGE: 'certificates',
@@ -108,7 +108,22 @@ describe.skipIf(!hasAz && !process.env.CI)('genki-test on production Ansattporte
     });
 
     expect(values).toBeUndefined();
-    expect(error).toContain('delete ALTINN_PDP_URL');
+    expect(error).toContain('set ALTINN_PDP_URL to https://platform.altinn.no');
+  }, 120_000);
+
+  it('takes production Altinn as ALTINN_PDP_URL with the production issuer and its resource', () => {
+    const { values, error } = testParams({
+      ANSATTPORTEN_ISSUER: PRODUCTION_ISSUER,
+      HOSTNAMES_STAGE: 'certificates',
+      ALTINN_PDP_URL: 'https://platform.altinn.no',
+    });
+
+    expect(error).toBeUndefined();
+    expect(login(values)).toMatchObject({
+      issuer: PRODUCTION_ISSUER,
+      altinn: 'https://platform.altinn.no',
+      resource: 'urn:altinn:resource:digdir-genai-platform',
+    });
   }, 120_000);
 
   it('refuses an issuer that is neither test nor production Ansattporten, a trailing slash included', () => {

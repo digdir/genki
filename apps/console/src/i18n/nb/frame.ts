@@ -35,7 +35,7 @@ export const frame = defineNamespace({
   pageSettingsSecrets: 'Hemmeligheter',
   pageSettingsStateRegister: 'Statens organisering',
   openMenu: 'Meny',
-  envTest: 'Testmiljø',
+  envTest: 'Testplattform',
   userMenu: 'Brukermeny',
   userMenuButton: 'Brukermeny for {name}',
   userRole: 'Digdir · operatør',

@@ -1,7 +1,7 @@
 title: En rask tur i GenKI-portalen
 language: nb-NO
 voice: nb-NO-PernilleNeural
-viewport: [1280, 720]
+viewport: [1920, 1080]
 start: https://portal.genki-test.digdir.cloud
 steps:
   - say: Dette er GenKI, Digdirs fellesløsning for generativ KI for offentlige virksomheter.

@@ -67,7 +67,7 @@ const platform = (
     limits?: unknown[];
     operator?: { name: string; region?: string };
     failure?: Record<string, unknown>;
-    deleteRefused?: string;
+    deleteRefused?: { path: string; message: string; id?: string }[];
   } = {},
 ) => {
   const calls: Call[] = [];
@@ -95,7 +95,7 @@ const platform = (
             JSON.stringify({
               type: 'urn:genai:problem:service-in-use',
               status: 409,
-              errors: [{ path: 'frontends', message: overrides.deleteRefused }],
+              errors: overrides.deleteRefused,
             }),
             { status: 409, headers: { 'content-type': 'application/problem+json' } },
           )
@@ -1162,8 +1162,19 @@ describe('deleting an archived service', () => {
     );
   });
 
-  it('shows what still depends on the service when the delete is refused', async () => {
-    const { api } = platform({ deleteRefused: 'Frontenden Rapportappen bruker tjenesten' });
+  it('a refused delete links each thing that still uses the service to where it is removed', async () => {
+    const { api } = platform({
+      deleteRefused: [
+        {
+          path: 'frontends',
+          id: 'rapportappen',
+          message: 'Frontenden Rapportappen bruker tjenesten',
+        },
+        { path: 'apiKeys', id: 'k1', message: 'API-nøkkelen Backend er knyttet til tjenesten' },
+        { path: 'services', id: 'kaller', message: 'Tjenesten kaller bruker tjenesten' },
+        { path: 'services', message: '2 tjenester hos andre virksomheter bruker tjenesten' },
+      ],
+    });
     open(api);
     const dialog = await screen.findByRole('dialog');
     fireEvent.change(
@@ -1177,8 +1188,14 @@ describe('deleting an archived service', () => {
     });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Slett for godt' }));
 
+    const links = await within(dialog).findAllByRole('link');
+    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['Frontenden Rapportappen bruker tjenesten', '#/developer/frontends'],
+      ['API-nøkkelen Backend er knyttet til tjenesten', '#/developer/keys'],
+      ['Tjenesten kaller bruker tjenesten', '#/services/kaller'],
+    ]);
     expect(
-      await within(dialog).findByText('Frontenden Rapportappen bruker tjenesten'),
+      within(dialog).getByText('2 tjenester hos andre virksomheter bruker tjenesten'),
     ).toBeTruthy();
   });
 });

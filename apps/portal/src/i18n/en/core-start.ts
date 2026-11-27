@@ -49,7 +49,7 @@ export const dataHandling = {
 export const start = {
   login: 'Sign in',
   loginFailed: 'Sign-in failed. Try again.',
-  sharedSub: 'Digdir runs and tests these. All agencies can use them as soon as they have access.',
+  sharedSub: 'Plain language and Nynorsk have been tried in test. The others are planned.',
   shared1Title: 'Plain language',
   shared1Body: 'Rewrites text so it is easier to understand, without changing the content.',
   shared1Example: 'Used, for example, on decision letters before they are sent.',
@@ -118,13 +118,13 @@ export const start = {
   step2Title: 'Digdir approves',
   step2Body:
     'Digdir processes the request and registers the agency. You see the status in the portal, and sign in again when the request is approved.',
-  step3Title: 'Grant the right in Altinn',
+  step3Title: 'Grant the right',
   step3Body:
-    'The person who manages access in Altinn at your agency gives one person the right “Manage services”. That person signs in to the portal.',
+    'The person who manages access at your agency gives one person the right “Manage services”. That person signs in to the portal.',
   step4Title: 'Build the first service',
   step4Body:
-    'Try a shared service, or describe the job and let the assistant help you. Give colleagues access in Altinn when the service is ready.',
-  operatedBy: 'Operated by the Norwegian Digitalisation Agency',
+    'Try a shared service, or describe the job and let the assistant help you. Give colleagues access when the service is ready.',
+  operatedBy: 'Explored by the Norwegian Digitalisation Agency together with KS and KS Digital',
   footer: 'Footer',
   privacy: 'Privacy statement',
   accessibility: 'Accessibility statement',

@@ -316,3 +316,17 @@ describe('document title', () => {
     expect(titles.size).toBe(pages.length);
   });
 });
+
+describe('front page', () => {
+  it.each([
+    ['nb', /utforskning .*ikke en tjeneste i drift.*KS og KS Digital/],
+    ['en', /exploration .*not a service in production.*KS and KS Digital/],
+  ] as const)(
+    'says on the front page that this is an exploration with KS and KS Digital, not production (%s)',
+    (locale, notice) => {
+      inRoot(<DocsPage route={{ page: 'oversikt' }} />, locale);
+
+      expect(screen.getByText(notice).closest('.hero')).not.toBeNull();
+    },
+  );
+});

@@ -1,4 +1,11 @@
-import { clauseFits, kindsOf, type DatasetConfig, type FilterValue } from '@genai/port-knowledge';
+import {
+  clauseFits,
+  kindsOf,
+  maxPartsAround,
+  maxPartsBudget,
+  type DatasetConfig,
+  type FilterValue,
+} from '@genai/port-knowledge';
 import { bestChunk, textRankCap } from './sql.js';
 
 /** SQLSTATE a read function raises when this server does not hold the generation it was asked for. */
@@ -10,6 +17,7 @@ export const readFunctions = [
   'kn_search(text, text, text, text, text, halfvec, text[], jsonb, integer, integer, integer)',
   'kn_fetch(text, text, text[])',
   'kn_range(text, text, text, integer, integer)',
+  'kn_parts(text, text, text, text, integer, integer)',
   'kn_facets(text, text, text[], jsonb)',
   'kn_documents(text, text, text[], jsonb, integer, integer)',
   'kn_resolve_citation(text, text, text[], text[])',
@@ -26,10 +34,14 @@ export const readHelpers = [
   'kn_search_sql(text, text, text, text, text, halfvec, text[], jsonb, integer, integer, integer)',
   'kn_fetch_sql(text, text, text[])',
   'kn_range_sql(text, text, text, integer, integer)',
+  'kn_parts_sql(text, text, text, text, integer, integer)',
   'kn_facets_sql(text, text, text, jsonb)',
   'kn_documents_sql(text, text, text[], jsonb, integer, integer)',
   'kn_resolve_citation_sql(text, text, text[], text[])',
 ] as const;
+
+/** What `kn_parts` returns: one row a part, and a last row with no `seq` when the budget cut the read. */
+const partColumns = `seq integer, kind text, level integer, heading_path jsonb, text text, start integer, "end" integer, regions jsonb, units jsonb`;
 
 const definer = `language plpgsql stable security definer set search_path = pg_catalog, public`;
 const hitColumns = `id text, text text, doc_id text, "position" integer, metadata jsonb, title text, url text, fields jsonb, page_from integer, page_to integer, file text, file_sha256 text, heading_path text[], score double precision, total integer, data_version bigint`;
@@ -323,6 +335,92 @@ const createFunctions = (filtered: FilteredSearch) => [
            order by c.position, c.id',
          ${docJoin('c')}, ds, g, p_document, p_from, p_to);
      end $$`,
+  // The parts around a hit (ADR 0055, "Chunks and reads"), from the chunk row in the generation's
+  // partition: its conversion is never named by the caller. Only body parts, in reading order; the
+  // budget is spent from the hit outwards (side -1 before it, 0 in it, 1 after it, then by nearness),
+  // so a cut read keeps the hit. readPartsAround in @genai/port-knowledge states the same reads.
+  `create or replace function kn_parts_sql(p_dataset text, p_generation text, p_chunk_id text, p_read text, p_n integer, p_budget integer)
+     returns text language plpgsql stable set search_path = pg_catalog, public as $$
+     declare
+       ds text := quote_literal(p_dataset); g text := quote_literal(p_generation);
+       n integer := least(greatest(coalesce(p_n, 0), 0), ${maxPartsAround});
+       budget integer := least(greatest(coalesce(p_budget, 0), 0), ${maxPartsBudget});
+       rows_sql text; chosen text;
+     begin
+       -- A server whose chunks have no parts columns yet holds no chunk made from parts (issue 635).
+       if not exists (select 1 from pg_attribute where attrelid = 'kn_chunks'::regclass
+                        and attname = 'conversion' and not attisdropped) then
+         return 'select null::int, null::text, null::int, null::jsonb, null::text, null::int, null::int, null::jsonb, null::jsonb where false';
+       end if;
+       -- A units read takes only the rows whose parts reach the units around the hit.
+       rows_sql := case when p_read = 'units' then
+           'select u.unit, u.parts from src_conversion_units u, hit, span
+             where u.conversion = hit.conversion and u.unit <= span.b and u.unit_to >= span.a'
+         else
+           'select u.unit, u.parts from src_conversion_units u, hit where u.conversion = hit.conversion'
+         end;
+       chosen := case p_read
+         when 'neighbours' then format(
+           'select b.* from body b, hit where b.seq between hit.seq_from and hit.seq_to
+            union all (select b.* from body b, hit where b.seq < hit.seq_from order by b.seq desc limit %1$s)
+            union all (select b.* from body b, hit where b.seq > hit.seq_to order by b.seq limit %1$s)', n)
+         when 'section' then
+           'select b.* from body b, hit
+             where b.seq >= coalesce((select max(h.seq) from body h where h.heading and h.seq <= hit.seq_from), -1)
+               and b.seq < coalesce((select min(h.seq) from body h where h.heading and h.seq > hit.seq_to), 2147483647)'
+         when 'units' then
+           'select b.* from body b, span
+             where exists (select 1 from jsonb_array_elements(b.x->''regions'') r
+                            where (r->>''unit'')::int between span.a and span.b)'
+         else null end;
+       if chosen is null then
+         raise exception 'a read is neighbours, section or units' using errcode = '22023';
+       end if;
+       return format(
+         'with hit as materialized (
+             select c.conversion, c.seq_from, c.seq_to from kn_chunks c
+              where c.dataset = %1$s and c.generation = %2$s and c.id = %3$L
+                and c.conversion is not null and c.seq_from is not null),
+           span as materialized (
+             select min((r->>''unit'')::int) - %4$s as a, max((r->>''unit'')::int) + %4$s as b
+               from hit
+               join src_conversion_units u on u.conversion = hit.conversion
+                and u.seq_from <= hit.seq_to and u.seq_to >= hit.seq_from
+               cross join lateral jsonb_array_elements(u.parts) x
+               cross join lateral jsonb_array_elements(x->''regions'') r
+              where (x->>''seq'')::int between hit.seq_from and hit.seq_to and x->>''layer'' = ''body''),
+           rows as materialized (%5$s),
+           body as materialized (
+             select (x->>''seq'')::int as seq, x->>''kind'' in (''section_header'', ''title'') as heading, x
+               from rows cross join lateral jsonb_array_elements(rows.parts) x
+              where x->>''layer'' = ''body''),
+           chosen as (%6$s),
+           sided as (
+             select c.seq, c.x,
+                    case when c.seq < hit.seq_from then -1 when c.seq > hit.seq_to then 1 else 0 end as side
+               from chosen c, hit),
+           ranked as (
+             select s.seq, s.x, case when s.side = 0 then 0 else
+                      row_number() over (partition by s.side order by s.side * s.seq) end as near
+               from sided s),
+           totalled as (
+             select r.seq, r.x,
+                    sum(char_length(coalesce(r.x->>''text'', ''''))) over (order by r.near, r.seq) as total
+               from ranked r)
+         select t.seq, t.x->>''kind'', (t.x->>''level'')::int, coalesce(t.x->''headingPath'', ''[]''),
+                coalesce(t.x->>''text'', ''''), (t.x->>''start'')::int, (t.x->>''end'')::int,
+                coalesce(t.x->''regions'', ''[]''),
+                (select coalesce(jsonb_agg(jsonb_build_object(''unit'', l.unit, ''label'', l.label) order by l.unit), ''[]'')
+                   from src_conversion_units l, hit
+                  where l.conversion = hit.conversion
+                    and l.unit in (select (r->>''unit'')::int from jsonb_array_elements(t.x->''regions'') r))
+           from totalled t where t.total <= %7$s
+         union all
+         select null, null, null, null, null, null, null, null, null
+          where exists (select 1 from totalled t where t.total > %7$s)
+         order by 1 nulls last',
+         ds, g, p_chunk_id, n, rows_sql, chosen, budget);
+     end $$`,
   `create or replace function kn_facets_sql(p_dataset text, p_generation text, p_field text, p_filters jsonb)
      returns text language plpgsql stable set search_path = pg_catalog, public as $$
      declare
@@ -426,6 +524,14 @@ const createFunctions = (filtered: FilteredSearch) => [
        perform kn_allowed(p_dataset);
        perform kn_attached(p_dataset, p_generation);
        return query execute kn_versioned_sql(p_generation, kn_range_sql(p_dataset, p_generation, p_document, p_from, p_to));
+     end $$`,
+  `create or replace function kn_parts(p_dataset text, p_generation text, p_chunk_id text, p_read text, p_n integer, p_budget integer)
+     returns table (${partColumns}, data_version bigint) ${definer} as $$
+     begin
+       perform kn_allowed(p_dataset);
+       perform kn_attached(p_dataset, p_generation);
+       return query execute kn_versioned_sql(p_generation,
+         kn_parts_sql(p_dataset, p_generation, p_chunk_id, p_read, p_n, p_budget));
      end $$`,
   `create or replace function kn_facets(p_dataset text, p_generation text, p_fields text[], p_filters jsonb)
      returns table (field text, value text, count integer, data_version bigint) ${definer} as $$

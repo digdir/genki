@@ -48,12 +48,20 @@ describe('public start page', () => {
         .map((h) => h.textContent),
     ).toEqual([
       'Hva dere kan lage',
-      'Slik er Genki bygd',
+      'Slik er Genki tenkt',
       'Pris, vilkår og data',
       'Slik får dere tilgang',
       'Bygg sammen med oss',
     ]);
     expectAccessible();
+  });
+
+  it('says in the hero that it is an exploration with KS and KS Digital, not in production', async () => {
+    open('#/');
+    const hero = await screen.findByRole('region', { name: nb('about.heroTitle') });
+
+    expect(within(hero).getByText(/utforskning .*ikke en tjeneste i drift/)).toBeTruthy();
+    expect(within(hero).getByText(/KS og KS Digital/)).toBeTruthy();
   });
 
   it('has one primary action, Be om tilgang, in the hero and after the steps', async () => {
@@ -116,7 +124,7 @@ describe('public start page', () => {
 
     const access = screen.getByRole('region', { name: 'Slik får dere tilgang' });
     expect(within(access).getAllByRole('listitem')).toHaveLength(4);
-    expect(within(access).getByText(/Den som styrer tilganger i Altinn hos dere/)).toBeTruthy();
+    expect(within(access).getByText(/Den som styrer tilganger hos dere/)).toBeTruthy();
     expect(within(access).queryByText(/Tilgangsstyreren|Første administrator/)).toBeNull();
   });
 

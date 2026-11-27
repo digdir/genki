@@ -1806,7 +1806,7 @@ export const serviceRoutes: RouteConfig[] = withContentReasons([
     method: 'delete',
     path: '/tenants/{tenant}/services/{id}',
     summary:
-      'Delete an archived service for good: its definition, every version, its draft, its environments and the step flows of the organisation that nothing else still stored runs. Runs, conversations and documents stay and follow normal retention (ADR 0011). The id can be used again. Needs manage-services; audited',
+      'Delete an archived service for good: its definition, every version, its draft, its environments, the step flows of the organisation that nothing else still stored runs, and the hosted Client genki made for its address, whose hostnames are released. Runs, conversations and documents stay and follow normal retention (ADR 0011). The id can be used again. Needs manage-services; audited',
     request: { params: z.object({ tenant, id: service }), headers: changeReason },
     responses: {
       200: audited(
@@ -1815,15 +1815,16 @@ export const serviceRoutes: RouteConfig[] = withContentReasons([
           deleted: z.literal(true),
           versions: z.number().int(),
           stepFlows: z.array(z.string()),
+          address: z.object({ client: z.string(), hostnames: z.array(z.string()) }).optional(),
         }),
         'Deleted',
       ),
-      400: problem('Missing reason'),
+      400: problem('Missing reason, or the address genki made could not be removed'),
       ...tenantErrors,
       404: problem('No such service'),
       409: {
         description:
-          'urn:genai:problem:service-not-archived: only an archived service can be deleted. urn:genai:problem:service-in-use: a frontend, a live API key or another service that is not archived still uses it; errors name them, with path frontends, apiKeys or services',
+          'urn:genai:problem:service-not-archived: only an archived service can be deleted. urn:genai:problem:service-in-use: a frontend someone made, a live API key or another service that is not archived still uses it; errors name them, with path frontends, apiKeys or services and the id of each one in this organisation',
         content: {
           'application/problem+json': {
             schema: z.object({
@@ -1833,7 +1834,9 @@ export const serviceRoutes: RouteConfig[] = withContentReasons([
               ]),
               title: z.string(),
               status: z.literal(409),
-              errors: z.array(z.object({ path: z.string(), message: z.string() })),
+              errors: z.array(
+                z.object({ path: z.string(), message: z.string(), id: z.string().optional() }),
+              ),
             }),
           },
         },

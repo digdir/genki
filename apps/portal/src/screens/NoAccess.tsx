@@ -1,8 +1,6 @@
-import { ExternalLinkIcon } from '@navikt/aksel-icons';
 import { Avatar, Button, Field, Heading, Label, Textarea } from '@digdir/designsystemet-react';
 import { useEffect, useId, useState } from 'react';
 import { BusyButton } from '../components/BusyButton';
-import { Icon } from '../components/Icon';
 import { accessManagers } from '../data/access';
 import { useT, type PlainKey } from '../i18n';
 import type { PortalRight } from '../types';
@@ -134,20 +132,13 @@ const NoAccessContent = ({
         </div>
       </section>
 
-      <div className="actions">
-        <Button asChild>
-          <a href="https://www.altinn.no" target="_blank" rel="noopener">
-            {t('noAccess.requestInAltinn')}
-            <Icon icon={ExternalLinkIcon} size={18} />
-            <span className="visually-hidden">{t('noAccess.newTab')}</span>
-          </a>
-        </Button>
-        {onSwitchOrg ? (
+      {onSwitchOrg ? (
+        <div className="actions">
           <Button variant="secondary" onClick={onSwitchOrg}>
             {t('noAccess.switchOrg')}
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       <div className="recheck">
         <span className="recheck-title">{t('noAccess.justGot')}</span>

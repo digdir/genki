@@ -31,7 +31,7 @@ export const endpoints = {
   capTools: 'Tools',
   capJsonSchema: 'Structured answer',
   capReasoning: 'Reasoning',
-  reasonError: 'Write a reason of at least {min} characters. It is shown in Audit.',
+  reasonError: 'Write a reason of at least {min} characters. It is shown in the log.',
   idHint: 'Use lower-case letters, digits and hyphens, for example foundry-eu.',
   urlHint: 'The address must start with https://',
   secretNameHint: 'Use lower-case letters, digits and hyphens.',
@@ -65,7 +65,7 @@ export const endpoints = {
     'genki signs in with its managed identity through a multi-tenant app. No secret is stored.',
   gateway: 'This is the AI gateway',
   gatewayDescription:
-    'Every model call sends genki-tenant with the organisation number of the tenant the call is for, so the gateway counts the usage on the right organisation.',
+    'Every model call sends genki-tenant with the org. no. of the tenant the call is for, so the gateway counts the usage on the right organisation.',
   appClientId: 'App client ID',
   appClientIdDescription: 'The client ID of the multi-tenant app.',
   resourceTenant: 'Resource tenant',
@@ -93,7 +93,7 @@ export const endpoints = {
   deploymentDescription: 'The name the model has at the provider.',
   family: 'Model family',
   familyDescription:
-    'For example gpt-4o or llama-3. The quality matrix uses a judge from a different family.',
+    'For example gpt-4o or llama-3. The quality matrix evaluates with a model from a different family.',
   residency: 'Data residency',
   can: 'Can',
   inUse: 'In use',
@@ -111,7 +111,7 @@ export const endpoints = {
   processorMissingHint: 'Only tries with made-up data',
   processorTitle: 'Processor for {id}',
   processorIntro:
-    'Before a service can send real data to a new model API on this connection, the data processing agreement, the sub-processors and the retention at the provider must be recorded. The change is logged in Audit.',
+    'Before a service can send real data to a new model API on this connection, the data processing agreement, the sub-processors and the retention at the provider must be recorded. The change is logged.',
   processorAgreement: 'Data processing agreement',
   processorAgreementHint: 'Name or case number of the agreement, for example DPA-2026-17.',
   processorAgreementMissing: 'Enter which agreement applies.',
@@ -130,8 +130,7 @@ export const endpoints = {
   processorNote: 'Note on retention (optional)',
   processorSave: 'Save processor',
   processorSaveFailed: 'Could not save the processor. Try again shortly.',
-  processorSaved:
-    'The data processing agreement for {id} has been saved. The change is logged in Audit.',
+  processorSaved: 'The data processing agreement for {id} has been saved. The change is logged.',
   noSecret: 'None',
   remove: 'Remove',
   removeId: 'Remove {id}',

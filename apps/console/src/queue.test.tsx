@@ -111,7 +111,7 @@ describe('til behandling', () => {
     await open('#/queue?tab=skills', fetch);
 
     const panel = await openRow('Klarspråk');
-    expect(within(panel).getByText('Endret siden versjon 2, som er delt i dag')).toBeTruthy();
+    expect(within(panel).getByText('Endret siden utgave 2, som er delt i dag')).toBeTruthy();
     expect(within(panel).getByText('Bruk De-form til mottakeren.')).toBeTruthy();
     expect(within(panel).getByText('19 av 20 bestått (krav: 90 prosent)')).toBeTruthy();
     await decide(panel, 'Avvis', 'Ferdigheten mangler testsett for nynorsk');
@@ -193,7 +193,7 @@ describe('til behandling', () => {
 
     expect(await screen.findByText('Ingenting venter')).toBeTruthy();
     expect(screen.getByText('Ingen beslutninger de siste 90 dagene.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('tab', { name: /Deling av ferdigheter/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Deling av arbeidsinstrukser/ }));
     expect(await screen.findByText('Fikk ikke hentet delingsforespørslene')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Prøv igjen' })).toBeTruthy();
   });

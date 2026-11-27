@@ -34,10 +34,10 @@ describe('organisation access and audit in English', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-07T12:00:00+02:00'));
     await open('#/audit');
-    expect(await screen.findByRole('heading', { name: 'Audit' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Log' })).toBeTruthy();
     expect(await screen.findByLabelText('Organisation')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Export (CSV)' })).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'Audit log' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Log' })).toBeTruthy();
   });
 
   it('asks for a reason to see content with English copy and a reason rule', async () => {

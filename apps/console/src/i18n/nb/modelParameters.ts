@@ -23,5 +23,5 @@ export const modelParameters = defineNamespace({
   rejectedText:
     'Modellen svarte at den ikke godtar {name}. Plattformen prøvde på nytt uten, så tjenestene fungerer. Sist sett {when}. Velg «Modellen støtter den ikke» under Parametere for å gjøre det til en fast regel.',
   rejectedHint: 'Har avvist {name}',
-  saved: 'Parameterne for {model} er lagret. Endringen er logget i Revisjon.',
+  saved: 'Parameterne for {model} er lagret. Endringen er logget.',
 });

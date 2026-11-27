@@ -33,6 +33,14 @@ describe('booting the API', () => {
     expect(bootProblems({ ...dev, ...rest })).toEqual([]);
   });
 
+  it('refuses Altinn from another environment than its Maskinporten, also in dev mode', () => {
+    const mixed = { ...real, MASKINPORTEN_ISSUER: 'https://test.maskinporten.no/' };
+    expect(bootProblems(mixed)).toEqual([expect.stringContaining('MASKINPORTEN_ISSUER')]);
+    expect(bootProblems({ ...dev, ...mixed })).toEqual([
+      expect.stringContaining('MASKINPORTEN_ISSUER'),
+    ]);
+  });
+
   it('startup refuses GENAI_MOCK_RIGHTS outside dev mode', () => {
     expect(bootProblems({ ...real, GENAI_MOCK_RIGHTS: 'true' })).toEqual([
       expect.stringContaining('GENAI_MOCK_RIGHTS'),

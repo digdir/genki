@@ -11,7 +11,7 @@ export const common = defineNamespace({
   showApiCall: 'Vis API-kall',
   proposedCall: 'Finnes ikke i API-et ennå. Foreslått kall i samme mønster:',
   reasonTooShort: 'Skriv en begrunnelse på minst {min} tegn.',
-  reasonTooShortAudited: 'Skriv en begrunnelse på minst {min} tegn. Den vises i Revisjon.',
+  reasonTooShortAudited: 'Skriv en begrunnelse på minst {min} tegn. Den vises i loggen.',
   saveFailed: 'Kunne ikke lagre endringen. Prøv igjen om litt.',
   todayAt: 'I dag kl. {time}',
   dayAt: '{date} kl. {time}',

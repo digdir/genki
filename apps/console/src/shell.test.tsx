@@ -203,8 +203,8 @@ describe('environment label', () => {
   const t = translator('nb');
 
   it.each([
-    ['test', false, 'Testmiljø'],
-    ['TEST', false, 'Testmiljø'],
+    ['test', false, 'Testplattform'],
+    ['TEST', false, 'Testplattform'],
     ['prod', false, 'Produksjon'],
     ['production', false, 'Produksjon'],
     ['staging', false, 'staging'],

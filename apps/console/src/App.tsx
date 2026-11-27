@@ -63,10 +63,9 @@ interface Props {
   auth: AuthClient;
   fetch: typeof fetch;
   baseUrl?: string;
-  live?: boolean;
 }
 
-export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props) => {
+export const App = ({ auth, fetch: send, baseUrl = '/api' }: Props) => {
   const t = useT();
   const tRef = useRef(t);
   tRef.current = t;
@@ -102,9 +101,8 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
       token: () => auth.current()?.token,
       actorName: () => auth.current()?.name,
       locale: () => resolveLocale(document.documentElement.lang),
-      settingsGrid: !live,
     });
-  }, [auth, send, baseUrl, live, endSession]);
+  }, [auth, send, baseUrl, endSession]);
   const search = useMemo(
     () => ({ tenants: api.listTenants, services: api.tenantDefinitions }),
     [api],
@@ -292,7 +290,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
         id={params.get('id') ?? undefined}
       />
     ),
-    '/onboarding': () => <Onboarding api={api} live={live} />,
+    '/onboarding': () => <Onboarding api={api} />,
     '/models': () => <Models api={api} params={params} />,
     '/platform-secrets': () => <PlatformSecrets api={api} />,
     '/flags': () => (
@@ -304,7 +302,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     '/catalog': () => <Catalog api={api} tab={params.get('tab') ?? undefined} />,
     '/policies': () => <Policies api={api} tab={params.get('tab') ?? undefined} />,
     '/building-blocks': () => (
-      <BuildingBlocks api={api} initial={params.get('block') ?? undefined} live={live} />
+      <BuildingBlocks api={api} initial={params.get('block') ?? undefined} />
     ),
     '/block-reviews': () => (
       <WhenFlag flag="blockStudio" otherwise={notFound}>
@@ -323,10 +321,10 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     '/state-register': () => <StateRegister api={api} />,
     '/quality-matrix': () => (
       <Suspense fallback={null}>
-        <QualityMatrix api={api} tab={params.get('tab') ?? 'matrix'} live={live} />
+        <QualityMatrix api={api} tab={params.get('tab') ?? 'matrix'} />
       </Suspense>
     ),
-    '/tracing': () => <Tracing api={api} live={live} />,
+    '/tracing': () => <Tracing api={api} />,
     '/operations': () => <Operations api={api} />,
     '/diagnostics': () => (
       <Diagnostics

@@ -41,7 +41,7 @@ const fileParams = z.object({
     .string()
     .openapi({ param: { name: 'name', in: 'path' }, example: 'demo.mp4' })
     .describe(
-      'demo.mp4, demo.srt, poster.jpg, sample.mp3, step-{n}.png after each step, or failed-step-{n}.png',
+      'demo.mp4, demo.srt, poster.jpg, sample.mp3, step-{n}.png after each step, failed-step-{n}.png, capture.mp4, events.json, edl.json, edl-round-{0-3}.json, review-round-{1-3}.json, voice-{hash}.mp3 or voice-{hash}.words.json',
     ),
 });
 
@@ -73,6 +73,15 @@ const Recording = z
       .optional()
       .describe('A trial of the first steps only, kept out of the library'),
     cancelledBy: z.string().optional(),
+    editOf: z.string().optional().describe('The recording whose film this one edits'),
+    instruction: z.string().optional().describe('The change asked for in an edit'),
+    costCapUsd: z
+      .number()
+      .optional()
+      .describe(
+        'The most the recorder may spend on models for this recording, approved by the requester',
+      ),
+    costUsd: z.number().optional().describe('What the recorder spent on models'),
   })
   .openapi('DemoRecording');
 
@@ -174,7 +183,7 @@ export const demoRoutes: RouteConfig[] = [
     method: 'post',
     path: '/operator/demos/{id}/recordings',
     summary:
-      'Queue a recording of the demo as it is stored now, or a silent trial of its first steps (demo editors, audited as platform.demo.recording.start)',
+      'Queue a recording of the demo as it is stored now, a silent trial of its first steps, or an edit of a recorded film by an instruction (demo editors, audited as platform.demo.recording.start)',
     request: {
       params: idParam,
       headers: changeReason,
@@ -182,7 +191,9 @@ export const demoRoutes: RouteConfig[] = [
     },
     responses: {
       202: json(Recording, 'Queued for the recorder'),
-      400: problem('Invalid body, upTo past the last step, or missing reason'),
+      400: problem(
+        'Invalid body, upTo past the last step, editOf not a recorded recording of the demo with capture.mp4, events.json and edl.json, no costCapUsd for an edit or a voice read by a model, or missing reason',
+      ),
       ...viewerOnly,
       404: problem('No such demo'),
       409: problem('urn:genai:problem:recording-open: the demo has a recording that has not ended'),
@@ -257,6 +268,7 @@ export const demoRoutes: RouteConfig[] = [
           'image/jpeg': { schema: z.string().openapi({ format: 'binary' }) },
           'image/png': { schema: z.string().openapi({ format: 'binary' }) },
           'audio/mpeg': { schema: z.string().openapi({ format: 'binary' }) },
+          'application/json': { schema: z.unknown() },
         },
       },
       ...viewerOnly,
@@ -275,7 +287,16 @@ export const demoRoutes: RouteConfig[] = [
     },
     responses: {
       200: json(
-        z.object({ data: z.array(z.object({ id: z.string(), demo: z.string() })) }),
+        z.object({
+          data: z.array(
+            z.object({
+              id: z.string(),
+              demo: z.string(),
+              editOf: z.string().optional(),
+              instruction: z.string().optional(),
+            }),
+          ),
+        }),
         'Queued recordings',
       ),
       400: problem('status is not queued'),
@@ -298,6 +319,26 @@ export const demoRoutes: RouteConfig[] = [
       ),
       ...recorderOnly,
       404: problem('No such recording'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/recorder/recordings/{id}/files/{name}',
+    summary:
+      'One file of a recorded recording that a queued or running edit points at with editOf (the recorder only)',
+    request: { params: fileParams, headers: recorderKey },
+    responses: {
+      200: {
+        description: 'The file',
+        content: {
+          'video/mp4': { schema: z.string().openapi({ format: 'binary' }) },
+          'image/png': { schema: z.string().openapi({ format: 'binary' }) },
+          'audio/mpeg': { schema: z.string().openapi({ format: 'binary' }) },
+          'application/json': { schema: z.unknown() },
+        },
+      },
+      ...recorderOnly,
+      404: problem('No such file, or no open edit of the recording'),
     },
   }),
   createRoute({

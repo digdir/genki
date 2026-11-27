@@ -9,10 +9,12 @@ import {
 } from '@genai/definitions';
 import { recipeShareKind } from '@genai/composition';
 import { boundService, type ClientStore } from '@genai/identity';
+import type { HostnameClaimStore } from '@genai/kernel';
 import type { Context } from 'hono';
 import { enterTenant } from './access.js';
 import { actorOf, type AdminHandler, type AdminOutcome } from './admin.js';
 import { appendVersion, serialized, type ConfigEntryStore } from './config-store.js';
+import { isAddressClientOf, liveHostnamesOf } from './hostname-claims.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 import { t } from './i18n/index.js';
 import {
@@ -36,6 +38,8 @@ export const serviceInUseType = 'urn:genai:problem:service-in-use';
 export interface ServiceDeleteDeps {
   clients: ClientStore;
   apiKeys: TenantApiKeys;
+  claims: HostnameClaimStore;
+  removeClient(principal: Principal, tenant: string, id: string, reason: string): Promise<boolean>;
   now?: () => number;
 }
 
@@ -125,8 +129,9 @@ export const flowsOnlyUsedBy = (deps: Deps, tenant: string, service: string): Pr
   });
 
 export interface ServiceDependents {
-  frontends: string[];
-  apiKeys: string[];
+  address?: { client: string; hostnames: string[] };
+  frontends: { id: string; name: string }[];
+  apiKeys: { id: string; name: string }[];
   services: string[];
   otherOrganisations: number;
   internalServices: number;
@@ -153,20 +158,28 @@ const decodeURIComponentSafe = (segment: string) => {
   }
 };
 
-/** Frontends, live API keys and not archived services that call the service. */
+/** What still uses the service, and the address genki made for it. */
 export const dependentsOf = async (
   deps: Deps & ServiceDeleteDeps,
   tenant: string,
   service: string,
 ): Promise<ServiceDependents> => {
   const now = (deps.now ?? Date.now)();
-  const frontends = (await deps.clients.list(tenant))
-    .filter((c) => c.definition.spec.service === service)
-    .map((c) =>
-      c.definition.spec.hosted
-        ? c.definition.metadata.id
-        : (c.definition.metadata.name ?? c.definition.metadata.id),
-    );
+  const claims = await deps.claims.list(tenant);
+  const using = (await deps.clients.list(tenant)).filter(
+    (c) => c.definition.spec.service === service,
+  );
+  const own = using.find((c) => isAddressClientOf(c, service, claims));
+  const address = own && {
+    client: own.definition.metadata.id,
+    hostnames: liveHostnamesOf(claims, own.definition.metadata.id),
+  };
+  const frontends = using
+    .filter((c) => c !== own)
+    .map(({ definition: { metadata, spec } }) => ({
+      id: metadata.id,
+      name: spec.hosted ? metadata.id : (metadata.name ?? metadata.id),
+    }));
   const apiKeys = (await deps.apiKeys.list(tenant))
     .filter(
       (k) =>
@@ -174,7 +187,7 @@ export const dependentsOf = async (
         !(k.expiresAt && Date.parse(k.expiresAt) <= now) &&
         (boundService(k) === service || k.agents.includes(service)),
     )
-    .map((k) => k.name);
+    .map((k) => ({ id: k.id, name: k.name }));
   const hides = hidesInternalServices();
   return seeingInternalServices(async () => {
     const { definitions } = deps;
@@ -209,21 +222,31 @@ export const dependentsOf = async (
         else if (other !== tenant) otherOrganisations++;
         else services.push(entry.id);
       }
-    return { frontends, apiKeys, services, otherOrganisations, internalServices };
+    return {
+      ...(address ? { address } : {}),
+      frontends,
+      apiKeys,
+      services,
+      otherOrganisations,
+      internalServices,
+    };
   });
 };
 
 const inUseErrors = (d: ServiceDependents) => [
-  ...d.frontends.map((name) => ({
+  ...d.frontends.map(({ id, name }) => ({
     path: 'frontends',
+    id,
     message: t('problems.serviceUsedByFrontend', { name }),
   })),
-  ...d.apiKeys.map((name) => ({
+  ...d.apiKeys.map(({ id, name }) => ({
     path: 'apiKeys',
+    id,
     message: t('problems.serviceUsedByKey', { name }),
   })),
   ...d.services.map((service) => ({
     path: 'services',
+    id: service,
     message: t('problems.serviceUsedByService', { service }),
   })),
   ...(d.otherOrganisations > 0
@@ -264,12 +287,14 @@ const forget = async (
   await appendVersion(entries, { kind, scope, id, spec: latest.spec, deleted: true, by, reason });
 };
 
+type Refusal = { path: string; message: string; id?: string };
+
 const failed = (
   target: string,
   path: string,
   message: string,
   type?: string,
-  errors?: { path: string; message: string }[],
+  errors?: Refusal[],
 ): AdminOutcome => ({
   ok: false,
   errors: errors ?? [{ path, message }],
@@ -284,7 +309,7 @@ const problem = (
   c: Context,
   status: 400 | 401 | 403 | 404 | 409,
   title: string,
-  errors: { path: string; message: string }[] = [],
+  errors: Refusal[] = [],
   type = 'about:blank',
 ) =>
   c.json({ type, title, status, errors }, status, {
@@ -320,6 +345,9 @@ export const createServiceDeleteModule =
           if (refusals.length > 0) return failed(target, 'usedBy', '', serviceInUseType, refusals);
           const flows = await flowsOnlyUsedBy(deps, tenant, id);
           const by = actorOf(principal.actor ?? principal);
+          const { address } = dependents;
+          if (address && !(await input.removeClient(principal, tenant, address.client, reason)))
+            return failed(target, 'address', t('problems.serviceAddressNotRemoved'));
           if (isInternalService(versions.at(-1)?.definition))
             await appendVersion(entries, {
               kind: deletedInternalServiceKind,
@@ -340,9 +368,15 @@ export const createServiceDeleteModule =
             await forget(entries, stepFlowArchiveKind, tenant, flow, by, reason);
           return {
             ok: true,
-            value: { id, deleted: true, versions: versions.length, stepFlows: flows },
+            value: {
+              id,
+              deleted: true,
+              versions: versions.length,
+              stepFlows: flows,
+              ...(address ? { address } : {}),
+            },
             target,
-            audit: { versions: versions.length, stepFlows: flows },
+            audit: { versions: versions.length, stepFlows: flows, ...(address ? { address } : {}) },
           } as AdminOutcome;
         }),
     };

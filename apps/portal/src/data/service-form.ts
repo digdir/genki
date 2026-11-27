@@ -356,6 +356,14 @@ export const autoPublicName = (name: string) => (slug(name) ? `${slug(name)}__de
 export const datasetRef = (name: string, tenant: string) =>
   name.includes('/') ? name : `${tenant}/${slug(name)}`;
 
+/** Publishes under another id: an automatic public name, one taken from the name, follows the id, so it is not the address of the service that has the name. */
+export const withServiceId = (d: ServiceDefinition, id: string): ServiceDefinition => {
+  const head = variantsOf(d.spec)[0]?.publicName;
+  const auto = head !== undefined && head === autoPublicName(d.metadata.name ?? '');
+  const moved = { ...d, metadata: { ...d.metadata, id } };
+  return auto ? applySpec(moved, (cur) => withPublicName(cur.spec, `${id}__default`)) : moved;
+};
+
 export const renameService = (d: ServiceDefinition, name: string, published: boolean) => {
   const head = variantsOf(d.spec)[0]?.publicName;
   const auto = !published && (!head || head === autoPublicName(d.metadata.name ?? ''));

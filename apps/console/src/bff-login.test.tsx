@@ -35,8 +35,7 @@ const platform = (me: () => Response, api: typeof fetch = mockFetch()) => {
   return { auth, fetch, calls, visited };
 };
 
-const open = (p: ReturnType<typeof platform>) =>
-  render(<App auth={p.auth} fetch={p.fetch} live={false} />);
+const open = (p: ReturnType<typeof platform>) => render(<App auth={p.auth} fetch={p.fetch} />);
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/');

@@ -41,7 +41,7 @@ const synonymsById: Record<string, string> = {
   verktoy: 'tools tool calling function calling',
   definisjoner: 'tjenestedefinisjon definisjon YAML portal portalen',
   'agent-runtime': 'runtime kjerne agent harness',
-  kanaler: 'kanaler API frontend arbeidsflate portal',
+  kanaler: 'kanaler API frontend assistent portal',
   autentisering: 'innlogging pålogging identitet login',
   tilgangsstyring: 'autorisasjon rettigheter tilgang',
   sprakmodeller: 'LLM språkmodell modeller Claude GPT Gemini Llama',

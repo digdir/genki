@@ -18,6 +18,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { clientRegistry } from '../frontends.js';
 import { defaultReservedDomains } from '../hosts.js';
 import { operatorDirectory } from '../operators.js';
+import { loginAcrValues } from '../altinn-pdp.js';
 import { actingClient } from './acting.js';
 import {
   createBff,
@@ -81,6 +82,7 @@ const setup = async (
     tokenEndpoint?: string;
     noSecret?: boolean;
     entraGroups?: string[];
+    altinn?: boolean;
     issuer?: string;
     loginPage?: string;
     directory?: { orgNumber: string; name: string }[] | 'unreadable';
@@ -157,7 +159,7 @@ const setup = async (
                 tenant: ORG_A,
                 resource: RESOURCE,
               },
-              entraOnly: true,
+              ...(options.altinn ? {} : { entraOnly: true }),
             }
           : {}),
       },
@@ -218,8 +220,11 @@ const setup = async (
     },
     hostActive: async (hostname) => !options.inactive?.includes(hostname),
     issuer,
-    altinnResource: options.entraGroups ? undefined : RESOURCE,
-    acrValues: options.entraGroups ? 'entraid' : undefined,
+    altinnResource: options.entraGroups && !options.altinn ? undefined : RESOURCE,
+    acrValues: loginAcrValues(
+      Boolean(options.entraGroups) && !options.altinn,
+      Boolean(options.entraGroups),
+    ),
     platformLogin: {
       clientId: PLATFORM_CLIENT,
       secret: options.noSecret ? undefined : PLATFORM_SECRET,
@@ -723,6 +728,18 @@ describe('the platform login when Entra groups give the rights', () => {
     const authorize = s.atLocation(started).searchParams;
     expect(authorize.get('acr_values')).toBe('entraid');
     expect(authorize.has('authorization_details')).toBe(false);
+  });
+
+  it('offers ID-porten with the Altinn resource beside Entra ID once Altinn is on too', async () => {
+    const s = await setup({ entraGroups: [EMPLOYEE_GROUP], altinn: true });
+
+    const { started } = await s.toHandoff();
+
+    const authorize = s.atLocation(started).searchParams;
+    expect(authorize.get('acr_values')).toBe('substantial entraid');
+    expect(JSON.parse(authorize.get('authorization_details') ?? '[]')).toEqual([
+      { type: 'ansattporten:altinn:resource', resource: RESOURCE },
+    ]);
   });
 
   it('lets an employee in the service group into a hosted assistant', async () => {

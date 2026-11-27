@@ -18,6 +18,7 @@ import {
   Tag,
   Textfield,
 } from '@digdir/designsystemet-react';
+import { approvalUsd, filmCostUsd, voiceNeedsApproval } from '@genai/contracts';
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -32,7 +33,7 @@ import {
 import { navigate, useAsync } from '../hooks';
 import { useT } from '../i18n';
 import { EmptyState, ErrorState, Loading } from '../states';
-import { Flash, PageHeader, ReasonDialog, TableRegion, VisuallyHidden } from '../ui';
+import { DialogError, Flash, PageHeader, ReasonDialog, TableRegion, VisuallyHidden } from '../ui';
 import { DemoEditor } from './demos/Editor';
 import { DemoSettingsScreen } from './demos/DemoSettings';
 import { RecordingScreen } from './demos/Recording';
@@ -50,6 +51,7 @@ import {
   hasFile,
   isOpen,
   progressText,
+  CostApproval,
   requestRecording,
   RecordingTag,
   recordingHref,
@@ -476,6 +478,7 @@ const Detail = ({ api, id }: { api: ApiClient; id: string }) => {
   const media = useMedia(api, recorded);
   const video = useRef<HTMLVideoElement>(null);
   const [asking, setAsking] = useState(false);
+  const [approved, setApproved] = useState(false);
   useEffect(() => {
     if (!open) return;
     const timer = setInterval(retry, pollMs);
@@ -506,6 +509,13 @@ const Detail = ({ api, id }: { api: ApiClient; id: string }) => {
     );
 
   const demo: DemoDetail = state.data;
+  const modelVoice = voiceNeedsApproval(demo.voice);
+  const costCap = approvalUsd(
+    filmCostUsd(
+      demo.steps.map((s) => s.say),
+      demo.voice,
+    ),
+  );
   const latest = full.find((r) => !isOpen(r) && r.status !== 'cancelled');
   const current = demoState(
     { ...demo, ...(latest ? { latest } : {}), ...(recorded ? { recorded } : {}) },
@@ -557,12 +567,30 @@ const Detail = ({ api, id }: { api: ApiClient; id: string }) => {
         title={t('demos.recordAgainTitle', { title: demo.title })}
         text={t('demos.recordAgainText')}
         confirmLabel={t('demos.recordAgainConfirm')}
-        onClose={() => setAsking(false)}
+        onClose={() => {
+          setAsking(false);
+          setApproved(false);
+        }}
         onConfirm={async (reason) => {
-          const started = await requestRecording(api, demo.id, reason, t);
+          if (modelVoice && !approved) throw new DialogError(t('demos.costApprovalMissing'));
+          const started = await requestRecording(
+            api,
+            demo.id,
+            reason,
+            t,
+            undefined,
+            approved ? costCap : undefined,
+          );
           navigate('/demos', { recording: started.id });
         }}
-      />
+      >
+        <CostApproval
+          usd={costCap}
+          required={modelVoice}
+          checked={approved}
+          onChange={setApproved}
+        />
+      </ReasonDialog>
       <div className="demo-detail">
         <div className="stack">
           {open ? (
@@ -633,9 +661,11 @@ const Detail = ({ api, id }: { api: ApiClient; id: string }) => {
                         <TableCell>{r.genkiVersion}</TableCell>
                         <TableCell>{r.demoVersion}</TableCell>
                         <TableCell>
-                          {r.upTo === undefined
-                            ? t('demos.kindFull')
-                            : t('demos.trialOf', { upTo: r.upTo })}
+                          {r.editOf
+                            ? t('demos.kindEdit')
+                            : r.upTo === undefined
+                              ? t('demos.kindFull')
+                              : t('demos.trialOf', { upTo: r.upTo })}
                         </TableCell>
                         <TableCell>{resultText(r, t)}</TableCell>
                         <TableCell>
