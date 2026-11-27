@@ -381,15 +381,17 @@ describe('live mode without invented data', () => {
 });
 
 describe('sidebar', () => {
-  it('marks Kvalitet i alle tjenester as the current page on every tab of the matrix', async () => {
+  it('marks Kvalitet and its Matrise page as current on every tab of the matrix', async () => {
     await openLive('#/quality-matrix?tab=judges');
     const menu = screen.getByRole('navigation', { name: 'Konsollmeny' });
+    const pages = screen.getByRole('navigation', { name: 'Sider i Kvalitet' });
 
-    expect(
-      within(menu)
-        .getByRole('link', { name: 'Kvalitet i alle tjenester' })
-        .getAttribute('aria-current'),
-    ).toBe('page');
+    expect(within(menu).getByRole('link', { name: 'Kvalitet' }).getAttribute('aria-current')).toBe(
+      'page',
+    );
+    expect(within(pages).getByRole('link', { name: 'Matrise' }).getAttribute('aria-current')).toBe(
+      'page',
+    );
     expect(within(menu).queryByRole('link', { name: 'Dommere' })).toBeNull();
   });
 

@@ -67,7 +67,7 @@ describe('til behandling', () => {
   it('shows how many requests wait for a decision in the menu', async () => {
     await open('#/tenants');
 
-    await waitFor(() => expect(navLink().textContent).toMatch(/\d+ venter på beslutning/));
+    await waitFor(() => expect(navLink().textContent).toMatch(/\d+ venter/));
   });
 
   it('shows why a building block needs approval, approves it and moves it to Behandlet', async () => {

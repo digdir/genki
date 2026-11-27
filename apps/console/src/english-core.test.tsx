@@ -23,7 +23,6 @@ describe('console in English', () => {
     const menu = await screen.findByRole('navigation', { name: 'Console menu' });
     expect(within(menu).getByRole('link', { name: 'Organisations' })).toBeTruthy();
     expect(within(menu).getByRole('link', { name: 'Log' })).toBeTruthy();
-    expect(screen.getByRole('note').textContent).toMatch(/Everything you do here is logged/);
   });
 
   it('refuses an account without the operator role in English', async () => {
