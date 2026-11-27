@@ -15,11 +15,57 @@ import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
+import { z } from 'zod';
+import {
+  centre,
+  focusArea,
+  focusTarget,
+  glideMs,
+  navigates,
+  refOf,
+  scrollBy,
+  smoothScrollScript,
+  targetOf,
+  voiceCue,
+  type Box,
+  type Point,
+  type Target,
+} from './demo-pointer.ts';
+import {
+  approved,
+  audioRequest,
+  audioUrl,
+  audioUsd,
+  bestTake,
+  hearingUsd,
+  isModelVoice,
+  maxClipBytes,
+  modelAudio,
+  modelVoiceId,
+  OverCap,
+  refuseOverCap,
+  speechLocale,
+  spendOf,
+  transcriptionUrl,
+  type Spend,
+} from './demo-voice.ts';
+import { maxCostCapUsd, voiceCostUsd } from '../packages/contracts/src/demo-voices.ts';
+import {
+  landmarkScript,
+  type Card,
+  type CaptureLog,
+  type Landmark,
+  type StepLog,
+} from './demo-events.ts';
+import { editFilm, hearClip, makeFilm } from './demo-film.ts';
+import { writeRunFile, writeRunJson } from './demo-files.ts';
 
 export interface DemoStep {
   say: string;
   do?: string[][];
   hold?: number;
+  chapter?: string;
+  focus?: string[];
 }
 
 export interface Demo {
@@ -30,31 +76,19 @@ export interface Demo {
   start: string;
   signedIn?: boolean;
   ready?: string;
+  intro?: Card;
+  outro?: Card;
   steps: DemoStep[];
 }
 
-export interface TimedLine {
-  at: number;
-  seconds: number;
-  text: string;
-}
+export type { TimedLine } from './demo-events.ts';
 
 export interface Clip {
   file?: string;
   seconds: number;
 }
 
-const pad = (n: number, width = 2) => String(Math.floor(n)).padStart(width, '0');
-
-export const srtTime = (seconds: number) => {
-  const ms = Math.round(seconds * 1000);
-  return `${pad(ms / 3_600_000)}:${pad((ms / 60_000) % 60)}:${pad((ms / 1000) % 60)},${pad(ms % 1000, 3)}`;
-};
-
-export const subtitles = (lines: TimedLine[]) =>
-  lines
-    .map((l, i) => `${i + 1}\n${srtTime(l.at)} --> ${srtTime(l.at + l.seconds)}\n${l.text}\n`)
-    .join('\n');
+export { srtTime, subtitles } from './demo-events.ts';
 
 const escapeXml = (s: string) =>
   s.replace(
@@ -69,65 +103,6 @@ const languageTag = /^([a-z]{2,3})(?:-[A-Z]{2})?$/;
 
 export const subtitleLanguage = (language: string) =>
   ({ nb: 'nob', nn: 'nno', no: 'nor', en: 'eng' })[languageTag.exec(language)?.[1] ?? ''] ?? 'und';
-
-export const mixArgs = (
-  video: string,
-  clips: { file: string; at: number }[],
-  srt: string,
-  out: string,
-  language = 'nb-NO',
-) => {
-  const encode = [
-    '-c:v',
-    'libx264',
-    '-pix_fmt',
-    'yuv420p',
-    '-c:s',
-    'mov_text',
-    '-metadata:s:s:0',
-    `language=${subtitleLanguage(language)}`,
-    out,
-  ];
-  if (clips.length === 0)
-    return [
-      '-y',
-      '-loglevel',
-      'error',
-      '-i',
-      video,
-      '-i',
-      srt,
-      '-map',
-      '0:v',
-      '-map',
-      '1:s',
-      ...encode,
-    ];
-  const inputs = clips.flatMap((c) => ['-i', c.file]);
-  const delays = clips.map((c, i) => `[${i + 1}:a]adelay=${Math.round(c.at * 1000)}:all=1[a${i}]`);
-  const mix = `${clips.map((_, i) => `[a${i}]`).join('')}amix=inputs=${clips.length}:normalize=0[voice]`;
-  return [
-    '-y',
-    '-loglevel',
-    'error',
-    '-i',
-    video,
-    ...inputs,
-    '-i',
-    srt,
-    '-filter_complex',
-    [...delays, mix].join(';'),
-    '-map',
-    '0:v',
-    '-map',
-    '[voice]',
-    '-map',
-    `${clips.length + 1}:s`,
-    '-c:a',
-    'aac',
-    ...encode,
-  ];
-};
 
 export const posterArgs = (video: string, out: string, at = 2) => [
   '-y',
@@ -157,6 +132,9 @@ export const languageScript = (language: string) => {
   if (!tag) throw new Error(`language must be a tag like nb-NO, not ${language}`);
   return `Object.defineProperty(navigator,'languages',{get:()=>${scriptLiteral([tag[0], tag[1]])}});Object.defineProperty(navigator,'language',{get:()=>${scriptLiteral(tag[0])}});`;
 };
+
+export const darkScript =
+  "(()=>{const dark=()=>{const r=document.documentElement;if(r&&r.getAttribute('data-color-scheme')!=='dark')r.setAttribute('data-color-scheme','dark')};new MutationObserver(dark).observe(document,{childList:true});new MutationObserver(dark).observe(document,{subtree:true,attributes:true,attributeFilter:['data-color-scheme']});dark()})();";
 
 export interface DemoApps {
   portal: string;
@@ -204,14 +182,22 @@ export const browserLaunch = (
   language: string,
   signIn?: { key: string; apps: DemoApps },
 ) => {
-  const init = [join(dir, 'language.js')];
-  writeFileSync(init[0] as string, languageScript(language), { flag: 'wx', mode: 0o600 });
+  const init = [join(dir, 'language.js'), join(dir, 'dark.js')];
+  writeFileSync(join(dir, 'language.js'), languageScript(language), { flag: 'wx', mode: 0o600 });
+  writeFileSync(join(dir, 'dark.js'), darkScript, { flag: 'wx', mode: 0o600 });
   if (signIn) {
     const script = apiKeyScript(signIn.key, signIn.apps);
     init.push(join(dir, 'api-key.js'));
-    writeFileSync(init[1] as string, script, { flag: 'wx', mode: 0o600 });
+    writeFileSync(join(dir, 'api-key.js'), script, { flag: 'wx', mode: 0o600 });
   }
-  return ['--session', session, ...init.flatMap((f) => ['--init-script', f]), 'open'];
+  return [
+    '--session',
+    session,
+    ...init.flatMap((f) => ['--init-script', f]),
+    '--color-scheme',
+    'dark',
+    'open',
+  ];
 };
 
 export const signInBrowser = (apps: DemoApps, now: number, ab: (...args: string[]) => unknown) => {
@@ -279,7 +265,18 @@ export const parseDemo = (text: string, source = 'demo'): Demo => {
   const problems: string[] = [];
   const fail = (problem: string) => problems.push(problem);
   if (!raw || typeof raw !== 'object') throw new Error(`${source}: not a YAML mapping`);
-  const known = ['title', 'language', 'voice', 'viewport', 'start', 'signedIn', 'ready', 'steps'];
+  const known = [
+    'title',
+    'language',
+    'voice',
+    'viewport',
+    'start',
+    'signedIn',
+    'ready',
+    'intro',
+    'outro',
+    'steps',
+  ];
   for (const key of Object.keys(raw)) if (!known.includes(key)) fail(`unknown field ${key}`);
   if (typeof raw.title !== 'string' || !raw.title.trim()) fail('title is missing');
   if (typeof raw.language !== 'string' || !languageTag.test(raw.language))
@@ -300,13 +297,32 @@ export const parseDemo = (text: string, source = 'demo'): Demo => {
     fail('signedIn must be true or false');
   if (raw.ready !== undefined && (typeof raw.ready !== 'string' || !raw.ready.trim()))
     fail('ready must be a text on the start page');
+  for (const key of ['intro', 'outro'] as const) {
+    const problem = cardProblem(raw[key]);
+    if (problem) fail(`${key} ${problem}`);
+  }
   const steps = Array.isArray(raw.steps) ? (raw.steps as unknown[]) : [];
   if (steps.length === 0) fail('steps must list at least one step');
   steps.forEach((value, i) => {
     const at = `step ${i + 1}`;
     const step = (value ?? {}) as Record<string, unknown>;
     for (const key of Object.keys(step))
-      if (!['say', 'do', 'hold'].includes(key)) fail(`${at}: unknown field ${key}`);
+      if (!['say', 'do', 'hold', 'chapter', 'focus'].includes(key))
+        fail(`${at}: unknown field ${key}`);
+    if (
+      step.chapter !== undefined &&
+      !(typeof step.chapter === 'string' && step.chapter.trim() && step.chapter.length <= 60)
+    )
+      fail(`${at}: chapter must be a short text`);
+    if (
+      step.focus !== undefined &&
+      !(
+        Array.isArray(step.focus) &&
+        step.focus.every((p) => typeof p === 'string') &&
+        focusTarget(step.focus as string[])
+      )
+    )
+      fail(`${at}: focus must be like [role, table], [text, Hvor data behandles] or [css, main]`);
     if (typeof step.say !== 'string' || !step.say.trim()) fail(`${at}: say is missing`);
     if (
       step.hold !== undefined &&
@@ -337,12 +353,29 @@ export const parseDemo = (text: string, source = 'demo'): Demo => {
   return raw as unknown as Demo;
 };
 
+const cardProblem = (value: unknown) => {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return 'must have a title';
+  const card = value as Record<string, unknown>;
+  if (Object.keys(card).some((k) => !['title', 'subtitle', 'presenter'].includes(k)))
+    return 'takes only title, subtitle and presenter';
+  if (typeof card.title !== 'string' || !card.title.trim() || card.title.length > 80)
+    return 'must have a title of at most 80 characters';
+  for (const k of ['subtitle', 'presenter'])
+    if (card[k] !== undefined && (typeof card[k] !== 'string' || (card[k] as string).length > 120))
+      return `${k} must be a text of at most 120 characters`;
+  return undefined;
+};
+
 export const estimateSeconds = (text: string) => Math.max(1, text.trim().split(/\s+/).length / 2.5);
+
+export const introSeconds = 4;
+export const outroSeconds = 3.5;
 
 export const estimateDemo = (demo: Demo) =>
   demo.steps.reduce(
     (sum, s) => sum + estimateSeconds(s.say) + (s.hold ?? 0.6) + (s.do?.length ?? 0) * 0.5,
-    0,
+    (demo.intro ? introSeconds : 0) + (demo.outro ? outroSeconds : 0),
   );
 
 export const retrying = <T>(
@@ -406,6 +439,12 @@ export interface DemoResult {
   reason?: string;
 }
 
+export interface StepHooks {
+  point?: (command: string[]) => void;
+  navigate?: () => void;
+  cue?: () => void;
+}
+
 export const runStep = (
   step: DemoStep,
   index: number,
@@ -413,19 +452,28 @@ export const runStep = (
   timeoutMs = 15_000,
   now: () => number = Date.now,
   pause: (ms: number) => void = sleep,
+  hooks: StepHooks = {},
 ) => {
-  for (const command of step.do ?? []) {
+  const commands = step.do ?? [];
+  for (const command of commands)
     if (
       !(browserCommands as readonly string[]).includes(command[0] ?? '') ||
       !flagsAllowed(command)
     )
       throw stepFailure(index, step, command, new Error('the command is not allowed'));
+  const cue = voiceCue(commands);
+  const leave = commands.findIndex(navigates);
+  if (cue < 0) hooks.cue?.();
+  for (const [i, command] of commands.entries()) {
     try {
+      hooks.point?.(command);
+      if (i === leave) hooks.navigate?.();
       if (retried.has(command[0] ?? '')) retrying(() => browser(...command), timeoutMs, now, pause);
       else browser(...command);
     } catch (error) {
       throw stepFailure(index, step, command, error);
     }
+    if (i === cue) hooks.cue?.();
   }
 };
 
@@ -448,12 +496,13 @@ const commandTimeoutMs = 180_000;
 const run = (cmd: string, args: string[], timeout = commandTimeoutMs) =>
   execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout });
 
-const speechConfigured = () =>
+const speechConfigured = (voice: string) =>
   Boolean(
-    (process.env.SPEECH_ENDPOINT && process.env.IDENTITY_ENDPOINT) ||
-    (process.env.SPEECH_RESOURCE &&
-      process.env.SPEECH_RESOURCE_GROUP &&
-      process.env.SPEECH_SUBSCRIPTION),
+    ((process.env.SPEECH_ENDPOINT && process.env.IDENTITY_ENDPOINT) ||
+      (process.env.SPEECH_RESOURCE &&
+        process.env.SPEECH_RESOURCE_GROUP &&
+        process.env.SPEECH_SUBSCRIPTION)) &&
+    (!isModelVoice(voice) || process.env.DEMO_AUDIO_ENDPOINT),
   );
 
 export const managedIdentityTokenUrl = (endpoint: string) => {
@@ -475,7 +524,7 @@ const speechEndpoint = async () => {
     });
     if (!res.ok) throw new Error(`The managed identity answered ${res.status}`);
     const { access_token: token } = (await res.json()) as { access_token: string };
-    return { url: `${direct.replace(/\/$/, '')}/tts/cognitiveservices/v1`, token };
+    return { base: direct.replace(/\/$/, ''), token };
   }
   return speechFromCli();
 };
@@ -517,7 +566,7 @@ const speechFromCli = () => {
     '-o',
     'tsv',
   ]).trim();
-  return { url: `${endpoint.replace(/\/$/, '')}/tts/cognitiveservices/v1`, token };
+  return { base: endpoint.replace(/\/$/, ''), token };
 };
 
 export const cached = (file: string) => {
@@ -538,18 +587,117 @@ export const keep = (file: string, data: Buffer) => {
 export const clipFile = (dir: string, voice: string, text: string) =>
   join(dir, `${createHash('sha256').update(`${voice}\n${text}`).digest('hex').slice(0, 16)}.mp3`);
 
-type Speech = () => Promise<{ url: string; token: string }>;
+type Speech = () => Promise<{ base: string; token: string }>;
+
+export const audioTokens = { text: 0, audio: 0 };
+
+const readAloud = async (text: string, demo: Pick<Demo, 'voice' | 'language'>, token: string) => {
+  const res = await fetch(audioUrl(process.env.DEMO_AUDIO_ENDPOINT ?? ''), {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify(audioRequest(text, demo.voice, demo.language)),
+    signal: AbortSignal.timeout(commandTimeoutMs),
+  });
+  if (!res.ok) throw new Error(`The audio model answered ${res.status}`);
+  const body = (await res.json()) as {
+    choices: { message: { audio?: { data: string } } }[];
+    usage?: { prompt_tokens?: number; completion_tokens_details?: { audio_tokens?: number } };
+  };
+  const audio = body.choices[0]?.message.audio?.data;
+  if (!audio) throw new Error('The audio model answered without audio');
+  audioTokens.text += body.usage?.prompt_tokens ?? 0;
+  audioTokens.audio += body.usage?.completion_tokens_details?.audio_tokens ?? 0;
+  return modelAudio(audio);
+};
+
+export const wavOf = (pcm: Buffer, rate = 16000) => {
+  const head = Buffer.alloc(44);
+  head.write('RIFF', 0, 'latin1');
+  head.writeUInt32LE(36 + pcm.length, 4);
+  head.write('WAVEfmt ', 8, 'latin1');
+  head.writeUInt32LE(16, 16);
+  head.writeUInt16LE(1, 20);
+  head.writeUInt16LE(1, 22);
+  head.writeUInt32LE(rate, 24);
+  head.writeUInt32LE(rate * 2, 28);
+  head.writeUInt16LE(2, 32);
+  head.writeUInt16LE(16, 34);
+  head.write('data', 36, 'latin1');
+  head.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([head, pcm]);
+};
+
+const transcribe = async (audio: Buffer, base: string, token: string, language: string) => {
+  const pcm = execFileSync(
+    'ffmpeg',
+    [
+      '-loglevel',
+      'error',
+      '-f',
+      'mp3',
+      '-i',
+      'pipe:0',
+      '-ar',
+      '16000',
+      '-ac',
+      '1',
+      '-f',
+      's16le',
+      'pipe:1',
+    ],
+    { input: audio, maxBuffer: 64 * 1024 * 1024, timeout: commandTimeoutMs },
+  );
+  const res = await fetch(transcriptionUrl(base, language), {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'audio/wav; codecs=audio/pcm; samplerate=16000',
+    },
+    body: new Uint8Array(wavOf(pcm)),
+    signal: AbortSignal.timeout(commandTimeoutMs),
+  });
+  if (!res.ok) throw new Error(`Speech to text answered ${res.status}`);
+  return ((await res.json()) as { DisplayText?: string }).DisplayText ?? '';
+};
 
 async function speak(
   text: string,
   demo: Pick<Demo, 'voice' | 'language'>,
   dir: string,
   speech: Speech,
+  spend: Spend,
 ) {
   const file = clipFile(dir, demo.voice, text);
-  if (!cached(file)) {
-    const { url, token } = await speech();
-    const res = await fetch(url, {
+  if (!cached(file) && isModelVoice(demo.voice)) {
+    const model = { voice: modelVoiceId(demo.voice), language: speechLocale(demo.language) };
+    refuseOverCap(spend, voiceCostUsd([text], model.voice), `Reading «${text.slice(0, 40)}»`);
+    const { base, token } = await speech();
+    const before = { ...audioTokens };
+    let heard = 0;
+    const take = await bestTake(
+      text,
+      () => readAloud(text, model, token),
+      (audio) => {
+        heard++;
+        return transcribe(audio, base, token, model.language);
+      },
+    ).finally(() => {
+      spend.spentUsd +=
+        audioUsd(audioTokens.text - before.text, audioTokens.audio - before.audio) +
+        heard * hearingUsd(estimateSeconds(text));
+    });
+    writeRunJson(dir, basename(file).replace(/\.mp3$/, '.json'), {
+      text,
+      ...take,
+      audio: undefined,
+    });
+    keep(file, take.audio);
+    console.log(
+      `${take.takes.length} ${take.takes.length === 1 ? 'take' : 'takes'}, ${take.distance} of ${take.words} words heard differently: ${text.slice(0, 50)}`,
+    );
+  } else if (!cached(file)) {
+    const { base, token } = await speech();
+    const res = await fetch(`${base}/tts/cognitiveservices/v1`, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${token}`,
@@ -580,7 +728,7 @@ const sleep = (ms: number) => {
 const cacheDir = () => resolve('demos/out/.voice');
 
 const speechOnce = (): Speech => {
-  let endpoint: Promise<{ url: string; token: string }> | undefined;
+  let endpoint: Promise<{ base: string; token: string }> | undefined;
   return () => (endpoint ??= speechEndpoint());
 };
 
@@ -594,10 +742,36 @@ async function voice(path: string) {
   const cache = cacheDir();
   mkdirSync(cache, { recursive: true });
   const speech = speechOnce();
-  for (const step of demo.steps) await speak(step.say, demo, cache, speech);
-  await speak(sampleLineOf(demo.language), demo, cache, speech);
+  const spend = spendFromEnv(process.env);
+  for (const step of demo.steps) await voiceLine(step.say, demo, cache, speech, spend);
+  await speak(sampleLineOf(demo.language), demo, cache, speech, spend);
   console.log(`${basename(path)}: ${demo.steps.length} lines voiced`);
+  reportSpend(spend);
 }
+
+export const spendFromEnv = (env: NodeJS.ProcessEnv) =>
+  spendOf(env.DEMO_COST_CAP_USD ? Number(env.DEMO_COST_CAP_USD) : undefined);
+
+const voiceLine = async (
+  line: string,
+  demo: Pick<Demo, 'voice' | 'language'>,
+  cache: string,
+  speech: Speech,
+  spend: Spend,
+) => {
+  const clip = await speak(line, demo, cache, speech, spend);
+  await hearClip(clip, demo.language, async () => (await speech()).token, spend, duration(clip));
+  return clip;
+};
+
+const reportSpend = (spend: Spend) => {
+  if (audioTokens.audio)
+    console.log(
+      `audio model: ${audioTokens.text} text tokens in, ${audioTokens.audio} audio tokens out`,
+    );
+  if (approved(spend))
+    console.log(`models: ${spend.spentUsd.toFixed(2)} of ${spend.capUsd} USD approved`);
+};
 
 export interface QueuedNarration {
   id: string;
@@ -605,6 +779,7 @@ export interface QueuedNarration {
   voice: string;
   language: string;
   lines: string[];
+  costCapUsd?: number;
 }
 
 export const queuedFile = () => resolve('demos/out/queued.json');
@@ -636,32 +811,74 @@ export const queuedOf = async (
       demo: stored.demo,
       voice: demo.voice,
       language: demo.language,
-      lines: stored.upTo ? [] : demo.steps.map((s) => s.say),
+      lines: stored.upTo || stored.editOf ? [] : demo.steps.map((s) => s.say),
+      ...(stored.costCapUsd !== undefined ? { costCapUsd: stored.costCapUsd } : {}),
     });
   }
   return queued;
 };
 
-const readQueued = () =>
-  (JSON.parse(readFileSync(queuedFile(), 'utf8')) as QueuedNarration[]).filter((q) =>
-    recordingId.test(q.id),
-  );
+const queuedSchema = z.array(
+  z.object({
+    id: z.string().regex(recordingId),
+    demo: z.string().min(1).max(200),
+    voice: z.string().regex(/^[A-Za-z0-9-]{1,100}$/),
+    language: z.string().regex(languageTag),
+    lines: z.array(z.string().max(1000)).max(50),
+    costCapUsd: z.number().min(0).max(maxCostCapUsd).optional(),
+  }),
+);
+
+export const parseQueued = (text: string): QueuedNarration[] =>
+  queuedSchema
+    .parse(JSON.parse(text))
+    .map(({ costCapUsd, ...q }) => ({ ...q, ...(costCapUsd !== undefined ? { costCapUsd } : {}) }));
+
+const readQueued = () => parseQueued(readFileSync(queuedFile(), 'utf8'));
 
 async function voiceQueued() {
   const cache = cacheDir();
   mkdirSync(cache, { recursive: true });
   const speech = speechOnce();
+  const spent: Record<string, number> = {};
+  let failed = false;
   for (const queued of readQueued().filter((q) => q.lines.length > 0)) {
-    for (const line of queued.lines) await speak(line, queued, cache, speech);
-    await speak(sampleLineOf(queued.language), queued, cache, speech);
-    console.log(`${queued.demo}: ${queued.lines.length} lines voiced`);
+    const spend = spendOf(queued.costCapUsd);
+    try {
+      for (const line of queued.lines) await voiceLine(line, queued, cache, speech, spend);
+      console.log(`${queued.demo}: ${queued.lines.length} lines voiced`);
+      await speak(sampleLineOf(queued.language), queued, cache, speech, spend);
+    } catch (error) {
+      if (!(error instanceof OverCap)) failed = true;
+      console.log(
+        `${queued.demo}: stopped voicing, ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      spent[queued.id] = spend.spentUsd;
+      writeFileSync(spentFile(cache), JSON.stringify(spent));
+      reportSpend(spend);
+    }
   }
+  if (failed) process.exitCode = 1;
 }
+
+export const spentFile = (cache: string) => join(cache, 'spent.json');
+
+export const voiceSpentOf = (cache: string, recording: string) => {
+  try {
+    const spent = JSON.parse(readFileSync(spentFile(cache), 'utf8')) as Record<string, unknown>;
+    const usd = spent[recording];
+    return typeof usd === 'number' && Number.isFinite(usd) && usd >= 0 ? usd : 0;
+  } catch {
+    return 0;
+  }
+};
 
 export interface RecordingFinish {
   status: 'recorded' | 'failed';
   seconds?: number;
   failure?: { step: number; command?: string; message: string };
+  costUsd?: number;
 }
 
 export interface Library {
@@ -745,6 +962,11 @@ export interface StoredRecording {
   id: string;
   demo: string;
   upTo?: number;
+  narrated?: boolean;
+  editOf?: string;
+  instruction?: string;
+  costCapUsd?: number;
+  files?: { name: string }[];
   demoSpec: Omit<Demo, 'start'> & { app: 'portal' | 'console' | 'workspace'; path: string };
   settings: { viewport: [number, number]; tenant: string | null };
 }
@@ -760,6 +982,8 @@ export const demoOfRecording = (stored: StoredRecording, env: NodeJS.ProcessEnv)
     start: `${appBases(env)[app].replace(/\/$/, '')}${path}`,
     ...(rest.signedIn !== undefined ? { signedIn: rest.signedIn } : {}),
     ...(rest.ready !== undefined ? { ready: rest.ready } : {}),
+    ...(rest.intro ? { intro: rest.intro } : {}),
+    ...(rest.outro ? { outro: rest.outro } : {}),
     steps,
   };
 };
@@ -782,7 +1006,13 @@ interface Reporting {
 async function record(path: string, silent: boolean): Promise<DemoResult> {
   const demo = parseDemo(readFileSync(path, 'utf8'), path);
   const library = libraryFromEnv(process.env);
-  return recordDemo(demo, basename(path, '.yaml'), silent, library ? { library } : undefined);
+  return recordDemo(
+    demo,
+    basename(path, '.yaml'),
+    silent,
+    library ? { library } : undefined,
+    spendFromEnv(process.env),
+  );
 }
 
 async function recordStored(id: string, silent: boolean): Promise<DemoResult> {
@@ -796,18 +1026,139 @@ async function recordStored(id: string, silent: boolean): Promise<DemoResult> {
   );
   if (!res.ok) throw new Error(`The recording ${id} answered ${res.status}`);
   const stored = (await res.json()) as StoredRecording;
-  return recordDemo(demoOfRecording(stored, env), stored.demo, silent || Boolean(stored.upTo), {
-    library,
-    recording: stored.id,
-    tenant: stored.settings.tenant,
-  });
+  const spend = spendOf(stored.costCapUsd, voiceSpentOf(cacheDir(), stored.id));
+  if (stored.editOf && stored.instruction)
+    return editStored(
+      stored,
+      stored.editOf,
+      stored.instruction,
+      library,
+      { api: env.DEMO_API_URL, key: env.DEMO_RECORDER_KEY },
+      spend,
+    );
+  return recordDemo(
+    demoOfRecording(stored, env),
+    stored.demo,
+    silent || Boolean(stored.upTo),
+    { library, recording: stored.id, tenant: stored.settings.tenant },
+    spend,
+  );
 }
+
+const editSource =
+  /^(capture\.mp4|events\.json|edl\.json|step-\d{1,2}\.png|voice-[0-9a-f]{16}\.(mp3|words\.json))$/;
+
+const editSourceMaxBytes = (name: string) =>
+  name === 'capture.mp4'
+    ? 100 * 1024 * 1024
+    : name.endsWith('.png')
+      ? 5 * 1024 * 1024
+      : maxClipBytes;
+
+export const downloadEditSource = async (
+  api: string,
+  key: string,
+  source: string,
+  out: string,
+  voices: string,
+  send: typeof fetch = fetch,
+) => {
+  const base = `${api.replace(/\/$/, '')}/recorder/recordings/${encodeURIComponent(source)}`;
+  const headers = { 'x-recorder-key': key };
+  const res = await send(base, { headers });
+  if (!res.ok) throw new Error(`The recording ${source} answered ${res.status}`);
+  const names =
+    ((await res.json()) as StoredRecording).files
+      ?.map((f) => f.name)
+      .filter((name) => editSource.test(name)) ?? [];
+  const missing = ['capture.mp4', 'events.json', 'edl.json'].filter((n) => !names.includes(n));
+  if (missing.length) throw new Error(`The recording ${source} has no ${missing.join(', ')}`);
+  for (const name of names) {
+    const file = await send(`${base}/files/${encodeURIComponent(name)}`, { headers });
+    if (!file.ok) throw new Error(`${name} of ${source} answered ${file.status}`);
+    const max = editSourceMaxBytes(name);
+    if (Number(file.headers.get('content-length') ?? 0) > max)
+      throw new Error(`${name} of ${source} is more than ${max} bytes`);
+    const data = new Uint8Array(await file.arrayBuffer());
+    const voice = name.startsWith('voice-');
+    writeRunFile(voice ? voices : out, voice ? name.slice('voice-'.length) : name, data, max);
+  }
+  return names;
+};
+
+async function editStored(
+  stored: StoredRecording,
+  source: string,
+  instruction: string,
+  library: Library,
+  from: { api: string; key: string },
+  spend: Spend,
+): Promise<DemoResult> {
+  const name = stored.demo;
+  const narrate = stored.narrated !== false;
+  let recording: string;
+  try {
+    recording = await library.start(name, narrate, stored.id);
+  } catch (error) {
+    if (error instanceof RecordingOpen || error instanceof Cancelled) {
+      console.log(`${name}: skipped, ${error.message}`);
+      return { name, outcome: 'skipped', reason: error.message };
+    }
+    throw error;
+  }
+  const out = resolve('demos/out', name);
+  const cache = cacheDir();
+  try {
+    rmSync(out, { recursive: true, force: true });
+    mkdirSync(out, { recursive: true });
+    mkdirSync(cache, { recursive: true });
+    const downloaded = await downloadEditSource(from.api, from.key, source, out, cache);
+    const film = await editFilm(out, name, cache, instruction, spend);
+    await library.upload(recording, 'demo.mp4', film.mp4);
+    await library.upload(recording, 'demo.srt', film.srt);
+    for (const file of film.extras) await library.upload(recording, file, join(out, file));
+    for (const still of downloaded.filter((n) => /^step-\d{1,2}\.png$/.test(n)))
+      await library.upload(recording, still, join(out, still));
+    const poster = join(out, 'poster.jpg');
+    try {
+      run('ffmpeg', posterArgs(film.mp4, poster, film.posterAt));
+    } catch {
+      console.log(`${name}: no still`);
+    }
+    if (cached(poster)) await library.upload(recording, 'poster.jpg', poster);
+    const seconds = duration(film.mp4);
+    await library.finish(recording, {
+      status: 'recorded',
+      seconds: Math.round(seconds * 10) / 10,
+      costUsd: spentUsd(spend),
+    });
+    console.log(`${name}: edited, ${film.mp4}`);
+    return { name, outcome: 'recorded' };
+  } catch (error) {
+    if (error instanceof Cancelled) {
+      console.log(`${name}: cancelled`);
+      return { name, outcome: 'skipped', reason: 'cancelled' };
+    }
+    const failure = failureOf(error);
+    await library
+      .finish(recording, {
+        status: 'failed',
+        ...(failure ? { failure } : {}),
+        costUsd: spentUsd(spend),
+      })
+      .catch(() => undefined);
+    throw error;
+  }
+}
+
+const spentUsd = (spend: Spend) => Math.round(spend.spentUsd * 100) / 100;
 
 export async function recordDemo(
   demo: Demo,
   name: string,
   silent: boolean,
   reporting?: Reporting,
+  spend: Spend = spendOf(),
 ): Promise<DemoResult> {
   const env = process.env;
   const key = env.DEMO_API_KEY || undefined;
@@ -826,7 +1177,13 @@ export async function recordDemo(
   }
   const out = resolve('demos/out', name);
   const cache = cacheDir();
-  const narrate = !silent && narrationOf(demo, cache, speechConfigured());
+  const narrate =
+    !silent &&
+    narrationOf(
+      demo,
+      cache,
+      speechConfigured(demo.voice) && (!isModelVoice(demo.voice) || approved(spend)),
+    );
   if (!narrate) console.log(`${name}: no voice, recording with subtitles only`);
   const library = reporting?.library;
   let recording: string | undefined;
@@ -854,10 +1211,22 @@ export async function recordDemo(
       await library.finish(recording, {
         status: 'recorded',
         seconds: Math.round(seconds * 10) / 10,
+        ...(approved(spend) ? { costUsd: spentUsd(spend) } : {}),
       });
   };
   try {
-    return await capture(demo, name, narrate, key, out, cache, upload, finished, reporting?.tenant);
+    return await capture(
+      demo,
+      name,
+      narrate,
+      key,
+      out,
+      cache,
+      upload,
+      finished,
+      spend,
+      reporting?.tenant,
+    );
   } catch (error) {
     if (error instanceof Cancelled) {
       console.log(`${name}: cancelled`);
@@ -869,12 +1238,114 @@ export async function recordDemo(
       if (cached(shot))
         await upload(shot, `failed-step-${failure?.step ?? 0}.png`).catch(() => undefined);
       await library
-        .finish(recording, { status: 'failed', ...(failure ? { failure } : {}) })
+        .finish(recording, {
+          status: 'failed',
+          ...(failure ? { failure } : {}),
+          ...(approved(spend) ? { costUsd: spentUsd(spend) } : {}),
+        })
         .catch(() => undefined);
     }
     throw error;
   }
 }
+
+export const defaultViewport: [number, number] = [1920, 1080];
+
+const boxOf = (output: string) => {
+  const { data } = JSON.parse(output) as { data?: Partial<Box> };
+  return data && [data.x, data.y, data.width, data.height].every(Number.isFinite)
+    ? (data as Box)
+    : undefined;
+};
+
+export const emptyJournal = (): Journal => ({ moves: [], clicks: [], scrolls: [] });
+
+type Journal = Pick<StepLog, 'moves' | 'clicks' | 'scrolls'>;
+
+const pointerOf = (
+  ab: (...args: string[]) => string,
+  quietly: (...args: string[]) => void,
+  [w, h]: [number, number],
+  clock: () => number,
+) => {
+  let at: Point = { x: Math.round(w * 0.6), y: Math.round(h * 0.55) };
+  let journal = emptyJournal();
+  quietly('mouse', 'move', String(at.x), String(at.y));
+  const locate = (target: Target | undefined, attempts = 5) => {
+    if (!target) return undefined;
+    for (let tries = 0; tries < attempts; tries++) {
+      try {
+        const ref = refOf(target.by === 'selector' ? '' : ab('snapshot'), target);
+        const box = ref ? boxOf(ab('--json', 'get', 'box', ref)) : undefined;
+        if (ref && box && box.width > 0) return { ref, box };
+      } catch {
+        // the element is not there yet; the command itself waits for it
+      }
+      sleep(300);
+    }
+    return undefined;
+  };
+  return {
+    glide: (command: string[]) => {
+      const found = locate(targetOf(command));
+      if (!found) return;
+      let { box } = found;
+      const delta = scrollBy(box, h);
+      if (delta) {
+        const seconds = Math.min(1200, 400 + Math.abs(delta) * 0.5);
+        journal.scrolls.push({ at: clock(), seconds: seconds / 1000 });
+        quietly('eval', smoothScrollScript(delta));
+        sleep(seconds);
+        try {
+          box = boxOf(ab('--json', 'get', 'box', found.ref)) ?? box;
+        } catch {
+          return;
+        }
+      }
+      if (command[0] === 'scrollintoview') return;
+      const to = centre(box);
+      const ms = glideMs(at, to);
+      journal.moves.push({ at: clock(), seconds: ms / 1000, from: at, to });
+      quietly('mouse', 'move', String(to.x), String(to.y), '--duration', String(ms), '--human');
+      at = to;
+      sleep(command[0] === 'find' && command[3] === 'hover' ? 150 : 300);
+      if (clicks(command)) journal.clicks.push({ at: clock(), ...to });
+    },
+    journal: () => {
+      const done = journal;
+      journal = emptyJournal();
+      return done;
+    },
+    area: (focus: string[]) => {
+      const found = locate(focusTarget(focus), 2);
+      return found ? focusArea(found.box, [w, h]) : undefined;
+    },
+    settle: () => {
+      quietly('wait', '--load', 'networkidle', '--timeout', '2500');
+      sleep(400);
+      quietly('mouse', 'move', String(at.x), String(at.y));
+    },
+  };
+};
+
+export const captureScale = 1.5;
+
+const clicks = (command: string[]) =>
+  command[0] === 'click' ||
+  command[0] === 'dblclick' ||
+  (command[0] === 'find' && !['hover', 'fill', 'text'].includes(command[3] ?? 'click'));
+
+const pageOf = (ab: (...args: string[]) => string) => {
+  try {
+    const { data } = JSON.parse(ab('--json', 'eval', landmarkScript)) as {
+      data?: { result?: string };
+    };
+    const page = JSON.parse(data?.result ?? '{}') as { title?: string; landmarks?: Landmark[] };
+    return { title: page.title, landmarks: page.landmarks ?? [] };
+  } catch {
+    return { landmarks: [] };
+  }
+};
 
 async function capture(
   demo: Demo,
@@ -885,6 +1356,7 @@ async function capture(
   cache: string,
   upload: (file: string, as: string) => Promise<void>,
   finished: (seconds: number) => Promise<void>,
+  spend: Spend,
   tenantOverride?: string | null,
 ): Promise<DemoResult> {
   const env = process.env;
@@ -895,7 +1367,7 @@ async function capture(
       clips.push({ seconds: estimateSeconds(step.say) });
       continue;
     }
-    const file = await speak(step.say, demo, cache, speech);
+    const file = await speak(step.say, demo, cache, speech, spend);
     clips.push({ file, seconds: duration(file) });
   }
 
@@ -909,8 +1381,9 @@ async function capture(
       return;
     }
   };
-  const lines: TimedLine[] = [];
-  const raw = join(out, 'raw.webm');
+  const raw = join(out, 'capture.mp4');
+  const [w, h] = demo.viewport ?? defaultViewport;
+  const steps: StepLog[] = [];
   try {
     const signIn =
       demo.signedIn && key
@@ -933,8 +1406,7 @@ async function capture(
     run('agent-browser', browserLaunch(session, scripts, demo.language, signIn));
     if (signIn) signInBrowser(signIn.apps, Date.now(), ab);
     ab('open', demo.start);
-    const [w, h] = demo.viewport ?? [1280, 720];
-    ab('set', 'viewport', String(w), String(h));
+    ab('set', 'viewport', String(w), String(h), String(captureScale));
     try {
       ab('wait', '--load', 'load');
       if (demo.ready) ab('wait', '--text', demo.ready, '--timeout', '30000');
@@ -943,16 +1415,32 @@ async function capture(
       throw readyFailure(demo, error);
     }
 
-    ab('record', 'start', raw, '--cursor');
+    ab('record', 'start', raw);
     const t0 = Date.now();
+    const clock = () => (Date.now() - t0) / 1000;
+    const pointer = pointerOf(ab, quietly, [w, h], clock);
     try {
       for (const [i, step] of demo.steps.entries()) {
-        const at = (Date.now() - t0) / 1000;
         const clip = clips[i] as Clip;
-        lines.push({ at, seconds: clip.seconds, text: step.say });
+        const start = clock();
+        let at = start;
+        let leftAt: number | undefined;
+        let area: Box | undefined;
+        const seen: { page: ReturnType<typeof pageOf> } = { page: { landmarks: [] } };
         console.log(`${name}: step ${i + 1}/${demo.steps.length}`);
         try {
-          runStep(step, i, ab);
+          runStep(step, i, ab, undefined, undefined, undefined, {
+            point: pointer.glide,
+            navigate: () => {
+              leftAt = clock();
+            },
+            cue: () => {
+              if (step.do?.length) pointer.settle();
+              if (step.focus) area = pointer.area(step.focus);
+              seen.page = pageOf(ab);
+              at = clock();
+            },
+          });
         } catch (error) {
           quietly('screenshot', join(out, `failed-step-${i + 1}.png`));
           throw error;
@@ -960,8 +1448,23 @@ async function capture(
         const shot = join(out, `step-${i + 1}.png`);
         quietly('screenshot', shot);
         if (cached(shot)) await upload(shot, `step-${i + 1}.png`);
-        const elapsed = (Date.now() - t0) / 1000 - at;
+        const elapsed = clock() - at;
         sleep((clip.seconds + (step.hold ?? 0.6) - elapsed) * 1000);
+        steps.push({
+          say: step.say,
+          start,
+          ...(leftAt !== undefined ? { navigateAt: leftAt } : {}),
+          cue: at,
+          end: clock(),
+          voice: { ...(clip.file ? { file: basename(clip.file) } : {}), seconds: clip.seconds },
+          words: [],
+          ...(seen.page.title ? { title: seen.page.title } : {}),
+          ...(area ? { focus: area } : {}),
+          landmarks: seen.page.landmarks,
+          ...pointer.journal(),
+          ...(step.chapter ? { chapter: step.chapter } : {}),
+          ...(step.hold !== undefined ? { hold: step.hold } : {}),
+        });
       }
     } finally {
       quietly('record', 'stop');
@@ -971,27 +1474,31 @@ async function capture(
     rmSync(scripts, { recursive: true, force: true });
   }
 
-  const srt = join(out, `${name}.srt`);
-  writeFileSync(srt, subtitles(lines));
-  const mp4 = join(out, `${name}.mp4`);
-  const voiced = clips.flatMap((c, i) =>
-    c.file ? [{ file: c.file, at: (lines[i] as TimedLine).at }] : [],
-  );
-  run('ffmpeg', mixArgs(raw, voiced, srt, mp4, demo.language), 600_000);
-  rmSync(raw, { force: true });
-  await upload(mp4, 'demo.mp4');
-  await upload(srt, 'demo.srt');
+  const log: CaptureLog = {
+    viewport: [w, h],
+    scale: captureScale,
+    seconds: duration(raw),
+    language: demo.language,
+    ...(demo.intro ? { intro: demo.intro } : {}),
+    ...(demo.outro ? { outro: demo.outro } : {}),
+    steps,
+  };
+  writeRunJson(out, 'events.json', log);
+  const film = await makeFilm(out, name, cache, spend);
+  await upload(film.mp4, 'demo.mp4');
+  await upload(film.srt, 'demo.srt');
+  for (const file of film.extras) await upload(join(out, file), file);
   const poster = join(out, 'poster.jpg');
   try {
-    run('ffmpeg', posterArgs(mp4, poster));
+    run('ffmpeg', posterArgs(film.mp4, poster, film.posterAt));
   } catch {
     console.log(`${name}: no still`);
   }
   if (cached(poster)) await upload(poster, 'poster.jpg');
   const sample = clipFile(cache, demo.voice, sampleLineOf(demo.language));
   if (narrate && cached(sample)) await upload(sample, 'sample.mp3');
-  await finished(duration(mp4));
-  console.log(`${name}: ${mp4}`);
+  await finished(duration(film.mp4));
+  console.log(`${name}: ${film.mp4}`);
   return { name, outcome: 'recorded' };
 }
 
@@ -1002,7 +1509,8 @@ export const parseArgs = (argv: string[]) => {
     first === 'voice' ||
     first === 'record' ||
     first === 'recording' ||
-    first === 'queued'
+    first === 'queued' ||
+    first === 'film'
       ? first
       : 'record';
   const args = mode === first ? rest : argv;
@@ -1029,6 +1537,12 @@ async function main(argv: string[]) {
     return;
   }
   if (mode === 'voice' && queued) return voiceQueued();
+  if (mode === 'film') {
+    const dir = resolve(files[0] ?? '');
+    const film = await makeFilm(dir, basename(dir), cacheDir(), spendFromEnv(process.env));
+    console.log(film.mp4);
+    return;
+  }
   if (mode === 'recording') {
     const ids = queued ? readQueued().map((q) => q.id) : files.slice(0, 1);
     if (!queued && !recordingId.test(ids[0] ?? ''))

@@ -140,6 +140,31 @@ describe('demo records', () => {
   });
 });
 
+describe('demo production', () => {
+  it('keeps a title card, a closing card, chapters and focus on a demo', () => {
+    const read = readDemo(
+      yaml('    chapter: Hva er Genki\n    focus: [role, table]\n').replace(
+        'steps:',
+        "intro:\n  title: Genki\n  presenter: Ola, Digdir\noutro:\n  title: 'Først ut: Simen'\nsteps:",
+      ),
+    );
+    expect(read.ok && read.spec.intro).toEqual({ title: 'Genki', presenter: 'Ola, Digdir' });
+    expect(read.ok && read.spec.outro).toEqual({ title: 'Først ut: Simen' });
+    expect(read.ok && read.spec.steps[0]).toMatchObject({
+      chapter: 'Hva er Genki',
+      focus: ['role', 'table'],
+    });
+  });
+
+  it('refuses a focus that is not a role, text, label or CSS selector, and a card with a logo', () => {
+    expect(readDemo(yaml('    focus: [eval, x]\n')).ok).toBe(false);
+    expect(readDemo(yaml('    focus: [text, a, b]\n')).ok).toBe(false);
+    expect(readDemo(yaml().replace('steps:', 'intro:\n  title: T\n  logo: x.png\nsteps:')).ok).toBe(
+      false,
+    );
+  });
+});
+
 describe('demo voices', () => {
   it('accepts every voice in the console list, in a demo and as the default voice', () => {
     for (const voice of demoVoices) {
@@ -148,7 +173,7 @@ describe('demo voices', () => {
       expect(demoSettings.safeParse({ ...defaultDemoSettings, voice: voice.id }).success).toBe(
         true,
       );
-      expect(voice.id.startsWith(`${voice.language}-`)).toBe(true);
+      expect(voice.id === 'cedar' || voice.id.startsWith(`${voice.language}-`)).toBe(true);
     }
   });
 
