@@ -269,12 +269,26 @@ interface OutlineNode {
   items: OutlineNode[];
 }
 
+export interface PdfLayoutLimits {
+  /** Bigger files are not read, as the text layer's converter: 50 MB. */
+  maxBytes?: number;
+  /** Files with more pages are not read, as the text layer's converter: 2,000. */
+  maxPages?: number;
+}
+
 /**
- * A PDF's outline and the sizes of its text layer's runs, for the heading levels of `docling-parts` 2
- * (issue 516). Only where text is and how big, never the text itself. An outline entry whose
- * destination names no page has page null; a page pdf.js cannot read has no runs.
+ * A PDF's outline titles and the sizes of its text layer's runs, for the heading levels of
+ * `docling-parts` 2 (issue 516): where the text is and how big, not the text of the runs. An outline
+ * entry whose destination names no page has page null; a page pdf.js cannot read has no runs. A
+ * file over the limits throws, as the text layer's converter does, so its parts stay version 1.
  */
-export const readPdfLayout = async (bytes: Uint8Array): Promise<PdfLayout> => {
+export const readPdfLayout = async (
+  bytes: Uint8Array,
+  limits: PdfLayoutLimits = {},
+): Promise<PdfLayout> => {
+  const maxBytes = limits.maxBytes ?? 50 * 1024 * 1024;
+  const maxPages = limits.maxPages ?? 2000;
+  if (bytes.byteLength > maxBytes) throw new DocumentTooLargeError('pdf', maxBytes);
   const task = getDocument({
     data: new Uint8Array(bytes),
     disableFontFace: true,
@@ -286,6 +300,7 @@ export const readPdfLayout = async (bytes: Uint8Array): Promise<PdfLayout> => {
   });
   try {
     const pdf = await task.promise;
+    if (pdf.numPages > maxPages) throw new TooManyPagesError('pdf', maxPages);
     const pageOf = async (dest: OutlineNode['dest']): Promise<number | null> => {
       try {
         const explicit = typeof dest === 'string' ? await pdf.getDestination(dest) : dest;
@@ -311,9 +326,9 @@ export const readPdfLayout = async (bytes: Uint8Array): Promise<PdfLayout> => {
       try {
         const page = await pdf.getPage(n);
         try {
-          const [left, bottom, right, top] = page.view as [number, number, number, number];
-          const width = right - left;
-          const height = top - bottom;
+          // Boxes as the page is shown, turned by its /Rotate, as Docling gives its own.
+          const viewport = page.getViewport({ scale: 1 });
+          const shown = (x: number, y: number) => viewport.convertToViewportPoint(x, y);
           const content = await page.getTextContent();
           // The operator list loads the page's fonts, which hold their names.
           await page.getOperatorList();
@@ -327,11 +342,29 @@ export const readPdfLayout = async (bytes: Uint8Array): Promise<PdfLayout> => {
             if (chars === 0) continue;
             const [a, b, c, d, e, f] = item.transform as number[];
             const size = Math.sqrt(Math.abs((a ?? 0) * (d ?? 0) - (b ?? 0) * (c ?? 0)));
-            const x0 = ((e ?? 0) - left) / width;
-            const y1 = (top - (f ?? 0)) / height;
+            // The run's corners along its own direction, so text set turned on the page is boxed too.
+            const [x, y] = [e ?? 0, f ?? 0];
+            const along = Math.hypot(a ?? 0, b ?? 0) || 1;
+            const up = Math.hypot(c ?? 0, d ?? 0) || 1;
+            const [wx, wy] = [((a ?? 0) / along) * item.width, ((b ?? 0) / along) * item.width];
+            const height = item.height || size;
+            const [hx, hy] = [((c ?? 0) / up) * height, ((d ?? 0) / up) * height];
+            const corners = [
+              shown(x, y),
+              shown(x + wx, y + wy),
+              shown(x + hx, y + hy),
+              shown(x + wx + hx, y + wy + hy),
+            ] as [number, number][];
+            const xs = corners.map(([cx]) => cx);
+            const ys = corners.map(([, cy]) => cy);
             runs.push({
               page: n,
-              box: [x0, y1 - (item.height || size) / height, x0 + item.width / width, y1],
+              box: [
+                Math.min(...xs) / viewport.width,
+                Math.min(...ys) / viewport.height,
+                Math.max(...xs) / viewport.width,
+                Math.max(...ys) / viewport.height,
+              ],
               size,
               bold: boldFont(fontName(item.fontName)),
               chars,

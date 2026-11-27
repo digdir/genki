@@ -248,12 +248,85 @@ describe('heading levels', () => {
     expect(levels(headings, [], runs)).toEqual([1, 2, 3, 1, 2, 3]);
   });
 
+  it('a numbered heading in a document with few numbers is levelled by its size, not below the outline heading', () => {
+    const headings = [
+      heading('Kapittel A', 1),
+      heading('Bakgrunn', 1, 200),
+      heading('Mer', 2),
+      heading('Annet', 2, 200),
+      heading('2.3.1 Detaljer', 3),
+    ];
+    const outline = [{ title: 'Kapittel A', level: 1, page: 1 }];
+    const found = headingLevels(headings, { outline, runs: [] });
+    expect(found[1]).toEqual({ level: 2, source: 'below-outline' });
+    expect(found[4]?.source).not.toBe('below-outline');
+  });
+
+  it('a chapter word the outline does not list is level 1, not below the outline heading', () => {
+    const headings = [
+      heading('Innledning', 1),
+      heading('Bakgrunn', 1, 200),
+      heading('Kapittel 3', 2),
+    ];
+    const outline = [{ title: 'Innledning', level: 1, page: 1 }];
+    expect(headingLevels(headings, { outline, runs: [] })[2]?.level).toBe(1);
+  });
+
+  it('a heading whose box gives no finite size is still level 1 or deeper', () => {
+    const sized = heading('Tildeling', 1);
+    const broken: LevelledHeading = {
+      ...heading('Frister', 2),
+      box: [0.1, NaN, 0.5, NaN] as PartBox,
+    };
+    expect(levels([sized, broken], [], [run(sized, 16)])).toEqual([1, 1]);
+  });
+
+  it('matches headings to an outline within a second on 500 titles that share every character', () => {
+    // Every title is a different order of the same 200 characters, so none can be told apart by
+    // counting characters, and each pair would need the full comparison.
+    const letters = 'abcdefghijklmnopqrstuvwxyz'.repeat(8).slice(0, 200);
+    const shuffled = (seed: number) => {
+      const chars = [...letters];
+      let state = seed + 1;
+      for (let i = chars.length - 1; i > 0; i -= 1) {
+        state = (state * 1103515245 + 12345) % 2147483648;
+        const j = state % (i + 1);
+        [chars[i], chars[j]] = [chars[j] as string, chars[i] as string];
+      }
+      return chars.join('');
+    };
+    const headings = Array.from({ length: 500 }, (_, i) => heading(shuffled(i), 2));
+    const outline = Array.from({ length: 500 }, (_, i) => ({
+      title: shuffled(1000 + i),
+      level: 1,
+      page: 2,
+    }));
+    const started = performance.now();
+    headingLevels(headings, { outline, runs: [] });
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it('«Kap. 275 post 21» is a budget line, not a chapter', () => {
+    const headings = [
+      heading('Kap. 275 post 21', 1),
+      heading('Tildeling', 1, 200),
+      heading('KAP. 1400 POST 01', 2),
+      heading('Frister', 2, 200),
+      heading('Søknad', 3),
+      heading('Krav', 3, 200),
+    ];
+    const sizes = [10, 18, 10, 14, 18, 14];
+    const runs = headings.map((h, i) => run(h, sizes[i] as number));
+    expect(levels(headings, [], runs)).toEqual([3, 1, 3, 2, 1, 2]);
+  });
+
   it('reads section numbers and chapter words in linear time on long adversarial headings', () => {
     const texts = [
       `${'1 .'.repeat(50_000)}x`,
       `${'1. '.repeat(50_000)}x`,
       `Kapittel${' '.repeat(50_000)}${'I'.repeat(50_000)}`,
       `${' '.repeat(50_000)}Del${'\t'.repeat(50_000)}x`,
+      `Kap. 275${' '.repeat(50_000)}postx`,
     ];
     const headings = texts.map((text, i) => heading(text, i + 1));
     const started = performance.now();

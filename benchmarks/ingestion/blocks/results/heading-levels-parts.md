@@ -2,7 +2,8 @@
 
 How well the TypeScript port (`doclingParts(document, { layout, outline: false })` with `readPdfLayout`) levels
 Docling's headings, 27 Nov 2026. The PDF's outline (bookmarks) is the reference. The outline rung is off, so the
-score is what section numbers and text size alone give. The bar is 89 %, the prototype's result on 14 Nov
+score is what section numbers and text size alone give. The bar is 89 %, set on the grilling page for issue 516
+(the issue proposed 90 %), the prototype's result on 14 Nov
 ([issue 516 comment](https://github.com/digdir/genki/issues/516#issuecomment-6873132902)).
 
 The measure is "level changes followed": take the outline entries matched to a Docling heading, in order. Wherever
@@ -41,6 +42,17 @@ sample, and on these 600 files the port is 4.8 points above the prototype.
 | Followed | 89 % | 86.5 % | 90.7 % | **88.2 %** |
 | Numbered / unnumbered | 92 % / 78 % | 88.0 % / 81.2 % | 93.1 % / 82.2 % | 91.2 % / 77.4 % |
 | Box height only | 81 % | 79.7 % | 83.1 % | 81.4 % |
+
+### After the review (27 Nov 2026, not scored again)
+
+Five changes came after the held-out run, so the 88.2 % above was measured before them. None was scored again, since the held-out PDFs were deleted.
+
+- A chapter word whose number is followed by `post` («Kap. 275 post 21», a line of the state budget) is not a chapter. This is the cause named for `5d05c5e503` below (10 misses against the prototype's 2). Allocation letters are full of such headings and often have no outline, so the outline score undercounts them.
+
+- Outline matching looks at no more than 20,000 pairs and compares no more than 2,000 in full. On the 299 dev PDFs, with the outline rung on, it gives the same level to every heading as before. With the outline rung off, as scored here, it does not run.
+- Only a heading with no section number and no chapter or part word goes one level below the outline heading before it. With the outline rung on, this changes some levels in 32 of the 299 dev PDFs. With the outline rung off, as scored here, the rule does not run.
+- A box with no finite height gives no size, so such a heading is no longer levelled 0. Only documents with such a box can change.
+- `readPdfLayout` gives boxes as the page is shown, turned by `/Rotate`, and along each run's own direction. Only headings on turned pages or set turned can change level. How many there are in the sample was not measured.
 
 ## Rules added (dev sample)
 
@@ -90,7 +102,7 @@ by the text of the two headings in the step that was missed.
 
 ### Suggested next fixes (not made; the rules were frozen before the held-out run)
 
-- In rule 6, allow one more level when chapter words push the ranks down (cap at 5, not 4). Count a chapter word only when the token after it ends the heading or is followed by `:`, `.`, `-` or a title, not by `POST`.
+- In rule 6, allow one more level when chapter words push the ranks down (cap at 5, not 4). Count a chapter word only when the token after it ends the heading or is followed by `:`, `.`, `-` or a title (`post` was ruled out after the review).
 - Roman numeral prefixes (`II.`, `IV.`) and letter prefixes (`A)`) as a level above the numbered chapters. This is the same idea as `Del`/`Part`.
 - `Vedlegg`/`Appendix`/`Annex`/`Bilag` with a number as level 1.
 - Restarted numbering (`1 Introduction` after `11 Conclusion`) as the start of a new part, with the unnumbered heading before it as its level-1 title.
@@ -115,7 +127,7 @@ running.
 Both samples are in `heading-levels-sample.json`, under `dev` and `heldout`. Both are unique primary Kudos PDFs:
 
 - taken from the KUDOS listing of 21 Oct 2026 (`benchmarks/ingestion/.data/kudos-listing.jsonl` in the main checkout);
-- with Docling output in the 11 Nov Kudos Docling export (`~/kudos-docling/json/docling`);
+- with Docling output in the 11 Nov Kudos Docling export (a local copy, `<docling dir>` below);
 - at most 150 pages by `done.json`;
 - drawn by sorting the candidates by sha256, shuffling them with Python `random.Random(seed)` and keeping the first N.
 
@@ -148,7 +160,7 @@ Both samples are in `heading-levels-sample.json`, under `dev` and `heldout`. Bot
    - It skips outline entries with no page index, where `headings_vs_outline.py` stops with a TypeError. On the PDFs without such entries, the two scripts give the same counts.
 
 ```sh
-npx tsx --conditions=source benchmarks/ingestion/blocks/heading_levels_parts.ts ~/kudos-docling/json/docling <pdfs> <run> [<layout cache>]
+npx tsx --conditions=source benchmarks/ingestion/blocks/heading_levels_parts.ts <docling dir> <pdfs> <run> [<layout cache>]
 <python with pypdfium2> benchmarks/ingestion/blocks/heading_levels_score.py <pdfs> <run> parts parts-box
 ```
 

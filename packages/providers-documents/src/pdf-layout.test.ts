@@ -20,8 +20,8 @@ interface Bookmark {
   children?: Bookmark[];
 }
 
-/** A PDF with lines of text on 612 x 792 pages and an outline of bookmarks. */
-const pdfWith = (pages: Line[][], bookmarks: Bookmark[]) => {
+/** A PDF with lines of text on 612 x 792 pages and an outline of bookmarks, each page turned by `rotate`. */
+const pdfWith = (pages: Line[][], bookmarks: Bookmark[], rotate = 0) => {
   const objects: string[] = [''];
   const add = (body = '') => objects.push(body);
   const set = (id: number, body: string) => {
@@ -41,7 +41,7 @@ const pdfWith = (pages: Line[][], bookmarks: Bookmark[]) => {
       .join('\n');
     const content = add(`<< /Length ${ops.length} >>\nstream\n${ops}\nendstream`);
     return add(
-      `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R >> >> /Contents ${content} 0 R >>`,
+      `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 612 792] /Rotate ${rotate} /Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R >> >> /Contents ${content} 0 R >>`,
     );
   });
   set(
@@ -124,6 +124,34 @@ describe('PDF layout', () => {
     expect(x0).toBeCloseTo(72 / 612);
     expect(y1).toBeCloseTo((792 - 700) / 792);
     expect(y0).toBeLessThan(y1 as number);
+  });
+
+  it('a turned page gives boxes as the page is shown, as Docling gives them', async () => {
+    const turned = pdfWith(
+      [[{ text: 'Tabell', size: 12, y: 700 }]],
+      [{ title: 'Tabell', page: 1 }],
+      90,
+    );
+    const { runs } = await readPdfLayout(turned);
+    // Turned 90° clockwise, the page is 792 wide and 612 high: the line 700 up from the bottom is
+    // 700 from the left, and its start 72 from the left is 72 from the top.
+    const [x0, y0, x1, y1] = runs[0]?.box ?? [];
+    expect(x0).toBeCloseTo(700 / 792, 2);
+    expect(x1).toBeCloseTo((700 + 12) / 792, 2);
+    expect(y0).toBeCloseTo(72 / 612, 2);
+    expect(y1).toBeGreaterThan(y0 as number);
+  });
+
+  it('a PDF over the page limit gives no layout', async () => {
+    await expect(readPdfLayout(bytes, { maxPages: 1 })).rejects.toMatchObject({
+      name: 'TooManyPagesError',
+    });
+  });
+
+  it('a PDF over the size limit gives no layout', async () => {
+    await expect(readPdfLayout(bytes, { maxBytes: 100 })).rejects.toMatchObject({
+      name: 'DocumentTooLargeError',
+    });
   });
 
   it('a file pdf.js cannot open fails', async () => {

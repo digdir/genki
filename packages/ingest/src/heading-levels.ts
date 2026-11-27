@@ -63,6 +63,8 @@ const spacedNumber = /^[\s#*]*(\d{1,3}(?: ?\. ?\d{1,3}){1,5})(?![\d.])/;
 /** A chapter or part word and the token after it: «Kapittel 3», «Del II», «CHAPTER THREE:». */
 const chapterWord = /^[\s#*]*(kapittel|kap\.|chapter|del|part)[ \t]+([\p{L}\p{N}]+)/iu;
 const romanNumeral = /^[IVXLC]{1,7}$/;
+/** What follows a budget chapter's number: «post 21». */
+const budgetPost = /^\s+post(?![\p{L}\p{N}])/iu;
 const numberWords = new Set(
   (
     'en ett to tre fire fem seks sju syv åtte ni ti elleve tolv første andre tredje fjerde femte sjette ' +
@@ -72,9 +74,12 @@ const numberWords = new Set(
 
 /** «part» for «Del»/«Part», «chapter» for «Kapittel»/«Chapter», with a number, numeral or number word. */
 const chapterKind = (text: string): 'part' | 'chapter' | undefined => {
-  const match = chapterWord.exec(text.normalize('NFKC'));
+  const normalized = text.normalize('NFKC');
+  const match = chapterWord.exec(normalized);
   const [word, token] = [match?.[1]?.toLowerCase(), match?.[2] ?? ''];
-  if (!word) return undefined;
+  if (!word || !match) return undefined;
+  // «Kap. 275 post 21» is a line of the state budget, as allocation letters head them, not a chapter.
+  if (budgetPost.test(normalized.slice(match.index + match[0].length))) return undefined;
   const counted =
     /^\d{1,3}$/.test(token) || romanNumeral.test(token) || numberWords.has(token.toLowerCase());
   if (!counted) return undefined;
@@ -127,30 +132,68 @@ const ratio = (a: string, b: string) => {
 
 /** Titles too long to compare are cut, so the comparison stays small. */
 const maxTitle = 200;
+/** At most this many heading and outline pairs are looked at, so a PDF cannot make the match slow. */
+const maxPairs = 20_000;
+/** At most this many pairs get the full comparison, about 0.1 ms each on two long titles. */
+const maxRatios = 2_000;
 
-const similar = (a: string, b: string) => {
-  if (!a || !b) return false;
-  if (a.length >= 6 && b.length >= 6 && (a.includes(b) || b.includes(a))) return true;
-  return ratio(a.slice(0, maxTitle), b.slice(0, maxTitle)) >= 0.85;
+/** A title cut for matching, with how many times each of its characters comes. */
+const titleOf = (text: string) => {
+  const title = [...norm(text)].slice(0, maxTitle).join('');
+  const counts = new Map<string, number>();
+  for (const c of title) counts.set(c, (counts.get(c) ?? 0) + 1);
+  return { title, counts, length: [...title].length };
 };
 
-/** Each outline entry with a page, matched to the first heading not yet matched on its page or next to it. */
+/**
+ * The most two titles can share by their character counts, as difflib's `quick_ratio`: a pair below
+ * the bar never needs the full comparison.
+ */
+const quickRatio = (a: ReturnType<typeof titleOf>, b: ReturnType<typeof titleOf>) => {
+  let shared = 0;
+  for (const [c, n] of a.counts) shared += Math.min(n, b.counts.get(c) ?? 0);
+  return (2 * shared) / (a.length + b.length || 1);
+};
+
+/**
+ * Each outline entry with a page, matched to the first heading not yet matched on its page or next to
+ * it. The work is capped (`maxPairs`, `maxRatios`): entries left when it runs out match nothing, and
+ * their headings are levelled by the other rungs.
+ */
 const outlineMatches = (headings: readonly LevelledHeading[], outline: readonly OutlineEntry[]) => {
   const found = new Map<number, number>();
-  const titles = headings.map((h) => norm(h.text));
+  const titles = headings.map((h) => titleOf(h.text));
+  const onPage = new Map<number, number[]>();
+  headings.forEach((h, i) => {
+    if (h.page === undefined) return;
+    const held = onPage.get(h.page);
+    if (held) held.push(i);
+    else onPage.set(h.page, [i]);
+  });
+  let pairs = 0;
+  let ratios = 0;
   for (const entry of outline) {
     // An entry with no page destination cannot be placed: skipped (issue 516).
     if (entry.page === null) continue;
-    const title = norm(entry.title);
-    if (!title) continue;
-    const at = headings.findIndex(
-      (h, i) =>
-        !found.has(i) &&
-        h.page !== undefined &&
-        Math.abs(h.page - (entry.page as number)) <= 1 &&
-        similar(title, titles[i] ?? ''),
-    );
-    if (at >= 0) found.set(at, entry.level);
+    const title = titleOf(entry.title);
+    if (!title.title) continue;
+    const near = [entry.page - 1, entry.page, entry.page + 1]
+      .flatMap((page) => onPage.get(page) ?? [])
+      .sort((x, y) => x - y);
+    const at = near.find((i) => {
+      if (found.has(i) || pairs >= maxPairs) return false;
+      pairs += 1;
+      const other = titles[i] as ReturnType<typeof titleOf>;
+      if (!other.title) return false;
+      const { title: a, length: la } = title;
+      const { title: b, length: lb } = other;
+      if (la >= 6 && lb >= 6 && (a.includes(b) || b.includes(a))) return true;
+      if (quickRatio(title, other) < 0.85 || ratios >= maxRatios) return false;
+      ratios += 1;
+      return ratio(a, b) >= 0.85;
+    });
+    if (at !== undefined) found.set(at, entry.level);
+    if (pairs >= maxPairs) break;
   }
   return found;
 };
@@ -190,7 +233,9 @@ const sizeOf = (
     return { size: round1(median(sizes) + (bold ? boldBonus : 0)), from: 'font' };
   }
   if (!pageHeight) return undefined;
-  return { size: round1((y1 - y0) * pageHeight), from: 'box' };
+  const size = round1((y1 - y0) * pageHeight);
+  // A box with no finite height gives no size, so the heading is levelled as one without a size.
+  return Number.isFinite(size) ? { size, from: 'box' } : undefined;
 };
 
 /**
@@ -240,11 +285,17 @@ export const headingLevels = (
   if (byNumber)
     for (const i of numbered) result[i] = { level: depths.get(i) as number, source: 'number' };
 
-  // One level below the nearest outline heading before it (issue 516, Q1).
+  // An unnumbered heading, with no chapter word, one level below the nearest outline heading before
+  // it (issue 516, Q1). A numbered one in a document with few numbers is levelled by its size.
   let inForce: number | undefined;
   for (let i = 0; i < headings.length; i += 1) {
     if (fromOutline.has(i)) inForce = fromOutline.get(i);
-    else if (!result[i] && inForce !== undefined)
+    else if (
+      !result[i] &&
+      inForce !== undefined &&
+      depths.get(i) === undefined &&
+      !chapterKind(headings[i]?.text ?? '')
+    )
       result[i] = { level: inForce + 1, source: 'below-outline' };
   }
 

@@ -63,6 +63,7 @@ export const textLayerPartsDerivation: Derivation = { name: 'text-layer-parts', 
  * one ends only the waits on parts, which a pipeline with a parts chunking makes (issue 635).
  */
 export const partsDerivations: readonly Derivation[] = [
+  doclingPartsLevelledDerivation,
   doclingPartsDerivation,
   textLayerPartsDerivation,
 ];

@@ -128,7 +128,7 @@ const withoutNul = <T>(value: T): T => {
 /** Units a statement: a long report's parts stay well under a statement's size. */
 const unitBatch = 200;
 
-const partsNames = partsDerivations.map((d) => d.name);
+const partsNames = [...new Set(partsDerivations.map((d) => d.name))];
 
 /** Stored conversions on the knowledge server, as the worker's writer role reaches them (ADR 0042). */
 export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
