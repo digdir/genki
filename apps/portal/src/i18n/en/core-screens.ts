@@ -337,6 +337,7 @@ export const changes = {
   flagForTenant: 'for all of {organisation}',
   flagForTenantUnnamed: 'for the whole organisation',
   quotaDecide: 'decided a quota request from',
+  quotaPostpone: 'postponed a quota request from',
   quotaRequest: 'asked for a larger quota',
   supportEnd: 'ended support access',
   supportExtend: 'extended support access',

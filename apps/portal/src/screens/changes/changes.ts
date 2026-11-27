@@ -174,6 +174,7 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.flag.person': 'changes.flagChangedAny',
   'platform.flag.tenant': 'changes.flagChangedAny',
   'platform.quota.decide': 'changes.quotaDecide',
+  'platform.quota.postpone': 'changes.quotaPostpone',
   'platform.quota.request': 'changes.quotaRequest',
   'platform.run.cancel': 'changes.taskCancel',
   'platform.service.copy': 'logChanges.serviceCopy',

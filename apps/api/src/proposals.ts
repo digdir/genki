@@ -374,6 +374,34 @@ export const createProposalsModule =
     return {
       id: 'proposals',
       handlers,
+      inbox: async () =>
+        (await deps.configEntries.latest({ kind: proposalKind }))
+          .filter((e) => !e.deleted)
+          .map((e) => ({ tenant: e.scope, proposal: e.spec as CatalogProposal }))
+          .filter(
+            ({ proposal }) =>
+              proposal.level === 4 &&
+              queueStatus(proposal) === 'pending' &&
+              (proposal.platformChange?.status ?? 'sent') !== 'rejected' &&
+              proposal.platformChange?.status !== 'planned',
+          )
+          .map(({ tenant, proposal }) => ({
+            type: 'suggestion' as const,
+            id: proposal.id,
+            tenant,
+            what:
+              proposal.title ??
+              proposal.item?.name ??
+              proposal.platformChange?.summary ??
+              proposal.id,
+            from: proposal.requestedByName ?? proposal.requestedBy ?? null,
+            waitingSince: proposal.createdAt,
+            blocks: false,
+            action: {
+              method: 'POST' as const,
+              path: `/operator/proposals/${proposal.id}/decision`,
+            },
+          })),
       mount: (app, mountDeps) => mountRoutes(app, mountDeps.admin, mountDeps, current),
     };
   };

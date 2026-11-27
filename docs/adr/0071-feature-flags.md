@@ -1,6 +1,6 @@
 # 0071 Feature flags
 
-Status: proposed, 2026-11-25 (built)
+Status: proposed, 2026-11-25 (built; overrides with an expiry, 2026-11-26)
 
 Left: a flag per service, percentage rollouts and flags in the worker.
 
@@ -18,7 +18,7 @@ genki goes from a test platform to one environment that agencies depend on (issu
 
 ### State
 
-- State lives in `config_entries`, kind `feature-flag`, scope the tenant, id `["<key>"]` for the tenant and `["<key>", "<issuer>", "<subject>"]` for one person in it, with spec `{ on }`. A cleared choice is a deleted version. Each change is a new version with who and why, as for other config entries. No migration: the table exists, so an older revision runs beside a newer one.
+- State lives in `config_entries`, kind `feature-flag`, scope the tenant, id `["<key>"]` for the tenant and `["<key>", "<issuer>", "<subject>"]` for one person in it, with spec `{ on, expiresAt? }`. An override past its `expiresAt` stops counting and stays listed. A cleared choice is a deleted version. Each change is a new version with who and why, as for other config entries. No migration: the table exists, so an older revision runs beside a newer one.
 - Precedence: the person's choice, then the tenant's, then `GENAI_FLAGS`, then off. A person can turn off for themselves what the tenant turned on. There is no operator override above the person: a flag that must not be turned off per person is not self-service.
 - Rows for a key no longer in the registry are ignored, so removing a flag needs no data change.
 
@@ -29,7 +29,7 @@ genki goes from a test platform to one environment that agencies depend on (issu
 - `PUT /tenants/{tenant}/me/flags/{key}` with `{ on: true | false | null }` changes the caller's own row only; the person is taken from the verified principal, never from the request. Any member may, the reason is optional and a default is stored.
 - `PUT /tenants/{tenant}/flags/{key}` changes the tenant's row, needs `manage-services` and a reason.
 - Both answer `403` `urn:genai:problem:flag-operator-only` for a flag that is not self-service, also to an operator acting in the tenant, who uses the operator routes instead, and `404` for an unknown key.
-- `GET /operator/flags` lists every flag with its description, owner, `removeBy` and every row. `PUT /operator/flags/{key}` with `{ tenant, person?, on }` lets an operator switch any flag for any tenant or person. Both are operator only.
+- `GET /operator/flags` lists every flag with its description, owner, `removeBy` and every row. `PUT /operator/flags/{key}` with `{ tenant, person?, on, expiresAt? }` lets an operator switch any flag for any tenant or person, audited in that tenant's log on its behalf. `GET /operator/tenants/{tenant}/flags` shows one tenant's choices, and an override that expires within seven days waits in `GET /operator/inbox`. All are operator only.
 - Every change runs as an admin task, `platform.flag.person` or `platform.flag.tenant`, so it is in the tenant's audit log, and in the portal's change log under settings, with the actor, the level, the target (`flag:<key>` or `flag:<key>:person:<issuer>:<subject>`) and the reason.
 
 ### Frontends

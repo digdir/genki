@@ -145,6 +145,7 @@ export type PlatformOptions = Authentication & {
   organisationName?: PlatformApiOptions['organisationName'];
   registeredName?: PlatformApiOptions['registeredName'];
   tenantQuota?: PlatformApiOptions['tenantQuota'];
+  inbox?: PlatformApiOptions['inbox'];
   tenantGate?: MiddlewareHandler;
   registered?: (tenant: string) => Promise<boolean>;
   lifecycle?: PlatformApiOptions['lifecycle'];
@@ -340,6 +341,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
         ? { tenantDirectory: options.platform.tenantDirectory }
         : {}),
       ...(options.platform.tenantQuota ? { tenantQuota: options.platform.tenantQuota } : {}),
+      ...(options.platform.inbox ? { inbox: options.platform.inbox } : {}),
       ...(options.platform.organisationName
         ? { organisationName: options.platform.organisationName }
         : {}),

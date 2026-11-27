@@ -45,6 +45,9 @@ import {
 import { requireRight, rightRefused, type Right } from '../rights.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from '../http.js';
 import { failureOf, failureReason } from '../failures.js';
+import type { DirectoryEntry } from '../extensions.js';
+import type { InboxItem } from '../operator-inbox.js';
+import { registerOperatorTenantRoutes } from './operator-tenant-routes.js';
 import { failureDetail } from '../run-steps.js';
 import type { Lockdown } from '../lockdown.js';
 import { erasureOf } from '../timeline.js';
@@ -55,6 +58,7 @@ import type { ServiceHealth } from '../service-health.js';
 import { pausedMessage, type LifecycleView } from '../service-lifecycle.js';
 import {
   hidesInternalServices,
+  isHiddenService,
   isHiddenTask,
   seeingInternalServices,
   shownKeys,
@@ -233,6 +237,8 @@ export interface PortalRouteDeps {
   countingRule?(): CountingRule;
   testRunnerKeys?: boolean;
   isOperator?: (principal: Principal) => boolean;
+  directory?(): Promise<DirectoryEntry[]>;
+  inbox?(viewer: Principal): Promise<InboxItem[]>;
   now?(): Date;
   newKey?(): string;
   newId?(): string;
@@ -2163,5 +2169,43 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       result.status,
       { 'content-type': 'application/problem+json' },
     );
+  });
+
+  registerOperatorTenantRoutes(app, {
+    authenticate: deps.authenticate,
+    now,
+    startOfToday: () => osloMidnight(now()),
+    ...(deps.directory ? { directory: deps.directory } : {}),
+    ...(deps.inbox ? { inbox: deps.inbox } : {}),
+    ...(deps.quota ? { quota: deps.quota } : {}),
+    monthCost: async (tenant, from, to) => {
+      const totals = await monthTotals(tenant, from, to);
+      return { costMicroNok: totals.costMicroNok, priced: totals.priced };
+    },
+    services: async (tenant) => {
+      const services = (await deps.definitions.list(tenant)).filter((d) => d.kind === 'Service');
+      const hidden = await Promise.all(
+        services.map((d) => isHiddenService(deps.definitions, tenant, d.id)),
+      );
+      const listed = services.filter((_, i) => !hidden[i]);
+      const states = await Promise.all(
+        listed.map(async (d) => (await deps.lifecycle?.(tenant, d.id))?.state ?? 'active'),
+      );
+      const kept = states.filter((state) => state !== 'archived');
+      return { total: kept.length, inUse: kept.filter((state) => state !== 'paused').length };
+    },
+    failedSince: async (tenant, since) =>
+      (await tasksSince(tenant, since, true)).filter(
+        (t) => t.status === 'failed' && (t.owner ?? t.tenant) === tenant,
+      ),
+    failures: failuresOf,
+    serviceOf: async (tenant, task) => {
+      const caps = await capabilitiesOf(tenant);
+      const id = serviceOf(caps, task.service.capability.id);
+      const found = caps.find((cap) => cap.service.id === id);
+      return { id, name: found?.serviceName ?? found?.capability.descriptor.title ?? id };
+    },
+    audit: (tenant) => deps.admin.audit(tenant),
+    namesOf: async (actors) => (await deps.names?.namesOf(actors)) ?? new Map(),
   });
 };

@@ -28,6 +28,16 @@ import type { Organization } from '../organizations.js';
 import { SinkLabelsRefused, type SinkLabels } from '../sink-labels.js';
 import { isOperator } from '../rights.js';
 import { actsAsOperator } from '../content-reason.js';
+import { AuditFilter, auditMatches } from '../audit-filter.js';
+
+const OperatorAuditQuery = AuditFilter.extend({
+  tenant: z
+    .string()
+    .regex(/^\d{9}$/)
+    .optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
 
 export const consoleActions = [
   'platform.service.share',
@@ -655,8 +665,22 @@ export const registerConsoleRoutes = <E extends Env, S extends Schema, B extends
     if (who.response) return who.response;
     const read = deps.admin.audit;
     if (!read) return problem(c, 404, 'Not found');
+    const query = OperatorAuditQuery.safeParse(c.req.query());
+    if (!query.success)
+      return problem(
+        c,
+        400,
+        'Invalid request',
+        query.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+      );
+    const { tenant, limit, offset, ...filter } = query.data;
+    const kept = (await read(tenant))
+      .filter(auditMatches(filter))
+      .sort((a, b) => b.at.localeCompare(a.at));
     const entries = await withFlagDetails(
-      (await read()).sort((a, b) => b.at.localeCompare(a.at)),
+      limit === undefined && offset === undefined
+        ? kept
+        : kept.slice(offset ?? 0, (offset ?? 0) + (limit ?? kept.length)),
       { events: deps.admin.events, names: deps.names },
     );
     const names = (await deps.names?.namesOf(entries.map((e) => e.actor))) ?? new Map();
@@ -664,7 +688,7 @@ export const registerConsoleRoutes = <E extends Env, S extends Schema, B extends
       const actorName = names.get(e.actor);
       return actorName ? { ...e, actorName } : e;
     });
-    return c.json({ data });
+    return c.json({ data, total: kept.length });
   });
 
   app.get('/operator/operations', async (c) => {

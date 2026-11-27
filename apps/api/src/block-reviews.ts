@@ -126,6 +126,28 @@ export const createBlockReviewsModule =
     return {
       id: 'block-reviews',
       handlers: routeOnlyActions(Object.values(blockShareActions)),
+      inbox: async (viewer) => {
+        if (
+          !(await deps.flags.on({ principal: viewer, tenant: deps.platformTenant }, 'blockStudio'))
+        )
+          return [];
+        return (await allCurrent())
+          .filter((r) => r.status === 'pending')
+          .map((r) => ({
+            type: 'catalogue' as const,
+            id: r.id,
+            tenant: r.tenant,
+            what: r.block,
+            from: r.requestedBy,
+            waitingSince: r.requestedAt,
+            blocks: false,
+            action: {
+              method: 'POST' as const,
+              path: `/operator/block-share-requests/${r.id}/approve`,
+            },
+            detail: { kind: 'block-share', block: r.block, version: r.version },
+          }));
+      },
       mount: (app, mounted: MountDeps) => {
         const reasonOf = (c: Context) => changeReasonOf(c)?.trim() ?? '';
         const studio = requireFlag(mounted, 'blockStudio');

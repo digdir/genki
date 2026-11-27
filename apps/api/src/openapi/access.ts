@@ -2059,6 +2059,28 @@ export const accessRoutes: RouteConfig[] = withContentReasons([
     },
   }),
   createRoute({
+    method: 'get',
+    path: '/operator/tenants/{tenant}/hostnames',
+    summary:
+      "Every address of a tenant's hosted clients in one list, with the service each serves and its state (operators)",
+    request: { params: z.object({ tenant }) },
+    responses: {
+      200: json(
+        z.object({
+          data: z.array(
+            HostnameClaimView.extend({
+              service: z.string().nullable().describe('The service the hosted client serves'),
+            }),
+          ),
+        }),
+        'Addresses',
+      ),
+      401: unauthorized,
+      403: operatorOnly,
+      404: problem('Not an organisation number'),
+    },
+  }),
+  createRoute({
     method: 'put',
     path: '/operator/tenants/{tenant}/private-networks',
     summary:

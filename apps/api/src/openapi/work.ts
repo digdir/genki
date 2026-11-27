@@ -19,6 +19,8 @@ import { Problem, problemContent, RunErasure } from '../http.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
 import { incidentResolvedType } from '../platform-status.js';
 import { quotaRequestDecidedType, quotaRequestPendingType } from '../quota-requests.js';
+import { auditFilterQuery } from '../audit-filter.js';
+import { inboxTypes } from '../operator-inbox.js';
 import { runFinishedType, runNotCancellableType } from '../tenant-run-cancel.js';
 import { sinkJudgeFields, staleJudgesField } from './services.js';
 import { withContentReasons } from './content-reason.js';
@@ -2938,6 +2940,32 @@ const AuditRecord = z
   })
   .openapi('AuditRecord');
 
+const InboxItem = z
+  .object({
+    type: z.enum(inboxTypes),
+    id: z.string().describe('The id of the waiting item in its own list'),
+    tenant: z.string().nullable().describe('The tenant it concerns; null for several or all'),
+    tenantName: z.string().optional(),
+    tenants: z
+      .array(z.string())
+      .optional()
+      .describe('For an incident: the tenants it concerns, empty for all'),
+    what: z
+      .string()
+      .describe(
+        'What it concerns: the setting, organisation, block, work instruction, suggestion, incident or flag',
+      ),
+    from: z.string().nullable().describe('Who asked or set it, by name when known'),
+    waitingSince: z.string(),
+    due: z.string().optional().describe('For a flag override that expires: when it does'),
+    blocks: z.boolean().describe('Whether the tenant cannot go on until an operator acts'),
+    action: z
+      .object({ method: z.enum(['GET', 'POST', 'PUT', 'DELETE']), path: z.string() })
+      .describe('The route that acts on it'),
+    detail: z.record(z.string(), z.unknown()).optional(),
+  })
+  .openapi('InboxItem');
+
 const OperationsOverview = z
   .object({
     incidents: z.array(z.object({ title: z.string(), text: z.string() })),
@@ -2993,8 +3021,19 @@ const QuotaRequest = z
         byName: z.string().optional(),
         at: z.string(),
         reason: z.string(),
+        monthlyTokens: z.number().int().optional().describe('The quota set on approval'),
       })
       .optional(),
+    postponed: z
+      .object({
+        until: z.string(),
+        by: z.string(),
+        byName: z.string().optional(),
+        at: z.string(),
+        note: z.string().optional(),
+      })
+      .optional()
+      .describe('Operators only: the request is out of the inbox until this date'),
   })
   .openapi('QuotaRequest');
 
@@ -3070,9 +3109,40 @@ const operationsRoutes: RouteConfig[] = [
     method: 'get',
     path: '/operator/audit',
     summary: 'The whole audit log, newest first',
-    description: described(operator, notAudited),
+    description: described(
+      operator,
+      notAudited,
+      'from, to, actor, action, by and tenant narrow the entries before limit and offset page them; total counts what they keep.',
+    ),
+    request: {
+      query: z.object({
+        ...auditFilterQuery,
+        tenant: z
+          .string()
+          .regex(/^\d{9}$/)
+          .optional()
+          .openapi({
+            param: { name: 'tenant', in: 'query' },
+            description: 'Only the entries in this tenant',
+          }),
+        limit: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .openapi({ param: { name: 'limit', in: 'query' } }),
+        offset: z.coerce
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .openapi({ param: { name: 'offset', in: 'query' } }),
+      }),
+    },
     responses: {
-      200: json(z.object({ data: z.array(AuditRecord) }), 'Audit log'),
+      200: json(z.object({ data: z.array(AuditRecord), total: z.number().int() }), 'Audit log'),
+      400: problem('An invalid filter'),
       404: problem('No audit log is kept'),
       ...operatorOnly,
     },
@@ -3166,18 +3236,158 @@ const operationsRoutes: RouteConfig[] = [
     method: 'post',
     path: '/operator/quota-requests/{tenant}/{id}/decision',
     summary:
-      "Approve or reject a quota request; approving sets the tenant's usage.monthlyTokens to the amount asked for, audited in the tenant's log",
-    description: described(operator, audited),
+      "Approve, reject or postpone a quota request; approving sets the tenant's usage.monthlyTokens to monthlyTokens or the amount asked for, audited in the tenant's log",
+    description: described(
+      operator,
+      audited,
+      "Postponing keeps the request waiting and out of GET /operator/inbox until the date; it is audited as platform.quota.postpone in the platform's log only, and the tenant does not see it or its note.",
+    ),
     request: {
       params: z.object({ tenant, id: pathParam('id', '7d4c1b3e-1f0a-4e2b-9c8d-5a6b7c8d9e0f') }),
       headers: operatorWriteHeaders,
-      body: body(z.object({ decision: z.enum(['approved', 'rejected']) })),
+      body: body(
+        z.union([
+          z.object({
+            decision: z.literal('approved'),
+            monthlyTokens: z
+              .number()
+              .int()
+              .min(1)
+              .max(10_000_000_000)
+              .optional()
+              .describe('The new quota; the amount asked for when left out'),
+          }),
+          z.object({ decision: z.literal('rejected') }),
+          z.object({
+            decision: z.literal('postponed'),
+            until: z.iso
+              .date()
+              .openapi({ example: '2026-12-01' })
+              .describe('A date after today in Oslo'),
+            note: z.string().trim().min(1).max(1000).optional().describe('For operators only'),
+          }),
+        ]),
+      ),
     },
     responses: {
       200: json(QuotaRequest, 'Decided'),
-      400: problem('Invalid decision, missing change reason, or a quota the setting refuses'),
+      400: problem(
+        'Invalid decision, missing change reason, a quota the setting refuses, or a postpone date that is not after today',
+      ),
       404: problem('No such request'),
       409: problem(`${quotaRequestDecidedType}: the request is already decided`),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/inbox',
+    summary:
+      'Everything waiting on an operator in one list, oldest first, with flag overrides that expire within seven days last',
+    description: described(
+      operator,
+      notAudited,
+      'Quota requests (not postponed ones), access requests, block share and building block approval requests, work instruction shares, suggestions for Digdir, open incidents and expiring flag overrides. Block share requests are listed only while blockStudio is on for the caller.',
+    ),
+    request: {
+      query: z.object({
+        type: z.enum(inboxTypes).optional(),
+        tenant: z.string().optional().describe('Only the items for this tenant'),
+      }),
+    },
+    responses: {
+      200: json(z.object({ data: z.array(InboxItem) }), 'Waiting items'),
+      400: problem('Unknown type'),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/tenants/{tenant}',
+    summary:
+      'One tenant at a glance: name, status, what needs an operator, tokens against the quota with a month-end forecast, cost, services, failed runs and the latest audit entries',
+    description: described(
+      operator,
+      notAudited,
+      'The forecast spreads the tokens used so far this month evenly over the whole month.',
+    ),
+    request: { params: z.object({ tenant }) },
+    responses: {
+      200: json(
+        z
+          .object({
+            orgNumber: z.string(),
+            name: z.string(),
+            status: z.enum(['active', 'onboarding', 'paused']),
+            needsAction: z
+              .array(InboxItem)
+              .describe(
+                "The tenant's inbox items with actor ids, not names, and a quota item when it has used 90 % or more without a waiting request",
+              ),
+            tokens: z
+              .object({
+                usedTokens: z.number().int(),
+                monthlyTokens: z.number().int(),
+                usedPercent: z.number(),
+                forecastTokens: z.number().int(),
+              })
+              .nullable(),
+            cost: z.object({
+              from: z.string(),
+              costMicroNok: z.number().int().nullable(),
+              priced: z.boolean(),
+            }),
+            services: z.object({
+              total: z.number().int().describe('Services that are not archived'),
+              inUse: z.number().int().describe('Of those, the ones not paused'),
+            }),
+            failedRunsLast7Days: z.number().int(),
+            latestAudit: z.array(AuditRecord).describe('The five newest entries'),
+          })
+          .openapi('OperatorTenantOverview'),
+        'Overview',
+      ),
+      404: problem('No such tenant'),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/failed-runs',
+    summary:
+      'Failed runs in every tenant since the start of today in Oslo, newest first, with the cause',
+    description: described(operator, notAudited, 'Ids, times and causes only, no run content.'),
+    request: {
+      query: z.object({
+        from: z
+          .union([z.iso.date(), z.iso.datetime({ offset: true })])
+          .optional()
+          .describe(
+            'A date (from the start of that Oslo day) or an ISO time, at most 31 days back; today by default',
+          ),
+      }),
+    },
+    responses: {
+      200: json(
+        z.object({
+          from: z.string(),
+          data: z.array(
+            z.object({
+              task: z.string(),
+              tenant: z.string(),
+              tenantName: z.string(),
+              service: z.string().nullable(),
+              serviceName: z.string().nullable(),
+              at: z.string(),
+              failure: z
+                .object({ code: z.string(), reason: z.string(), step: z.string().optional() })
+                .nullable(),
+            }),
+          ),
+        }),
+        'Failed runs',
+      ),
+      400: problem('An invalid from, or one more than 31 days back'),
       ...operatorOnly,
     },
   }),

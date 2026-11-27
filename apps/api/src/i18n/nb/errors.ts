@@ -683,6 +683,9 @@ export const definitionErrors = defineNamespace({
 
 export const routeErrors = defineNamespace({
   modelNotFound: 'Fant ikke modellen: {name}',
+  inboxTypeOneOf: 'type er en av {values}',
+  postponeUntilAfterToday: 'until er en dato etter i dag',
+  flagExpiryInFuture: 'expiresAt er et tidspunkt fram i tid, og krever on',
   requestValidationFailed: 'Forespørselen er ugyldig',
   noAgentsAvailable: 'Ingen agenter er tilgjengelige',
   conversationNotFound: 'Fant ikke samtalen',

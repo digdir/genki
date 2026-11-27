@@ -10,10 +10,10 @@ Operator-only routes, used by the console: tenants and organisations, onboarding
 
 ## Typical sequence: help a tenant
 
-1. `GET /operator/tenants`: find the tenant.
+1. `GET /operator/inbox`: what waits on an operator, or `GET /operator/tenants`: find the tenant, with what waits for it in `waiting`. `GET /operator/tenants/{tenant}` gives one tenant at a glance: `needsAction`, tokens against the quota with a month-end forecast, cost, services in use and failed runs in the last seven days, and its latest audit entries. `GET /operator/tenants/{tenant}/flags` and `GET /operator/tenants/{tenant}/hostnames` show its flags and addresses, and `GET /operator/failed-runs` today's failed runs in every tenant with the cause.
 2. Call the tenant's routes, for example `GET /tenants/{tenant}/definitions`, or `PUT /tenants/{tenant}/settings/usage.monthlyTokens` with `change-reason`.
 3. Before reading content, such as `GET /tenants/{tenant}/tasks/{task}/timeline`, `POST /operator/tenants/{tenant}/content-reason` with `{ "reason" }`. A content route answers `403` `urn:genai:problem:content-reason-required` until then.
-4. `GET /operator/audit`: what was done, by whom, and why.
+4. `GET /operator/audit`: what was done, by whom, and why. `from`, `to` (ISO times, or dates for whole Oslo days), `actor`, `action` (a prefix such as `platform.flag`), `by` (`operator` or `tenant`) and `tenant` narrow it, and `limit` and `offset` page it with `total`. `GET /tenants/{tenant}/audit` takes the same filters, without `tenant`.
 
 Prices name units per kind: the built-in units and any unit a descriptor names, such as `{ "ocr": { "page": 0.05 } }`; a unit name is lowercase letters, digits and hyphens.
 

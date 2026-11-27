@@ -262,7 +262,7 @@ export const QuotaRequestAction = ({
     <span className="meta quota-pending" role="status">
       {decided.state === 'approved'
         ? t('quotaRequest.approved', {
-            amount: millions(f, decided.monthlyTokens),
+            amount: millions(f, decided.decision?.monthlyTokens ?? decided.monthlyTokens),
             when: f.dateTime(decided.decision.at),
           })
         : t('quotaRequest.rejected', {

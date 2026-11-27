@@ -826,6 +826,10 @@ describe('a test-runner key on operator routes', () => {
     ['secret names', '/operator/knowledge/secrets'],
     ['an encoded slash', '/operator/plugins/..%2Faudit'],
     ['a trailing segment', `/operator/tenants/${digdir}`],
+    ['the inbox', '/operator/inbox'],
+    ['failed runs', '/operator/failed-runs'],
+    ['tenant flags', `/operator/tenants/${digdir}/flags`],
+    ['tenant hostnames', `/operator/tenants/${digdir}/hostnames`],
   ])('is refused reading %s', async (_name, path) => {
     const { send, testRunnerKey } = await boot();
     const key = await testRunnerKey();
