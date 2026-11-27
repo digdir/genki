@@ -72,7 +72,7 @@ describe('til behandling', () => {
 
   it('shows why a building block needs approval, approves it and moves it to Behandlet', async () => {
     const { calls, fetch } = recording();
-    await open('#/queue', fetch);
+    await open('#/queue?tab=blocks', fetch);
 
     const panel = await openRow('Claude Sonnet 5.5');
     expect(within(panel).getByText('Testetaten')).toBeTruthy();
@@ -189,7 +189,7 @@ describe('til behandling', () => {
         : /approval-requests|operator\/proposals|onboarding\/requests/.test(String(input))
           ? new Response(JSON.stringify({ data: [] }), { status: 200 })
           : base(input, init);
-    await open('#/queue', fetch);
+    await open('#/queue?tab=blocks', fetch);
 
     expect(await screen.findByText('Ingenting venter')).toBeTruthy();
     expect(screen.getByText('Ingen beslutninger de siste 90 dagene.')).toBeTruthy();
@@ -236,7 +236,7 @@ describe('til behandling', () => {
         );
       return base(input, init);
     };
-    await open('#/queue', fetch);
+    await open('#/queue?tab=blocks', fetch);
 
     const panel = await openRow('Claude Sonnet 5.5');
     await decide(panel, 'Godkjenn', 'Modellen er godkjent for EU-data');
@@ -257,7 +257,7 @@ describe('til behandling', () => {
         expired: true,
       }),
     );
-    await open('#/queue');
+    await open('#/queue?tab=blocks');
 
     const dialog = await screen.findByRole('dialog', { name: 'Godkjenn Eksempel kommune' });
     expect(within(dialog).getByText('Økten din var utløpt')).toBeTruthy();

@@ -1,6 +1,18 @@
 import type { FlagState } from '@genai/contracts/flags';
 import { translator, type Locale, type T } from './i18n';
 import { definitionKindSegments } from './definition-kinds';
+import type {
+  AuditFilter,
+  FailedRun,
+  InboxItem,
+  PrivateNetworks,
+  QuotaDecision,
+  TenantFlag,
+  TenantHostname,
+  TenantOverview,
+  TenantPerson,
+  TenantUsage,
+} from './operator-types';
 import { tenantLabel } from './tenant-names';
 import type {
   AuditEntry,
@@ -1133,7 +1145,69 @@ export const createApiClient = ({
         `/operator/quota-requests/${encodeURIComponent(tenant)}/${encodeURIComponent(id)}/decision`,
         { body: { decision }, headers: { 'change-reason': reason } },
       ),
-    audit: (tenant: string, signal?: AbortSignal) =>
-      call<AuditEntry[]>('GET', `/tenants/${encodeURIComponent(tenant)}/audit`, { signal }),
+    tenantAudit: (tenant: string, filter: AuditFilter, signal?: AbortSignal) => {
+      const query = new URLSearchParams(
+        Object.entries(filter).filter(
+          (e): e is [string, string] => typeof e[1] === 'string' && e[1] !== '',
+        ),
+      ).toString();
+      return call<{ data: AuditEntry[] }>(
+        'GET',
+        `/tenants/${encodeURIComponent(tenant)}/audit${query ? `?${query}` : ''}`,
+        { signal },
+      ).then((r) => r.data);
+    },
+    inbox: async (signal?: AbortSignal) =>
+      (await call<{ data: InboxItem[] }>('GET', '/operator/inbox', { signal })).data,
+    tenantOverview: (tenant: string, signal?: AbortSignal) =>
+      call<TenantOverview>('GET', `/operator/tenants/${encodeURIComponent(tenant)}`, { signal }),
+    tenantUsage: (tenant: string, days: number, signal?: AbortSignal) =>
+      call<TenantUsage>('GET', `/tenants/${encodeURIComponent(tenant)}/usage?days=${days}`, {
+        signal,
+      }),
+    tenantFlags: async (tenant: string, signal?: AbortSignal) =>
+      (
+        await call<{ data: TenantFlag[] }>(
+          'GET',
+          `/operator/tenants/${encodeURIComponent(tenant)}/flags`,
+          { signal },
+        )
+      ).data,
+    tenantHostnames: async (tenant: string, signal?: AbortSignal) =>
+      (
+        await call<{ data: TenantHostname[] }>(
+          'GET',
+          `/operator/tenants/${encodeURIComponent(tenant)}/hostnames`,
+          { signal },
+        )
+      ).data,
+    tenantPrivateNetworks: (tenant: string, signal?: AbortSignal) =>
+      call<PrivateNetworks>(
+        'GET',
+        `/operator/tenants/${encodeURIComponent(tenant)}/private-networks`,
+        { signal },
+      ),
+    tenantPeople: async (tenant: string, signal?: AbortSignal) =>
+      (
+        await call<{ people: TenantPerson[] }>(
+          'GET',
+          `/tenants/${encodeURIComponent(tenant)}/access/people`,
+          { signal },
+        )
+      ).people,
+    failedRuns: async (from: string, signal?: AbortSignal) =>
+      (
+        await call<{ data: FailedRun[] }>(
+          'GET',
+          `/operator/failed-runs?${new URLSearchParams({ from }).toString()}`,
+          { signal },
+        )
+      ).data,
+    decideQuota: (tenant: string, id: string, decision: QuotaDecision, reason: string) =>
+      call<QuotaRequestRow>(
+        'POST',
+        `/operator/quota-requests/${encodeURIComponent(tenant)}/${encodeURIComponent(id)}/decision`,
+        { body: decision, headers: { 'change-reason': reason } },
+      ),
   };
 };

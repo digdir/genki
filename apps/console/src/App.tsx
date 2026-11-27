@@ -22,7 +22,8 @@ import { QuotaRequests } from './screens/QuotaRequests';
 import { Quality } from './screens/Quality';
 import { Settings } from './screens/Settings';
 import { SharedServices } from './screens/SharedServices';
-import { SupportAccess } from './screens/SupportAccess';
+import { OrgPage } from './screens/org/OrgPage';
+import { Inbox } from './screens/inbox/Inbox';
 import { StateRegister } from './screens/StateRegister';
 import { TenantServices } from './screens/TenantServices';
 import { Tenants } from './screens/Tenants';
@@ -280,13 +281,24 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
   );
   const screens: Record<string, () => React.ReactNode> = {
     '/tenants': () => <Tenants api={api} />,
-    '/queue': () => (
-      <Queue
-        api={api}
-        tab={params.get('tab') ?? undefined}
-        onDecided={() => setDecided((n) => n + 1)}
-      />
-    ),
+    '/queue': () =>
+      params.get('tab') ? (
+        <Queue
+          api={api}
+          tab={params.get('tab') ?? undefined}
+          onDecided={() => setDecided((n) => n + 1)}
+        />
+      ) : (
+        <Inbox
+          api={api}
+          type={params.get('type') ?? undefined}
+          request={params.get('request') ?? undefined}
+          onDecided={() => {
+            setDecided((n) => n + 1);
+            setQuotaDecided((n) => n + 1);
+          }}
+        />
+      ),
     '/quota-requests': () => (
       <QuotaRequests
         api={api}
@@ -346,7 +358,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
       />
     ),
     '/support-access': () => (
-      <SupportAccess
+      <OrgPage
         api={api}
         tenant={params.get('tenant') ?? undefined}
         tab={params.get('tab') ?? undefined}

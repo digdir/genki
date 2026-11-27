@@ -36,9 +36,11 @@ export const exampleQuotaRequests: QuotaRequestRow[] = [
 export const quotaRequestsMock = (
   json: (body: unknown, status?: number) => Response,
   record: (action: string, target: string, reason: string) => void,
+  onApproved?: (tenant: string, monthlyTokens: number) => void,
 ) => {
-  let rows = structuredClone(exampleQuotaRequests);
-  return (
+  let rows: (QuotaRequestRow & { postponedUntil?: string })[] =
+    structuredClone(exampleQuotaRequests);
+  const handle = (
     path: string,
     method: string,
     search: URLSearchParams,
@@ -59,9 +61,23 @@ export const quotaRequestsMock = (
     if (!found) return json({ title: 'Fant ikke', status: 404 }, 404);
     if (!reason) return json({ title: 'Mangler begrunnelse', status: 400 }, 400);
     if (found.state !== 'pending') return json({ title: 'Allerede avgjort', status: 409 }, 409);
-    const decision = body().decision === 'approved' ? 'approved' : 'rejected';
+    const asked = body();
+    if (asked.decision === 'postponed') {
+      const until = typeof asked.until === 'string' ? asked.until : '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(until))
+        return json({ title: 'Invalid request', status: 400 }, 400);
+      rows = rows.map((r) => (r === found ? { ...r, postponedUntil: until } : r));
+      record('platform.quota.postpone', `quota-request:${found.tenant}/${found.id}`, reason);
+      return json(found);
+    }
+    const decision = asked.decision === 'approved' ? 'approved' : 'rejected';
+    const monthlyTokens =
+      decision === 'approved' && typeof asked.monthlyTokens === 'number'
+        ? asked.monthlyTokens
+        : found.monthlyTokens;
     const decided: QuotaRequestRow = {
       ...found,
+      monthlyTokens,
       state: decision,
       decision: {
         by: 'operator:entra:drift',
@@ -70,11 +86,13 @@ export const quotaRequestsMock = (
         reason,
       },
       ...(decision === 'approved' && found.quota
-        ? { quota: { ...found.quota, monthlyTokens: found.monthlyTokens } }
+        ? { quota: { ...found.quota, monthlyTokens } }
         : {}),
     };
     rows = rows.map((r) => (r === found ? decided : r));
+    if (decision === 'approved') onApproved?.(found.tenant, monthlyTokens);
     record('platform.quota.decide', `quota-request:${found.tenant}/${found.id}`, reason);
     return json(decided);
   };
+  return Object.assign(handle, { rows: () => rows });
 };
