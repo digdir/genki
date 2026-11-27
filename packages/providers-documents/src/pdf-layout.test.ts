@@ -11,6 +11,8 @@ interface Line {
   bold?: boolean;
   /** Sets the size with the text matrix and the font at size 1, as many PDFs do. */
   matrix?: boolean;
+  /** Set turned a quarter left, running up the page, as a table's side label is. */
+  turned?: boolean;
 }
 
 interface Bookmark {
@@ -34,6 +36,8 @@ const pdfWith = (pages: Line[][], bookmarks: Bookmark[], rotate = 0) => {
     const ops = lines
       .map((l) => {
         const font = l.bold ? '/F2' : '/F1';
+        if (l.turned)
+          return `BT ${font} 1 Tf 0 ${l.size} ${-l.size} 0 72 ${l.y} Tm (${l.text}) Tj ET`;
         return l.matrix
           ? `BT ${font} 1 Tf ${l.size} 0 0 ${l.size} 72 ${l.y} Tm (${l.text}) Tj ET`
           : `BT ${font} ${l.size} Tf 72 ${l.y} Td (${l.text}) Tj ET`;
@@ -140,6 +144,21 @@ describe('PDF layout', () => {
     expect(x1).toBeCloseTo((700 + 12) / 792, 2);
     expect(y0).toBeCloseTo(72 / 612, 2);
     expect(y1).toBeGreaterThan(y0 as number);
+  });
+
+  it('a run set turned on an upright page is boxed along its own direction', async () => {
+    const side = pdfWith(
+      [[{ text: 'Sidetittel', size: 12, y: 300, turned: true }]],
+      [{ title: 'Sidetittel', page: 1 }],
+    );
+    const [x0, y0, x1, y1] = (await readPdfLayout(side)).runs[0]?.box ?? [];
+    // Running up from (72, 300): its height reaches left of x 72, its length up from y 300.
+    expect(x1).toBeCloseTo(72 / 612, 2);
+    expect(x0).toBeCloseTo((72 - 12) / 612, 2);
+    expect(y1).toBeCloseTo((792 - 300) / 792, 2);
+    expect(((y1 as number) - (y0 as number)) * 792).toBeGreaterThan(
+      ((x1 as number) - (x0 as number)) * 612,
+    );
   });
 
   it('a PDF over the page limit gives no layout', async () => {

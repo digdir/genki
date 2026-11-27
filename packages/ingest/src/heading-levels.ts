@@ -157,8 +157,10 @@ const quickRatio = (a: ReturnType<typeof titleOf>, b: ReturnType<typeof titleOf>
 
 /**
  * Each outline entry with a page, matched to the first heading not yet matched on its page or next to
- * it. The work is capped (`maxPairs`, `maxRatios`): entries left when it runs out match nothing, and
- * their headings are levelled by the other rungs.
+ * it. The work is capped: at most `maxPairs` headings are looked at, matched ones too, and at most
+ * `maxRatios` pairs get the full comparison. An entry looked at after the first cap matches nothing;
+ * after the second, only a title that holds the other still matches. Headings left unmatched are
+ * levelled by the other rungs.
  */
 const outlineMatches = (headings: readonly LevelledHeading[], outline: readonly OutlineEntry[]) => {
   const found = new Map<number, number>();
@@ -172,28 +174,34 @@ const outlineMatches = (headings: readonly LevelledHeading[], outline: readonly 
   });
   let pairs = 0;
   let ratios = 0;
+  const same = (title: ReturnType<typeof titleOf>, other: ReturnType<typeof titleOf>) => {
+    if (!other.title) return false;
+    const { title: a, length: la } = title;
+    const { title: b, length: lb } = other;
+    if (la >= 6 && lb >= 6 && (a.includes(b) || b.includes(a))) return true;
+    if (quickRatio(title, other) < 0.85 || ratios >= maxRatios) return false;
+    ratios += 1;
+    return ratio(a, b) >= 0.85;
+  };
   for (const entry of outline) {
+    if (pairs >= maxPairs) break;
     // An entry with no page destination cannot be placed: skipped (issue 516).
     if (entry.page === null) continue;
     const title = titleOf(entry.title);
     if (!title.title) continue;
-    const near = [entry.page - 1, entry.page, entry.page + 1]
-      .flatMap((page) => onPage.get(page) ?? [])
-      .sort((x, y) => x - y);
-    const at = near.find((i) => {
-      if (found.has(i) || pairs >= maxPairs) return false;
-      pairs += 1;
-      const other = titles[i] as ReturnType<typeof titleOf>;
-      if (!other.title) return false;
-      const { title: a, length: la } = title;
-      const { title: b, length: lb } = other;
-      if (la >= 6 && lb >= 6 && (a.includes(b) || b.includes(a))) return true;
-      if (quickRatio(title, other) < 0.85 || ratios >= maxRatios) return false;
-      ratios += 1;
-      return ratio(a, b) >= 0.85;
-    });
+    // The page before, its own and the one after, in reading order, which is page order. Every
+    // heading looked at counts against the cap, matched ones too.
+    let at: number | undefined;
+    search: for (const page of [entry.page - 1, entry.page, entry.page + 1])
+      for (const i of onPage.get(page) ?? []) {
+        if (pairs >= maxPairs) break search;
+        pairs += 1;
+        if (!found.has(i) && same(title, titles[i] as ReturnType<typeof titleOf>)) {
+          at = i;
+          break search;
+        }
+      }
     if (at !== undefined) found.set(at, entry.level);
-    if (pairs >= maxPairs) break;
   }
   return found;
 };
@@ -241,8 +249,9 @@ const sizeOf = (
 /**
  * Each heading's level and the rung that set it, in the headings' order. A heading the outline lists
  * takes its level; in a document where enough headings carry a section number, a numbered heading
- * takes its depth; an unnumbered heading after an outline heading goes one level below it; any other
- * heading is levelled by its text size.
+ * takes its depth, and a chapter or part word with a number («Kapittel 3», «Del II», not the budget
+ * line «Kap. 275 post 21») sets its own; a heading with neither after an outline heading goes one
+ * level below it; any other heading is levelled by its text size, a chapter or part word at level 1.
  */
 export const headingLevels = (
   headings: readonly LevelledHeading[],

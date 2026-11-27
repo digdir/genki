@@ -306,6 +306,17 @@ describe('heading levels', () => {
     expect(performance.now() - started).toBeLessThan(1000);
   });
 
+  it('matches headings to an outline within a second when one page holds many headings already matched and a long outline', () => {
+    const headings = Array.from({ length: 5_000 }, (_, i) => heading(`Overskrift ${i}`, 1));
+    const outline = [
+      ...headings.map((h) => ({ title: h.text, level: 1, page: 1 })),
+      ...Array.from({ length: 100_000 }, (_, i) => ({ title: `Annet ${i}`, level: 2, page: 1 })),
+    ];
+    const started = performance.now();
+    headingLevels(headings, { outline, runs: [] });
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   it('«Kap. 275 post 21» is a budget line, not a chapter', () => {
     const headings = [
       heading('Kap. 275 post 21', 1),
