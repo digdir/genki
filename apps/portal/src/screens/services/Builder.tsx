@@ -325,6 +325,9 @@ const withRiskStamp = (definition: Record<string, unknown>, stamp: object) => {
 
 const archivedSections: ServiceSection[] = ['overview', 'quality', 'versions', 'log'];
 
+/** A refused publish whose reason, a taken or archived id, the page already shows in an alert. */
+class ShownRefusal extends Error {}
+
 // New services whose Publiser was pressed this page session; the publish page remounts the Builder.
 const publishTriedFor = new Set<string>();
 
@@ -1437,7 +1440,9 @@ export const Builder = ({
         ),
       });
       setProblems(outcome);
-      throw new Error(
+      const Refusal =
+        outcome.takenId !== undefined || outcome.archivedId !== undefined ? ShownRefusal : Error;
+      throw new Refusal(
         outcome.takenId !== undefined
           ? tRef.current('services.takenId', { id: outcome.takenId })
           : outcome.archivedId !== undefined
@@ -2571,12 +2576,24 @@ export const Builder = ({
         action: t('services.publishAction'),
         method: 'POST',
         path: '/definitions',
-        body: { definition: publishable, files },
+        body: isNew
+          ? {
+              definition: withServiceId(publishable as unknown as ServiceDefinition, serviceId),
+              files,
+              newService: true,
+            }
+          : { definition: publishable, files },
         right: rightLabel(t, 'manage-services'),
       }}
       canPublish={canPublish}
       onPublish={async (reason) => {
-        await doPublish({ reason, include: [] });
+        try {
+          await doPublish({ reason, include: [] });
+        } catch (error) {
+          // The alert above the reason says why and what to do; the page's own failure text would repeat it.
+          if (error instanceof ShownRefusal) return;
+          throw error;
+        }
         if (!(isNew && serverDraft)) go('setup');
       }}
     />

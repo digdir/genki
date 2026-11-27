@@ -401,12 +401,30 @@ describe('the live builder', () => {
     const page = await publishFirst();
     expect(
       await within(page).findByText(
-        'Tjenesten «ny-tjeneste» finnes allerede, kanskje arkivert. Gi den nye tjenesten et annet navn under Formål og målgruppe, og publiser igjen.',
+        'Tjenesten «ny-tjeneste» finnes allerede, kanskje arkivert. Publiser igjen for å få neste ledige id, eller gi den nye tjenesten et annet navn under Formål og målgruppe.',
       ),
     ).toBeTruthy();
     expect(
       within(page).getByRole('link', { name: 'Åpne tjenesten ny-tjeneste' }).getAttribute('href'),
     ).toBe('#/services/ny-tjeneste');
+    expect(
+      within(page).queryByText('Publiseringen feilet. Ingenting er endret. Prøv igjen.'),
+    ).toBeNull();
+  });
+
+  it("shows the first publish page's API call as the publish of a new service under the free id", async () => {
+    const { fetch } = recorded();
+    await startBuilder(withArchived(fetch));
+    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Ny tjeneste' } });
+    const page = await toFirstPublish();
+    fireEvent.click(within(page).getByRole('button', { name: /Vis API-kall/ }));
+    const panel = await screen.findByRole('dialog', { name: /Publiser/ });
+    await waitFor(() => {
+      const text = panel.textContent ?? '';
+      expect(text).toContain('"newService":true');
+      expect(text).toContain('"id":"ny-tjeneste-2"');
+      expect(text).toContain('"publicName":"ny-tjeneste-2__default"');
+    });
   });
 
   it('checks the definition again when the risk level is fixed on the first publish page, and then publishes', async () => {
@@ -574,7 +592,11 @@ describe('the live builder and the server draft', () => {
     createdAt: '2026-10-07T10:00:00Z',
   };
 
-  const openService = async (hash: string, quality = {}) => {
+  const openService = async (
+    hash: string,
+    quality = {},
+    reply: (url: string, init?: RequestInit) => Response | undefined = () => undefined,
+  ) => {
     const calls: Call[] = [];
     const base = mockFetch(exampleServices, logTimelines, liveModels, exampleDatasets, {
       features: { quality },
@@ -583,7 +605,7 @@ describe('the live builder and the server draft', () => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : undefined;
       calls.push({ url, method: init?.method ?? 'GET', body });
-      return base(input, init);
+      return reply(url, init) ?? base(input, init);
     };
     const auth = mockAnsattporten({ name: 'Ingrid Berg', organisations: exampleOrganisations });
     await auth.login();
@@ -943,6 +965,52 @@ describe('the live builder and the server draft', () => {
     await waitFor(() => expect(window.location.hash).toBe(`#/services/${copyId}/setup`));
     expect(((await screen.findByLabelText('Navn')) as HTMLInputElement).value).toBe(
       'Kopi av Rapportassistenten',
+    );
+  });
+
+  it('publishes a second copy of a service as a new service under the next free id, with the public name of that id', async () => {
+    const { calls } = await openService('#/services/rapportassistenten', {}, (url, init) =>
+      /\/tenants\/[^/]+\/services$/.test(url) && (init?.method ?? 'GET') === 'GET'
+        ? Response.json({
+            data: [
+              { id: 'rapportassistenten', name: 'Rapportassistenten', lifecycle: 'active' },
+              {
+                id: 'kopi-av-rapportassistenten',
+                name: 'Kopi av Rapportassistenten',
+                lifecycle: 'active',
+              },
+            ],
+          })
+        : undefined,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Mer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag en kopi', hidden: true }));
+    await waitFor(() =>
+      expect(window.location.hash).toMatch(/^#\/services\/utkast-[0-9a-f]{8}\/setup$/),
+    );
+    await screen.findByLabelText('Navn');
+
+    const page = await toFirstPublish();
+    const confirm = within(page).queryByRole('button', { name: 'Bekreft risikonivå' });
+    if (confirm) fireEvent.click(confirm);
+    fireEvent.change(within(page).getByLabelText('Hva er endret, og hvorfor?'), {
+      target: { value: 'Andre kopi av rapportassistenten' },
+    });
+    await waitFor(() => expect(within(page).queryByText(leftHeading)).toBeNull());
+    fireEvent.click(within(page).getByRole('button', { name: 'Publiser' }));
+
+    const published = await waitFor(() => {
+      const call = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/definitions'));
+      expect(call).toBeTruthy();
+      return call?.body as {
+        newService?: boolean;
+        definition: { metadata: { id: string }; spec: { variants?: { publicName?: string }[] } };
+      };
+    });
+    expect(published.newService).toBe(true);
+    expect(published.definition.metadata.id).toBe('kopi-av-rapportassistenten-2');
+    expect(published.definition.spec.variants?.[0]?.publicName).toBe(
+      'kopi-av-rapportassistenten-2__default',
     );
   });
 

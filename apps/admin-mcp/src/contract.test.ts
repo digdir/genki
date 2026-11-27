@@ -25,6 +25,7 @@ type Definition = {
 
 const boot = async () => {
   const platform = await bootPlatform({ people: { kari }, services: ['hjelper'] });
+  const published: Record<string, unknown>[] = [];
   const client = genkiClient({
     apiBase: 'http://genki.test',
     tenant: digdir,
@@ -32,6 +33,8 @@ const boot = async () => {
     token: { get: async () => 'kari' },
     fetch: (async (url: string, init?: RequestInit) => {
       const { pathname, search } = new URL(url);
+      if (init?.method === 'POST' && pathname === '/definitions')
+        published.push(JSON.parse(String(init.body)) as Record<string, unknown>);
       return platform.app.request(`${pathname}${search}`, init);
     }) as typeof fetch,
   });
@@ -56,7 +59,7 @@ const boot = async () => {
       body: { name: 'test' },
       reason: 'Legger til testutgave',
     });
-  return { ...platform, client, call, latest, copy, addTest };
+  return { ...platform, client, call, latest, copy, addTest, published };
 };
 
 describe('the admin MCP tools against the API', () => {
@@ -232,6 +235,41 @@ describe('the admin MCP tools against the API', () => {
     expect(changed.text).toContain('https://portal.genki.test/#/services/hjelper');
     expect(created.isError).toBe(true);
     expect((await latest()).version).toBe(1);
+  });
+
+  it('refuses a new service under the id of a service that exists, and leaves that service as it was', async () => {
+    const { call, copy, latest, addTest } = await boot();
+    await addTest();
+    const { definition, files } = await copy();
+    definition.spec.purpose = 'En helt annen tjeneste';
+
+    const refused = await call('publish_definition', {
+      yaml: stringify(definition),
+      files,
+      reason: 'Ny tjeneste laget fra malen',
+      newService: true,
+    });
+
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toContain('already exists');
+    expect((await latest()).version).toBe(1);
+  });
+
+  it('publishes a new service as version 1 and tells the API it is new', async () => {
+    const { call, copy, published } = await boot();
+    const { definition, files } = await copy();
+    definition.metadata.id = 'ny-hjelper';
+
+    const created = await call('publish_definition', {
+      yaml: stringify(definition),
+      files,
+      reason: 'Ny tjeneste laget fra malen',
+      newService: true,
+    });
+
+    expect(created.isError).toBeUndefined();
+    expect(created.data).toMatchObject({ id: 'ny-hjelper', version: 1 });
+    expect(published.at(-1)).toMatchObject({ newService: true });
   });
 
   it('works only on the organisation it was started for', async () => {
