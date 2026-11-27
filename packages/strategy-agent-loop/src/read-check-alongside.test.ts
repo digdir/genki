@@ -365,4 +365,43 @@ describe('the range-read hint after a read check', () => {
 
     expect(toolMessages(out.loops[3]).join('\n')).not.toContain(hintFor('d1'));
   });
+
+  it('reaches a turn that answers without a tool call, which then gets one more turn', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result('Svar uten mer.'),
+            () => result('Ferdig.'),
+          ],
+          read: [() => readSignal('gap-remaining')],
+        },
+      },
+    });
+
+    expect(out.loops).toHaveLength(4);
+    expect(out.loops[3]?.messages.map((m) => m.content).join('\n')).toContain(hintFor('d1'));
+    expect(out.text).toBe('Ferdig.');
+  });
+
+  it('lets a turn that answers without a tool call end the run when the check found no gap', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result('Svar uten mer.'),
+            () => result('Ferdig.'),
+          ],
+          read: [() => readSignal('support-found')],
+        },
+      },
+    });
+
+    expect(out.loops).toHaveLength(3);
+    expect(out.text).toBe('Svar uten mer.');
+  });
 });

@@ -836,6 +836,21 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           messages = [...messages, assistant, { role: 'system', content: readBeforeAnswerNudge }];
           continue;
         }
+        // An answer right after a read waits for its check, so a gap's range-read hint still comes.
+        if (!cutOff && readCheck && iteration < toolRounds - 1) {
+          const checkedPlain = await applyReadCheck();
+          if (checkedPlain) yield checkedPlain;
+          const suggested = rangeHint;
+          rangeHint = undefined;
+          const rangeRead = workspace.reads.some(
+            (r) => r.mode === 'doc-range' && r.document === suggested?.document,
+          );
+          if (suggested && !rangeRead) {
+            const content = rangeReadHintText(suggested).trim();
+            messages = [...messages, assistant, { role: 'system', content }];
+            continue;
+          }
+        }
         answer =
           guard && (history.length === 0 || searchScaffold.test(turn.content))
             ? (settings.noAnswerText ?? honestMisses[language])
