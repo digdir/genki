@@ -63,7 +63,7 @@ The pull request says how risky it is and how to undo it.
 
 ### Dependency updates
 
-Renovate opens updates every Monday, once a release is three days old; security fixes come at any time. Patch, minor, digest and lock file updates merge themselves through the merge queue when the checks pass. Majors, GitHub Actions and the Docling image's Python packages wait for a maintainer: tick them on the [Dependency Dashboard](https://github.com/digdir/genki/issues/213), or review the pull request.
+Renovate opens updates every Monday, once a release is three days old; security fixes come at any time. Patch, minor, digest and lock file updates merge themselves through the merge queue when the checks pass. GitHub Actions merge themselves only for a tagged minor or patch release that has waited three days. Majors, a minor update of a 0.x version, a bare action digest change and the Docling image's Python packages wait for a maintainer: tick them on the [Dependency Dashboard](https://github.com/digdir/genki/issues/213), or review the pull request.
 
 ### Automated review
 

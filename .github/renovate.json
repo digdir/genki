@@ -26,8 +26,14 @@
     "benchmarks/**"
   ],
   "osvVulnerabilityAlerts": true,
-  "vulnerabilityAlerts": { "enabled": true, "labels": ["security"] },
-  "lockFileMaintenance": { "enabled": true, "schedule": ["* * * * 1"] },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["* * * * 1"]
+  },
   "packageRules": [
     {
       "description": "Every version update waits three days, so a compromised release is usually pulled before it lands",
@@ -39,7 +45,13 @@
       "matchUpdateTypes": ["minor", "patch", "pin", "pinDigest", "digest", "lockFileMaintenance"],
       "automerge": true,
       "automergeType": "pr",
-      "platformAutomerge": false
+      "platformAutomerge": true
+    },
+    {
+      "description": "A minor update of a 0.x version can break things under semver, so it waits for a person",
+      "matchCurrentVersion": "/^0\\./",
+      "matchUpdateTypes": ["minor"],
+      "automerge": false
     },
     {
       "description": "Majors wait for a tick on the Dependency Dashboard and get a pull request each",
@@ -52,7 +64,10 @@
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "npm non-major"
     },
-    { "matchPackageNames": ["typescript"], "rangeStrategy": "replace" },
+    {
+      "matchPackageNames": ["typescript"],
+      "rangeStrategy": "replace"
+    },
     {
       "matchDatasources": ["docker"],
       "matchUpdateTypes": ["digest", "pinDigest"],
@@ -85,8 +100,9 @@
       "groupName": "github actions"
     },
     {
-      "description": "GitHub Actions run with the deploy credentials, so a person reviews every update",
+      "description": "GitHub Actions run with the deploy credentials, so only releases that have waited three days merge themselves; a bare digest change has no release date and waits for a person",
       "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["digest", "pinDigest"],
       "automerge": false
     },
     {
