@@ -201,7 +201,7 @@ describe('Til behandling', () => {
     const { fetch } = recording();
     await signedIn('#/queue?tab=blocks', fetch);
 
-    expect(await screen.findByRole('tab', { name: /Byggeklosser/ })).toBeTruthy();
+    expect(await screen.findByRole('tab', { name: /Deler fra katalogen/ })).toBeTruthy();
   });
 
   it('refuses a new quota that is not a positive number of millions', async () => {
