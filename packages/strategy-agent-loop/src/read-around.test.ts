@@ -96,6 +96,14 @@ describe('read_chunks around a hit', () => {
     expect(source?.text).not.toMatch(/page=/);
   });
 
+  it('a read around a hit charges the read budget for the text the agent sees, headings included', async () => {
+    const { out } = readAround(async () => around);
+    const text = toolMessages((await out).loops[2])[1] ?? '';
+    const [, call, cumulative] = /\((\d+) chars this call, (\d+) cumulative\)/.exec(text) ?? [];
+    expect(call).toBeDefined();
+    expect(cumulative).toBe(call);
+  });
+
   it('a read around a hit keeps the text within max_content_length and says it was cut', async () => {
     const asked: number[] = [];
     const { out } = readAround(

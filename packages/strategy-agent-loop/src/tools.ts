@@ -891,7 +891,8 @@ const readAround = async (
   // Parts with no region keep the hit's own pages, which the read always holds.
   const pages = units.length ? { page: Math.min(...units), pageEnd: Math.max(...units) } : {};
   const excerpt = found.parts.map((p) => p.text).join('\n\n');
-  const stored: Chunk = { ...hit, ...pages, content: excerpt, contentLength: excerpt.length };
+  // The read budget is charged for what the agent sees, headings included.
+  const stored: Chunk = { ...hit, ...pages, content: excerpt, contentLength: shown.length };
   const display: Chunk = { ...stored, content: shown, contentLength: shown.length };
   const { kept, consumed } = trimChunksToBudget([display], budget.readCharsRemaining);
   if (kept.length === 0) return { content: readBudgetTooSmallMessage(budget) };
