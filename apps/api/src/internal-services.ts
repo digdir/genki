@@ -248,7 +248,7 @@ export const hidingInternalServices = (
       const result = await store.publish(input, actor, reason, files, options);
       return result.ok || !hidesInternalServices()
         ? result
-        : { ok: false, errors: await neutralNames(result.errors) };
+        : { ...result, errors: await neutralNames(result.errors) };
     },
   };
   wrapped.add(view);

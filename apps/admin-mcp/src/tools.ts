@@ -391,7 +391,7 @@ const newServiceTemplate = tool({
   name: 'new_service_template',
   title: 'Start a new service',
   description:
-    "A minimal valid definition for a new service in this organisation, with every required field and the platform's defaults. Change metadata.id, metadata.name and spec.purpose, then validate.",
+    "A minimal valid definition for a new service in this organisation, with every required field and the platform's defaults. Change metadata.id, metadata.name and spec.purpose, then validate, and publish with newService: true.",
   kind: 'read',
   args: z.strictObject({}),
   run: async ({ client }) => {
@@ -600,8 +600,14 @@ const publishDefinition = tool({
     yaml: z.string().min(1).describe('The whole definition as YAML'),
     files: fileArgs,
     reason: z.string().describe('What changed and why, at least 10 characters'),
+    newService: z
+      .boolean()
+      .optional()
+      .describe(
+        'true for a new service, as from new_service_template: publishes only a version 1, and is refused when another service, archived ones too, has metadata.id. Leave out to publish the next version of a service',
+      ),
   }),
-  run: async ({ client }, { yaml, files, reason }) => {
+  run: async ({ client }, { yaml, files, reason, newService }) => {
     if (reason.replaceAll(viaAgent, '').trim().length < minimumReason)
       return fail(
         `A reason of at least ${minimumReason} characters is required: say what changed and why.`,
@@ -612,6 +618,10 @@ const publishDefinition = tool({
       return fail('publish_definition takes services only. Save a design element with save_block.');
     const before = await published(client, parsed.id);
     const link = portalLink(client, parsed.id);
+    if (newService && before)
+      return fail(
+        `Not published: the service ${parsed.id} already exists. Give the new service another metadata.id.`,
+      );
     const risky = before
       ? riskOf(before.latest.definition) !== riskOf(parsed.definition)
       : parsed.definition.spec?.riskClass !== 'minimal' ||
@@ -638,7 +648,7 @@ const publishDefinition = tool({
         version: number;
         environments?: Placement[];
       }>('POST', '/definitions', {
-        body: definitionBody(yaml, files),
+        body: { ...definitionBody(yaml, files), ...(newService ? { newService } : {}) },
         reason: markedReason(reason),
       });
       const placed =

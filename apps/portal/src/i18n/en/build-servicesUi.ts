@@ -138,6 +138,9 @@ export const servicesUi = {
     archivedId:
       'The id is used by an archived service. Choose another id, or restore the archived service.',
     archivedIdOpen: 'Open the archived service {id}',
+    takenId:
+      'The service "{id}" already exists, possibly archived. Publish again to get the next free id, or give the new service another name under Purpose and audience.',
+    takenIdOpen: 'Open the service {id}',
     changeFirstVersion: 'First edition of the service',
     changeDraft: 'Changes in the draft that are not published',
     changeForm: 'Changes made in the form',

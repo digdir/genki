@@ -212,6 +212,8 @@ export const platformActor = (subject: string, tenant: string): Principal => ({
 });
 
 export const shareOperatorOnlyType = 'urn:genai:problem:share-operator-only';
+/** A new service was published under an id another service, archived ones too, already has. */
+export const serviceIdTakenType = 'urn:genai:problem:service-id-taken';
 export const operatorOnlySettingType = 'urn:genai:problem:operator-only-setting';
 
 export const settingWriterOf = (principal: Principal): SettingWriter =>
@@ -482,13 +484,16 @@ export const createAdmin = (options: AdminOptions) => {
         return { ok: false, errors: sharing, target: refusedTarget, type: shareOperatorOnlyType };
       const code = await codeProblems(input.definition, files, principal);
       if (code.length > 0) return { ok: false, errors: code, target: refusedTarget };
+      const newService = input.newService === true;
       const result = await store.publish(
         input.definition,
         actorOf(principal),
         input.reason,
         files,
-        { publisher: principal },
+        { publisher: principal, ...(newService ? { expectedLatest: 0 } : {}) },
       );
+      if (!result.ok && newService && result.stale)
+        return { ok: false, errors: [], target: refusedTarget, type: serviceIdTakenType };
       if (!result.ok)
         return {
           ok: false,
@@ -926,7 +931,13 @@ export const createAdmin = (options: AdminOptions) => {
     within,
     publish: (
       principal: Principal,
-      input: { definition: unknown; files: PromptFiles; reason: string },
+      input: {
+        definition: unknown;
+        files: PromptFiles;
+        reason: string;
+        /** Publish only as version 1: refused with serviceIdTakenType when the id has any version. */
+        newService?: boolean;
+      },
     ) =>
       run<PublishedVersion>(principal, 'platform.service.publish', {
         ...input,

@@ -534,6 +534,20 @@ describe('publishing an internal service', () => {
     });
   });
 
+  it('answers a new service under an internal service id with the neutral 422 for a caller who cannot see it', async () => {
+    const { send } = await boot();
+
+    const refused = await send('/definitions', 'eva', {
+      body: { definition: testService('smoke'), files, newService: true },
+    });
+    const body = (await refused.json()) as Record<string, unknown>;
+
+    expect(refused.status).toBe(422);
+    expect(body).toMatchObject({ errors: [{ path: 'metadata.id' }] });
+    expect(body).not.toHaveProperty('id');
+    expect(body.type).not.toBe('urn:genai:problem:service-id-taken');
+  });
+
   it('lets the test-runner key publish an internal smoke- service', async () => {
     const { send, key } = await boot();
     const runner = await key({ testRunner: true });
