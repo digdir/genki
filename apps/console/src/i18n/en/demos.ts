@@ -229,7 +229,7 @@ export const demos = {
   settingsHeight: 'Height (pixels)',
   settingsTenant: 'Test organisation',
   settingsTenantHelp:
-    'The org number of the demo organisation in genki-test. Empty means the smoke test organisation.',
+    'The org. no. of the demo organisation in genki-test. Empty means the smoke test organisation.',
   settingsLogin: 'Login for recording',
   settingsLoginHelp: 'Who the recorder signs in as. The key lives in the key vault, never here.',
   settingsRetention: 'Kept for (days)',

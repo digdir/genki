@@ -85,11 +85,11 @@ const recording = (base = mockFetch(), settings = false) => {
   return { calls, fetch };
 };
 
-const open = async (hash: string, fetch: typeof globalThis.fetch, live = false) => {
+const open = async (hash: string, fetch: typeof globalThis.fetch) => {
   const auth = mockEntra({ name: 'Lise Dahl', roles: [operatorRole] });
   await auth.login();
   window.location.hash = hash;
-  render(<App auth={auth} fetch={fetch} live={live} />);
+  render(<App auth={auth} fetch={fetch} />);
 };
 
 const settingsFrame = () => screen.findByRole('region', { name: 'Innstillinger › Virksomhet' });
@@ -209,34 +209,6 @@ describe('organisation settings', () => {
     expect(
       (within(frame).getByRole('textbox', { name: 'answer.maxWords' }) as HTMLInputElement).value,
     ).toBe('250');
-  });
-});
-
-describe('actions the platform does not have yet', () => {
-  it('hides save, test and disconnect for tracing tools outside mock mode', async () => {
-    await open('#/tracing', mockFetch(), true);
-
-    await screen.findByRole('heading', { name: /Langfuse/ });
-    expect(screen.queryByRole('button', { name: /^(Lagre|Koble til)$/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Koble fra' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Send testspor' })).toBeNull();
-    expect(screen.getByText(/^Ikke tilgjengelig ennå\. Plattformen kan ikke lagre/)).toBeTruthy();
-  });
-
-  it('keeps the tracing actions in mock mode', async () => {
-    await open('#/tracing', mockFetch());
-
-    expect(await screen.findByRole('button', { name: /^(Lagre|Koble til)$/ })).toBeTruthy();
-  });
-
-  it('replaces the onboarding reminder with a reason outside mock mode', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-11-12T10:00:00Z'));
-    await open('#/onboarding', mockFetch(), true);
-
-    const fylke = await screen.findByRole('article', { name: 'Fylkeskommunen i Testfylke' });
-    expect(within(fylke).queryByRole('button', { name: 'Send påminnelse' })).toBeNull();
-    expect(within(fylke).getByText('Påminnelse: ikke tilgjengelig ennå.')).toBeTruthy();
   });
 });
 

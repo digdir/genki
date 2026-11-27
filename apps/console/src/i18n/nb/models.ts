@@ -3,7 +3,7 @@ import { defineNamespace } from '@genai/i18n';
 export const models = defineNamespace({
   title: 'Modeller',
   intro:
-    'Tilkoblingene til leverandørene, modellene på hver tilkobling og API-ene modellene bruker. Hver endring ber om en begrunnelse og logges i Revisjon.',
+    'Tilkoblingene til leverandørene, modellene på hver tilkobling og API-ene modellene bruker. Hver endring ber om en begrunnelse og logges.',
   tabConnections: 'Tilkoblinger',
   tabModels: 'Modeller',
   tabApis: 'API-er',
@@ -14,7 +14,7 @@ export const models = defineNamespace({
   refresh: 'Hent modeller på nytt',
   refreshText:
     'Genki spør hver tilkobling etter modellene den har. Nye modeller blir kandidater. Genki sjekker også hva modellene kan, med opptil 12 små kall som koster litt.',
-  refreshed: 'Modellene er hentet på nytt. Endringen er logget i Revisjon.',
+  refreshed: 'Modellene er hentet på nytt. Endringen er logget.',
   discovered: { one: 'Fant {count} modell.', other: 'Fant {count} modeller.' },
   providersFailed: 'Disse leverandørene svarte ikke:',
   learnedCalls: {
@@ -87,8 +87,8 @@ export const models = defineNamespace({
   setPrice: 'Sett pris',
   priceText: '{input} kr inn, {output} kr ut',
   unpriced: 'Ikke priset',
-  priceSaved: 'Prisen for {model} er lagret. Endringen er logget i Revisjon.',
-  saved: '{model} er lagret. Endringen er logget i Revisjon.',
+  priceSaved: 'Prisen for {model} er lagret. Endringen er logget.',
+  saved: '{model} er lagret. Endringen er logget.',
   saveFailed: 'Kunne ikke lagre endringen for {model}.',
   apisTitle: 'API per type kall',
   apisIntro:
@@ -110,17 +110,17 @@ export const models = defineNamespace({
     other: 'Endringen gjelder {count} tjenester som bruker {model}.',
   },
   bindSave: 'Lagre endring',
-  bindSaved: 'API-et på {model} er endret. Endringen er logget i Revisjon.',
+  bindSaved: 'API-et på {model} er endret. Endringen er logget.',
   bindFailed: 'Fikk ikke lagret endringen.',
   enable: 'Ta i bruk',
   enableTitle: 'Ta {model} i bruk',
   enableText: 'Virksomhetene kan velge modellen i tjenestene sine.',
-  enabledDone: '{model} er i bruk. Endringen er logget i Revisjon.',
+  enabledDone: '{model} er i bruk. Endringen er logget.',
   retireTitle: 'Fas ut {model}',
   retireText:
     'Tjenestene under settes på pause når modellen fases ut. Til de får en ny modell, svarer de «Modellen tjenesten bruker er tatt ut av bruk». Ingen tjeneste bytter av seg selv til en annen modell.',
   retire: 'Fas ut',
-  retired: '{model} er faset ut. Endringen er logget i Revisjon.',
+  retired: '{model} er faset ut. Endringen er logget.',
   affected: 'Berørte tjenester',
   affectedCount: 'Berørte tjenester ({count})',
   usageUnknown: 'Plattformen viser ikke ennå hvilke tjenester som bruker modellen.',

@@ -4,7 +4,7 @@ import type { flags as source } from '../nb/flags';
 export const flags = {
   title: 'Feature flags',
   intro:
-    'Bigger features ship turned off and are switched on without a deploy. A person wins over the organisation, and the organisation over the default, which is off. Every change goes to the audit log with its reason.',
+    'Bigger features ship turned off and are switched on without a deploy. A person wins over the organisation, and the organisation over the default, which is off. Every change goes to the log with its reason.',
   loading: 'Loading the feature flags',
   noneTitle: 'No feature flags',
   noneText: 'No feature is registered behind a flag now.',
@@ -31,9 +31,9 @@ export const flags = {
   switchTitle: 'Switch {key} on or off',
   switchText:
     'Choose an organisation, and a person in it if the choice should apply to one person only. The choice for a person wins over the organisation.',
-  tenant: 'Organisation number',
+  tenant: 'Org. no.',
   issuer: "The person's issuer (optional)",
-  personDescription: 'Issuer and subject from the login, as in the audit log.',
+  personDescription: 'Issuer and subject from the login, as in the log.',
   subject: "The person's subject (optional)",
   choice: 'Choice',
   turnOn: 'Switch on',
@@ -41,6 +41,6 @@ export const flags = {
   save: 'Save',
   saved: 'Saved the choice for {key}.',
   saveFailed: 'Could not save the choice.',
-  tenantInvalid: 'Write an organisation number of nine digits.',
+  tenantInvalid: 'Write an org. no. of nine digits.',
   personIncomplete: 'Fill in both issuer and subject, or neither.',
 } satisfies Translation<typeof source>;

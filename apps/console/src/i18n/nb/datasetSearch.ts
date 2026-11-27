@@ -1,12 +1,12 @@
 import { defineNamespace } from '@genai/i18n';
 
 export const datasetSearch = defineNamespace({
-  title: 'Søk i datasettet',
+  title: 'Søk i dokumentsamlingen',
   intro: 'Søk slik en tjeneste søker, uten å kalle en språkmodell. Du ser treffene slik de kommer.',
   query: 'Søketekst',
   queryMissing: 'Skriv hva du vil søke etter',
   profile: 'Søkeprofil',
-  profileHint: 'La feltet stå tomt for å bruke datasettets første profil.',
+  profileHint: 'La feltet stå tomt for å bruke dokumentsamlingens første profil.',
   limit: 'Antall treff',
   limitInvalid: 'Velg et helt tall fra 1 til 100',
   filters: 'Filtre',
@@ -20,7 +20,7 @@ export const datasetSearch = defineNamespace({
   booleanNo: 'Nei',
   freeField: 'Felt',
   freeValue: 'Verdi',
-  freeHint: 'Datasettet oppgir ingen filtre. Du kan likevel prøve et felt og en verdi.',
+  freeHint: 'Dokumentsamlingen oppgir ingen filtre. Du kan likevel prøve et felt og en verdi.',
   search: 'Søk',
   hits: 'Treff',
   summary: {
@@ -42,10 +42,10 @@ export const datasetSearch = defineNamespace({
   kernelRefused: 'Søket ble stoppet før det nådde søkemotoren.',
   timedOut: 'Søket tok lengre tid enn grensen.',
   invalid: 'Søket ble avvist:',
-  blocked: 'Datasettet kan ikke brukes: {rule} ({owner})',
-  needsRight: 'Du mangler retten til å søke i datasettet.',
+  blocked: 'Dokumentsamlingen kan ikke brukes: {rule} ({owner})',
+  needsRight: 'Du mangler retten til å søke i dokumentsamlingen.',
   quota: 'Kvoten for søk er brukt opp. Prøv igjen senere.',
-  notFound: 'Datasettet finnes ikke i katalogen.',
+  notFound: 'Dokumentsamlingen finnes ikke i katalogen.',
   engineFailed: 'Søkemotoren svarte ikke som den skulle.',
   failed: 'Søket feilet. Prøv igjen.',
 });

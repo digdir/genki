@@ -8,10 +8,10 @@ export const engineSwitch = {
   move: 'Move to the knowledge database',
   target: 'To search engine',
   reingestNote:
-    'The dataset is read in again from its source. Services search the old engine until you put the new one in use.',
+    'The document collection is read in again from its source. Services search the old engine until you put the new one in use.',
   start: 'Start the move',
   close: 'Close',
-  onKnowledge: 'The dataset is on the knowledge database.',
+  onKnowledge: 'The document collection is on the knowledge database.',
   noTargets:
     'There is no search engine on the knowledge database yet. Make one under Search engines, with the connection Knowledge server.',
   route: 'From {from} to {to}',
@@ -34,7 +34,7 @@ export const engineSwitch = {
   copyEstimate:
     'Copy: {costMin}–{costMax} NOK, {minutesMin}–{minutesMax} min ({documents} documents, {chunks} chunks)',
   copyNote:
-    'The dataset is copied from the engine it is on now, with its text as it is there, and gets new vectors. Services search the old engine until you put the new one in use.',
+    'The document collection is copied from the engine it is on now, with its text as it is there, and gets new vectors. Services search the old engine until you put the new one in use.',
   model: 'Embedding model',
   chooseModel: 'Choose a model',
   documents: 'Only these documents (optional)',
@@ -53,7 +53,7 @@ export const engineSwitch = {
   worse: 'The new search engine finds less. The reason needs at least {min} characters.',
   errorLead: 'Reading in stopped. The message from the platform:',
   admission:
-    'Reading in is admitted until {time}. Its jobs then stop in the locked environment, unless it is admitted again.',
+    'Reading in is admitted until {time}. Its jobs then stop, unless it is admitted again.',
   admissionSoon:
     'Reading in is admitted only until {time}. Admit it again before then, or it stops and must start over.',
   readmit: 'Admit again',

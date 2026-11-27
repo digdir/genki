@@ -4,7 +4,7 @@ export const settings = defineNamespace({
   catSearch: 'Søk',
   catAnswer: 'Svar',
   catAssistant: 'Assistent',
-  catSkills: 'Ferdigheter',
+  catSkills: 'Arbeidsinstrukser',
   catPlayground: 'Prøveområde',
   catUsage: 'Forbruk',
   labelPlannerEnabled: 'Planlegg søket',
@@ -57,10 +57,10 @@ export const settings = defineNamespace({
   labelAssistantDailyTokens: 'Tokens per dag for assistenten',
   descAssistantDailyTokens: 'Nullstilles kl. 00.00 norsk tid.',
   labelAssistantModel: 'Modell for byggeassistenten',
-  labelSkillsDefaultPassThreshold: 'Krav for publisering av ferdigheter',
+  labelSkillsDefaultPassThreshold: 'Krav for publisering av arbeidsinstrukser',
   descSkillsDefaultPassThreshold:
     'Andel testtilfeller som må bestå når testsettet ikke har eget krav.',
-  labelSkillsTestModel: 'Modell for testkjøring av ferdigheter',
+  labelSkillsTestModel: 'Modell for testkjøring av arbeidsinstrukser',
   labelSkillsJudgeModel: 'Modell som vurderer testsvar',
   labelAnswersWrittenStandard: 'Målform i svar',
   descAnswersWrittenStandard:
@@ -77,7 +77,7 @@ export const settings = defineNamespace({
   labelPlaygroundEnabled: 'Prøveområdet er på',
   labelUsageMonthlyTokens: 'Tokens per måned',
   labelUsageTenantCallsPerMinute: 'Kall per minutt for virksomheten',
-  labelBatchApprovalLimitNok: 'Grense per samlet jobb før godkjenning (kr)',
+  labelBatchApprovalLimitNok: 'Grense per massekjøring før godkjenning (kr)',
   riskMinimal: 'minimal risiko',
   riskLimited: 'begrenset risiko',
   riskHigh: 'høy risiko',
@@ -115,7 +115,7 @@ export const settings = defineNamespace({
     'Hvor lenge spørsmål, svar og dokumenter beholdes etter at en kjøring er ferdig. Tjenester med høy risiko beholder dem minst 183 dager, begrenset risiko minst 30.',
   labelRetentionAuditDays: 'Dager revisjonsspor beholdes',
   descRetentionAuditDays:
-    'Dager revisjonssporet for en kjøring (id-er, type, hvem, forbruk, versjoner og tidspunkter) beholdes etter at den er ferdig. Aldri kortere enn innholdet.',
+    'Dager revisjonssporet for en kjøring (id-er, type, hvem, forbruk, utgaver og tidspunkter) beholdes etter at den er ferdig. Aldri kortere enn innholdet.',
   errNumber: 'Skriv et tall.',
   errRange: 'Må være mellom {min} og {max}.',
   errInteger: 'Må være et helt tall.',
@@ -166,7 +166,7 @@ export const settings = defineNamespace({
   layerPlatform: 'Plattformstandard',
   layerTenant: 'Virksomhet',
   layerService: 'Tjeneste',
-  layerDataset: 'Datasett',
+  layerDataset: 'Dokumentsamling',
   layerPinned: 'Festet',
   previewReason: 'Forhåndsvisning',
   saved: '{label} er lagret ({value}). Endringen er logget.',
@@ -197,7 +197,7 @@ export const settings = defineNamespace({
   none: 'Ingen',
   savedToAudit: 'Lagres i revisjonsloggen.',
   save: 'Lagre',
-  versions: 'Versjoner av plattformstandarden',
+  versions: 'Utgaver av plattformstandarden',
   changesHere: 'Endringer her',
   cannotSet: 'Kan ikke settes',
   pinnedLower: 'festet',
@@ -236,7 +236,7 @@ export const settings = defineNamespace({
   descPlannerPrompt: 'Eget oppdrag til planleggeren. Tomt bruker det innebygde.',
   descRetrievalQueryAwareBoost: 'Løfter treff som overlapper med spørsmålet.',
   descRetrievalAutoFilterAliases:
-    'Navn som betyr det samme som en verdi i datasettet, for eksempel en forkortelse. Hver oppføring er en gruppe navn. Når søket nevner ett av dem, gjelder det verdien slik den er lagret i datasettet.',
+    'Navn som betyr det samme som en verdi i dokumentsamlingen, for eksempel en forkortelse. Hver oppføring er en gruppe navn. Når søket nevner ett av dem, gjelder det verdien slik den er lagret.',
   descRetrievalAutoFilterRules:
     'Reglene for automatisk filter, i den rekkefølgen de prøves. Uten agent filtrerer de søket, en agent får dem som et hint.',
   descRetrievalDocTitleFanout: 'Antall utdrag som leses per dokument som treffer på tittel.',
@@ -260,15 +260,16 @@ export const settings = defineNamespace({
   descKnowledgeHeavyThreshold:
     'Antall tekstbiter et indeksbygg, en innlesing eller en VACUUM må gå over for å vente til nattvinduet.',
   descKnowledgeSwitchRetentionDays:
-    'Dager den forrige kopien i søkemotoren beholdes etter at et datasett bytter motor.',
+    'Dager den forrige kopien i søkemotoren beholdes etter at en dokumentsamling bytter motor.',
   descAssistantEnabled: 'Tilby byggeassistenten i tjenestebyggeren.',
   descAssistantModel:
     'Modellen byggeassistenten bruker. Tomt velger første aktive modell med verktøy innenfor lovlig datalagring.',
   descSkillsTestModel:
-    'Modellen som kjører testsett for ferdigheter. Tomt velger den billigste modellen virksomheten kan bruke.',
+    'Modellen som kjører testsett for arbeidsinstrukser. Tomt velger den billigste modellen virksomheten kan bruke.',
   descSkillsJudgeModel:
     'Modellen som vurderer svarene i testsettene. Tomt velger den billigste modellen fra en annen familie.',
-  descPlaygroundEnabled: 'Tilby prøveområdet for å prøve tjenester, ferdigheter og byggeklosser.',
+  descPlaygroundEnabled:
+    'Tilby prøveområdet for å prøve tjenester, arbeidsinstrukser og deler fra katalogen.',
   descUsageMonthlyTokens:
     'Tokens en virksomhet kan bruke per kalendermåned. Prøveområdet nekter kjøringer når de er brukt opp.',
   descUsageTenantCallsPerMinute:

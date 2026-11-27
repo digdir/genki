@@ -70,7 +70,7 @@ describe('catalog in the console', () => {
     fireEvent.change(screen.getByRole('textbox', { name: /Begrunnelse/ }), {
       target: { value: 'Flyttet til Norge' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Lagre ny versjon' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre ny utgave' }));
 
     expect(await screen.findByText(/foundry-openai er lagret/)).toBeTruthy();
     const put = calls.find((c) => c.method === 'PUT');
@@ -94,7 +94,7 @@ describe('catalog in the console', () => {
     fireEvent.change(screen.getByRole('textbox', { name: /Begrunnelse/ }), {
       target: { value: 'Endring av oppføringen' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Lagre ny versjon' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre ny utgave' }));
 
     expect(await screen.findByText(/Noen andre har endret oppføringen/)).toBeTruthy();
   });
