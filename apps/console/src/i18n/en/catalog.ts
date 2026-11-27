@@ -4,9 +4,9 @@ import type { catalog as source } from '../nb/catalog';
 export const catalog = {
   title: 'Endpoints and prices',
   introTenant:
-    "The organisation's own endpoints, models and datasets, alongside what the platform shares with it. Every change becomes a new version.",
+    "The organisation's own endpoints, models and document collections, alongside what the platform shares with it. Every change becomes a new edition.",
   introPlatform:
-    'Endpoints, models, datasets and prices the platform uses. Every change becomes a new version and is logged in Audit.',
+    'Endpoints, models, document collections and prices the platform uses. Every change becomes a new edition and is logged.',
   secretsNote: 'Secrets are given as a reference (for example env:NAME), never as a value.',
   chooseTenant: 'Choose an organisation',
   loadingKinds: 'Loading what the organisation can register',
@@ -15,6 +15,6 @@ export const catalog = {
   tabModelEndpoint: 'Model endpoints',
   tabModel: 'Models',
   tabKnowledgeEndpoint: 'Knowledge endpoints',
-  tabDataset: 'Datasets',
+  tabDataset: 'Document collections',
   tabPrice: 'Prices',
 } satisfies Translation<typeof source>;

@@ -7,10 +7,10 @@ export const engineSwitch = defineNamespace({
   move: 'Flytt til kunnskapsdatabasen',
   target: 'Til søkemotor',
   reingestNote:
-    'Datasettet leses inn på nytt fra kilden. Tjenestene søker i den gamle søkemotoren til du tar den nye i bruk.',
+    'Dokumentsamlingen leses inn på nytt fra kilden. Tjenestene søker i den gamle søkemotoren til du tar den nye i bruk.',
   start: 'Start flyttingen',
   close: 'Lukk',
-  onKnowledge: 'Datasettet ligger i kunnskapsdatabasen.',
+  onKnowledge: 'Dokumentsamlingen ligger i kunnskapsdatabasen.',
   noTargets:
     'Det finnes ingen søkemotor i kunnskapsdatabasen ennå. Lag en under Søkemotorer, med tilkoblingen Kunnskapsserveren.',
   route: 'Fra {from} til {to}',
@@ -33,7 +33,7 @@ export const engineSwitch = defineNamespace({
   copyEstimate:
     'Kopi: {costMin}–{costMax} kr, {minutesMin}–{minutesMax} min ({documents} dokumenter, {chunks} biter)',
   copyNote:
-    'Datasettet kopieres fra søkemotoren det ligger i nå, med teksten slik den er der, og får nye vektorer. Tjenestene søker i den gamle søkemotoren til du tar den nye i bruk.',
+    'Dokumentsamlingen kopieres fra søkemotoren det ligger i nå, med teksten slik den er der, og får nye vektorer. Tjenestene søker i den gamle søkemotoren til du tar den nye i bruk.',
   model: 'Embeddingmodell',
   chooseModel: 'Velg en modell',
   documents: 'Bare disse dokumentene (valgfritt)',
@@ -52,7 +52,7 @@ export const engineSwitch = defineNamespace({
   worse: 'Den nye søkemotoren treffer dårligere. Begrunnelsen må ha minst {min} tegn.',
   errorLead: 'Innlesingen stoppet. Feilmeldingen fra plattformen:',
   admission:
-    'Innlesingen er sluppet inn til {time}. Da stopper jobbene i det låste miljøet, om den ikke slippes inn igjen.',
+    'Innlesingen er sluppet inn til {time}. Da stopper jobbene, om den ikke slippes inn igjen.',
   admissionSoon:
     'Innlesingen er sluppet inn bare til {time}. Slipp den inn igjen før det, ellers stopper den og må startes på nytt.',
   readmit: 'Slipp inn igjen',

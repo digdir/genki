@@ -129,8 +129,40 @@ describe('recording a demo again', () => {
         method: 'POST',
         path: '/operator/demos/portal-tour/recordings',
         reason: 'ny versjon av portalen',
+        body: {},
       },
     ]);
+    expect(writes()[0]?.body).toEqual({});
+  });
+
+  it('records without AI unless someone approves the shown cost, and sends the approved cap', async () => {
+    const { api, writes } = studio();
+    render(<Demos api={api} demo="portal-tour" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Ta opp på nytt' }));
+    const dialog = await screen.findByRole('dialog');
+    const approve = within(dialog).getByRole('checkbox', {
+      name: /^Godkjenn KI-kostnad på høyst \d+ USD/,
+    });
+    expect((approve as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(approve);
+    await confirmWithReason('Start opptaket');
+
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0]?.body).toEqual({ costCapUsd: expect.any(Number) });
+  });
+
+  it('refuses to queue a demo read by a model voice until the cost is approved', async () => {
+    const data = exampleDemoData();
+    data.demos = data.demos.map((d) => (d.id === 'portal-tour' ? { ...d, voice: 'cedar' } : d));
+    const { api, writes } = studio('job', data);
+    render(<Demos api={api} demo="portal-tour" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Ta opp på nytt' }));
+    await confirmWithReason('Start opptaket');
+
+    expect(await screen.findByText('Godkjenn kostnaden først.')).toBeTruthy();
+    expect(writes()).toEqual([]);
   });
 
   it('points at the demos workflow instead where recordings are not made by a job', async () => {
@@ -265,6 +297,45 @@ describe('the demo editor', () => {
     expect(
       ((await screen.findAllByLabelText('Fortelling'))[0] as HTMLTextAreaElement).value,
     ).toContain('Portalen er stedet der');
+  });
+
+  it('keeps a title card, a closing card, chapters and focus written in YAML when it saves', async () => {
+    const { api, writes } = studio();
+    render(<Demos api={api} params={new URLSearchParams('edit=portal-tour')} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Vis YAML' }));
+
+    const yaml = screen.getByLabelText('Demoen som YAML') as HTMLTextAreaElement;
+    const edited = yaml.value
+      .replace('steps:', 'intro:\n  title: Genki\noutro:\n  title: Takk\nsteps:')
+      .replace(/( {2}- say: [^\n]*\n)/, '$1    chapter: Hva er Genki\n    focus: [role, table]\n');
+    fireEvent.change(yaml, { target: { value: edited } });
+    fireEvent.click(screen.getByRole('button', { name: 'Vis skjema' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Lagre' }));
+    await confirmWithReason('Lagre', 'tittelkort og kapitler');
+
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0]?.body).toMatchObject({
+      intro: { title: 'Genki' },
+      outro: { title: 'Takk' },
+      steps: expect.arrayContaining([
+        expect.objectContaining({ chapter: 'Hva er Genki', focus: ['role', 'table'] }),
+      ]),
+    });
+  });
+
+  it('queues a trial of a model-voice demo without asking for approval', async () => {
+    const data = exampleDemoData();
+    data.demos = data.demos.map((d) => (d.id === 'portal-tour' ? { ...d, voice: 'cedar' } : d));
+    const { api, writes } = studio('job', data);
+    render(<Demos api={api} params={new URLSearchParams('edit=portal-tour')} />);
+
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Prøv dette steget' }))[0] as HTMLElement,
+    );
+    await confirmWithReason('Prøv steget', 'prøver første steg');
+
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0]?.body).toEqual({ upTo: 1 });
   });
 
   it('saves changes before it tries a step, and queues a trial up to that step', async () => {
@@ -406,26 +477,25 @@ describe('the scheduled recorder', () => {
 });
 
 describe('choosing a voice', () => {
-  const options = (select: HTMLElement) =>
-    within(select)
-      .getAllByRole('option')
-      .map((o) => [(o as HTMLOptionElement).value, o.textContent]);
+  const voices = async (legend = 'Stemme') =>
+    within(
+      (await screen.findByText(legend, { selector: 'legend, legend *' })).closest(
+        'fieldset',
+      ) as HTMLElement,
+    ).getAllByRole('radio') as HTMLInputElement[];
+  const labelOf = (radio: HTMLInputElement) => radio.labels?.[0]?.textContent ?? '';
 
-  it('lists the known voices by name, language and gender, and the language follows the voice', async () => {
+  it('lists the voices of each provider with gender and language, and the language follows the voice', async () => {
     const { api, writes } = studio();
     render(<Demos api={api} params={new URLSearchParams('edit=portal-tour')} />);
 
-    const voice = await screen.findByLabelText('Stemme');
-    expect(options(voice)).toHaveLength(9);
-    expect(options(voice)[0]).toEqual(['nb-NO-PernilleNeural', 'Pernille (norsk bokmål, kvinne)']);
-    expect(options(voice)).toEqual(
-      expect.arrayContaining([
-        ['nb-NO-PernilleNeural', 'Pernille (norsk bokmål, kvinne)'],
-        ['nb-NO-FinnNeural', 'Finn (norsk bokmål, mann)'],
-        ['en-GB-RyanNeural', 'Ryan (britisk engelsk, mann)'],
-      ]),
-    );
-    fireEvent.change(voice, { target: { value: 'en-GB-SoniaNeural' } });
+    const list = await voices();
+    expect(list).toHaveLength(11);
+    expect(labelOf(list[0] as HTMLInputElement)).toBe('Pernille');
+    expect(list.find((r) => r.value === 'cedar')?.getAttribute('aria-describedby')).toBeTruthy();
+    expect(screen.getByText('Azure OpenAI gpt-audio: mann, norsk bokmål')).toBeTruthy();
+    expect(screen.getAllByText('Azure Speech: kvinne, norsk bokmål')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('radio', { name: /^Sonia/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Lagre' }));
     await confirmWithReason('Lagre', 'engelsk stemme for besøket');
 
@@ -433,7 +503,18 @@ describe('choosing a voice', () => {
     expect(writes()[0]?.body).toMatchObject({ voice: 'en-GB-SoniaNeural', language: 'en-GB' });
   });
 
-  it('shows a stored voice outside the list as its id and keeps it and the language on save', async () => {
+  it('shows ElevenLabs as a provider that is not there yet, and never lets it be chosen', async () => {
+    const { api } = studio();
+    render(<Demos api={api} params={new URLSearchParams('edit=portal-tour')} />);
+
+    const eleven = (await screen.findByRole('radio', { name: /^ElevenLabs/ })) as HTMLInputElement;
+
+    expect(eleven.disabled).toBe(true);
+    expect(eleven.checked).toBe(false);
+    expect(screen.getByText('Ikke ennå')).toBeTruthy();
+  });
+
+  it('shows a stored voice outside the list by its id and keeps it and the language on save', async () => {
     const data = exampleDemoData();
     data.demos = data.demos.map((d) =>
       d.id === 'portal-tour' ? { ...d, voice: 'de-DE-KatjaNeural', language: 'de-DE' } : d,
@@ -441,9 +522,9 @@ describe('choosing a voice', () => {
     const { api, writes } = studio('job', data);
     render(<Demos api={api} params={new URLSearchParams('edit=portal-tour')} />);
 
-    const voice = (await screen.findByLabelText('Stemme')) as HTMLSelectElement;
-    expect(voice.value).toBe('de-DE-KatjaNeural');
-    expect(options(voice)[0]).toEqual(['de-DE-KatjaNeural', 'de-DE-KatjaNeural']);
+    const list = await voices();
+    expect(list[0]?.value).toBe('de-DE-KatjaNeural');
+    expect(list[0]?.checked).toBe(true);
     fireEvent.change((await screen.findAllByLabelText('Fortelling'))[0] as HTMLElement, {
       target: { value: 'Eine kurze Einleitung.' },
     });
@@ -462,9 +543,8 @@ describe('choosing a voice', () => {
     const { api, writes } = studio('job', data);
     render(<Demos api={api} params={new URLSearchParams('edit=portal-tour')} />);
 
-    const voice = await screen.findByLabelText('Stemme');
-    fireEvent.change(voice, { target: { value: 'en-GB-RyanNeural' } });
-    fireEvent.change(voice, { target: { value: 'de-DE-KatjaNeural' } });
+    fireEvent.click(await screen.findByRole('radio', { name: /^Ryan/ }));
+    fireEvent.click(screen.getByRole('radio', { name: 'de-DE-KatjaNeural' }));
     fireEvent.change((await screen.findAllByLabelText('Fortelling'))[0] as HTMLElement, {
       target: { value: 'Eine kurze Einleitung.' },
     });
@@ -479,9 +559,8 @@ describe('choosing a voice', () => {
     const { api, writes } = studio();
     render(<Demos api={api} params={new URLSearchParams('settings=1')} />);
 
-    fireEvent.change(await screen.findByLabelText('Standardstemme'), {
-      target: { value: 'nb-NO-FinnNeural' },
-    });
+    await voices('Standardstemme');
+    fireEvent.click(screen.getByRole('radio', { name: /^Finn/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Lagre innstillingene' }));
     await confirmWithReason('Lagre innstillingene', 'mannsstemme som standard');
 
@@ -511,5 +590,121 @@ describe('recorder commands', () => {
       ['open', 'https://portal.genki-test.digdir.cloud/#/playground'],
     ])
       expect(parseCommands(commandLine(command))).toEqual({ ok: true, commands: [command] });
+  });
+});
+
+describe('the studio', () => {
+  it('shows the camera keyframes of the edit list on the timeline, at their time in the film', async () => {
+    const { api } = studio();
+    render(<Demos api={api} params={new URLSearchParams('recording=r-tour-1')} />);
+
+    const camera = await screen.findByRole('list', { name: 'Kamera' });
+
+    expect(
+      within(camera)
+        .getAllByRole('button')
+        .map((b) => b.getAttribute('aria-label')),
+    ).toEqual(['Zoom 1.4, 0:10: Listen over tjenester', 'Zoom 1.0, 0:17: Tilbake til hele siden']);
+    expect(within(screen.getByRole('list', { name: 'Tale' })).getByText('Datasett')).toBeTruthy();
+    expect(
+      within(screen.getByRole('list', { name: 'Steg' })).getByRole('button', {
+        name: /^Steg 2, ny side/,
+      }),
+    ).toBeTruthy();
+  });
+
+  it('moves the film to a keyframe or a step that is clicked', async () => {
+    const { api } = studio();
+    render(<Demos api={api} params={new URLSearchParams('recording=r-tour-1')} />);
+    const video = (await screen.findByLabelText(/^Video/)) as HTMLVideoElement;
+    let at = 0;
+    Object.defineProperty(video, 'currentTime', {
+      get: () => at,
+      set: (value: number) => void (at = value),
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /^Zoom 1.0/ }));
+    expect(at).toBeCloseTo(16.8);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Steg 2,/ }));
+    expect(at).toBe(9.5);
+  });
+
+  it('sends the instruction with a reason as an edit of the film, and opens the queued edit', async () => {
+    const { api, writes } = studio();
+    render(<Demos api={api} params={new URLSearchParams('recording=r-tour-1')} />);
+
+    fireEvent.change(await screen.findByLabelText('Be om en endring'), {
+      target: { value: 'Gjør zoomen på Statistikk roligere' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lag ny versjon' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('checkbox', {
+        name: /^Godkjenn KI-kostnad på høyst 1 USD/,
+      }),
+    );
+    await confirmWithReason('Lag ny versjon', 'roligere kamera i filmen');
+
+    await waitFor(() =>
+      expect(window.location.hash).toMatch(/^#\/demos\?recording=r-portal-tour-/),
+    );
+    expect(writes()).toMatchObject([
+      {
+        method: 'POST',
+        path: '/operator/demos/portal-tour/recordings',
+        reason: 'roligere kamera i filmen',
+        body: {
+          editOf: 'r-tour-1',
+          instruction: 'Gjør zoomen på Statistikk roligere',
+          costCapUsd: 1,
+        },
+      },
+    ]);
+  });
+
+  it('shows an edit in progress by its instruction and the film it changes', async () => {
+    const { api } = studio();
+    const queued = await api.requestEdit(
+      'portal-tour',
+      'roligere kamera',
+      'r-tour-1',
+      'Kortere pauser',
+      1,
+    );
+    render(<Demos api={api} params={new URLSearchParams(`recording=${queued.id}`)} />);
+
+    expect(await screen.findByText('Kortere pauser')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Se filmen som endres' }).getAttribute('href')).toBe(
+      '#/demos?recording=r-tour-1',
+    );
+  });
+
+  it('shows a finished recording without an edit list as before, without the studio', async () => {
+    const { api } = studio();
+    render(<Demos api={api} params={new URLSearchParams('recording=r-altinn-1')} />);
+
+    expect(await screen.findByText('Opptaket er ferdig')).toBeTruthy();
+    expect(screen.queryByLabelText('Be om en endring')).toBeNull();
+  });
+
+  it('asks for no new cut until the cost of the edit is approved', async () => {
+    const { api, writes } = studio();
+    render(<Demos api={api} params={new URLSearchParams('recording=r-tour-1')} />);
+
+    fireEvent.change(await screen.findByLabelText('Be om en endring'), {
+      target: { value: 'Kortere pauser' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lag ny versjon' }));
+    await confirmWithReason('Lag ny versjon', 'kortere pauser i filmen');
+
+    expect(await screen.findByText('Godkjenn kostnaden først.')).toBeTruthy();
+    expect(writes()).toEqual([]);
+  });
+
+  it('shows what a film spent of its approved cost', async () => {
+    const { api } = studio();
+    render(<Demos api={api} params={new URLSearchParams('recording=r-tour-1')} />);
+
+    expect(await screen.findByText('KI-kostnad: 1,27 av høyst 4 USD')).toBeTruthy();
   });
 });

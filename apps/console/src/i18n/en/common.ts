@@ -12,7 +12,7 @@ export const common = {
   showApiCall: 'Show API call',
   proposedCall: 'Does not exist in the API yet. Proposed call in the same pattern:',
   reasonTooShort: 'Write a reason of at least {min} characters.',
-  reasonTooShortAudited: 'Write a reason of at least {min} characters. It is shown in Audit.',
+  reasonTooShortAudited: 'Write a reason of at least {min} characters. It is shown in the log.',
   saveFailed: 'Could not save the change. Try again shortly.',
   todayAt: 'Today, {time}',
   dayAt: '{date}, {time}',

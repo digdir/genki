@@ -1,4 +1,5 @@
-import { Link, Tag } from '@digdir/designsystemet-react';
+import { Checkbox, Link, Paragraph, Tag } from '@digdir/designsystemet-react';
+import { useFormat } from '@genai/i18n/react';
 import { useEffect, useRef, useState } from 'react';
 import {
   ApiError,
@@ -194,15 +195,55 @@ export const useFileUrl = (
   return state;
 };
 
-export const requestRecording = async (
+export const requestRecording = (
   api: ApiClient,
   id: string,
   reason: string,
   t: ReturnType<typeof useT>,
   upTo?: number,
-) => {
+  costCapUsd?: number,
+) => queueing(t, () => api.requestRecording(id, reason, upTo, costCapUsd));
+
+export const CostApproval = ({
+  usd,
+  required,
+  checked,
+  onChange,
+}: {
+  usd: number;
+  required: boolean;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) => {
+  const t = useT();
+  return (
+    <Checkbox
+      label={t('demos.costApprove', { usd })}
+      description={t(required ? 'demos.costApproveModelVoice' : 'demos.costApproveDirector')}
+      checked={checked}
+      onChange={(e) => onChange(e.target.checked)}
+    />
+  );
+};
+
+export const CostLine = ({ recording }: { recording: DemoRecording }) => {
+  const t = useT();
+  const f = useFormat();
+  return recording.costCapUsd === undefined ? null : (
+    <Paragraph data-size="sm" className="muted">
+      {recording.costUsd === undefined
+        ? t('demos.costApproved', { cap: recording.costCapUsd })
+        : t('demos.costSpent', {
+            spent: f.decimal(recording.costUsd, 2),
+            cap: recording.costCapUsd,
+          })}
+    </Paragraph>
+  );
+};
+
+export const queueing = async (t: ReturnType<typeof useT>, send: () => Promise<DemoRecording>) => {
   try {
-    return await api.requestRecording(id, reason, upTo);
+    return await send();
   } catch (error) {
     if (error instanceof ApiError && error.status === 409)
       throw new DialogError(t('demos.recordingBusy'));

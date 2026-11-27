@@ -40,9 +40,9 @@ export const transfer = defineNamespace({
   include: 'Ta med',
   includeSettings: 'Virksomhetsinnstillinger',
   includeSettingsHelp: 'Verdier virksomheten har satt. Hemmeligheter bare som referanse.',
-  includeServices: 'Tjenester og stegflyter',
+  includeServices: 'Tjenester og arbeidsflyter',
   includeServicesHelp:
-    'Definisjonene med innstillingene som er satt på dem. Datasett og dokumenter følger ikke med.',
+    'Definisjonene med innstillingene som er satt på dem. Dokumentsamlinger følger ikke med.',
   reasonHelp: 'Begrunnelsen følger endringen og vises i virksomhetens logg.',
   summary: '{settings} innstillinger · {services} tjenester',
   fileContents: 'Innholdet i eksportfilen',
@@ -62,7 +62,7 @@ export const transfer = defineNamespace({
   conflictNote: 'Verdien er satt lokalt og skiller seg fra filen',
   onConflictFor: 'Ved konflikt for {label}',
   doneSummary:
-    '{create} opprettet, {change} endret, {skip} hoppet over. Hemmeligheter er ikke kopiert, bare referansene. Alle endringer er logget i revisjonsloggen.',
+    '{create} opprettet, {change} endret, {skip} hoppet over. Hemmeligheter er ikke kopiert, bare referansene. Alle endringer er logget.',
   previous: 'Forrige',
   next: 'Neste',
   runDry: 'Kjør prøvekjøring',

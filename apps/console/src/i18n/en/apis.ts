@@ -3,7 +3,7 @@ import type { apis as source } from '../nb/apis';
 
 export const apis = {
   intro:
-    'Each API is one call interface at the provider. Genki has its own code for built-in APIs. A new API arrives as a recipe, is tried, approved and bound to models.',
+    'Each API is one way of calling the provider. Genki has its own code for built-in APIs. A new API arrives as a recipe, is tried, approved and bound to models.',
   add: 'New API',
   loadFailed: 'Could not load the APIs. Reload the page in a moment.',
   noneTitle: 'No APIs',

@@ -1,6 +1,6 @@
-import { Label, Paragraph, Select } from '@digdir/designsystemet-react';
-import { demoVoiceOf, demoVoices, type DemoVoice } from '@genai/contracts';
-import { useState } from 'react';
+import { Fieldset, FieldsetDescription, FieldsetLegend, Radio } from '@digdir/designsystemet-react';
+import { demoVoiceOf, demoVoiceProviders, demoVoices, type DemoVoice } from '@genai/contracts';
+import { useId, useState } from 'react';
 import { useT } from '../../i18n';
 
 const languageKey = {
@@ -12,50 +12,67 @@ const languageKey = {
 const genderKey = { female: 'demos.voiceFemale', male: 'demos.voiceMale' } as const;
 
 export const VoiceSelect = ({
-  id,
   label,
   description,
   value,
   onChange,
 }: {
-  id: string;
   label: string;
   description?: string;
   value: string;
   onChange: (voice: string, known: DemoVoice | undefined) => void;
 }) => {
   const t = useT();
+  const name = useId();
   const [first] = useState(value);
   const unlisted = [...new Set([first, value])].filter((v) => !demoVoiceOf(v));
+  const pick = (voice: string) => onChange(voice, demoVoiceOf(voice));
   return (
-    <div className="field">
-      <Label htmlFor={id}>{label}</Label>
-      {description ? (
-        <Paragraph data-size="sm" className="muted" id={`${id}-help`}>
-          {description}
-        </Paragraph>
-      ) : null}
-      <Select
-        id={id}
-        value={value}
-        {...(description ? { 'aria-describedby': `${id}-help` } : {})}
-        onChange={(e) => onChange(e.target.value, demoVoiceOf(e.target.value))}
-      >
-        {unlisted.map((v) => (
-          <Select.Option key={v} value={v}>
-            {v}
-          </Select.Option>
-        ))}
-        {demoVoices.map((v) => (
-          <Select.Option key={v.id} value={v.id}>
-            {t('demos.voiceOption', {
-              name: v.name,
-              language: t(languageKey[v.language]),
-              gender: t(genderKey[v.gender]),
-            })}
-          </Select.Option>
-        ))}
-      </Select>
-    </div>
+    <Fieldset>
+      <FieldsetLegend>{label}</FieldsetLegend>
+      {description ? <FieldsetDescription>{description}</FieldsetDescription> : null}
+      {unlisted.map((v) => (
+        <Radio
+          key={v}
+          name={name}
+          value={v}
+          label={v}
+          checked={value === v}
+          onChange={() => pick(v)}
+        />
+      ))}
+      {demoVoiceProviders.map((provider) =>
+        provider.available ? (
+          demoVoices
+            .filter((v) => v.provider === provider.id)
+            .map((v) => (
+              <Radio
+                key={v.id}
+                name={name}
+                value={v.id}
+                label={v.name}
+                description={t('demos.voiceMeta', {
+                  gender: t(genderKey[v.gender]),
+                  language: t(languageKey[v.language]),
+                  provider: provider.name,
+                })}
+                checked={value === v.id}
+                onChange={() => pick(v.id)}
+              />
+            ))
+        ) : (
+          <Radio
+            key={provider.id}
+            name={name}
+            value={provider.id}
+            label={provider.name}
+            description={t('demos.voiceNotYet')}
+            checked={false}
+            disabled
+            readOnly
+          />
+        ),
+      )}
+    </Fieldset>
   );
 };

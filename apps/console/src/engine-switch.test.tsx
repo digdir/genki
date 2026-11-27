@@ -192,7 +192,7 @@ describe('engine switch of a platform dataset in the console', () => {
     });
     render(<EngineSwitchSection api={api} base={base} />);
 
-    expect(await screen.findByText('Datasettet ligger i kunnskapsdatabasen.')).toBeTruthy();
+    expect(await screen.findByText('Dokumentsamlingen ligger i kunnskapsdatabasen.')).toBeTruthy();
     expect(screen.queryByText(/Det finnes ingen søkemotor i kunnskapsdatabasen/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Flytt til kunnskapsdatabasen' })).toBeNull();
   });

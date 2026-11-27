@@ -1,4 +1,4 @@
-import type { Principal } from '@genai/contracts';
+import { voiceNeedsApproval, type Principal } from '@genai/contracts';
 import type { Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { actorOf, AdminRefused, routeOnlyActions } from './admin.js';
@@ -15,6 +15,7 @@ import {
   demoKind,
   demoSettings,
   demoSpec,
+  isEditSource,
   isOpen,
   isRecorderKey,
   latestSettings,
@@ -331,10 +332,26 @@ export const createDemosModule =
           if (!demo) return problem(c, 404);
           const body = recordingRequest.safeParse(await c.req.json().catch(() => ({})));
           if (!body.success) return problem(c, 400, problemsOf(body.error));
-          const upTo = body.data.upTo;
+          const { upTo, editOf, instruction, costCapUsd } = body.data;
+          if (upTo === undefined && costCapUsd === undefined && voiceNeedsApproval(demo.spec.voice))
+            return problem(c, 400, [
+              {
+                path: 'costCapUsd',
+                message: 'the voice is read by a model and needs costCapUsd, the approved cost',
+              },
+            ]);
           if (upTo !== undefined && upTo > demo.spec.steps.length)
             return problem(c, 400, [
               { path: 'upTo', message: `the demo has ${demo.spec.steps.length} steps` },
+            ]);
+          const source = editOf ? await latestRecording(store, editOf) : undefined;
+          if (editOf && (!source || source.spec.demo !== demo.id || !isEditSource(source.spec)))
+            return problem(c, 400, [
+              {
+                path: 'editOf',
+                message:
+                  'editOf is a recorded recording of this demo with its capture and edit list',
+              },
             ]);
           if (mode === 'workflow')
             return problem(
@@ -354,23 +371,36 @@ export const createDemosModule =
                 one(async () => {
                   await refuseOpen(demo.id);
                   const settings = await settingsOf(store);
+                  const base: RecordingSpec = {
+                    demo: demo.id,
+                    demoVersion: demo.version,
+                    genkiVersion: deps.appVersion ?? 'unknown',
+                    status: 'queued',
+                    steps: upTo ?? demo.spec.steps.length,
+                    narrated: upTo === undefined,
+                    ...(upTo === undefined ? { voice: demo.spec.voice ?? settings.voice } : {}),
+                    startedAt: now().toISOString(),
+                    files: [],
+                    requestedBy: actorOf(g.principal),
+                    ...(upTo !== undefined ? { upTo } : {}),
+                    ...(costCapUsd !== undefined ? { costCapUsd } : {}),
+                  };
                   return appendVersion<RecordingSpec>(store, {
                     kind: recordingKind,
                     scope: platformScope,
                     id,
-                    spec: {
-                      demo: demo.id,
-                      demoVersion: demo.version,
-                      genkiVersion: deps.appVersion ?? 'unknown',
-                      status: 'queued',
-                      steps: upTo ?? demo.spec.steps.length,
-                      narrated: upTo === undefined,
-                      ...(upTo === undefined ? { voice: demo.spec.voice ?? settings.voice } : {}),
-                      startedAt: now().toISOString(),
-                      files: [],
-                      requestedBy: actorOf(g.principal),
-                      ...(upTo !== undefined ? { upTo } : {}),
-                    },
+                    spec:
+                      source && instruction
+                        ? {
+                            ...base,
+                            demoVersion: source.spec.demoVersion,
+                            steps: source.spec.steps,
+                            narrated: source.spec.narrated,
+                            ...(source.spec.voice ? { voice: source.spec.voice } : {}),
+                            editOf: source.id,
+                            instruction,
+                          }
+                        : base,
                     deleted: false,
                     by: actorOf(g.principal),
                     reason,
@@ -526,7 +556,13 @@ export const createDemosModule =
           const data = (await recordingsOf(store))
             .filter((r) => r.spec.status === 'queued')
             .reverse()
-            .map((r) => ({ id: r.id, demo: r.spec.demo }));
+            .map((r) => ({
+              id: r.id,
+              demo: r.spec.demo,
+              ...(r.spec.editOf
+                ? { editOf: r.spec.editOf, instruction: r.spec.instruction ?? '' }
+                : {}),
+            }));
           return c.json({ data });
         });
 
@@ -549,6 +585,28 @@ export const createDemosModule =
               tenant: settings.tenant,
               login: settings.login,
             },
+          });
+        });
+
+        app.get('/recorder/recordings/:id/files/:name', async (c) => {
+          const principal = recorder(c);
+          if (!principal) return problem(c, 401, [], recorderKeyType);
+          const id = c.req.param('id') ?? '';
+          const found = await latestRecording(store, id);
+          const file = found?.spec.files.find((f) => f.name === c.req.param('name'));
+          const edited = (await recordingsOf(store)).some(
+            (r) => isOpen(r.spec) && r.spec.editOf === id,
+          );
+          if (!found || !file || found.spec.status !== 'recorded' || !edited)
+            return problem(c, 404);
+          const blob = await deps.blobs.get({
+            tenant,
+            path: recordingBlobPath(found.id, file.name),
+          });
+          if (!blob) return problem(c, 404);
+          return c.body(blob.body as Uint8Array<ArrayBuffer>, 200, {
+            'content-type': file.contentType,
+            'content-length': String(blob.body.byteLength),
           });
         });
 
@@ -688,7 +746,7 @@ export const createDemosModule =
           if ('response' in g) return g.response;
           const body = recordingFinish.safeParse(await c.req.json().catch(() => undefined));
           if (!body.success) return problem(c, 400, problemsOf(body.error));
-          const { status, seconds, failure } = body.data;
+          const { status, seconds, failure, costUsd } = body.data;
           if (status === 'recorded' && !g.found.spec.files.some((f) => f.name === 'demo.mp4'))
             return problem(c, 400, [
               { path: 'status', message: 'upload demo.mp4 before finishing as recorded' },
@@ -711,6 +769,7 @@ export const createDemosModule =
                       finishedAt: now().toISOString(),
                       ...(seconds !== undefined ? { seconds } : {}),
                       ...(status === 'failed' && failure ? { failure } : {}),
+                      ...(costUsd !== undefined ? { costUsd } : {}),
                     },
                     `platform:${principal.subject}`,
                     status,

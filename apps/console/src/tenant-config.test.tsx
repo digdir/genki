@@ -146,7 +146,7 @@ describe('an operator working on one tenant', () => {
     fireEvent.change(screen.getByRole('textbox', { name: /Begrunnelse/ }), {
       target: { value: 'Ny adresse etter flytting' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Lagre ny versjon' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre ny utgave' }));
 
     expect(
       await screen.findByText('sok er lagret. Endringen er logget hos Testetaten.'),
@@ -171,7 +171,7 @@ describe('an operator working on one tenant', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Vis search' }));
     const json = screen.getByRole('textbox', { name: 'Innhold (JSON)' });
     expect(json.hasAttribute('readonly')).toBe(true);
-    expect(screen.queryByRole('button', { name: 'Lagre ny versjon' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Lagre ny utgave' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Slett' })).toBeNull();
     expect(screen.queryByRole('textbox', { name: /Begrunnelse/ })).toBeNull();
 

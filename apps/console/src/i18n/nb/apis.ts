@@ -2,7 +2,7 @@ import { defineNamespace } from '@genai/i18n';
 
 export const apis = defineNamespace({
   intro:
-    'Hvert API er ett kall-grensesnitt hos leverandøren. Innebygde API-er har Genki egen kode for. Et nytt API kommer inn som en oppskrift, prøves, godkjennes og knyttes til modeller.',
+    'Hvert API er én måte å kalle leverandøren på. Innebygde API-er har Genki egen kode for. Et nytt API kommer inn som en oppskrift, prøves, godkjennes og knyttes til modeller.',
   add: 'Nytt API',
   loadFailed: 'Fikk ikke hentet API-ene. Last siden på nytt om litt.',
   noneTitle: 'Ingen API-er',

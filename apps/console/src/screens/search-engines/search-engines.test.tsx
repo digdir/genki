@@ -55,7 +55,7 @@ describe('Søkemotorer', () => {
     const row = within(table).getByRole('link', { name: 'elastic-digdir' }).closest('tr');
     expect(row?.textContent).toContain('6 av 7: ikke lese avsnitt i rekkefølge');
     expect(row?.textContent).toContain('Data i Norge');
-    expect(row?.textContent).toContain('23 datasett');
+    expect(row?.textContent).toContain('23 dokumentsamlinger');
     expect(within(row as HTMLElement).getByText('I drift')).toBeTruthy();
     const builtin = within(table).getByRole('link', { name: 'innebygd-sok' }).closest('tr');
     expect(builtin?.textContent).toContain('Alt (7 av 7)');
@@ -167,7 +167,7 @@ describe('Søkemotorer', () => {
       'Uten språkregler',
     ]);
     expect(screen.getByText('Skjemaet fra API-et')).toBeTruthy();
-    expect(screen.getByText(/184 datasett bruker endepunktet/)).toBeTruthy();
+    expect(screen.getByText(/184 dokumentsamlinger bruker endepunktet/)).toBeTruthy();
   });
 
   it('switches booleans with a switch and tests the connection', async () => {
@@ -212,9 +212,7 @@ describe('Søkemotorer', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Lagre endepunktet' }));
     expect(
-      await screen.findByText(
-        'Endepunktet «elastic-digdir» er lagret. Endringen er logget i Revisjon.',
-      ),
+      await screen.findByText('Endepunktet «elastic-digdir» er lagret. Endringen er logget.'),
     ).toBeTruthy();
     const put = calls.find((c) => c.method === 'PUT');
     expect(put?.path).toBe('/api/operator/catalog/knowledge-endpoint/elastic-digdir');
@@ -260,7 +258,7 @@ describe('Søkemotorer', () => {
   it('the search engine page lists the datasets on an endpoint', async () => {
     await openEndpoint('elastic-digdir');
 
-    const list = screen.getByRole('region', { name: 'Datasett på søkemotoren' });
+    const list = screen.getByRole('region', { name: 'Dokumentsamlinger på søkemotoren' });
     await waitFor(() =>
       expect(
         within(list)

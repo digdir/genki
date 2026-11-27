@@ -84,7 +84,6 @@ const Form = ({
           }}
         >
           <VoiceSelect
-            id="demo-settings-voice"
             label={t('demos.settingsVoice')}
             description={t('demos.settingsVoiceHelp')}
             value={draft.voice}

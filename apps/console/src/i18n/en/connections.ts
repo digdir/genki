@@ -5,9 +5,9 @@ export const connections = {
   intro:
     'A connection is a provider resource with one key and one data processing agreement. The models on it use one API per kind of call.',
   add: 'New connection',
-  added: 'The connection {id} has been added. The change is logged in Audit.',
-  saved: 'The connection {id} has been saved. The change is logged in Audit.',
-  removed: 'The connection {id} has been removed. The change is logged in Audit.',
+  added: 'The connection {id} has been added. The change is logged.',
+  saved: 'The connection {id} has been saved. The change is logged.',
+  removed: 'The connection {id} has been removed. The change is logged.',
   loadFailed: 'Could not load the connections. Reload the page in a moment.',
   noneTitle: 'No connections yet',
   noneText: 'Add a provider resource, then you can fetch the models on it.',

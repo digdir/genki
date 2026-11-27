@@ -85,7 +85,7 @@ const platformRoutes = (search: (call: Call) => [number, unknown]): Routes => ({
 
 const openKudos = async (verb: 'Åpne' | 'Vis' = 'Åpne') => {
   fireEvent.click(await screen.findByRole('button', { name: `${verb} digdir/kudos` }));
-  return screen.findByRole('region', { name: 'Søk i datasettet' });
+  return screen.findByRole('region', { name: 'Søk i dokumentsamlingen' });
 };
 
 const searchFor = (panel: HTMLElement, query: string, orgnr?: string) => {

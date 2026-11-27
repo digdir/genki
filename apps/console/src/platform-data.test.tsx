@@ -224,12 +224,12 @@ describe('kvalitetsmatrise for nye modeller', () => {
   });
 });
 
-describe('ekstern byggekloss', () => {
+describe('ekstern del', () => {
   it('registers a plug-in from a YAML manifest and shows it as external', async () => {
     const { calls, fetch } = serve(() => undefined);
     await open('#/building-blocks', fetch);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Registrer eksternt tillegg' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Registrer ekstern del' }));
     const dialog = await screen.findByRole('dialog');
     const manifest = within(dialog).getByRole('textbox', { name: 'Manifest (YAML)' });
     fireEvent.change(manifest, { target: { value: 'kind: [' } });
@@ -259,7 +259,7 @@ describe('ekstern byggekloss', () => {
           dataLocation: 'norway',
         },
       },
-      reason: 'Registrerte ekstern byggekloss lovdata-pro',
+      reason: 'Registrerte ekstern del lovdata-pro',
     });
     const row = (await screen.findByText('Lovdata Pro')).closest('button') as HTMLElement;
     expect(within(row).getByText('Ekstern')).toBeTruthy();
@@ -281,7 +281,7 @@ describe('ekstern byggekloss', () => {
     );
     await open('#/building-blocks', fetch);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Registrer eksternt tillegg' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Registrer ekstern del' }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Registrer og test' }));
     await waitFor(() =>

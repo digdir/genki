@@ -1,9 +1,9 @@
 import { defineNamespace } from '@genai/i18n';
 
 export const modelOperations = defineNamespace({
-  environmentTest: 'Dette er et testmiljø, så du kan prøve oppskrifter her.',
+  environmentTest: 'Dette er testplattformen, så du kan prøve oppskrifter her.',
   environmentProduction:
-    'Dette er et produksjonsmiljø. Oppskrifter prøves bare i testmiljøet; resten gjør du her som vanlig.',
+    'Dette er produksjonsplattformen. Oppskrifter prøves bare på testplattformen; resten gjør du her som vanlig.',
   loadingOne: 'Henter oppskriften',
   statusReview: 'Til vurdering',
   statusDescribed: 'Godkjent',
@@ -28,7 +28,7 @@ export const modelOperations = defineNamespace({
   deleteKindFor: 'Slett {kind}',
   deleteKindTitle: 'Slette typen {kind}?',
   deleteKindText:
-    'Ingen API-er beskriver typen, og den er ikke innebygd. Den forsvinner fra listen i dette miljøet. Kommer det et API for typen senere, starter den i test.',
+    'Ingen API-er beskriver typen, og den er ikke innebygd. Den forsvinner fra listen her. Kommer det et API for typen senere, starter den i test.',
   deleteKindFailed: 'Vi fikk ikke slettet typen.',
   kindDeleted: 'Typen {kind} er slettet.',
   demoteFor: 'Flytt {kind} tilbake til test',
@@ -37,8 +37,8 @@ export const modelOperations = defineNamespace({
   promoteText:
     'Tjenester kan da bruke godkjente oppskrifter av denne typen med ekte data, på endepunkter som har registrert databehandler.',
   demoteText: 'Tjenester som bruker typen, stopper ved neste kall til den er i produksjon igjen.',
-  promoted: '{kind} er i produksjon. Endringen logges i Revisjon.',
-  demoted: '{kind} er tilbake i test. Endringen logges i Revisjon.',
+  promoted: '{kind} er i produksjon. Endringen logges.',
+  demoted: '{kind} er tilbake i test. Endringen logges.',
   uploadTitle: 'Last opp oppskrift',
   replaceTitle: 'Last opp ny utgave av {id}',
   uploadIntro:
@@ -56,10 +56,10 @@ export const modelOperations = defineNamespace({
   },
   uploadAndCheck: 'Last opp og kontroller',
   uploadFailed: 'Fikk ikke lastet opp oppskriften. Prøv igjen om litt.',
-  uploaded: '{id} er lastet opp og til vurdering. Endringen logges i Revisjon.',
-  tryOnlyInTest: 'Oppskrifter prøves bare i testmiljøet.',
+  uploaded: '{id} er lastet opp og til vurdering. Endringen logges.',
+  tryOnlyInTest: 'Oppskrifter prøves bare på testplattformen.',
   trySynthetic:
-    'Bruk bare oppdiktede data. Alle personopplysninger maskeres før kallet går, og forsøket logges i Revisjon.',
+    'Bruk bare oppdiktede data. Alle personopplysninger maskeres før kallet går, og forsøket logges.',
   tryModel: 'Modell',
   choose: 'Velg',
   optionalField: '{name} (valgfritt)',
@@ -89,7 +89,7 @@ export const modelOperations = defineNamespace({
   fixtureNameHint: 'Små bokstaver, tall og bindestrek, for eksempel forsok-1.',
   recordSave: 'Lagre som testtilfelle',
   recordFailed: 'Fikk ikke lagret testtilfellet.',
-  recorded: 'Testtilfellet {name} er lagret på {id}. Endringen logges i Revisjon.',
+  recorded: 'Testtilfellet {name} er lagret på {id}. Endringen logges.',
   whenApprovingText:
     'Oppskriften kan brukes i tjenester når typen er i produksjon og endepunktet har registrert databehandler. En godkjent oppskrift endres ikke; neste utgave lastes opp med nytt versjonsnummer.',
   bundledNote: 'Oppskriften følger med Genki og endres gjennom Genki, ikke her.',
@@ -104,7 +104,7 @@ export const modelOperations = defineNamespace({
   backToReviewText: 'Tjenestene under stopper ved neste kall til oppskriften er godkjent igjen.',
   withdrawTitle: 'Trekk tilbake {id}',
   withdrawText:
-    'Oppskriften fjernes. Tjenestene under stopper ved neste kall. Historikken blir liggende i Revisjon.',
+    'Oppskriften fjernes. Tjenestene under stopper ved neste kall. Historikken blir liggende i loggen.',
   usedByCount: {
     one: 'Tjenester som bruker den ({count})',
     other: 'Tjenester som bruker den ({count})',
@@ -112,7 +112,7 @@ export const modelOperations = defineNamespace({
   usedByNone: 'Ingen publiserte tjenester bruker den.',
   versionN: 'versjon {n}',
   decideFailed: 'Fikk ikke lagret endringen.',
-  approved: '{id} er godkjent. Endringen logges i Revisjon.',
-  movedBack: '{id} er tilbake til vurdering. Endringen logges i Revisjon.',
-  withdrawn: '{id} er trukket tilbake. Endringen logges i Revisjon.',
+  approved: '{id} er godkjent. Endringen logges.',
+  movedBack: '{id} er tilbake til vurdering. Endringen logges.',
+  withdrawn: '{id} er trukket tilbake. Endringen logges.',
 });

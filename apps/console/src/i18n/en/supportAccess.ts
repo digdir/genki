@@ -24,8 +24,8 @@ export const supportAccess = {
   operatorsPublish: ' Whether operators can publish for the organisation.',
   loadingServices: 'Loading the services',
   noServices: '{tenant} has no services yet.',
-  publishedVersion: '{kind} · published version {version}',
-  publishedVersionOn: '{kind} · published version {version}, {date}',
+  publishedVersion: '{kind} · published edition {version}',
+  publishedVersionOn: '{kind} · published edition {version}, {date}',
   keysPath: 'Integrations › Keys',
   keysNote:
     'Only the organisation itself can create API keys. You can revoke a key if it has gone astray.',

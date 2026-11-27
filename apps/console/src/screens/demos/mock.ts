@@ -1,3 +1,4 @@
+import { voiceNeedsApproval } from '@genai/contracts';
 import type { Demo, DemoRecording, DemoSettingsView, DemoSpec } from '../../api';
 
 const json = (body: unknown, status = 200) =>
@@ -48,12 +49,56 @@ const media = (names: string[]) =>
     size: 1,
     contentType: name.endsWith('.mp4')
       ? 'video/mp4'
-      : name.endsWith('.srt')
-        ? 'application/x-subrip'
-        : name.endsWith('.mp3')
-          ? 'audio/mpeg'
-          : 'image/png',
+      : name.endsWith('.json')
+        ? 'application/json'
+        : name.endsWith('.srt')
+          ? 'application/x-subrip'
+          : name.endsWith('.mp3')
+            ? 'audio/mpeg'
+            : 'image/png',
   }));
+
+const wordsOf = (say: string) =>
+  say.split(' ').map((text, i) => ({ text, at: i * 0.4, seconds: 0.35 }));
+
+const filmOf = (demo: Demo) => {
+  const events = {
+    steps: demo.steps.map((step, i) => ({
+      say: step.say,
+      start: i * 10,
+      ...(i > 0 ? { navigateAt: i * 10 + 0.5 } : {}),
+      cue: i * 10 + 1,
+      end: i * 10 + 9,
+      voice: { seconds: 6 },
+      words: wordsOf(step.say),
+      ...(i > 0 ? { title: step.say.split(' ')[0] } : {}),
+      moves: [],
+      clicks: [],
+      scrolls: [],
+    })),
+  };
+  const edl = {
+    version: 1,
+    fps: 60,
+    captions: true,
+    intro: { seconds: 3 },
+    steps: demo.steps.map((_, i) => ({
+      step: i + 1,
+      showAction: false,
+      enter: 'cut',
+      lead: 0,
+      tail: 0.5,
+      cursor: 'auto',
+    })),
+    camera: [
+      { at: { step: 2, word: 0, text: 'Tjenester' }, zoom: 1.4, why: 'Listen over tjenester' },
+      { at: { step: 3, word: 2 }, zoom: 1, why: 'Tilbake til hele siden' },
+    ],
+    callouts: [],
+    chapters: [],
+  };
+  return { events, edl };
+};
 
 const recording = (id: string, demo: Demo, over: Partial<DemoRecording>): DemoRecording => {
   const made: DemoRecording = {
@@ -151,7 +196,20 @@ export const exampleDemoData = () => {
   delete running.seconds;
   delete running.finishedAt;
   const recordings: DemoRecording[] = [
-    recording('r-tour-1', tour, { seconds: 39, finishedAt: '2026-11-17T08:01:00.000Z' }),
+    recording('r-tour-1', tour, {
+      seconds: 39,
+      costCapUsd: 4,
+      costUsd: 1.27,
+      finishedAt: '2026-11-17T08:01:00.000Z',
+      files: media([
+        'demo.mp4',
+        'demo.srt',
+        'sample.mp3',
+        'capture.mp4',
+        'events.json',
+        'edl.json',
+      ]),
+    }),
     recording('r-altinn-1', altinn, {
       genkiVersion: '0.41.3',
       seconds: 130,
@@ -279,6 +337,19 @@ export const demosMock = (
       if (own(demo.id).some(isOpen))
         return problem(409, 'urn:genai:problem:recording-open', 'not finished', 'recording');
       const upTo = typeof body().upTo === 'number' ? (body().upTo as number) : undefined;
+      const { editOf, instruction, costCapUsd } = body() as {
+        editOf?: string;
+        instruction?: string;
+        costCapUsd?: number;
+      };
+      const source = recordings.find((r) => r.id === editOf);
+      if (editOf !== undefined && (!source || !instruction))
+        return problem(400, 'about:blank', 'editOf is not a recorded film', 'editOf');
+      if (
+        costCapUsd === undefined &&
+        (editOf !== undefined || (upTo === undefined && voiceNeedsApproval(demo.voice)))
+      )
+        return problem(400, 'about:blank', 'needs costCapUsd, the approved cost', 'costCapUsd');
       const queued: DemoRecording = {
         id: `r-${demo.id}-${recordings.length + 1}`,
         demo: demo.id,
@@ -291,6 +362,8 @@ export const demosMock = (
         startedAt: now().toISOString(),
         files: [],
         requestedBy: actor,
+        ...(source && instruction ? { editOf: source.id, instruction } : {}),
+        ...(costCapUsd !== undefined ? { costCapUsd } : {}),
       };
       recordings = [...recordings, queued];
       return json(queued, 202);
@@ -321,6 +394,12 @@ export const demosMock = (
     const file = /^\/operator\/recordings\/([^/]+)\/files\/([^/]+)$/.exec(path);
     if (file && method === 'GET') {
       const name = decodeURIComponent(file[2] ?? '');
+      const owner = recordings.find((r) => r.id === decodeURIComponent(file[1] ?? ''));
+      const demo = demos.find((d) => d.id === owner?.demo);
+      if (name.endsWith('.json') && demo) {
+        const film = filmOf(demo);
+        return json(name === 'edl.json' ? film.edl : film.events);
+      }
       if (name.endsWith('.png'))
         return new Response(screenshot(name.replace('.png', '')), {
           headers: { 'content-type': 'image/svg+xml' },

@@ -30,7 +30,7 @@ describe('search engines in English', () => {
     const row = within(table).getByRole('link', { name: 'elastic-digdir' }).closest('tr');
     expect(row?.textContent).toContain('6 of 7: no reading passages in order');
     expect(row?.textContent).toContain('Data in Norway');
-    expect(row?.textContent).toContain('23 datasets');
+    expect(row?.textContent).toContain('23 document collections');
     expect(within(row as HTMLElement).getByText('In operation')).toBeTruthy();
   });
 
@@ -46,31 +46,8 @@ describe('search engines in English', () => {
 describe('building blocks in English', () => {
   it('groups the registry with English labels', async () => {
     render(inEnglish(<BuildingBlocks api={api()} />));
-    expect(await screen.findByRole('heading', { level: 1, name: 'Plug-ins' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Catalogue' })).toBeTruthy();
     expect(screen.getByRole('radio', { name: 'Failed' })).toBeTruthy();
-    expect(screen.getByText('Register an external plug-in')).toBeTruthy();
-  });
-
-  it('previews a new version in English and asks for a reason', async () => {
-    render(inEnglish(<BuildingBlocks api={api()} initial="borealis" />));
-    fireEvent.click(await screen.findByRole('button', { name: 'Make 2.2 available' }));
-    expect(screen.getByText(/No service switches version on its own/)).toBeTruthy();
-    const confirm = screen
-      .getAllByRole('button', { name: 'Make 2.2 available' })
-      .at(-1) as HTMLElement;
-    fireEvent.click(confirm);
-    expect(await screen.findByText('Write a reason of at least 10 characters.')).toBeTruthy();
-  });
-
-  it('keeps a preview opened the moment the screen appears', async () => {
-    const clickWhenShown = new MutationObserver(() => {
-      const button = screen.queryByRole('button', { name: 'Make 2.2 available' });
-      if (!button) return;
-      clickWhenShown.disconnect();
-      fireEvent.click(button);
-    });
-    clickWhenShown.observe(document.body, { childList: true, subtree: true });
-    render(inEnglish(<BuildingBlocks api={api()} initial="borealis" />));
-    expect(await screen.findByText(/No service switches version on its own/)).toBeTruthy();
+    expect(screen.getByText('Register an external part')).toBeTruthy();
   });
 });

@@ -48,8 +48,8 @@ describe('platform screens in English', () => {
     expect(await screen.findByText('1 entry')).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Model endpoints' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Open/ }));
-    expect(screen.getByRole('button', { name: 'Save new version' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Save new version' }));
+    expect(screen.getByRole('button', { name: 'Save new edition' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Save new edition' }));
     expect(await screen.findByText('Write a reason of at least 10 characters.')).toBeTruthy();
   });
 
@@ -57,7 +57,7 @@ describe('platform screens in English', () => {
     const api = apiFor({ 'GET /operator/gates': { data: [] } });
     render(inEnglish(<Policies api={api} tab="gates" />));
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Quality requirements and guardrails' }),
+      screen.getByRole('heading', { level: 1, name: 'Requirements and safety rules' }),
     ).toBeTruthy();
     expect(await screen.findByText('No quality requirements yet')).toBeTruthy();
     cleanup();

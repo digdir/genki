@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import type { Principal } from '@genai/contracts';
+import { maxCostCapUsd, type Principal } from '@genai/contracts';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import {
@@ -85,10 +85,31 @@ const command = z
     message: 'open needs an https or localhost URL',
   });
 
+const focus = z
+  .array(z.string().trim().min(1).max(200))
+  .min(2)
+  .max(3)
+  .refine(
+    ([kind, , name]) =>
+      kind === 'role' || (['text', 'label', 'css'].includes(kind ?? '') && name === undefined),
+    {
+      message:
+        'focus is [role, <role>, <name>], [text, <text>], [label, <label>] or [css, <selector>]',
+    },
+  );
+
+export const demoCard = z.strictObject({
+  title: z.string().trim().min(1).max(80),
+  subtitle: z.string().trim().min(1).max(120).optional(),
+  presenter: z.string().trim().min(1).max(120).optional(),
+});
+
 export const demoStep = z.strictObject({
   say: z.string().trim().min(1).max(1000),
   do: z.array(command).max(20).optional(),
   hold: z.number().min(0).max(10).optional(),
+  chapter: z.string().trim().min(1).max(60).optional(),
+  focus: focus.optional(),
 });
 
 export const demoSpec = z.strictObject({
@@ -109,6 +130,8 @@ export const demoSpec = z.strictObject({
     .max(500),
   signedIn: z.boolean().optional(),
   ready: z.string().trim().min(1).max(200).optional(),
+  intro: demoCard.optional(),
+  outro: demoCard.optional(),
   steps: z.array(demoStep).min(1).max(50),
 });
 
@@ -127,9 +150,29 @@ export const recordingStart = z.strictObject({
   recording: z.uuid().optional(),
 });
 
-export const recordingRequest = z.strictObject({
-  upTo: z.number().int().min(1).max(50).optional(),
-});
+export const recordingRequest = z
+  .strictObject({
+    upTo: z.number().int().min(1).max(50).optional(),
+    editOf: z.uuid().optional(),
+    instruction: z.string().trim().min(1).max(2000).optional(),
+    costCapUsd: z.number().positive().max(maxCostCapUsd).optional(),
+  })
+  .refine((r) => (r.editOf === undefined) === (r.instruction === undefined), {
+    message: 'editOf and instruction go together',
+    path: ['instruction'],
+  })
+  .refine((r) => r.editOf === undefined || r.upTo === undefined, {
+    message: 'an edit is of the whole film, without upTo',
+    path: ['upTo'],
+  })
+  .refine((r) => r.editOf === undefined || r.costCapUsd !== undefined, {
+    message: 'an edit calls the AI director and needs costCapUsd, the approved cost',
+    path: ['costCapUsd'],
+  })
+  .refine((r) => r.upTo === undefined || r.costCapUsd === undefined, {
+    message: 'a trial is silent and takes no costCapUsd',
+    path: ['costCapUsd'],
+  });
 
 export const demoSettings = z.strictObject({
   voice: z
@@ -149,7 +192,7 @@ export type DemoSettings = z.infer<typeof demoSettings>;
 
 export const defaultDemoSettings: DemoSettings = {
   voice: 'nb-NO-PernilleNeural',
-  viewport: [1280, 720],
+  viewport: [1920, 1080],
   tenant: null,
   login: 'recorder',
   retentionDays: 90,
@@ -160,6 +203,7 @@ export const recordingFinish = z.strictObject({
   status: z.enum(['recorded', 'failed']),
   seconds: z.number().min(0).max(3600).optional(),
   failure: recordingFailure.optional(),
+  costUsd: z.number().min(0).max(1000).optional(),
 });
 
 export interface RecordingFile {
@@ -184,6 +228,10 @@ export interface RecordingSpec {
   requestedBy?: string;
   upTo?: number;
   cancelledBy?: string;
+  editOf?: string;
+  instruction?: string;
+  costCapUsd?: number;
+  costUsd?: number;
 }
 
 export const recordingFileTypes: Record<string, { contentType: string; maxBytes: number }> = {
@@ -191,13 +239,31 @@ export const recordingFileTypes: Record<string, { contentType: string; maxBytes:
   'demo.srt': { contentType: 'application/x-subrip', maxBytes: 256 * 1024 },
   'poster.jpg': { contentType: 'image/jpeg', maxBytes: 2 * 1024 * 1024 },
   'sample.mp3': { contentType: 'audio/mpeg', maxBytes: 1024 * 1024 },
+  'capture.mp4': { contentType: 'video/mp4', maxBytes: 100 * 1024 * 1024 },
+  'events.json': { contentType: 'application/json', maxBytes: 2 * 1024 * 1024 },
+  'edl.json': { contentType: 'application/json', maxBytes: 2 * 1024 * 1024 },
 };
 
+export const editSources = ['capture.mp4', 'events.json', 'edl.json'] as const;
+
 const screenshotFile = /^(failed-)?step-(\d{1,2})\.png$/;
+const roundFile = /^(edl-round-[0-3]|review-round-[1-3]|voice-[0-9a-f]{16}\.words)\.json$/;
+const voiceClip = /^voice-[0-9a-f]{16}\.mp3$/;
 
 export const recordingFileType = (name: string) =>
   recordingFileTypes[name] ??
-  (screenshotFile.test(name) ? { contentType: 'image/png', maxBytes: 5 * 1024 * 1024 } : undefined);
+  (screenshotFile.test(name)
+    ? { contentType: 'image/png', maxBytes: 5 * 1024 * 1024 }
+    : roundFile.test(name)
+      ? { contentType: 'application/json', maxBytes: 2 * 1024 * 1024 }
+      : voiceClip.test(name)
+        ? { contentType: 'audio/mpeg', maxBytes: 2 * 1024 * 1024 }
+        : undefined);
+
+export const isEditSource = (spec: Pick<RecordingSpec, 'status' | 'files' | 'upTo'>) =>
+  spec.status === 'recorded' &&
+  spec.upTo === undefined &&
+  editSources.every((name) => spec.files.some((f) => f.name === name));
 
 export const stepsDone = (spec: Pick<RecordingSpec, 'files'>) =>
   Math.max(

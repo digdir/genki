@@ -22,8 +22,8 @@ export const supportAccess = defineNamespace({
   operatorsPublish: ' Om operatører kan publisere for virksomheten.',
   loadingServices: 'Henter tjenestene',
   noServices: '{tenant} har ingen tjenester ennå.',
-  publishedVersion: '{kind} · publisert versjon {version}',
-  publishedVersionOn: '{kind} · publisert versjon {version}, {date}',
+  publishedVersion: '{kind} · publisert utgave {version}',
+  publishedVersionOn: '{kind} · publisert utgave {version}, {date}',
   keysPath: 'Integrasjoner › Nøkler',
   keysNote:
     'Bare virksomheten selv kan lage API-nøkler. Du kan trekke tilbake en nøkkel hvis den er på avveie.',
