@@ -729,7 +729,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     // The read check of the chunks read in one turn runs alongside the model's next turn (#984).
     let readCheck:
       { chunkIds: string[]; roundsLeft: number; signal: Promise<ReadSignal> } | undefined;
-    let rangeHint: string | undefined;
+    let rangeHint: ReturnType<typeof rangeReadSuggestion>;
     const startReadCheck = () => {
       const pending = workspace.drainPendingEval();
       if (!pending.length) return;
@@ -765,7 +765,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         signal.status === 'conflicting'
           ? rangeReadSuggestion(workspace)
           : undefined;
-      rangeHint = suggestion ? rangeReadHintText(suggestion) : undefined;
+      rangeHint = suggestion;
       return {
         type: 'kernel.notice',
         data: { stage: 'read-signal', status: signal.status, degraded: signal.degraded },
@@ -962,17 +962,12 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
 
       const spent = judgesOff();
       if (!ablated.has('read-signal-eval') && !spent) startReadCheck();
-      const b = workspace.budget();
-      // The turn after may have the judges off: the last round, or the budget about to run out.
-      const nextUnjudged =
-        iteration + 1 >= toolRounds - 1 ||
-        (b.lowSearchBudget && (b.readsExhausted || b.readCharsExhausted)) ||
-        (b.searchExhausted && b.lowReadBudget);
-      // A turn that wrote an answer is judged on all its reads.
-      const checkedNow = generated || nextUnjudged ? await applyReadCheck() : undefined;
+      // An answer is judged on all its reads; the turn before the last has no judged turn after.
+      const checkedNow =
+        generated || iteration + 1 >= toolRounds - 1 ? await applyReadCheck() : undefined;
       if (checkedNow) yield checkedNow;
       const checked = Boolean(checkedFirst ?? checkedNow);
-      // Reads whose check still runs: no gate verdict without a check, no sufficiency gate.
+      // This turn's reads unchecked: no gates unless a check was applied, no sufficiency gate.
       const unchecked = readCheck !== undefined;
       const gatesWait = unchecked && !checked;
 
@@ -983,7 +978,9 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         generated &&
         !spent &&
         (citedDraft ? draftRepairs === 0 : draft === undefined || ablated.has('grounding-gate'));
-      const shadowRaw = relevant && !spent ? shadowGateDecision(workspace) : undefined;
+      // A verdict applied this turn was taken while the judges were on, so it still gates.
+      const shadowRaw =
+        relevant && (!spent || Boolean(checkedFirst)) ? shadowGateDecision(workspace) : undefined;
       const shadowCounted =
         shadowRaw &&
         (generated ||
@@ -999,9 +996,13 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           ? shadowCounted
           : undefined;
       const lastStatus = workspace.lastReadSignal?.status;
-      if (checked && rangeHint) {
+      const suggested = rangeHint;
+      const rangeReadNow = workspace.reads.some(
+        (r) => r.mode === 'doc-range' && r.document === suggested?.document,
+      );
+      if (checked && suggested && !rangeReadNow) {
         // On this turn's read, else its last result that is not a written answer.
-        const hint = rangeHint;
+        const hint = rangeReadHintText(suggested);
         const readAt = results.findIndex((r) => r.name === 'read_chunks');
         const other = results.map((r) => r.name !== 'generate_response').lastIndexOf(true);
         const index = readAt === -1 ? other : readAt;

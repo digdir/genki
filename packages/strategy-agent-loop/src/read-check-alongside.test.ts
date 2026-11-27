@@ -167,28 +167,39 @@ describe('the read check runs alongside the next turn', () => {
     );
   });
 
-  it('a read that leaves at most one search and no reads gets its check in its own turn', async () => {
-    const out = await run({
-      config: {
-        ...baseConfig,
-        strategy: { budget: { searches: 2, reads: 1, readChars: 12000 } },
-      },
-      scripts: {
-        primary: {
-          loop: [
-            () => result('', [call('search', { queries: ['x'] })]),
-            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
-            () => result('', [call('search', { queries: ['y'] })]),
-            () => result('Ferdig fra modellen.'),
-          ],
-          synth: [() => 'Svar [1].'],
+  it.each([
+    ['one search and no reads', { searches: 2, reads: 1 }, [call('search', { queries: ['y'] })]],
+    [
+      'searches and reads',
+      { searches: 2, reads: 2 },
+      [call('search', { queries: ['y'] }), call('read_chunks', { chunk_ids: ['c2'] })],
+    ],
+    [
+      'no searches and one read',
+      { searches: 1, reads: 2 },
+      [call('read_chunks', { chunk_ids: ['c2'] })],
+    ],
+  ])(
+    'a sufficient read check still finalizes when the turn after spends %s',
+    async (_left, budget, calls) => {
+      const out = await run({
+        config: { ...baseConfig, strategy: { budget: { ...budget, readChars: 12000 } } },
+        scripts: {
+          primary: {
+            loop: [
+              () => result('', [call('search', { queries: ['x'] })]),
+              () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+              () => result('', calls),
+              () => result('Ferdig fra modellen.'),
+            ],
+            synth: [() => 'Svar [1].'],
+          },
         },
-      },
-    });
+      });
 
-    expect(out.loops).toHaveLength(2);
-    expect(out.text).toBe('Svar [1].');
-  });
+      expect(out.text).toBe('Svar [1].');
+    },
+  );
 
   it("a forced answer does not wait for the check of its own turn's reads", async () => {
     const log: string[] = [];
@@ -334,5 +345,25 @@ describe('the range-read hint after a read check', () => {
     });
 
     expect(toolMessages(out.loops[3]).at(-1)).not.toContain(hintFor('d1'));
+  });
+
+  it('is left out when the turn after already range-read that document', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () =>
+              result('', [call('read_chunks', { doc_num: 'd1', chunk_range: { from: 0, to: 4 } })]),
+            () => result('Ferdig.'),
+          ],
+          read: [() => readSignal('gap-remaining')],
+          sufficiency: [() => decision('insufficient', 're-search')],
+        },
+      },
+    });
+
+    expect(toolMessages(out.loops[3]).join('\n')).not.toContain(hintFor('d1'));
   });
 });
