@@ -37,7 +37,9 @@ const withMonthlyTokens =
     const answer = await base(input, init);
     if (!String(input).endsWith('/settings') || (init?.method ?? 'GET') !== 'GET') return answer;
     const { data } = (await answer.json()) as { data: SettingInfo[] };
-    return Response.json({ data: [monthlyTokens, ...data] });
+    return Response.json({
+      data: [monthlyTokens, ...data.filter((d) => d.key !== monthlyTokens.key)],
+    });
   };
 
 const recording = (base = mockFetch()) => {
@@ -143,7 +145,7 @@ describe('an organisation in the console', () => {
     await open('#/support-access?tenant=999888777&tab=settings&setting=usage.monthlyTokens', fetch);
 
     const field = await screen.findByRole('textbox', { name: 'Tokens per måned' });
-    fireEvent.change(field, { target: { value: '50000000' } });
+    fireEvent.change(field, { target: { value: '60000000' } });
     const frame = screen.getByRole('region', { name: 'Innstillinger › Virksomhet' });
     fireEvent.click(within(frame).getByRole('button', { name: 'Lagre' }));
     const dialog = await screen.findByRole('dialog', { name: 'Endre på vegne av Testetaten' });
@@ -159,55 +161,49 @@ describe('an organisation in the console', () => {
     expect(put).toEqual({
       method: 'PUT',
       path: '/tenants/999888777/settings/usage.monthlyTokens',
-      body: { value: 50000000 },
+      body: { value: 60000000 },
       reason: 'Kunden trenger mer kvote, sak DIG-4420',
     });
   });
 
-  it('shows the portal of the organisation picked, without a session to start', async () => {
-    const { fetch } = recording();
+  it('shows the organisation picked, without a session to start', async () => {
+    const { calls, fetch } = recording();
     await open('#/support-access?tenant=999888777', fetch);
 
-    expect(await screen.findByRole('heading', { name: 'Portalen til Testetaten' })).toBeTruthy();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Virksomhet' }), {
-      target: { value: '974222333' },
-    });
-    expect(
-      await screen.findByRole('heading', { name: 'Portalen til Eksempeldirektoratet' }),
-    ).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Testetaten' })).toBeTruthy();
+    expect(calls.some((c) => c.path.includes('/support'))).toBe(false);
   });
 
-  it('follows a later link to another organisation after one was picked', async () => {
+  it('follows a later link to another organisation', async () => {
     const { fetch } = recording();
     await open('#/support-access?tenant=999888777', fetch);
-    await screen.findByRole('heading', { name: 'Portalen til Testetaten' });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Virksomhet' }), {
-      target: { value: '974222333' },
-    });
-    await screen.findByRole('heading', { name: 'Portalen til Eksempeldirektoratet' });
+    await screen.findByRole('heading', { level: 1, name: 'Testetaten' });
 
-    window.location.hash = '#/support-access?tenant=999888777';
+    window.location.hash = '#/support-access?tenant=974222333';
 
-    expect(await screen.findByRole('heading', { name: 'Portalen til Testetaten' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Eksempeldirektoratet' }),
+    ).toBeTruthy();
   });
 
   it('lets the operator revoke an API key with a reason but never create one', async () => {
     const { calls, fetch } = recording();
-    await open('#/support-access?tenant=999888777&tab=keys', fetch);
+    await open('#/support-access?tenant=999888777&tab=access', fetch);
 
-    const frame = await screen.findByRole('region', { name: 'Integrasjoner › Nøkler' });
-    expect(within(frame).queryByRole('button', { name: /Lag|Ny nøkkel/ })).toBeNull();
-    const row = (await within(frame).findByText('Test fra laptop')).closest('tr') as HTMLElement;
-    fireEvent.click(within(row).getByRole('button', { name: 'Trekk tilbake' }));
-    const dialog = await screen.findByRole('dialog', {
-      name: 'Trekk tilbake nøkkelen «Test fra laptop»',
-    });
-    fireEvent.change(within(dialog).getByLabelText('Begrunnelse'), {
+    const keys = await screen.findByRole('region', { name: 'API-nøkler' });
+    expect(within(keys).queryByRole('button', { name: /Lag|Ny nøkkel/ })).toBeNull();
+    fireEvent.click(
+      await within(keys).findByRole('button', { name: 'Trekk tilbake Test fra laptop' }),
+    );
+    const row = within(keys)
+      .getByText('Alt som bruker nøkkelen, slutter å virke med en gang.')
+      .closest('tr') as HTMLElement;
+    fireEvent.change(within(row).getByRole('textbox', { name: 'Begrunnelse' }), {
       target: { value: 'Nøkkelen er på avveie, sak DIG-4421' },
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Trekk tilbake' }));
+    fireEvent.click(within(row).getByRole('button', { name: 'Trekk tilbake' }));
 
-    expect(await within(row).findByText('Trukket tilbake')).toBeTruthy();
+    expect(await within(keys).findByText('Trukket tilbake')).toBeTruthy();
     expect(calls.find((c) => c.path.endsWith('/revoke'))).toEqual({
       method: 'POST',
       path: '/tenants/999888777/api-keys/k-2/revoke',
@@ -228,11 +224,8 @@ describe('an organisation in the console', () => {
     await screen.findByRole('heading', { name: 'opg_7f2kq9d1' });
 
     window.location.hash = '#/support-access?tenant=999888777&tab=log';
-    const log = await screen.findByRole('region', { name: 'Det Testetaten ser · Logg' });
-    expect(
-      within(log).getByText(/^Digdir oppga grunn for å se innhold/, { selector: 'span' }),
-    ).toBeTruthy();
-    expect(within(log).getByText(/^Digdir så innhold/, { selector: 'span' })).toBeTruthy();
-    expect(within(log).getAllByText(/Kunden melder feil svar, sak DIG-4412/)).toHaveLength(2);
+    expect(await screen.findByText(/^Digdir oppga grunn for å se innhold/)).toBeTruthy();
+    expect(screen.getByText(/^Digdir så innhold/)).toBeTruthy();
+    expect(screen.getAllByText(/Kunden melder feil svar, sak DIG-4412/)).toHaveLength(2);
   });
 });

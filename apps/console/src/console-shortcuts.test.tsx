@@ -136,16 +136,13 @@ describe('organisation settings', () => {
     await open('#/support-access?tenant=974222333&tab=settings&setting=usage.monthlyTokens', fetch);
     await settingsFrame();
 
-    expect(screen.getByRole('tab', { name: 'Innstillinger' }).getAttribute('aria-selected')).toBe(
-      'true',
-    );
     const field = await screen.findByRole('textbox', { name: 'Tokens per måned' });
     await waitFor(() => expect(document.activeElement).toBe(field));
   });
 
   it('groups settings under their category and shows locked ones with the reason', async () => {
     const { fetch } = recording(mockFetch(), true);
-    await open('#/support-access?tenant=974222333', fetch);
+    await open('#/support-access?tenant=974222333&tab=settings', fetch);
     const frame = await settingsFrame();
 
     const groups = within(frame)
@@ -163,7 +160,7 @@ describe('organisation settings', () => {
 
   it('filters settings by key, label and description', async () => {
     const { fetch } = recording(mockFetch(), true);
-    await open('#/support-access?tenant=974222333', fetch);
+    await open('#/support-access?tenant=974222333&tab=settings', fetch);
     const frame = await settingsFrame();
     const search = within(frame).getByRole('searchbox', { name: 'Søk i innstillinger' });
 
@@ -188,7 +185,7 @@ describe('organisation settings', () => {
 
   it('keeps the search after saving a setting', async () => {
     const { fetch } = recording(mockFetch(), true);
-    await open('#/support-access?tenant=974222333', fetch);
+    await open('#/support-access?tenant=974222333&tab=settings', fetch);
     const frame = await settingsFrame();
     const search = within(frame).getByRole('searchbox', { name: 'Søk i innstillinger' });
     fireEvent.change(search, { target: { value: 'answer' } });

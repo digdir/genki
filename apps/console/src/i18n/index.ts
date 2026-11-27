@@ -23,6 +23,8 @@ import { datasetSearch as enDatasetSearch } from './en/datasetSearch';
 import { engineSwitch as enEngineSwitch } from './en/engineSwitch';
 import { flags as enFlags } from './en/flags';
 import { frame as enFrame } from './en/frame';
+import { inbox as enInbox } from './en/inbox';
+import { org as enOrg } from './en/org';
 import { models as enModels } from './en/models';
 import { modelOperations as enModelOperations } from './en/modelOperations';
 import { modelParameters as enModelParameters } from './en/modelParameters';
@@ -61,6 +63,8 @@ import { datasetSearch } from './nb/datasetSearch';
 import { engineSwitch } from './nb/engineSwitch';
 import { flags } from './nb/flags';
 import { frame } from './nb/frame';
+import { inbox } from './nb/inbox';
+import { org } from './nb/org';
 import { diagnostics } from './nb/diagnostics';
 import { endpoints } from './nb/endpoints';
 import { models } from './nb/models';
@@ -105,6 +109,8 @@ export const nb = defineCatalogue({
   engineSwitch,
   flags,
   frame,
+  inbox,
+  org,
   models,
   modelOperations,
   modelParameters,
@@ -148,6 +154,8 @@ export const en = {
   engineSwitch: enEngineSwitch,
   flags: enFlags,
   frame: enFrame,
+  inbox: enInbox,
+  org: enOrg,
   models: enModels,
   modelOperations: enModelOperations,
   modelParameters: enModelParameters,

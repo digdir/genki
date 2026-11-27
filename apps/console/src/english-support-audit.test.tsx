@@ -61,8 +61,11 @@ describe('organisation access and audit in English', () => {
 
   it('opens the organisation screen in English without a session to start', async () => {
     await open('#/support-access?tenant=999888777');
-    expect(await screen.findByRole('heading', { level: 1, name: 'Organisation' })).toBeTruthy();
-    expect(await screen.findByRole('tab', { name: 'Keys' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Testetaten' })).toBeTruthy();
+    const tabs = within(screen.getByRole('navigation', { name: 'The organisation' }));
+    expect(tabs.getByRole('link', { name: 'Overview' }).getAttribute('aria-current')).toBe('page');
+    expect(tabs.getByRole('link', { name: 'Limits' })).toBeTruthy();
+    expect(tabs.getByRole('link', { name: 'Feature flags' })).toBeTruthy();
   });
 
   it('shows the export, import and clone choices on the transfer page', async () => {

@@ -22,6 +22,7 @@ import { exampleDescriptors, operationsMock } from './screens/models/operations-
 import type { demosMock } from './screens/demos/mock';
 import { flagsMock } from './screens/flags/mock';
 import { queueMock } from './screens/queue/mock';
+import { orgMock, type OrgMockContext } from './screens/org/mock';
 import { quotaRequestsMock } from './screens/quota-requests/mock';
 import { searchEnginesMock } from './screens/search-engines/mock';
 import { translator } from './i18n';
@@ -345,8 +346,36 @@ export const mockFetch = (
       sources: { 'block/source/figur.ts': 'export const figur = "<script>alert(1)</script>";' },
     },
   ];
-  const tenantValues = new Map<string, Record<string, unknown>>();
+  const tenantValues = new Map<string, Record<string, unknown>>([
+    ['974222333', { 'usage.monthlyTokens': 40_000_000 }],
+  ]);
   const tenantKeys = new Map<string, TenantKey[]>([
+    [
+      '974222333',
+      [
+        {
+          id: 'k-ed-1',
+          name: 'horingsanalyse-i-bruk',
+          createdAt: '2026-09-02T09:00:00Z',
+          expiresAt: '2027-03-02T09:00:00Z',
+          revokedAt: null,
+        },
+        {
+          id: 'k-ed-2',
+          name: 'svarbrev-testutgave',
+          createdAt: '2026-10-14T09:00:00Z',
+          expiresAt: null,
+          revokedAt: null,
+        },
+        {
+          id: 'k-ed-3',
+          name: 'regelverk-gammel',
+          createdAt: '2026-05-03T09:00:00Z',
+          expiresAt: '2026-11-03T09:00:00Z',
+          revokedAt: null,
+        },
+      ],
+    ],
     [
       '999888777',
       [
@@ -427,16 +456,34 @@ export const mockFetch = (
     ];
   };
 
+  const tenantLimits: SettingInfo[] = (
+    [
+      ['usage.monthlyTokens', 'usage', 50_000_000],
+      ['usage.tenantCallsPerMinute', 'usage', 600],
+      ['assistant.dailyTokens', 'assistant', 200_000],
+      ['batch.approvalLimitNok', 'usage', 150],
+    ] as const
+  ).map(([key, category, value]) => ({
+    key,
+    description: key,
+    category,
+    axis: 'service',
+    sensitivity: 'normal',
+    default: value,
+    settableAt: ['platform', 'tenant'],
+  }));
   const catalog = (): SettingInfo[] =>
-    grid.settings.map((s) => ({
-      key: s.key,
-      description: s.description,
-      category: s.category,
-      axis: s.scope.includes('dataset') && !s.scope.includes('service') ? 'dataset' : 'service',
-      sensitivity: s.type === 'secret' ? 'secret' : 'normal',
-      default: s.platform,
-      settableAt: ['platform', ...s.scope],
-    }));
+    grid.settings
+      .map((s): SettingInfo => ({
+        key: s.key,
+        description: s.description,
+        category: s.category,
+        axis: s.scope.includes('dataset') && !s.scope.includes('service') ? 'dataset' : 'service',
+        sensitivity: s.type === 'secret' ? 'secret' : 'normal',
+        default: s.platform,
+        settableAt: ['platform', ...s.scope],
+      }))
+      .concat(tenantLimits);
   const defaults = (): DefaultVersion[] =>
     grid.settings
       .filter((s) => s.type !== 'secret')
@@ -737,7 +784,22 @@ export const mockFetch = (
   };
 
   const decisions = queueMock(record);
-  const quotaRoutes = quotaRequestsMock(json, recordAction);
+  const quotaRoutes = quotaRequestsMock(json, recordAction, (org, monthlyTokens) =>
+    tenantValues.set(org, { ...tenantValues.get(org), 'usage.monthlyTokens': monthlyTokens }),
+  );
+  let readContent: OrgMockContext['contentRead'] = () => undefined;
+  const orgRoutes = orgMock(json, {
+    now: () => new Date(),
+    tenants: () => tenantList,
+    log: () => log,
+    quotaOf: (org) => {
+      const own = tenantValues.get(org)?.['usage.monthlyTokens'];
+      return typeof own === 'number' ? own : undefined;
+    },
+    quotaRequests: () => quotaRoutes.rows(),
+    flagRows: () => flagRoutes.rows(),
+    contentRead: (tenant, target) => readContent(tenant, target),
+  });
   const endpointKey = '/operator/catalog/entries?kind=model-endpoint';
   const operations = operationsMock(
     () => current,
@@ -954,6 +1016,9 @@ export const mockFetch = (
       ];
       return undefined;
     };
+    readContent = contentRead;
+    const organisation = orgRoutes(path, method, url.searchParams, body, reason);
+    if (organisation) return organisation;
     const flagged = flagRoutes(path, method, reason, body);
     if (flagged) return flagged;
     const quota = quotaRoutes(path, method, url.searchParams, reason, body);

@@ -4,7 +4,7 @@ import type { OperatorFlag } from '../../types';
 type Row = OperatorFlag['rows'][number];
 
 export const flagsMock = (json: (body: unknown, status?: number) => Response) => {
-  let rows: (Row & { key: string })[] = [
+  let rows: (Row & { key: string; expiresAt?: string })[] = [
     {
       key: 'blockStudio',
       tenant: '991825827',
@@ -24,7 +24,7 @@ export const flagsMock = (json: (body: unknown, status?: number) => Response) =>
     person: null,
     tenant: null,
   }));
-  return (
+  const handle = (
     path: string,
     method: string,
     reason: string | null,
@@ -48,6 +48,7 @@ export const flagsMock = (json: (body: unknown, status?: number) => Response) =>
       tenant: string;
       person?: { issuer: string; subject: string };
       on: boolean | null;
+      expiresAt?: string;
     };
     const same = (r: Row & { key: string }) =>
       r.key === key &&
@@ -62,6 +63,7 @@ export const flagsMock = (json: (body: unknown, status?: number) => Response) =>
           tenant: change.tenant,
           ...(change.person ? { person: change.person } : {}),
           on: change.on,
+          ...(change.expiresAt ? { expiresAt: change.expiresAt } : {}),
           by: 'operator:entra:drift',
           at: new Date().toISOString(),
           reason,
@@ -70,4 +72,5 @@ export const flagsMock = (json: (body: unknown, status?: number) => Response) =>
       ];
     return json({ key, on: change.on === true });
   };
+  return Object.assign(handle, { rows: () => rows });
 };

@@ -29,7 +29,7 @@ afterEach(cleanup);
 
 describe('console in English', () => {
   it('shows the queue with English headings, columns and decision dialog', async () => {
-    await open('#/queue');
+    await open('#/queue?tab=blocks');
 
     expect(await screen.findByRole('heading', { name: 'For processing' })).toBeTruthy();
     const table = (await screen.findAllByRole('region', { name: /^Waiting \(/ }))[0] as HTMLElement;
