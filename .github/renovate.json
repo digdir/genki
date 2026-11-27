@@ -4,61 +4,122 @@
     "config:recommended",
     "helpers:pinGitHubActionDigests",
     "docker:pinDigests",
+    "abandonments:recommended",
+    ":configMigration",
     ":semanticCommitsDisabled"
   ],
-  "schedule": ["before 7am on monday"],
+  "schedule": ["* * * * 1"],
   "timezone": "Europe/Oslo",
   "rangeStrategy": "bump",
-  "prConcurrentLimit": 5,
-  "lockFileMaintenance": { "enabled": true, "schedule": ["before 7am on monday"] },
-  "vulnerabilityAlerts": { "enabled": true, "schedule": ["at any time"] },
+  "prHourlyLimit": 0,
+  "prConcurrentLimit": 10,
+  "branchConcurrentLimit": 20,
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/vendor/**",
+    "**/examples/**",
+    "**/__tests__/**",
+    "**/test/**",
+    "**/tests/**",
+    "**/__fixtures__/**",
+    "benchmarks/**"
+  ],
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["* * * * 1"]
+  },
   "packageRules": [
+    {
+      "description": "Every version update waits three days, so a compromised release is usually pulled before it lands",
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Patch, minor, digest, pin and lock file updates merge themselves through the merge queue once every check is green",
+      "matchUpdateTypes": ["minor", "patch", "pin", "pinDigest", "digest", "lockFileMaintenance"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "A minor update of a 0.x version can break things under semver, so it waits for a person",
+      "matchCurrentVersion": "/^0\\./",
+      "matchUpdateTypes": ["minor"],
+      "automerge": false
+    },
+    {
+      "description": "Majors wait for a tick on the Dependency Dashboard and get a pull request each",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true,
+      "automerge": false
+    },
     {
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["minor", "patch"],
-      "matchCurrentVersion": "!/^0/",
-      "groupName": "npm minor and patch"
-    },
-    { "matchPackageNames": ["typescript"], "rangeStrategy": "replace" },
-    {
-      "matchManagers": ["github-actions"],
-      "groupName": "github actions"
+      "groupName": "npm non-major"
     },
     {
-      "matchManagers": ["bicep"],
-      "groupName": "bicep api versions"
+      "matchPackageNames": ["typescript"],
+      "rangeStrategy": "replace"
+    },
+    {
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["digest", "pinDigest"],
+      "groupName": "docker digests"
     },
     {
       "description": "Node stays on 24 in mise, engines and the Docker image, so dev, CI and production move together",
       "matchDatasources": ["docker", "node-version"],
       "matchPackageNames": ["node"],
-      "allowedVersions": "/^24\\./"
+      "allowedVersions": "/^24\\./",
+      "groupName": "node 24"
+    },
+    {
+      "description": "The Docling image's packages are hashed for Python 3.13",
+      "matchFileNames": ["docker/docling/Dockerfile"],
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["python"],
+      "allowedVersions": "<3.14"
+    },
+    {
+      "description": "The Docling image's requirements are one frozen set, remade together with a new cut-off (see its header)",
+      "matchManagers": ["pip_requirements"],
+      "matchFileNames": ["docker/docling/**"],
+      "groupName": "docling server python packages",
+      "dependencyDashboardApproval": true,
+      "automerge": false
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions"
+    },
+    {
+      "description": "GitHub Actions run with the deploy credentials, so only releases that have waited three days merge themselves; a bare digest change has no release date and waits for a person",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["digest", "pinDigest"],
+      "automerge": false
+    },
+    {
+      "matchManagers": ["bicep"],
+      "groupName": "bicep api versions",
+      "minimumReleaseAge": null
+    },
+    {
+      "description": "The container apps environment needs the preview API for appInsightsConfiguration and openTelemetryConfiguration (#359)",
+      "matchManagers": ["bicep"],
+      "matchPackageNames": ["Microsoft.App/**"],
+      "enabled": false
     },
     {
       "description": "The local Langfuse moves with production's, by hand",
       "matchFileNames": ["compose.langfuse.yaml"],
       "enabled": false
-    },
-    {
-      "description": "Patch and minor updates merge themselves once every check is green; majors and 0.x stay manual",
-      "matchUpdateTypes": ["minor", "patch"],
-      "matchCurrentVersion": "!/^0/",
-      "automerge": true,
-      "automergeType": "pr",
-      "platformAutomerge": false,
-      "minimumReleaseAge": "3 days"
-    },
-    {
-      "description": "Pins, digests and lock file maintenance merge themselves once every check is green",
-      "matchUpdateTypes": ["pin", "pinDigest", "digest", "lockFileMaintenance"],
-      "automerge": true,
-      "automergeType": "pr",
-      "platformAutomerge": false
-    },
-    {
-      "description": "GitHub Actions run with the deploy credentials, so a person reviews every update",
-      "matchManagers": ["github-actions"],
-      "automerge": false
     }
   ]
 }
