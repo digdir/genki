@@ -5,7 +5,7 @@ export const diagnostics = {
   title: 'Diagnostics',
   intro: 'Look up one run or one service to find out why it behaved the way it did.',
   stepTrigger: 'Start',
-  stepAudit: 'Audit',
+  stepAudit: 'Log',
   stepGuard: 'Safety rules',
   stepPlan: 'Plan',
   stepSearch: 'Search',

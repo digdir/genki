@@ -5,7 +5,7 @@ export const diagnostics = defineNamespace({
   intro:
     'Slå opp én kjøring eller én tjeneste for å finne ut hvorfor den oppførte seg som den gjorde.',
   stepTrigger: 'Start',
-  stepAudit: 'Revisjon',
+  stepAudit: 'Logg',
   stepGuard: 'Sikkerhetsregler',
   stepPlan: 'Plan',
   stepSearch: 'Søk',

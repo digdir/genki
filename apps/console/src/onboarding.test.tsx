@@ -105,7 +105,7 @@ describe('oppstart', () => {
 
     expect(
       await screen.findByText(
-        'Brønnøysundregistrene er registrert. Beslutningen er logget i Revisjon.',
+        'Brønnøysundregistrene er registrert. Beslutningen er logget i Logg.',
       ),
     ).toBeTruthy();
     const post = calls.find((c) => c.method === 'POST' && c.path === '/api/operator/tenants');
