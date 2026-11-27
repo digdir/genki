@@ -835,6 +835,7 @@ const app = createApp(version, {
     ),
     ...organisationNameSources,
     tenantQuota: platform.quota,
+    inbox: platform.inbox,
     tenantGate: platform.tenantGate,
     registered: platform.registered,
     caller: platform.caller,

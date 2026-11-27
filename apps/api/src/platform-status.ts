@@ -89,6 +89,20 @@ export const createPlatformStatusModule =
   (deps) => ({
     id: 'platform-status',
     handlers: routeOnlyActions(incidentActions),
+    inbox: async () =>
+      (await incidents(deps.configEntries))
+        .filter((i) => !i.resolvedAt)
+        .map((i) => ({
+          type: 'incident' as const,
+          id: i.id,
+          tenant: i.tenants.length === 1 ? (i.tenants[0] ?? null) : null,
+          tenants: i.tenants,
+          what: i.title,
+          from: null,
+          waitingSince: i.startedAt,
+          blocks: true,
+          action: { method: 'POST' as const, path: `/operator/incidents/${i.id}/resolve` },
+        })),
     mount: <E extends Env, S extends Schema, B extends string>(
       app: Hono<E, S, B>,
       mounted: MountDeps,

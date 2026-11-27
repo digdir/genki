@@ -32,6 +32,8 @@ import {
   type PortalTaskRow,
   type TenantApiKey,
 } from './portal-routes.js';
+import type { InboxItem } from '../operator-inbox.js';
+import { monthEndForecast } from './operator-tenant-routes.js';
 
 const task = (
   id: string,
@@ -2112,5 +2114,164 @@ describe('who started a run and how it came in', () => {
       '2026-10-05': { p50Ms: 1000, p95Ms: 3000, runs: 2 },
       '2026-10-06': { p50Ms: 500, p95Ms: 500, runs: 1 },
     });
+  });
+});
+
+describe('operator organisation overview and failed runs', () => {
+  const failedTask = (id: string, tenant: string, at: string): Task => ({
+    ...task(id, tenant, at, 'failed', `${tenant}/klarsprak/default`),
+    endedAt: at,
+  });
+  const failure = (id: string, code: string): Event =>
+    ({
+      task: id,
+      seq: 4,
+      type: 'kernel.error',
+      v: 1,
+      ts: '2026-10-06T08:00:02Z',
+      actor: { kind: 'kernel', id: 'kernel' },
+      audience: 'audit',
+      data: { code, message: 'hemmelig detalj' },
+    }) as Event;
+  const quotaItem = (tenant: string): InboxItem => ({
+    type: 'quota',
+    id: `q-${tenant}`,
+    tenant,
+    what: 'usage.monthlyTokens',
+    from: 'Kari',
+    waitingSince: '2026-10-04T09:00:00Z',
+    blocks: true,
+    action: { method: 'POST', path: `/operator/quota-requests/${tenant}/q-${tenant}/decision` },
+  });
+  const boot = (tasks: Task[], events: Event[] = []) =>
+    setup({
+      tasks: () =>
+        tasks.map((t) => ({ task: t.id, tenant: t.tenant, status: t.status, at: t.createdAt })),
+      task: async (id: string) => tasks.find((t) => t.id === id),
+      events: async function* (id): AsyncIterable<Event> {
+        for (const e of events) if (e.task === id) yield e;
+      },
+      directory: async () => [
+        { orgNumber: digdir, name: 'Digdir', status: 'active' },
+        { orgNumber: other, name: 'Testetaten', status: 'onboarding' },
+      ],
+      inbox: async () => [quotaItem(digdir), quotaItem(other)],
+      quota: async (tenant) =>
+        tenant === other
+          ? { usedTokens: 19_000_000, monthlyTokens: 20_000_000 }
+          : { usedTokens: 1_000_000, monthlyTokens: 50_000_000 },
+    });
+
+  it("shows an operator one organisation's needs, quota forecast, services and failed runs, and nothing of another organisation", async () => {
+    const { send } = await boot([
+      failedTask('f1', digdir, '2026-10-03T08:00:00Z'),
+      failedTask('f2', other, '2026-10-05T08:00:00Z'),
+    ]);
+
+    const body = await json<{
+      name: string;
+      status: string;
+      needsAction: InboxItem[];
+      tokens: { usedTokens: number; forecastTokens: number };
+      services: { total: number; inUse: number };
+      failedRunsLast7Days: number;
+    }>(await send(`/operator/tenants/${digdir}`, 'operator'));
+
+    expect(body).toMatchObject({
+      name: 'Digdir',
+      status: 'active',
+      tokens: { usedTokens: 1_000_000, forecastTokens: 5_636_364 },
+      services: { total: 1, inUse: 1 },
+      failedRunsLast7Days: 1,
+    });
+    expect(body.needsAction.map((i) => i.tenant)).toEqual([digdir]);
+  });
+
+  it('adds a quota item to needsAction at 90 % of the quota only when no quota request waits', async () => {
+    const { send } = await setup({
+      directory: async () => [{ orgNumber: other, name: 'Testetaten', status: 'active' }],
+      inbox: async () => [],
+      quota: async () => ({ usedTokens: 19_000_000, monthlyTokens: 20_000_000 }),
+    });
+
+    const body = await json<{ needsAction: InboxItem[] }>(
+      await send(`/operator/tenants/${other}`, 'operator'),
+    );
+
+    expect(body.needsAction).toMatchObject([
+      { type: 'quota', tenant: other, blocks: true, action: { method: 'PUT' } },
+    ]);
+  });
+
+  it('adds no quota item at 90 % when a quota request already waits', async () => {
+    const { send } = await boot([]);
+
+    const body = await json<{ needsAction: InboxItem[] }>(
+      await send(`/operator/tenants/${other}`, 'operator'),
+    );
+
+    expect(body.needsAction.map((i) => i.id)).toEqual([`q-${other}`]);
+  });
+
+  it('counts failed runs of the last seven days only', async () => {
+    const { send } = await boot([
+      failedTask('recent', digdir, '2026-10-03T08:00:00Z'),
+      failedTask('older', digdir, '2026-09-28T08:00:00Z'),
+    ]);
+
+    const body = await json<{ failedRunsLast7Days: number }>(
+      await send(`/operator/tenants/${digdir}`, 'operator'),
+    );
+
+    expect(body.failedRunsLast7Days).toBe(1);
+  });
+
+  it('refuses failed runs from more than 31 days back, or from something that is not a time', async () => {
+    const { send } = await boot([]);
+
+    expect((await send('/operator/failed-runs?from=2026-09-01', 'operator')).status).toBe(400);
+    expect((await send('/operator/failed-runs?from=1', 'operator')).status).toBe(400);
+    expect((await send('/operator/failed-runs?from=2026-10-01', 'operator')).status).toBe(200);
+  });
+
+  it('answers not found for an organisation the platform does not know', async () => {
+    const { send } = await boot([]);
+
+    expect((await send('/operator/tenants/123456785', 'operator')).status).toBe(404);
+  });
+
+  it("lists today's failed runs in every organisation with the cause, and none from before today", async () => {
+    const { send } = await boot(
+      [
+        failedTask('a', digdir, '2026-10-06T08:00:00Z'),
+        failedTask('b', other, '2026-10-06T09:00:00Z'),
+        failedTask('old', digdir, '2026-10-05T09:00:00Z'),
+      ],
+      [failure('a', 'model_error'), failure('b', 'deadline_exceeded')],
+    );
+
+    const body = await json<{
+      data: { task: string; tenant: string; failure: { code: string; reason: string } }[];
+    }>(await send('/operator/failed-runs', 'operator'));
+
+    expect(body.data.map((r) => [r.task, r.tenant, r.failure.code])).toEqual([
+      ['b', other, 'deadline_exceeded'],
+      ['a', digdir, 'model_error'],
+    ]);
+    expect(JSON.stringify(body)).not.toContain('hemmelig detalj');
+  });
+
+  it('refuses the overview and failed runs to everyone but operators', async () => {
+    const { send } = await boot([]);
+
+    for (const path of [`/operator/tenants/${digdir}`, '/operator/failed-runs']) {
+      expect((await send(path, 'kari')).status).toBe(403);
+      expect((await send(path, undefined)).status).toBe(401);
+    }
+  });
+
+  it('forecasts the month end from the use so far, spread over the whole month', () => {
+    expect(monthEndForecast(10_000, new Date('2026-11-16T00:00:00Z'))).toBe(20_000);
+    expect(monthEndForecast(500, new Date('2026-11-01T06:00:00Z'))).toBe(15_000);
   });
 });

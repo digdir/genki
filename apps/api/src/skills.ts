@@ -1910,5 +1910,24 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
     },
   };
 
-  return { id: 'skills', handlers, mount, decorateCapability };
+  const inbox = async () =>
+    Promise.all(
+      (await shares())
+        .filter((e) => e.spec.state === 'pending_digdir')
+        .map(async (entry) => ({
+          type: 'work-instruction' as const,
+          id: shareId(entry.scope, entry.id),
+          tenant: entry.scope,
+          what: await skillNameOf(entry.scope, entry.spec.skill, entry.spec.version),
+          from: entry.spec.byName ?? entry.by,
+          waitingSince: entry.at,
+          blocks: false,
+          action: {
+            method: 'POST' as const,
+            path: `/operator/skills/shares/${encodeURIComponent(shareId(entry.scope, entry.id))}/decision`,
+          },
+        })),
+    );
+
+  return { id: 'skills', handlers, mount, decorateCapability, inbox };
 };

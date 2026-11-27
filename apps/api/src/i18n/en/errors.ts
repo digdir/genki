@@ -677,6 +677,9 @@ export const definitionErrors = {
 
 export const routeErrors = {
   modelNotFound: 'Model not found: {name}',
+  inboxTypeOneOf: 'type is one of {values}',
+  postponeUntilAfterToday: 'until is a date after today',
+  flagExpiryInFuture: 'expiresAt is a time in the future, and needs on',
   requestValidationFailed: 'Request validation failed',
   noAgentsAvailable: 'No agents are available',
   conversationNotFound: 'Conversation not found',

@@ -48,7 +48,6 @@ import {
   maskinportenClientRegistry,
   maskinportenClientsModule,
 } from './maskinporten-clients.js';
-import { onboardingModule } from './onboarding.js';
 import { kernelTaskReader } from './timeline.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
 
@@ -344,7 +343,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
       ? { demoRecorderKeyDigest: options.demoRecorderKeyDigest }
       : {}),
     ...(options.demoRecorder ? { demoRecorder: options.demoRecorder } : {}),
-    modules: options.modules ?? [...platformModules, onboardingModule, maskinportenClientsModule],
+    modules: options.modules ?? [...platformModules, maskinportenClientsModule],
     policy: (options.policy ?? ((inner) => inner))(
       altinnPolicy({
         altinn: createMockAltinnPdp({}).authorization,
@@ -394,6 +393,8 @@ export const bootPlatform = async (options: BootOptions = {}) => {
       ...(options.appLockdown ? { lockdown: true } : {}),
       unmaskedInput: platform.unmaskedInput,
       tenantQuota: platform.quota,
+      inbox: platform.inbox,
+      tenantDirectory: () => platform.directory.list(),
       environments: (tenant, service) => environmentsOf(configEntries, tenant, service),
       tasks: kernelTaskReader(platform.kernel, {
         kind: 'operator',

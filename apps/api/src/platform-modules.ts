@@ -48,6 +48,7 @@ import type { TraceDeliveryStore } from '@genai/jobs';
 import type { TraceSinks, TracingOptions } from './trace-connections.js';
 import type { SinkLabels } from './sink-labels.js';
 import type { TrackedWork } from './tracked-work.js';
+import type { InboxItem } from './operator-inbox.js';
 
 export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   platformTenant: string;
@@ -110,6 +111,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   datasetSearchTask?: TrackedWork;
   publishCheck?(definition: unknown, publisher: string): Promise<ValidationError[]>;
   tasks: TaskIndex;
+  inbox?(viewer: Principal): Promise<InboxItem[]>;
   task(id: string): Promise<Task | undefined>;
   events(task: string): AsyncIterable<Event>;
   webhooks: ReturnType<typeof createWebhooks>;
@@ -165,6 +167,7 @@ export interface PlatformModule {
   checkPublish?(definition: unknown, publisher: string): Promise<ValidationError[]>;
   onFeedback?(feedback: FeedbackGiven): Promise<void>;
   qualityOverview?(): Promise<Record<string, unknown>>;
+  inbox?(viewer: Principal): Promise<InboxItem[]>;
 }
 
 export type PlatformModuleFactory = (deps: ModuleDeps) => PlatformModule;

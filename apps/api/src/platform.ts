@@ -3,6 +3,8 @@ import { organisationNames } from './organisation-names.js';
 import { isHiddenAuditTarget } from './internal-services.js';
 import { refusedAsArchived, serviceArchived, serviceArchivedType } from './archived-services.js';
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
+import { auditFilterQuery, auditMatches } from './audit-filter.js';
+import { inboxTypes, waitingByTenant, type InboxItem } from './operator-inbox.js';
 import type { Context } from 'hono';
 import { toJSONSchema } from 'zod';
 import type { Principal, Task } from '@genai/contracts';
@@ -80,6 +82,7 @@ export interface PlatformApiOptions {
   tenantQuota?: (
     tenant: string,
   ) => Promise<{ usedPercent: number; usedTokens?: number; monthlyTokens?: number }>;
+  inbox?: (viewer: Principal) => Promise<InboxItem[]>;
   lifecycle?: (tenant: string, service: string) => Promise<{ state: string }>;
   names?: ActorNames;
   drafts?: Pick<ServiceDrafts, 'followPublish'>;
@@ -384,6 +387,14 @@ const OperatorTenant = z
       .int()
       .optional()
       .describe('The monthly token quota, from usage.monthlyTokens'),
+    waiting: z
+      .object({
+        count: z.number().int(),
+        blocks: z.boolean().describe('Whether any of it stops the tenant from going on'),
+        types: z.array(z.enum(inboxTypes)),
+      })
+      .optional()
+      .describe('What waits on an operator for this tenant, as GET /operator/inbox lists it'),
   })
   .openapi('OperatorTenant');
 
@@ -721,10 +732,11 @@ const routes = {
     path: '/tenants/{tenant}/audit',
     summary: 'Administrative changes in a tenant, each backed by a platform task',
     description:
-      'Oldest first. With limit or offset the page is newest first: offset skips that many of the newest entries.',
+      'Oldest first. With limit or offset the page is newest first: offset skips that many of the newest entries. from, to, actor, action and by narrow the entries before paging, and total counts what they keep.',
     request: {
       params: z.object({ tenant: tenantParam }),
       query: z.object({
+        ...auditFilterQuery,
         limit: z.coerce
           .number()
           .int()
@@ -744,7 +756,10 @@ const routes = {
       200: json(
         z.object({
           data: z.array(AuditEntry),
-          total: z.number().int().openapi({ description: 'Entries the caller may see in all' }),
+          total: z
+            .number()
+            .int()
+            .openapi({ description: 'Entries the caller may see that match the filters' }),
         }),
         'Audit log',
       ),
@@ -1085,7 +1100,11 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const directory = (await options.tenantDirectory?.()) ?? [];
     const orgs = [...new Set([...directory.map((d) => d.orgNumber), ...counts.keys()])].sort();
     const showsTokens = !principal.scopes?.includes(testRunnerScope);
-    const quotas = await Promise.all(orgs.map((org) => options.tenantQuota?.(org)));
+    const [quotas, inbox] = await Promise.all([
+      Promise.all(orgs.map((org) => options.tenantQuota?.(org))),
+      (showsTokens ? options.inbox?.(principal) : undefined) ?? Promise.resolve([]),
+    ]);
+    const waiting = waitingByTenant(inbox, orgs);
     const looked = await organisationNames(orgs, undefined, {
       ...options,
       tenantDirectory: async () => directory,
@@ -1108,6 +1127,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
             ...(showsTokens && quota?.monthlyTokens !== undefined
               ? { monthlyTokens: quota.monthlyTokens }
               : {}),
+            ...(waiting.has(orgNumber) ? { waiting: waiting.get(orgNumber) } : {}),
           };
         }),
       },
@@ -1401,7 +1421,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const principal = await auth.authenticate(c.req.raw);
     if (!principal) return problem(c, 401, 'Not authenticated');
     const { tenant } = c.req.valid('param');
-    const { limit, offset } = c.req.valid('query');
+    const { limit, offset, ...filter } = c.req.valid('query');
     const acting = access(principal, tenant, c.req.raw);
     if (!acting) return problem(c, 404, 'Not found');
     const lacking = refusedRight(c, acting, tenant, 'manage-services');
@@ -1412,7 +1432,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const hidden = await Promise.all(
       visible.map((e) => isHiddenAuditTarget(store, tenant, e.target)),
     );
-    const shown = visible.filter((_, i) => !hidden[i]);
+    const shown = visible.filter((_, i) => !hidden[i]).filter(auditMatches(filter));
     const paged = limit !== undefined || offset !== undefined;
     const entries = paged
       ? shown.reverse().slice(offset ?? 0, (offset ?? 0) + (limit ?? shown.length))
