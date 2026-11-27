@@ -37,7 +37,7 @@ export const catalogTabs = [
     kind: 'knowledge-endpoint',
     label: 'catalog.tabKnowledgeEndpoint',
     template: {
-      engine: 'typesense',
+      engine: 'http-search',
       baseURL: 'https://',
       auth: { kind: 'api-key', secret: 'env:' },
     },

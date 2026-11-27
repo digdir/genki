@@ -69,9 +69,6 @@
       "path": "../../packages/providers-openai"
     },
     {
-      "path": "../../packages/providers-typesense"
-    },
-    {
       "path": "../../packages/providers-postgres"
     },
     {
@@ -133,9 +130,6 @@
     },
     {
       "path": "../../packages/providers-postgres-source"
-    },
-    {
-      "path": "../../packages/providers-typesense-writer"
     },
     {
       "path": "../../packages/strategy-builder"

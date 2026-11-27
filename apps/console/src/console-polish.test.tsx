@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from './App';
 import { localizedEngine } from './api';
@@ -81,31 +81,6 @@ describe('console polish', () => {
     expect(within(grid).queryByText('corpus-aware-2hop')).toBeNull();
   });
 
-  it('keeps the sidebar below the top bar, also when the top bar grows taller', async () => {
-    const offset = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
-    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
-      configurable: true,
-      get(this: HTMLElement) {
-        return this.classList.contains('top') ? 184 : 0;
-      },
-    });
-    try {
-      await open('#/tenants');
-      await screen.findByRole('table');
-      const shell = document.querySelector('.shell') as HTMLElement;
-      await waitFor(() => expect(shell.style.getPropertyValue('--top-height')).toBe('184px'));
-    } finally {
-      if (offset) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', offset);
-    }
-  });
-
-  it('says next to the System atlas link that the atlas is English only', async () => {
-    await open('#/tenants');
-    const nav = await screen.findByRole('navigation', { name: /meny/i });
-    const atlas = within(nav).getByRole('link', { name: /Systematlas/ });
-    expect(atlas.closest('li')?.textContent).toMatch(/Atlaset finnes bare på engelsk\./);
-  });
-
   it('translates the title of the built-in search engine', () => {
     const engine = {
       engine: 'pgvector',
@@ -116,7 +91,7 @@ describe('console polish', () => {
     } as KnowledgeEngine;
     expect(localizedEngine(engine, translator('en')).title).toBe('Built-in search');
     expect(localizedEngine(engine, translator('nb')).title).toBe('Innebygd søk');
-    const other = { ...engine, engine: 'typesense', title: 'Typesense' };
-    expect(localizedEngine(other, translator('en')).title).toBe('Typesense');
+    const other = { ...engine, engine: 'elasticsearch', title: 'Elasticsearch' };
+    expect(localizedEngine(other, translator('en')).title).toBe('Elasticsearch');
   });
 });

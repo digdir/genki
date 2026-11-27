@@ -81,7 +81,13 @@ export const appendVersion = async <T>(
     version: current + 1,
     at: entry.at ?? new Date().toISOString(),
   };
-  await store.append(saved);
+  try {
+    await store.append(saved);
+  } catch (error) {
+    const latest = (await store.history(entry.kind, entry.scope, entry.id)).at(-1)?.version ?? 0;
+    if (latest >= saved.version) throw new VersionConflict(latest, current);
+    throw error;
+  }
   return saved;
 };
 

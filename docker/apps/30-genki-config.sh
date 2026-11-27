@@ -2,8 +2,8 @@
 set -eu
 
 case "${APP:-}" in
-  portal | workspace | console | assistant) ;;
-  *) echo "Set APP to portal, workspace, console or assistant" >&2; exit 1 ;;
+  portal | console | assistant) ;;
+  *) echo "Set APP to portal, console or assistant" >&2; exit 1 ;;
 esac
 case "${API_UPSTREAM:-}" in
   http://* | https://*) ;;
@@ -18,7 +18,7 @@ mkdir -p /tmp/genki
   printf 'globalThis.__GENKI_CONFIG__ = {'
   separator=''
   for name in ANSATTPORTEN_ISSUER OIDC_ISSUER OIDC_CLIENT_ID OIDC_TOKEN_ENDPOINT API_AUDIENCE \
-    ALTINN_RESOURCE PUBLIC_API_BASE PORTAL_URL ENVIRONMENT; do
+    ALTINN_RESOURCE PUBLIC_API_BASE ENVIRONMENT; do
     eval "value=\${$name:-}"
     if [ -n "$value" ]; then
       printf '%s"%s":"%s"' "$separator" "$name" "$(escape "$value")"

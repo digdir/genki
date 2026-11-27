@@ -813,7 +813,7 @@ describe('knowledge.ingest and knowledge.index', () => {
 
 const copyEarlierIds = new Map([['kudos:de77ffc7-1a57-456a-af49-167e699a4e6e', ['377252']]]);
 
-const typesenseDoc = (id: string, texts: string[]): IndexDocument => ({
+const sourceDoc = (id: string, texts: string[]): IndexDocument => ({
   id,
   title: `Rapport ${id}`,
   fields: {
@@ -821,7 +821,7 @@ const typesenseDoc = (id: string, texts: string[]): IndexDocument => ({
     files: [{ url: `https://kudos.example/${id}.pdf`, sha256: `sha-${id}` }],
   },
   chunks: texts.map((text, position) => ({
-    id: 'reused-by-typesense',
+    id: 'reused-by-the-source',
     position,
     text,
     metadata: { metadata: '{}' },
@@ -855,7 +855,7 @@ describe('copying a dataset into the knowledge database', () => {
       builtWith: embedding,
       switched: { embedding },
       copy: {
-        source: copySource([typesenseDoc('377252', ['Forord']), typesenseDoc('364', ['Borte'])]),
+        source: copySource([sourceDoc('377252', ['Forord']), sourceDoc('364', ['Borte'])]),
         ids: 'kudos',
       },
     });
@@ -894,7 +894,7 @@ describe('copying a dataset into the knowledge database', () => {
       builtWith: embedding,
       switched: { embedding },
       embedded,
-      copy: { source: copySource([typesenseDoc('15d652024721', ['første', 'andre', 'tredje'])]) },
+      copy: { source: copySource([sourceDoc('15d652024721', ['første', 'andre', 'tredje'])]) },
     });
     await runOnce(s, copyRun(s));
     const { rows } = await admin.query<{ position: number; text: string; dims: number }>(
@@ -914,7 +914,7 @@ describe('copying a dataset into the knowledge database', () => {
       builtWith: embedding,
       switched: { embedding },
       opened,
-      copy: { source: copySource([typesenseDoc('377252', ['Forord'])]) },
+      copy: { source: copySource([sourceDoc('377252', ['Forord'])]) },
     });
 
     await runOnce(s, copyRun(s));
@@ -928,7 +928,7 @@ describe('copying a dataset into the knowledge database', () => {
     const s = await scenario({}, undefined, {
       builtWith: embedding,
       switched: { embedding },
-      copy: { source: copySource([typesenseDoc('377252', ['Forord'])]) },
+      copy: { source: copySource([sourceDoc('377252', ['Forord'])]) },
       embedWait: async () => {
         calls += 1;
         await platform.pool.query(
@@ -963,7 +963,7 @@ describe('copying a dataset into the knowledge database', () => {
       builtWith: embedding,
       switched: { embedding },
       logged,
-      copy: { source: copySource([typesenseDoc('377252', ['Forord'])]) },
+      copy: { source: copySource([sourceDoc('377252', ['Forord'])]) },
       embedWait: () => Promise.reject(new EmbeddingError('unavailable', 'down')),
     });
 
@@ -984,9 +984,9 @@ describe('copying a dataset into the knowledge database', () => {
       switched: { embedding },
       copy: {
         source: copySource([
-          typesenseDoc('377252', ['Forord']),
-          typesenseDoc('364', ['Kapittel']),
-          typesenseDoc('15d652024721', ['første', 'andre']),
+          sourceDoc('377252', ['Forord']),
+          sourceDoc('364', ['Kapittel']),
+          sourceDoc('15d652024721', ['første', 'andre']),
         ]),
       },
       embedWait: () => {

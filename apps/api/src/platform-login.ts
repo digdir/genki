@@ -80,7 +80,7 @@ const loginOriginOf = (env: NodeJS.ProcessEnv, hostname: string) => {
   return parsed.origin;
 };
 
-/** `PLATFORM_APP_ORIGINS`: `portal=<origin>,workspace=<origin>,console=<origin>`, which sign in through the platform login. */
+/** `PLATFORM_APP_ORIGINS`: `portal=<origin>,console=<origin>`, which sign in through the platform login. */
 export const platformAppOriginsFrom = (
   env: NodeJS.ProcessEnv,
   taken: readonly string[] = [],
@@ -91,7 +91,7 @@ export const platformAppOriginsFrom = (
     const at = entry.indexOf('=');
     const app = entry.slice(0, at).trim() as PlatformApp;
     if (at < 0 || !platformApps.includes(app) || found.some((f) => f.app === app))
-      throw new Error('PLATFORM_APP_ORIGINS must name portal, workspace and console at most once');
+      throw new Error('PLATFORM_APP_ORIGINS must name portal and console at most once');
     const origin = appOrigin(env, entry.slice(at + 1).trim(), 'PLATFORM_APP_ORIGINS');
     if ([...taken, ...found.map((f) => f.hostname)].includes(origin.hostname))
       throw new Error('PLATFORM_APP_ORIGINS must give each app a hostname of its own');

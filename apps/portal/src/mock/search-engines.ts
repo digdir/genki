@@ -11,7 +11,7 @@ import type { MockHandler } from '../mock';
 import { reasonProblem } from '../components/ReasonField';
 
 export type EngineScenario =
-  'builtin' | 'typesense' | 'no-facets' | 'switching' | 'worse' | 'failed' | 'no-test-set';
+  'builtin' | 'elasticsearch' | 'no-facets' | 'switching' | 'worse' | 'failed' | 'no-test-set';
 
 export interface SearchEnginesMockOptions {
   scenario?: EngineScenario;
@@ -78,12 +78,12 @@ export const exampleEndpoints: KnowledgeEndpointView[] = [
     datasetCount: 184,
   }),
   endpoint({
-    id: 'typesense-digdir',
-    engine: 'typesense',
-    title: 'Typesense',
-    tech: 'Typesense 28',
+    id: 'elastic-digdir',
+    engine: 'elasticsearch',
+    title: 'Elasticsearch',
+    tech: 'Elasticsearch 9',
     builtin: false,
-    runsAt: 'typesense.ki.digdir.example.no',
+    runsAt: 'elastic.ki.digdir.example.no',
     dataLocation: 'norway',
     embeddingModel: norbert,
     writeKeyRequired: true,
@@ -119,7 +119,7 @@ export const exampleEndpoints: KnowledgeEndpointView[] = [
 
 const latency: Record<string, number> = {
   kunnskapsserveren: 180,
-  'typesense-digdir': 90,
+  'elastic-digdir': 90,
   'azure-sverige': 210,
   'opensearch-sev': 120,
 };
@@ -268,9 +268,9 @@ export const searchEnginesMock = (options: SearchEnginesMockOptions = {}): MockH
     if (found) return found;
     const endpoint =
       dataset === '999888777/nettsider'
-        ? 'typesense-digdir'
-        : dataset === target && options.scenario === 'typesense'
-          ? 'typesense-digdir'
+        ? 'elastic-digdir'
+        : dataset === target && options.scenario === 'elasticsearch'
+          ? 'elastic-digdir'
           : dataset === target && options.scenario === 'no-facets'
             ? 'opensearch-sev'
             : 'kunnskapsserveren';

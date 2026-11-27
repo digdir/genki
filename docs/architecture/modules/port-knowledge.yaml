@@ -9,7 +9,7 @@ packages:
   - '@genai/port-knowledge'
 summary: Search and fetch over datasets, with grants checked and a timeout on every call.
 description:
-  'A router over a knowledge catalog maps datasets to endpoints and adapters, so Typesense
+  'A router over a knowledge catalog maps datasets to endpoints and adapters, so a search engine
   can be replaced (ADR 0001). A dataset can set links: kudos-legacy, which gives hits and documents
   with an old numeric Kudos id their Kudos page by UUID as their url, from the map of earlier ids,
   or a Kudos title search where the map has none and the hit has a title (publicSourceUrl in

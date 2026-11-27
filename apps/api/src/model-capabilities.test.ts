@@ -22,7 +22,7 @@ const completion = (content: string) => ({
 const knowledge = {
   endpoints: {
     search: {
-      engine: 'typesense',
+      engine: 'http-search',
       baseURL: 'http://127.0.0.1:9',
       auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
     },
@@ -32,10 +32,7 @@ const knowledge = {
       id: 'digdir/kudos',
       endpoint: 'search',
       residency: 'norway',
-      options: {
-        collections: { docs: 'docs', chunks: 'chunks' },
-        profiles: { content: { collection: 'chunks', queryBy: ['text'], textField: 'text' } },
-      },
+      options: {},
     },
   ],
 };

@@ -14,7 +14,7 @@ genki is under development and not in production. A locked test environment runs
 
 The goal is a production environment that agencies can use with real people and real data ([#38](https://github.com/digdir/genki/issues/38)).
 
-- Real Ansattporten login in the portal, workspace and console, rights from the real Altinn authorisation API, and genki's resource registered in Altinn ([#41](https://github.com/digdir/genki/issues/41), [#42](https://github.com/digdir/genki/issues/42), [#43](https://github.com/digdir/genki/issues/43)).
+- Real Ansattporten login in the portal and console, rights from the real Altinn authorisation API, and genki's resource registered in Altinn ([#41](https://github.com/digdir/genki/issues/41), [#42](https://github.com/digdir/genki/issues/42), [#43](https://github.com/digdir/genki/issues/43)).
 - A backend-for-frontend, so tokens stay out of the browser before real people log in ([ADR 0034](docs/adr/0034-tokens-in-the-browser.md)).
 - Operators recognised by an Entra group, with break-glass access audited ([ADR 0035](docs/adr/0035-operator-login.md)), and a model for how agencies delegate platform rights ([ADR 0036](docs/adr/0036-delegating-platform-rights.md)).
 - Monitoring, backups, scaling and a cost frame before production ([#44](https://github.com/digdir/genki/issues/44)), budget limits in money, and rate limits shared across API instances ([#24](https://github.com/digdir/genki/issues/24)).
@@ -23,7 +23,7 @@ The goal is a production environment that agencies can use with real people and 
 ### 2. Replace digdir-headless-rag for Kunnskapsassistenten
 
 - Answers at least as good as headless-rag's, shown on a test set that domain experts have reviewed ([#13](https://github.com/digdir/genki/issues/13), [#14](https://github.com/digdir/genki/issues/14), [#15](https://github.com/digdir/genki/issues/15), [#17](https://github.com/digdir/genki/issues/17), [#18](https://github.com/digdir/genki/issues/18)).
-- Kudos on genki's own knowledge database, with genki doing the ingestion ([ADR 0042](docs/adr/0042-the-knowledge-database.md), [#29](https://github.com/digdir/genki/issues/29), [#140](https://github.com/digdir/genki/issues/140) to [#151](https://github.com/digdir/genki/issues/151), [#249](https://github.com/digdir/genki/issues/249), [#250](https://github.com/digdir/genki/issues/250)). genki no longer reads the shared Typesense server; Typesense stays as an engine an organisation may register for its own server ([#690](https://github.com/digdir/genki/issues/690)).
+- Kudos on genki's own knowledge database, with genki doing the ingestion ([ADR 0042](docs/adr/0042-the-knowledge-database.md), [#29](https://github.com/digdir/genki/issues/29), [#140](https://github.com/digdir/genki/issues/140) to [#151](https://github.com/digdir/genki/issues/151), [#249](https://github.com/digdir/genki/issues/249), [#250](https://github.com/digdir/genki/issues/250)). genki no longer reads the shared search server it used before ([#690](https://github.com/digdir/genki/issues/690)).
 - Withdrawing a document on request, and keeping it out ([#178](https://github.com/digdir/genki/issues/178)).
 
 ### 3. Govern every model call the same way
@@ -41,11 +41,10 @@ The goal is a production environment that agencies can use with real people and 
 
 - The portal tested with service owners, its forms drawn from API schemas, and its structure built on the five nouns ([#2](https://github.com/digdir/genki/issues/2) to [#7](https://github.com/digdir/genki/issues/7)).
 - Browser end-to-end tests for the key flows ([#10](https://github.com/digdir/genki/issues/10)), and a WCAG 2.1 AA audit with its findings fixed ([#11](https://github.com/digdir/genki/issues/11)).
-- The workspace as the reference chat client ([#8](https://github.com/digdir/genki/issues/8)).
 
 ### Later, if there is room
 
-More kinds of services and step blocks ([#45](https://github.com/digdir/genki/issues/45)), more sources than Kudos ([#31](https://github.com/digdir/genki/issues/31)), and personal context and memory in the workspace ([#33](https://github.com/digdir/genki/issues/33)). These are `p2` or `p3` and wait behind the items above.
+More kinds of services and step blocks ([#45](https://github.com/digdir/genki/issues/45)), more sources than Kudos ([#31](https://github.com/digdir/genki/issues/31)), and personal context and memory ([#33](https://github.com/digdir/genki/issues/33)). These are `p2` or `p3` and wait behind the items above.
 
 ## What genki will not do
 

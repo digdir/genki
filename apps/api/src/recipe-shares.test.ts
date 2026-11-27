@@ -35,7 +35,7 @@ const shippedRecipe = () =>
 const knowledge = {
   endpoints: {
     sok: {
-      engine: 'typesense',
+      engine: 'http-search',
       baseURL: 'https://sok.example.no',
       auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
     },
@@ -46,10 +46,7 @@ const knowledge = {
       name: 'Veiledere',
       endpoint: 'sok',
       residency: 'norway',
-      options: {
-        collections: { docs: 'docs', chunks: 'chunks' },
-        profiles: { content: { collection: 'chunks', queryBy: ['text'], textField: 'text' } },
-      },
+      options: {},
     },
   ],
 };

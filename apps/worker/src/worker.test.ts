@@ -24,7 +24,7 @@ import {
 import { envSecrets, InMemoryEventLog, InMemoryStateStore, InMemoryTaskStore } from '@genai/kernel';
 import { InMemoryBlobStore, observable } from '@genai/port-blob';
 import { fakeHttp, type FakeReply, type FakeServer } from '@genai/port-model/testing';
-import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
+import { seededKnowledge, seedOnMemory } from '@genai/composition/memory-seed.test-utils';
 import { createWorker, ownTenantOnly, triggerLock } from './worker.js';
 
 const root = join(import.meta.dirname, '..', '..', '..');
@@ -153,17 +153,13 @@ const setup = async (
   blocked?: Parameters<typeof createWorker>[0]['blocked'],
   lockdown = false,
   modelQuota?: RuntimeInput['modelQuota'],
-  kudosOnTypesense = false,
+  kudosOnMemory = false,
 ) => {
   const upstream = await fakeHttp(reply);
   servers.push(upstream);
   const env = { FOUNDRY_OPENAI_BASE_URL: `${upstream.url}/v1` };
   const seed = config('knowledge.yaml');
-  const knowledge = resolveCatalog(
-    kudosOnTypesense ? seedOnTypesense(seed, upstream.url) : seed,
-    'datasets',
-    env,
-  );
+  const knowledge = resolveCatalog(kudosOnMemory ? seedOnMemory(seed) : seed, 'datasets', env);
   const blob = observable(new InMemoryBlobStore());
   const tasks = new InMemoryTaskStore();
   const runtime = await createRuntime({
@@ -173,10 +169,8 @@ const setup = async (
       knowledge: knowledge.catalog,
       rerank: resolveCatalog(config('rerank.yaml'), 'rerankers', env).catalog,
     },
-    secrets: envSecrets({
-      FOUNDRY_OPENAI_KEY: 'm',
-      ...(kudosOnTypesense ? { TYPESENSE_KEY: 't' } : {}),
-    }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm' }),
+    ...(kudosOnMemory ? { knowledgeEngines: [(await seededKnowledge()).engine] } : {}),
     vault: new TenantSecretVault(),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: ownTenantOnly(),
@@ -211,7 +205,7 @@ const drop = (blob: ReturnType<typeof observable>, path: string, text: string) =
   blob.put({ tenant, path }, new TextEncoder().encode(text), 'text/plain');
 
 describe('worker', () => {
-  it('the worker starts and seeds its catalog without Typesense or ColBERT settings', async () => {
+  it('the worker starts and seeds its catalog with no search engine settings', async () => {
     const { runtime, knowledge } = await setup();
 
     expect(knowledge.skipped).toEqual([]);

@@ -15,7 +15,7 @@ KUDOS text is the PDF's own text layer. On ordinary pages it matches the indexed
 | Side           | Text                                                                                                                                                                   |
 | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | KUDOS          | `/documents/{uuid}/contents`, split on its page breaks                                                                                                                 |
-| Indexed Marker | The text genki's Typesense index holds (`KUDOS_preprod_v4_*`), rebuilt into pages from its chunks: the Marker output of the old pipeline, not the Kudos pilot's Marker |
+| Indexed Marker | The text genki's old search index held (`KUDOS_preprod_v4_*`), rebuilt into pages from its chunks: the Marker output of the old pipeline, not the Kudos pilot's Marker |
 
 ## Reference
 
@@ -25,7 +25,7 @@ None: the two texts are compared with each other. The page tests in `opb/` are t
 
 - **Pairing.** A document pairs when its one file has the same sha256 as a KUDOS document's primary file, which also proves the file version is unchanged. Documents with several files are skipped.
 - **Sample.** 18–19 documents per type, half from files over 150 KB per page to catch scans. Each carries a weight (stratum size / sampled) for corpus estimates.
-- **Our side.** Rebuilt from the Typesense chunks in `chunk_index` order and split on Marker's page markers (`{n}` and 48 dashes). Heading lines the chunker stripped go back from each chunk's metadata, onto the page their Marker anchor names. Tables of contents and chunks under 333 characters stay lost, so text KUDOS has and we lack is a hint, not a flag.
+- **Our side.** Rebuilt from the old index's chunks in `chunk_index` order and split on Marker's page markers (`{n}` and 48 dashes). Heading lines the chunker stripped go back from each chunk's metadata, onto the page their Marker anchor names. Tables of contents and chunks under 333 characters stay lost, so text KUDOS has and we lack is a hint, not a flag.
 - **Checks.** Each check flags a page twice: once at the plan's starting threshold, in either direction, and once tuned, counting only pages where KUDOS is the worse side. The tuned rule strips repeated header and footer lines first and measures similarity as overlap of 5-word sequences, since edit distance punishes a moved block as heavily as a missing one. The docstring of `checks.py` lists every threshold; all are starting points.
 - **Corpus estimates** are weighted shares of documents with a 95% interval from resampling documents within each stratum, 10,000 times (`benchlib.stats.compare`, seeded per estimate). Recomputed this way on 26 October 2026; the shares are unchanged, and interval ends moved by at most 0.6 points.
 
@@ -43,7 +43,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Python 3.
 .venv/bin/python -m unittest -v   # tests for the text heuristics
 ```
 
-Our side, `.data/ts-documents.jsonl` and `.data/ours/`, came from the shared Typesense server, which genki no longer configures (#690): a run needs a copy of them already on disk, and only these results hold what they were.
+Our side, `.data/ts-documents.jsonl` and `.data/ours/`, came from the shared search server genki used before, which it no longer configures (#690): a run needs a copy of them already on disk, and only these results hold what they were.
 
 To recheck the committed sample instead of drawing a new one, skip `pair.py` and run `fetch_lists.py dictionaries` instead of the full `fetch_lists.py`.
 

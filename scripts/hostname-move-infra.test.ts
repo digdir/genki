@@ -52,7 +52,7 @@ const testValues = (env: Record<string, string> = {}) => {
   return (name: string) => values[name]?.value;
 };
 
-const appKeys = ['api', 'portal', 'workspace', 'console', 'assistant'] as const;
+const appKeys = ['api', 'portal', 'console', 'assistant'] as const;
 
 /** Every name test binds, as main.bicep derives them from the param file. */
 const boundNames = (value: (name: string) => unknown) => {
@@ -100,7 +100,6 @@ describe.skipIf(!hasAz && !process.env.CI)('moving test to genki.digdir.cloud', 
     expect(current).toEqual([
       'api.genki.digdir.cloud',
       'portal.genki.digdir.cloud',
-      'workspace.genki.digdir.cloud',
       'console.genki.digdir.cloud',
       'assistant.genki.digdir.cloud',
       'kunnskap.apps.genki.digdir.cloud',

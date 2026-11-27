@@ -21,7 +21,8 @@ import { createPlatform, platformModules } from './composition.js';
 import { appendVersion, InMemoryConfigEntryStore } from './config-store.js';
 import { serviceLifecycleKind } from './service-lifecycle.js';
 import type { ModelPrice } from './draft-runner.js';
-import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
+import { seededKnowledge, seedOnMemory } from '@genai/composition/memory-seed.test-utils';
+import type { IndexDocument } from '@genai/port-knowledge';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -122,69 +123,23 @@ const kudosDocs = [
   },
 ];
 
-const docsCollection = 'KUDOS_preprod_v4_documents_ab897fbdedfa';
-
-const kudosChunks = kudosDocs.flatMap((d) =>
-  [0, 1].map((position) => ({
-    chunk_id: `${d.doc_num}-${position}`,
-    doc_num: d.doc_num,
-    chunk_index: position,
-    content_markdown: `Fra ${d.title}: tekst ${position + 1} om digitalisering.`,
-    search_phrase: `digitalisering i ${d.title}`,
-    metadata: d.title,
-    [docsCollection]: { title: d.title, url: `https://kudos.example.no/${d.doc_num}` },
-  })),
-);
-
-const clauseHolds = (record: Record<string, unknown>, clause: string): boolean => {
-  const joined = /^\$\w+\((.*)\)$/.exec(clause);
-  if (joined) return (joined[1] ?? '').split(' && ').every((c) => clauseHolds(record, c));
-  const m = /^(\w+):(>=|<=|=)?(.*)$/.exec(clause);
-  if (!m) return true;
-  const value = record[m[1] ?? ''];
-  const raw = (m[3] ?? '').replace(/`/g, '');
-  if (m[2] === '>=') return Number(value) >= Number(raw);
-  if (m[2] === '<=') return Number(value) <= Number(raw);
-  const list = raw.startsWith('[') ? raw.slice(1, -1).split(',') : [raw];
-  return list.includes(String(value));
-};
-
-const matchesFilter = (record: Record<string, unknown>, filter: unknown) => {
-  if (typeof filter !== 'string') return true;
-  const joined = /^\$\w+\((.*)\)$/.exec(filter);
-  const clauses = (joined ? (joined[1] ?? '') : filter).split(' && ');
-  return clauses.every((c) => clauseHolds(record, c));
-};
-
-const typesenseSearch = (s: Record<string, unknown>) => {
-  const onDocs = s.collection === docsCollection;
-  const records: Record<string, unknown>[] = onDocs
-    ? kudosDocs
-    : kudosChunks.map((c) => ({ ...kudosDocs.find((d) => d.doc_num === c.doc_num), ...c }));
-  const found = records.filter((r) => matchesFilter(r, s.filter_by));
-  if (typeof s.facet_by === 'string')
-    return {
-      found: found.length,
-      hits: [],
-      facet_counts: s.facet_by.split(',').map((field) => {
-        const counts = new Map<string, number>();
-        for (const r of found)
-          counts.set(String(r[field] ?? ''), (counts.get(String(r[field] ?? '')) ?? 0) + 1);
-        return {
-          field_name: field,
-          counts: [...counts].map(([value, count]) => ({ value, count })),
-        };
-      }),
-    };
-  const perPage = Number(s.per_page ?? 10);
-  const page = Number(s.page ?? 1);
-  return {
-    found: found.length,
-    hits: found
-      .slice((page - 1) * perPage, page * perPage)
-      .map((document) => ({ document, text_match_info: { score: 1 } })),
-  };
-};
+const kudosCorpus = (): IndexDocument[] =>
+  kudosDocs.map(({ doc_num, title, ...fields }) => ({
+    id: doc_num,
+    title,
+    ...(doc_num === '330296' ? {} : { url: `https://kudos.example.no/${doc_num}` }),
+    fields,
+    chunks: [0, 1].map((position) => ({
+      id: `${doc_num}-${position}`,
+      position,
+      text: `Fra ${title}: tekst ${position + 1} om digitalisering.`,
+    })),
+    phrases: [0, 1].map((position) => ({
+      id: `${doc_num}-${position}-p`,
+      chunkId: `${doc_num}-${position}`,
+      text: `digitalisering i ${title}`,
+    })),
+  }));
 
 const reply = (content: string, stream: boolean, completion = 20, prompt = 100) =>
   stream
@@ -262,7 +217,6 @@ const boot = async (options: BootOptions = {}) => {
     prompt: (_call: number) => 100,
     answer: (_user: string): string | undefined => undefined,
     modelCalls: 0,
-    searches: [] as Record<string, unknown>[],
     users: [] as string[],
     bodies: [] as Record<string, unknown>[],
   };
@@ -290,24 +244,18 @@ const boot = async (options: BootOptions = {}) => {
       state.prompt(state.modelCalls - 1),
     );
   });
-  const search = await fakeHttp((body: Record<string, unknown>) => {
-    const searches = (body.searches ?? []) as Record<string, unknown>[];
-    state.searches.push(...searches);
-    return { status: 200, json: { results: searches.map(typesenseSearch) } };
-  });
-  servers.push(model, search);
-  const env = {
-    FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
-    TYPESENSE_URL: search.url,
-  };
+  const search = await seededKnowledge({ 'digdir/kudos': kudosCorpus() });
+  servers.push(model);
+  const env = { FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1` };
   const background: Promise<void>[] = [];
   const platform = await createPlatform({
     catalogs: {
       models: resolveCatalog(yaml('models.yaml'), 'models', env).catalog as ModelCatalog,
-      knowledge: resolveCatalog(seedOnTypesense(yaml('knowledge.yaml')), 'datasets', env).catalog,
+      knowledge: resolveCatalog(seedOnMemory(yaml('knowledge.yaml')), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm' }),
+    knowledgeEngines: [search.engine],
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     blobStore: new InMemoryBlobStore(),
     policy: { decide: async () => ({ allow: true }) },
@@ -475,16 +423,6 @@ describe('batch runs over a document set', () => {
       'Årsrapport 2024 Digdir',
     );
     expect(env.state.modelCalls).toBe(0);
-  });
-
-  it('asks the search engine for up to 1000 values per filter so every Kudos organisation can be chosen', async () => {
-    const env = await boot();
-
-    await env.send('GET', `${base}/sources`);
-
-    const faceted = env.state.searches.filter((s) => typeof s.facet_by === 'string');
-    expect(faceted.length).toBeGreaterThan(0);
-    expect(faceted.every((s) => s.max_facet_values === 1000)).toBe(true);
   });
 
   it('measures three documents spread by size unless the sample is skipped, and derives the range from them', async () => {
@@ -851,7 +789,7 @@ describe('batch runs over a document set', () => {
       'Nr;Dokument-ID;Tittel;Lenke;Dokumentsamling;Status;Svar;Avkortet;Feil;Kilder;Tjeneste;Tjenesteversjon;Modell;Tokens inn;Tokens ut;Kostnad (kr);Oppgave',
     );
     expect(lines[2]).toContain(
-      'd2;Årsrapport 2024 Digdir;;digdir/kudos;Fullført;Sammendrag av Årsrapport 2024 Digdir;Nei;',
+      'd2;Årsrapport 2024 Digdir;https://kudos.example.no/d2;digdir/kudos;Fullført;Sammendrag av Årsrapport 2024 Digdir;Nei;',
     );
     expect((json.body.items as Record<string, unknown>[])[1]).toMatchObject({
       document: { id: 'd2', title: 'Årsrapport 2024 Digdir', dataset: 'digdir/kudos' },
@@ -1067,13 +1005,7 @@ const runService = async (env: Env, id: string) => {
   return (await env.send('GET', `${path}/${String(started.body.id)}`)).body;
 };
 
-const chunkSearches = (env: Env) =>
-  env.state.searches.filter(
-    (s) =>
-      s.collection !== docsCollection &&
-      typeof s.facet_by !== 'string' &&
-      !String(s.filter_by).startsWith('chunk_id:='),
-  );
+const chunkSearches = (env: Env) => env.search.searches();
 
 describe('documents in a batch run are the only knowledge each item sees', () => {
   it('scopes every search of a rag service to the item document, and cites only its chunks', async () => {
@@ -1081,7 +1013,7 @@ describe('documents in a batch run are the only knowledge each item sees', () =>
     env.state.broken = false;
     const published = await env.platform.definitions.publish(ragService, 'kari', 'første');
     expect(published.ok).toBe(true);
-    env.state.searches.length = 0;
+    env.search.reads.length = 0;
 
     const run = await runService(env, 'kilder');
 
@@ -1097,8 +1029,7 @@ describe('documents in a batch run are the only knowledge each item sees', () =>
     }
     const searched = chunkSearches(env);
     expect(searched.length).toBeGreaterThan(0);
-    for (const s of searched)
-      expect(String(s.filter_by)).toMatch(/doc_num:=\[`d[124]`\]|doc_num:=`d[124]`/);
+    for (const s of searched) expect(JSON.stringify(s.filters?.doc_num)).toMatch(/"d[124]"/);
   });
 
   it('gives a single-call service the text of its own document only', async () => {
@@ -1121,18 +1052,15 @@ describe('documents in a batch run are the only knowledge each item sees', () =>
     env.state.broken = false;
     expect((await env.platform.definitions.publish(readingFlow, 'kari', 'første')).ok).toBe(true);
     expect((await env.platform.definitions.publish(flowService, 'kari', 'første')).ok).toBe(true);
-    env.state.searches.length = 0;
+    env.search.reads.length = 0;
 
     const run = await runService(env, 'flyt');
 
     expect(run).toMatchObject({ status: 'succeeded', counts: { succeeded: 3 } });
-    const ranges = chunkSearches(env).filter((s) => String(s.sort_by).startsWith('chunk_index'));
-    expect(ranges.map((s) => /doc_num:=`(d\d)`/.exec(String(s.filter_by))?.[1]).sort()).toEqual([
-      'd1',
-      'd2',
-      'd4',
-    ]);
-    for (const s of chunkSearches(env)) expect(String(s.filter_by)).toMatch(/d[124]/);
+    const ranges = env.search.reads.filter((r) => r.op === 'range');
+    expect(ranges.map((r) => r.document).sort()).toEqual(['d1', 'd2', 'd4']);
+    for (const s of chunkSearches(env))
+      expect(JSON.stringify(s.filters?.doc_num)).toMatch(/d[124]/);
   });
 });
 

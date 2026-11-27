@@ -74,7 +74,7 @@ describe.skipIf(process.platform === 'win32')('the app headers', () => {
     expect(/media-src ([^;]*);/.exec(headers)?.[1]).toBe("'self' blob:");
   });
 
-  it.each(['portal', 'workspace', 'console'])(
+  it.each(['portal', 'console'])(
     'the %s sends /auth/ and /api/ through the BFF with its hostname and the proxy key',
     (app) => {
       const key = 'p'.repeat(40);

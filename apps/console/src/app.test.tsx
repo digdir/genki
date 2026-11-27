@@ -93,15 +93,14 @@ describe('operator shell', () => {
     expect(screen.queryByRole('navigation')).toBeNull();
   });
 
-  it('links to the system atlas screen inside the console from the support menu', async () => {
+  it('links to the system atlas screen inside the console from the user menu', async () => {
     await signedIn('#/tenants');
 
-    const menu = screen.getByRole('navigation', { name: 'Konsollmeny' });
-    const atlas = within(menu).getByRole('link', { name: 'Systematlas' });
+    fireEvent.click(screen.getByRole('button', { name: 'Brukermeny for Lise Dahl' }));
+    const atlas = screen.getByRole('menuitem', { name: 'Systematlas' });
 
     expect(atlas.getAttribute('href')).toBe('#/atlas');
     expect(atlas.getAttribute('target')).toBeNull();
-    expect(within(menu).getByText('Atlaset finnes bare på engelsk.')).toBeTruthy();
   });
 
   it('shows the atlas on the whole view without the console shell on the atlas route', async () => {
@@ -115,34 +114,22 @@ describe('operator shell', () => {
     expect(screen.queryByText('Driftskonsoll')).toBeNull();
   });
 
-  it('shows the dark header, audit notice, grouped menu with badges and the current page', async () => {
+  it('shows the environment, the grouped menu with the current page and a skip link', async () => {
     await signedIn('#/shared-services');
 
-    expect(screen.getByText('Driftskonsoll')).toBeTruthy();
+    expect(screen.getAllByText('Driftskonsoll').length).toBeGreaterThan(0);
     expect(screen.getByText('Lokalt')).toBeTruthy();
-    expect(screen.getByRole('note').textContent).toMatch(/Alt du gjør her, logges/);
     const menu = screen.getByRole('navigation', { name: 'Konsollmeny' });
     expect(
       within(menu)
         .getAllByRole('list')
         .map((l) => l.getAttribute('aria-labelledby')),
-    ).toEqual(['gruppe-customers', 'gruppe-platform', 'gruppe-support']);
-    for (const label of [
-      'Katalog',
-      'Søkemotorer',
-      'Innstillinger',
-      'Kvalitet',
-      'Kvalitet i alle tjenester',
-      'Sporing og evaluering',
-    ])
+    ).toEqual(['gruppe-work', 'gruppe-platform']);
+    for (const label of ['Katalog', 'Logg', 'Kvalitet', 'Innstillinger'])
       expect(within(menu).getByRole('link', { name: label })).toBeTruthy();
-    expect(within(menu).queryByRole('link', { name: 'Dommere' })).toBeNull();
     expect(
       within(menu).getByRole('link', { name: 'Delte tjenester' }).getAttribute('aria-current'),
     ).toBe('page');
-    expect(await within(menu).findByRole('link', { name: /3 feil/ })).toBeTruthy();
-    expect(await within(menu).findByRole('link', { name: /venter på beslutning/ })).toBeTruthy();
-    expect(within(menu).getByRole('link', { name: 'Oppstart' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Hopp til hovedinnhold' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Meny' }).getAttribute('aria-expanded')).toBe(
       'false',
@@ -384,7 +371,8 @@ describe('language choice for operators', () => {
       </LocaleProvider>,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Språk / Language' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Brukermeny for Lise Dahl' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Språk / Language' }));
     const choice = await screen.findByRole('group', { name: 'Språk / Language', hidden: true });
     fireEvent.click(within(choice).getByRole('radio', { name: 'English', hidden: true }));
 

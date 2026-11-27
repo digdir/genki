@@ -22,7 +22,6 @@ export const operations = {
   switchChooseEngine: 'choose a search engine',
   switchUnknownEngine: 'unknown search engine {to}',
   switchSameEngine: 'The dataset already uses this search engine.',
-  switchWriteKeyRequired: 'Needs its own write key',
   switchCannotWrite: 'The platform cannot write to this search engine.',
   switchSharedStorage: 'The search engines share storage. Choose another search engine.',
   switchMissingModel: 'The embedding model {model} is not set up on the platform.',

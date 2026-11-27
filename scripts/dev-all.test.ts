@@ -18,7 +18,7 @@ const apiEnv = (env: Record<string, string>) =>
 
 describe('dev:all', () => {
   it('runs each app on the port its vite config expects, through the BFF of the API', () => {
-    for (const app of ['portal', 'console', 'workspace']) {
+    for (const app of ['portal', 'console']) {
       const vite = readFileSync(join(repoRoot, `apps/${app}/vite.config.ts`), 'utf8');
       expect(vite).toContain(`port: ${portOf(app)}`);
       expect(vite).toContain('`http://localhost:${process.env.GENAI_API_PORT ?? 8080}`');
@@ -35,17 +35,17 @@ describe('dev:all', () => {
       PLATFORM_LOGIN_HOSTNAME: 'localhost',
       PLATFORM_LOGIN_ORIGIN: 'http://localhost:5173',
       PLATFORM_APP_ORIGINS:
-        'portal=http://portal.localhost:5173,workspace=http://workspace.localhost:5176,console=http://console.localhost:5174',
+        'portal=http://portal.localhost:5173,console=http://console.localhost:5174',
     });
     expect(api.GENAI_PROXY_KEY).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(api.PLATFORM_LOGIN_CLIENT_SECRET).toBeTruthy();
-    for (const app of ['portal', 'console', 'workspace'])
+    for (const app of ['portal', 'console'])
       expect(processes.find((p) => p.name === app)?.env?.GENAI_PROXY_KEY).toBe(api.GENAI_PROXY_KEY);
   });
 
   it('gives the apps no proxy key outside dev mode, where the API has none to check it against', () => {
     const processes = devProcesses({ GENAI_DEV_MODE: 'false' });
-    for (const name of ['api', 'portal', 'console', 'workspace'])
+    for (const name of ['api', 'portal', 'console'])
       expect(processes.find((p) => p.name === name)?.env).not.toHaveProperty('GENAI_PROXY_KEY');
   });
 
@@ -129,18 +129,11 @@ describe('dev:all', () => {
     );
   });
 
-  it('points the workspace portal link at the dev:all portal', () => {
-    expect(devProcesses({}).find((p) => p.name === 'workspace')?.env).toMatchObject({
-      VITE_PORTAL_URL: `http://portal.localhost:${portOf('portal')}`,
-    });
-  });
-
   it('moves every app to the ports given in GENAI_*_PORT and points the apps at that API', () => {
     const processes = devProcesses({
       GENAI_API_PORT: '8100',
       GENAI_PORTAL_PORT: '8101',
       GENAI_CONSOLE_PORT: '8102',
-      GENAI_WORKSPACE_PORT: '8103',
     });
     const byName = Object.fromEntries(processes.map((p) => [p.name, p]));
 
@@ -149,7 +142,6 @@ describe('dev:all', () => {
       ['worker', 8081],
       ['portal', 8101],
       ['console', 8102],
-      ['workspace', 8103],
     ]);
     expect(byName.api?.env).toMatchObject({ GENAI_DEV_MODE: 'true', PORT: '8100' });
     expect(byName.console?.env).toMatchObject({
@@ -159,10 +151,7 @@ describe('dev:all', () => {
     expect(byName.api?.env).toMatchObject({
       PLATFORM_LOGIN_ORIGIN: 'http://localhost:8101',
       PLATFORM_APP_ORIGINS:
-        'portal=http://portal.localhost:8101,workspace=http://workspace.localhost:8103,console=http://console.localhost:8102',
-    });
-    expect(byName.workspace?.env).toMatchObject({
-      VITE_PORTAL_URL: 'http://portal.localhost:8101',
+        'portal=http://portal.localhost:8101,console=http://console.localhost:8102',
     });
     expect(byName.portal?.args).toEqual(expect.arrayContaining(['--port', '8101']));
   });

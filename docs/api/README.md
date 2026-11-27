@@ -1,6 +1,6 @@
 # Platform HTTP API
 
-Everything the portal, the console and the workspace do goes through this API. Your own systems can do the same.
+Everything the portal, the console and the hosted assistant do goes through this API. Your own systems can do the same.
 
 ## Where the reference is
 

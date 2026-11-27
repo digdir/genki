@@ -37,7 +37,7 @@ const definition = {
 const lookups = {
   flowSteps: async () => [],
   resolveDataset: (id: string) => id,
-  datasetEndpoint: () => 'kudos-typesense',
+  datasetEndpoint: () => 'kudos-sok',
   sharedTools: async () => new Map<string, string>(),
 };
 
@@ -94,7 +94,7 @@ describe('building block settings outside the API', () => {
       'model:foundry-openai/gpt-4o-mini',
       'dataset:digdir/kudos',
       `dataset:${tenant}/digdir/kudos`,
-      'search_engine:kudos-typesense',
+      'search_engine:kudos-sok',
     ]);
   });
 

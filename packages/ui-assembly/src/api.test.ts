@@ -607,7 +607,7 @@ describe('the run behind an answer', () => {
   });
 });
 
-// A host that calls genki with the person's token, as the workspace does.
+// A host that calls genki with the person's token.
 describe('the host’s credentials', () => {
   // genki, refusing with 401 where `refused` says; returns each request's address and headers.
   const genki = (refused: (url: string) => boolean = () => false, threadStatus = 200) => {

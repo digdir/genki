@@ -102,7 +102,7 @@ describe('user preferences', () => {
     expect(await unknown.json()).toMatchObject({ title: 'Ugyldig språk' });
   });
 
-  it('tells the workspace which platform rights the person has in the tenant', async () => {
+  it('tells the apps which platform rights the person has in the tenant', async () => {
     const { app } = boot();
     const rights = async (who: string) =>
       (

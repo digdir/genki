@@ -2380,8 +2380,8 @@ export const endpoints: Endpoint[] = [
     params: [tenant, ['id', 'path', 'text', 'apirefData.pipelineParams.p.dataset']],
     response: {
       dataset: '999888777/kudos',
-      endpoint: 'ka-typesense',
-      engine: 'typesense',
+      endpoint: 'ka-sok',
+      engine: 'http-search',
       retentionDays: 14,
       canSwitch: true,
     },
@@ -2401,7 +2401,7 @@ export const endpoints: Endpoint[] = [
       ['method', 'query', 'text', 'apirefData.sm-estimate.p.method'],
     ],
     response: {
-      from: 'ka-typesense',
+      from: 'ka-sok',
       to: 'kunnskapsserveren',
       copy: { available: true, costNok: { min: 4, max: 6 } },
       reingest: { available: true, costNok: { min: 40, max: 60 } },
@@ -2418,7 +2418,7 @@ export const endpoints: Endpoint[] = [
     right: 'ds',
     params: [tenant, ['id', 'path', 'text', 'apirefData.pipelineParams.p.dataset']],
     body: { to: 'kunnskapsserveren', method: 'copy', reason: 'Flytter til kunnskapsserveren' },
-    response: { sid: '1', state: 'running', from: 'ka-typesense', to: 'kunnskapsserveren' },
+    response: { sid: '1', state: 'running', from: 'ka-sok', to: 'kunnskapsserveren' },
     status: 202,
   },
   {
@@ -2493,7 +2493,7 @@ export const endpoints: Endpoint[] = [
     right: 'digdir',
     params: [],
     response: {
-      data: [{ id: 'ka-typesense', engine: 'typesense', status: 'ok', datasetCount: 4 }],
+      data: [{ id: 'ka-sok', engine: 'http-search', status: 'ok', datasetCount: 4 }],
     },
   },
   {
@@ -2506,11 +2506,11 @@ export const endpoints: Endpoint[] = [
     right: 'digdir',
     params: [],
     body: {
-      engine: 'typesense',
+      engine: 'http-search',
       baseURL: 'https://sok.testetaten.example.no',
       auth: { kind: 'api-key', secret: 'secret://env/ts-key' },
     },
-    response: { ok: true, engine: 'typesense', message: 'Svarte', ms: 84 },
+    response: { ok: true, engine: 'http-search', message: 'Svarte', ms: 84 },
   },
   {
     id: 'sm-op-secrets',

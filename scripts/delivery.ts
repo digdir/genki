@@ -9,7 +9,6 @@ export const areas = [
   'security',
   'portal',
   'console',
-  'workspace',
   'api',
   'worker',
   'ci',
@@ -22,7 +21,6 @@ export const areaNames: Record<Area, string> = {
   security: 'Sikkerhet og rettigheter',
   portal: 'Portal',
   console: 'Konsoll',
-  workspace: 'Arbeidsflate',
   api: 'API og plattform',
   worker: 'Worker',
   ci: 'CI og verktøy',
@@ -37,7 +35,6 @@ export const areaOfPath = (path: string): Area => {
   if (security.test(path)) return 'security';
   if (path.startsWith('apps/portal/')) return 'portal';
   if (path.startsWith('apps/console/')) return 'console';
-  if (path.startsWith('apps/workspace/')) return 'workspace';
   if (path.startsWith('apps/worker/')) return 'worker';
   if (path.startsWith('apps/') || path.startsWith('packages/')) return 'api';
   if (path.startsWith('docs/') || path.endsWith('.md')) return 'docs';

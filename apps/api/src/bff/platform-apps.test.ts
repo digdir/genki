@@ -27,7 +27,6 @@ const PLATFORM_SECRET = 'platform-secret-value';
 const LOGIN_HOST = 'login.apps.genki-test.digdir.cloud';
 const HOSTS: Record<PlatformApp, string> = {
   portal: 'portal.genki-test.digdir.cloud',
-  workspace: 'workspace.genki-test.digdir.cloud',
   console: 'console.genki-test.digdir.cloud',
 };
 const start = Date.parse('2026-11-25T10:00:00Z');
@@ -277,32 +276,30 @@ const setup = async () => {
 
 type Setup = Awaited<ReturnType<typeof setup>>;
 
-describe('the portal, workspace and console sign in through the platform login', () => {
+describe('the portal and console sign in through the platform login', () => {
   let s: Setup;
   beforeEach(async () => {
     s = await setup();
   });
 
-  it.each(['portal', 'workspace'] as const)(
-    'the %s logs in through the platform login client and holds only a session cookie',
-    async (app) => {
-      const { atLoginHost, started, target, exchanged, id } = await s.signIn(HOSTS[app]);
-      expect(atLoginHost.origin).toBe(`https://${LOGIN_HOST}`);
-      expect(s.atLocation(started).searchParams.get('client_id')).toBe(PLATFORM_CLIENT);
-      expect(target.origin).toBe(`https://${HOSTS[app]}`);
-      expect(exchanged.headers.get('location')).toBe('/services');
-      expect(exchanged.headers.getSetCookie().join()).toMatch(
-        /__Host-genki_session=[A-Za-z0-9_-]{43}; Path=\/; Secure; HttpOnly; SameSite=Lax/,
-      );
-      const me = await s.via('/bff/auth/me', HOSTS[app], `${sessionCookie}=${id}`);
-      const body = (await me.json()) as Record<string, unknown>;
-      expect(body).toMatchObject({
-        name: 'Kari Nordmann',
-        organisations: [{ orgNumber: PLATFORM_TENANT }],
-      });
-      expect(JSON.stringify(body)).not.toMatch(/eyJ/);
-    },
-  );
+  it('the portal logs in through the platform login client and holds only a session cookie', async () => {
+    const app = 'portal';
+    const { atLoginHost, started, target, exchanged, id } = await s.signIn(HOSTS[app]);
+    expect(atLoginHost.origin).toBe(`https://${LOGIN_HOST}`);
+    expect(s.atLocation(started).searchParams.get('client_id')).toBe(PLATFORM_CLIENT);
+    expect(target.origin).toBe(`https://${HOSTS[app]}`);
+    expect(exchanged.headers.get('location')).toBe('/services');
+    expect(exchanged.headers.getSetCookie().join()).toMatch(
+      /__Host-genki_session=[A-Za-z0-9_-]{43}; Path=\/; Secure; HttpOnly; SameSite=Lax/,
+    );
+    const me = await s.via('/bff/auth/me', HOSTS[app], `${sessionCookie}=${id}`);
+    const body = (await me.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      name: 'Kari Nordmann',
+      organisations: [{ orgNumber: PLATFORM_TENANT }],
+    });
+    expect(JSON.stringify(body)).not.toMatch(/eyJ/);
+  });
 
   it('the console logs in an operator through the platform login client', async () => {
     const { started, id } = await s.signIn(HOSTS.console, OPERATOR_PID);
@@ -343,17 +340,15 @@ describe('the portal, workspace and console sign in through the platform login',
     await expect(s.verifier.verify(sent?.bearer ?? '')).rejects.toThrow(/hostname it was made for/);
   });
 
-  it('a portal session is refused on the console and the workspace', async () => {
+  it('a portal session is refused on the console', async () => {
     const { id } = await s.signIn(HOSTS.portal);
-    for (const host of [HOSTS.console, HOSTS.workspace]) {
-      const me = await s.via('/bff/auth/me', host, `${sessionCookie}=${id}`);
-      expect(me.status).toBe(401);
-    }
+    const me = await s.via('/bff/auth/me', HOSTS.console, `${sessionCookie}=${id}`);
+    expect(me.status).toBe(401);
   });
 
   it.each([
     ['the portal', HOSTS.portal, HOSTS.console],
-    ['the workspace', HOSTS.workspace, HOSTS.portal],
+    ['the console', HOSTS.console, HOSTS.portal],
   ])(
     'a handoff code made for %s cannot be replayed on another app’s hostname',
     async (_, made, other) => {
@@ -474,8 +469,8 @@ describe('the portal, workspace and console sign in through the platform login',
   });
 
   it('logout ends the session and the Ansattporten session through the login host', async () => {
-    const { id } = await s.signIn(HOSTS.workspace);
-    const out = await s.via('/bff/auth/logout', HOSTS.workspace, `${sessionCookie}=${id}`, {
+    const { id } = await s.signIn(HOSTS.portal);
+    const out = await s.via('/bff/auth/logout', HOSTS.portal, `${sessionCookie}=${id}`, {
       headers: { 'sec-fetch-dest': 'document', 'sec-fetch-site': 'same-origin' },
     });
     const end = s.atLocation(out);
@@ -483,13 +478,13 @@ describe('the portal, workspace and console sign in through the platform login',
     expect(end.searchParams.get('post_logout_redirect_uri')).toBe(
       `https://${LOGIN_HOST}/auth/logged-out`,
     );
-    expect(end.searchParams.get('state')).toBe(HOSTS.workspace);
+    expect(end.searchParams.get('state')).toBe(HOSTS.portal);
     expect(end.searchParams.get('id_token_hint')).toBeTruthy();
     expect(out.headers.getSetCookie().join()).toContain(`${sessionCookie}=;`);
-    const me = await s.via('/bff/auth/me', HOSTS.workspace, `${sessionCookie}=${id}`);
+    const me = await s.via('/bff/auth/me', HOSTS.portal, `${sessionCookie}=${id}`);
     expect(me.status).toBe(401);
-    const back = await s.via(`/bff/auth/logged-out?state=${HOSTS.workspace}`, LOGIN_HOST);
-    expect(back.headers.get('location')).toBe(`https://${HOSTS.workspace}/`);
+    const back = await s.via(`/bff/auth/logged-out?state=${HOSTS.portal}`, LOGIN_HOST);
+    expect(back.headers.get('location')).toBe(`https://${HOSTS.portal}/`);
   });
 });
 
@@ -541,7 +536,7 @@ describe('back-channel logout on the login host', () => {
 
   it('ends a login still on its way to the app, so its handoff gives no session', async () => {
     const steps = await s.toHandoff(HOSTS.portal, OPERATOR_PID);
-    const { sub } = await s.claimsOf((await s.signIn(HOSTS.workspace, OPERATOR_PID)).id);
+    const { sub } = await s.claimsOf((await s.signIn(HOSTS.console, OPERATOR_PID)).id);
     await s.backchannel(await s.logoutToken({ sub }));
     const res = await s.exchange(HOSTS.portal, steps.code, steps.handoff);
     expect(s.cookieValue(res, sessionCookie)).toBeUndefined();

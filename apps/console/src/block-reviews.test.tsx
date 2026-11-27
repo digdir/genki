@@ -151,22 +151,24 @@ describe('designelementer til gjennomgang', () => {
     expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1);
   });
 
-  it('shows the menu item and the page only with the blockStudio flag', async () => {
+  it('shows the Til gjennomgang tab under Katalog and the page only with the blockStudio flag', async () => {
     flagsAnswered = 0;
     await open(mockFetch(), false);
     await waitFor(() => expect(flagsAnswered).toBe(1));
     await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
     expect(screen.getByRole('heading', { name: 'Fant ikke siden' })).toBeTruthy();
-    expect(
-      within(menu()).queryByRole('link', { name: 'Designelementer til gjennomgang' }),
-    ).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Til gjennomgang' })).toBeNull();
     cleanup();
 
     await open(mockFetch());
 
+    const tabs = await screen.findByRole('navigation', { name: 'Sider i Katalog' });
     expect(
-      await within(menu()).findByRole('link', { name: 'Designelementer til gjennomgang' }),
-    ).toBeTruthy();
+      within(tabs).getByRole('link', { name: 'Til gjennomgang' }).getAttribute('aria-current'),
+    ).toBe('page');
+    expect(within(menu()).getByRole('link', { name: 'Katalog' }).getAttribute('aria-current')).toBe(
+      'page',
+    );
     expect(await screen.findByRole('cell', { name: 'Figur' })).toBeTruthy();
   });
 });

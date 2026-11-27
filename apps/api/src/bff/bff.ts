@@ -90,7 +90,7 @@ export interface PlatformLogin {
   hostname: string;
   /** The login host's origin, `https://<hostname>` unless dev mode serves it elsewhere. */
   origin?: string;
-  /** The portal, workspace and console, each on a hostname of its own. */
+  /** The portal and console, each on a hostname of its own. */
   apps?: readonly { app: PlatformApp; hostname: string; origin: string }[];
   /** The resource the login asks for, the API's audience as the portal asks. */
   audience: string;

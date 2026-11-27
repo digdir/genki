@@ -109,7 +109,7 @@ export interface StateRegisterView {
   }[];
 }
 
-export type DemoApp = 'portal' | 'console' | 'workspace';
+export type DemoApp = 'portal' | 'console';
 export type DemoAudience = 'municipality' | 'state-agency' | 'internal';
 
 export type RecordingStatus = 'queued' | 'running' | 'recorded' | 'failed' | 'cancelled';

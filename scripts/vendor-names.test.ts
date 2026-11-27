@@ -23,7 +23,7 @@ describe('vendor names', () => {
 
   it('flag code names but allow vendor names as config keys, strings and provider imports', () => {
     const source = [
-      "import { typesense } from '@genai/providers-typesense';",
+      "import { anthropic } from '@genai/providers-anthropic';",
       'const cohereClient = 1;',
       'const exposure = { openai: true };',
       'const on = exposure.openai;',

@@ -43,8 +43,9 @@ export const FlagsOn = ({
   </FlagsContext.Provider>
 );
 
-export const useFlag = (key: FlagKey) =>
-  useContext(FlagsContext).some((s) => s.key === key && s.on);
+export const useFlagStates = () => useContext(FlagsContext);
+
+export const useFlag = (key: FlagKey) => useFlagStates().some((s) => s.key === key && s.on);
 
 export const WhenFlag = ({
   flag,

@@ -157,7 +157,7 @@ describe('ingestion pipelines', () => {
         200,
         {
           data: [{ id: 'nettsider', version: 1, spec: { name: 'Nettsider' } }],
-          backend: { name: 'typesense', available: false, reason: 'no write key' },
+          backend: { name: 'elasticsearch', available: false, reason: 'no write key' },
         },
       ],
       [`GET ${base}/nettsider/versions`]: () => [200, { data: [] }],

@@ -1,73 +1,89 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { envSecrets } from '@genai/kernel';
-import { KnowledgeRouter } from '@genai/port-knowledge';
-import { fakeHttp, type FakeReply, type FakeServer } from '@genai/port-model/testing';
-import { typesense } from '@genai/providers-typesense';
+import {
+  KnowledgeError,
+  KnowledgeRouter,
+  type DatasetConfig,
+  type FilterValue,
+  type IndexDocument,
+  type KnowledgeAdapter,
+} from '@genai/port-knowledge';
+import { memoryEngine } from '@genai/port-knowledge/testing';
 import { createRestAdapter, remoteFileOriginsFrom, type RestAdapterOptions } from './index.js';
-
-const servers: FakeServer[] = [];
-afterEach(async () => {
-  await Promise.all(servers.splice(0).map((s) => s.close()));
-});
-
-const DOCS = 'KUDOS_docs';
-type Search = Record<string, unknown>;
 
 const kari: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant: '991825827' };
 const nav: Principal = { kind: 'employee', issuer: 'test', subject: 'ola', tenant: '889640782' };
 
-const counts: Record<string, { value: string; count: number }[]> = {
-  type: [
-    { value: 'Tildelingsbrev', count: 3378 },
-    { value: 'Evaluering', count: 1472 },
-  ],
-  concerned_years: [
-    { value: '2025', count: 900 },
-    { value: '2024', count: 800 },
-  ],
-};
+type Corpus = IndexDocument[] | 'unavailable';
 
-const facetReply = (body: Record<string, unknown>): FakeReply => ({
-  status: 200,
-  json: {
-    results: (body.searches as Search[]).map((s) => {
-      const filtered = typeof s.filter_by === 'string';
-      return {
-        hits: [],
-        facet_counts: String(s.facet_by)
-          .split(',')
-          .map((field) => ({
-            field_name: field,
-            counts: (counts[field] ?? []).map((c) => ({
-              value: c.value,
-              count: filtered ? Math.floor(c.count / 10) : c.count,
-            })),
-          })),
-      };
-    }),
-  },
+const report = (id: string, type: string, year: number): IndexDocument => ({
+  id,
+  title: `${type} ${year}`,
+  fields: { type, concerned_years: year },
+  chunks: [{ id: `${id}-0`, position: 0, text: `${type} for ${year}.` }],
+  phrases: [],
 });
 
-const setup = async (
-  reply: (body: Record<string, unknown>) => FakeReply = facetReply,
-  extra: Partial<RestAdapterOptions> = {},
-) => {
-  const server = await fakeHttp(reply);
-  servers.push(server);
+const facetCorpus: Corpus = [
+  report('t1', 'Tildelingsbrev', 2025),
+  report('t2', 'Tildelingsbrev', 2025),
+  report('t3', 'Tildelingsbrev', 2024),
+  report('e1', 'Evaluering', 2025),
+  report('e2', 'Evaluering', 2024),
+];
+
+const engineWith = async (corpus: Corpus) => {
+  const { adapter, writer } = memoryEngine();
+  const store = writer.connect({ engine: 'memory' } as never, {
+    signal: new AbortController().signal,
+  });
+  const dataset = { id: 'digdir/kudos', filters: {}, options: {} } as DatasetConfig<never>;
+  await store.prepare(dataset, 'g1');
+  for (const doc of corpus === 'unavailable' ? [] : corpus) await store.store(dataset, 'g1', doc);
+  await store.promote(dataset, 'g1');
+  const reads: { op: string; filters?: Record<string, FilterValue> }[] = [];
+  const recorded: KnowledgeAdapter = {
+    ...(adapter as KnowledgeAdapter),
+    connect: (endpoint) => {
+      const inner = (adapter as KnowledgeAdapter).connect(endpoint);
+      const down = () => {
+        if (corpus === 'unavailable')
+          throw new KnowledgeError('unavailable', 'Not Ready or Lagging');
+      };
+      return {
+        ...inner,
+        search: async (d, requests, signal) => {
+          reads.push(...requests.map((r) => ({ op: 'search', filters: r.filters ?? {} })));
+          down();
+          return inner.search(d, requests, signal);
+        },
+        facets: async (d, fields, filters, signal) => {
+          reads.push({ op: 'facets', filters });
+          down();
+          return inner.facets(d, fields, filters, signal);
+        },
+        documents: async (d, request, signal) => {
+          reads.push({ op: 'documents', filters: request.filters ?? {} });
+          down();
+          if (!inner.documents) throw new Error('the memory engine lists documents');
+          return inner.documents(d, request, signal);
+        },
+      };
+    },
+  };
+  return { adapter: recorded, reads };
+};
+
+const setup = async (corpus: Corpus = facetCorpus, extra: Partial<RestAdapterOptions> = {}) => {
+  const engine = await engineWith(corpus);
   const knowledge = new KnowledgeRouter({
     catalog: {
-      endpoints: {
-        ts: {
-          engine: 'typesense',
-          baseURL: server.url,
-          auth: { kind: 'api-key', secret: 'secret://env/k' },
-        },
-      },
+      endpoints: { lokal: { engine: 'memory' } },
       datasets: [
         {
           id: 'digdir/kudos',
-          endpoint: 'ts',
+          endpoint: 'lokal',
           residency: 'norway',
           filters: {
             type: 'multiselect',
@@ -76,37 +92,19 @@ const setup = async (
             title: 'text',
           },
           valueTypes: { concerned_years: 'integer' },
-          options: {
-            collections: { docs: DOCS, chunks: 'KUDOS_chunks' },
-            profiles: {
-              content: {
-                collection: 'chunks',
-                queryBy: ['content_markdown'],
-                textField: 'content_markdown',
-              },
-            },
-          },
+          options: {},
         },
         {
           id: 'nav/internal',
-          endpoint: 'ts',
+          endpoint: 'lokal',
           residency: 'norway',
           tenants: ['889640782'],
-          options: {
-            collections: { docs: 'NAV_docs', chunks: 'NAV_chunks' },
-            profiles: {
-              content: {
-                collection: 'chunks',
-                queryBy: ['content_markdown'],
-                textField: 'content_markdown',
-              },
-            },
-          },
+          options: {},
         },
       ],
     },
-    adapters: [typesense],
-    secrets: envSecrets({ K: 'key' }),
+    adapters: [engine.adapter],
+    secrets: envSecrets({}),
   });
   const app = createRestAdapter({
     knowledge,
@@ -118,7 +116,7 @@ const setup = async (
       id === 'digdir/kudos' ? { name: 'Kudos', description: 'Offentlige rapporter' } : undefined,
     ...extra,
   });
-  return { app, server };
+  return { app, server: { seen: engine.reads } };
 };
 
 const get = (app: Awaited<ReturnType<typeof setup>>['app'], path: string, who = 'kari') =>
@@ -197,7 +195,7 @@ describe('datasets', () => {
   });
 
   it('reports the status the platform derives from the ingestion pipelines of each dataset', async () => {
-    const { app } = await setup(facetReply, {
+    const { app } = await setup(facetCorpus, {
       status: async (id) => (id === 'digdir/kudos' ? 'degraded' : 'needs-pipeline'),
     });
 
@@ -243,22 +241,21 @@ describe('facets', () => {
         {
           field: 'type',
           options: [
-            { value: 'Evaluering', count: 1472, selected: false },
-            { value: 'Tildelingsbrev', count: 3378, selected: false },
+            { value: 'Evaluering', count: 2, selected: false },
+            { value: 'Tildelingsbrev', count: 3, selected: false },
           ],
         },
         {
           field: 'concerned_years',
           options: [
-            { value: '2024', count: 800, selected: false },
-            { value: '2025', count: 900, selected: false },
+            { value: '2024', count: 2, selected: false },
+            { value: '2025', count: 3, selected: false },
           ],
         },
       ],
     });
-    const searched = server.seen.flatMap((r) => r.body.searches as Search[]);
-    expect(searched.every((s) => s.collection === DOCS)).toBe(true);
-    expect(searched.every((s) => s.filter_by === undefined)).toBe(true);
+    expect(server.seen.length).toBeGreaterThan(0);
+    expect(server.seen.every((r) => Object.keys(r.filters ?? {}).length === 0)).toBe(true);
   });
 
   it('narrows each field by the other fields but not by its own selection', async () => {
@@ -275,17 +272,16 @@ describe('facets', () => {
     const type = body.fields.find((f) => f.field === 'type');
     const years = body.fields.find((f) => f.field === 'concerned_years');
     expect(type?.options).toEqual([
-      { value: 'Evaluering', count: 1472, selected: true },
-      { value: 'Tildelingsbrev', count: 3378, selected: false },
+      { value: 'Evaluering', count: 2, selected: true },
+      { value: 'Tildelingsbrev', count: 3, selected: false },
     ]);
     expect(years?.options).toEqual([
-      { value: '2024', count: 80, selected: false },
-      { value: '2025', count: 90, selected: false },
+      { value: '2024', count: 1, selected: false },
+      { value: '2025', count: 1, selected: false },
     ]);
-    const filters = server.seen.flatMap((r) =>
-      (r.body.searches as Search[]).map((s) => s.filter_by),
+    expect(server.seen.map((r) => JSON.stringify(r.filters?.type ?? null))).toContain(
+      '["Evaluering"]',
     );
-    expect(filters).toContain('type:=[`Evaluering`]');
   });
 
   it('refuses a dataset the caller cannot see, or one that does not exist, with the same answer', async () => {
@@ -374,7 +370,7 @@ describe('facets', () => {
   });
 
   it('answers 502 when the search index cannot answer', async () => {
-    const { app } = await setup(() => ({ status: 503, json: { message: 'Not Ready or Lagging' } }));
+    const { app } = await setup('unavailable');
 
     const res = await get(app, facets({ fields: 'type' }));
 
@@ -383,25 +379,20 @@ describe('facets', () => {
   });
 });
 
-const documentReply =
-  (documents: Record<string, unknown>[]): ((body: Record<string, unknown>) => FakeReply) =>
-  (body) => ({
-    status: 200,
-    json: {
-      results: (body.searches as Search[]).map((s) => {
-        const wanted = /:=\[(.*)\]/.exec(String(s.filter_by ?? ''))?.[1]?.replace(/[`"]/g, '');
-        const hits = documents
-          .filter((d) => !wanted || wanted.split(',').includes(String(d.doc_num)))
-          .map((document) => ({ document }));
-        return { hits, found: hits.length };
-      }),
-    },
-  });
+const recordsOf = (records: Record<string, unknown>[]): IndexDocument[] =>
+  records.map(({ doc_num, title, url, ...fields }) => ({
+    id: String(doc_num),
+    ...(typeof title === 'string' ? { title } : {}),
+    ...(typeof url === 'string' ? { url } : {}),
+    fields,
+    chunks: [{ id: `${String(doc_num)}-0`, position: 0, text: String(title ?? '') }],
+    phrases: [],
+  }));
 
 const fileOf = (doc: string, dataset = 'kudos') => `/api/datasets/${dataset}/documents/${doc}/file`;
 
 describe('a document file', () => {
-  const remote = documentReply([
+  const remote = recordsOf([
     { doc_num: '4711', title: 'Årsrapport', url: 'https://kilde.example/files/4711.pdf#page=3' },
     { doc_num: '4712', title: 'Landingsside', url: 'https://kilde.example/dokument/4712' },
     { doc_num: '4713', title: 'Uten adresse' },
@@ -517,7 +508,7 @@ describe('a document file', () => {
 
 describe('a remote PDF genki serves', () => {
   const pdfBytes = new TextEncoder().encode('%PDF-1.7 innhold');
-  const listed = documentReply([
+  const listed = recordsOf([
     {
       doc_num: '4711',
       title: 'Årsrapport',
@@ -734,7 +725,7 @@ describe('a remote PDF genki serves', () => {
 
   it('says there is no file to show when the record lists the remote PDF as larger than 50 MiB', async () => {
     const big = 'https://kilde.example/dokument/4715/filer/stor.pdf';
-    const withBig = documentReply([
+    const withBig = recordsOf([
       {
         doc_num: '4715',
         title: 'Stor rapport',
@@ -763,7 +754,7 @@ describe('a remote PDF genki serves', () => {
 
   it('still serves a remote PDF the record lists at exactly 50 MiB', async () => {
     const atCap = 'https://kilde.example/dokument/4716/filer/full.pdf';
-    const withAtCap = documentReply([
+    const withAtCap = recordsOf([
       {
         doc_num: '4716',
         title: 'Full rapport',

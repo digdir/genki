@@ -14,15 +14,12 @@ const people: Record<string, Principal> = {
   drift: { kind: 'operator', issuer: 'test', subject: 'drift', tenant: digdir },
 };
 
-const searchOptions = {
-  collections: { docs: 'docs', chunks: 'chunks' },
-  profiles: { content: { collection: 'chunks', queryBy: ['text'], textField: 'text' } },
-};
+const searchOptions = {};
 
 const knowledge = {
   endpoints: {
     search: {
-      engine: 'typesense',
+      engine: 'http-search',
       baseURL: 'https://search.example.no',
       auth: { kind: 'api-key', secret: 'secret://env/search-key' },
     },

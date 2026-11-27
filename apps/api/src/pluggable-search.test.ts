@@ -423,12 +423,12 @@ describe('pluggable search engines over the API', () => {
       body: { engine: 'pgvector' },
     });
     expect(pg.status).toBe(200);
-    const typesense = await call('/operator/catalog/knowledge-endpoint/sok', 'drift', {
+    const remote = await call('/operator/catalog/knowledge-endpoint/sok', 'drift', {
       method: 'PUT',
-      body: { engine: 'typesense' },
+      body: { engine: 'http-search' },
     });
-    expect(typesense.status).toBe(400);
-    expect(JSON.stringify(await json(typesense))).toContain('typesense needs a baseURL');
+    expect(remote.status).toBe(400);
+    expect(JSON.stringify(await json(remote))).toContain('http-search needs a baseURL');
   });
 
   it("creating a dataset uses the engine's default profiles", async () => {
@@ -466,7 +466,7 @@ describe('pluggable search engines over the API', () => {
     expect(view.index.options.profiles).toEqual(defaultPgvectorProfiles(true));
   });
 
-  it('the engines route lists pgvector and typesense with option schemas and capabilities', async () => {
+  it('the engines route lists pgvector and http-search with option schemas and capabilities', async () => {
     const { call } = await boot();
     const response = await call('/operator/knowledge/engines', 'drift');
     expect(response.status).toBe(200);
@@ -481,16 +481,16 @@ describe('pluggable search engines over the API', () => {
       }[];
     }>(response);
     const pgvector = data.find((e) => e.engine === 'pgvector');
-    const typesense = data.find((e) => e.engine === 'typesense');
     expect(pgvector).toMatchObject({ requiresBaseURL: false, writer: { needsVectors: true } });
     expect(pgvector?.endpointOptions.properties).toHaveProperty('connection');
     expect(pgvector?.datasetOptions.properties).toHaveProperty('profiles');
     expect(pgvector?.capabilities).toEqual(expect.arrayContaining(['search.text', 'facets']));
     expect(pgvector?.capabilities).not.toContain('search.vector');
-    expect(typesense).toMatchObject({ requiresBaseURL: true, writer: { needsVectors: false } });
-    expect(typesense?.datasetOptions.properties).toHaveProperty('collections');
-    expect(typesense?.capabilities).toEqual(expect.arrayContaining(['search.hybrid', 'range']));
-    expect(data.find((e) => e.engine === 'http-search')?.capabilities).not.toContain('facets');
+    const http = data.find((e) => e.engine === 'http-search');
+    expect(http).toMatchObject({ requiresBaseURL: true });
+    expect(http?.datasetOptions.properties).toHaveProperty('index');
+    expect(http?.capabilities).toContain('search.text');
+    expect(http?.capabilities).not.toContain('facets');
 
     const tenant = await call(`/tenants/${digdir}/knowledge/engines`, 'kari');
     expect(tenant.status).toBe(200);

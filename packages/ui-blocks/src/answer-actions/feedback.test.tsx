@@ -213,7 +213,7 @@ describe('the feedback on an answer', () => {
     expect(button('Ikke nyttig').getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('keeps a comment within the workspace’s limit', () => {
+  it('keeps a comment within the feedback limit', () => {
     draw();
     fireEvent.click(button('Nyttig'));
     expect(within(group()).getByRole('textbox').getAttribute('maxlength')).toBe(

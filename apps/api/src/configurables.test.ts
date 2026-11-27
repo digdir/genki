@@ -1,5 +1,5 @@
 import { LEGACY_KEY_ISSUER } from '@genai/identity';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
 import { textPart, type Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
@@ -85,12 +85,7 @@ const completion = (content: string, stream: boolean) =>
         },
       };
 
-const kudosOptions = {
-  collections: { docs: 'kudos_docs', chunks: 'kudos_chunks' },
-  profiles: {
-    content: { collection: 'chunks', queryBy: ['content_markdown'], textField: 'content_markdown' },
-  },
-};
+const kudosOptions = {};
 
 export const boot = async (
   options: {
@@ -128,7 +123,7 @@ export const boot = async (
       knowledge: {
         endpoints: {
           search: {
-            engine: 'typesense',
+            engine: 'http-search',
             baseURL: 'https://search.example.no',
             auth: { kind: 'api-key', secret: 'secret://env/search-key' },
           },
@@ -568,7 +563,7 @@ describe('who may search an organisation dataset', () => {
         id: 'apen',
         name: 'Åpen',
         residency: 'norway',
-        collection: { endpoint: 'typesense', options: {} },
+        collection: { endpoint: 'search', options: {} },
         searchScope: 'all',
       },
     });
@@ -683,41 +678,6 @@ describe('tenant catalog entries', () => {
         })
       ).status,
     ).toBe(400);
-  });
-
-  it('lets a tenant point at an existing collection only on an endpoint the operator shares, within its prefixes', async () => {
-    const { call } = await boot();
-    const dataset = (collections: Record<string, string>) =>
-      call(`/tenants/${digdir}/datasets`, 'kari', {
-        body: {
-          id: 'egne',
-          name: 'Egne dokumenter',
-          residency: 'norway',
-          collection: { endpoint: 'search', collections },
-        },
-      });
-
-    expect((await dataset({ docs: 'digdir_docs', chunks: 'digdir_chunks' })).status).toBe(400);
-
-    const shared = await call('/operator/catalog/knowledge-endpoint/search', 'drift', {
-      method: 'PUT',
-      body: {
-        engine: 'typesense',
-        baseURL: 'https://search.example.no',
-        auth: { kind: 'api-key', secret: 'secret://env/search-key' },
-        sharing: { tenants: [digdir], collectionPrefixes: ['digdir_'] },
-      },
-    });
-    expect(shared.status).toBe(200);
-    expect((await dataset({ docs: 'kudos_docs', chunks: 'kudos_chunks' })).status).toBe(400);
-    const ok = await dataset({ docs: 'digdir_docs', chunks: 'digdir_chunks' });
-    expect(ok.status).toBe(201);
-    expect(await json(ok)).toMatchObject({
-      collection: {
-        endpoint: 'search',
-        options: { profiles: { content: { collection: 'chunks' } } },
-      },
-    });
   });
 
   it('keeps a tenant model private: another tenant cannot publish a service on it, and a used model cannot be removed', async () => {
@@ -892,8 +852,7 @@ describe('ingestion pipelines', () => {
   });
 
   it("never shows who at the platform started a platform dataset's last run to an organisation", async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
-    const { call } = await boot();
+    const { call } = await boot({ ingestion: new InMemoryIngestionBackend() });
     const base = `/operator/datasets/${encodeURIComponent('digdir/kudos')}/pipelines`;
     await call(base, 'drift', { body: pipeline });
     await call(`${base}/nettsider/execute`, 'drift', { body: {} });
@@ -902,7 +861,6 @@ describe('ingestion pipelines', () => {
       await call(`/tenants/${other}/datasets`, 'ola'),
     );
     const kudos = listed.data.find((d) => d.id === 'digdir/kudos');
-    fetchSpy.mockRestore();
 
     expect(kudos?.lastExecution).toEqual(
       expect.objectContaining({ startedAt: expect.any(String) }),
@@ -1081,7 +1039,7 @@ describe('ingestion pipelines', () => {
     const { call } = await boot({ ingestion: backend });
     await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
       method: 'PUT',
-      body: { ...tenantEndpoint, engine: 'typesense' },
+      body: tenantEndpoint,
     });
     await call(`/tenants/${digdir}/datasets`, 'kari', {
       body: {
@@ -1090,7 +1048,6 @@ describe('ingestion pipelines', () => {
         residency: 'norway',
         collection: {
           endpoint: 'sok',
-          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
         },
       },
     });
@@ -1138,7 +1095,7 @@ describe('ingestion pipelines', () => {
     });
     await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
       method: 'PUT',
-      body: { ...tenantEndpoint, engine: 'typesense' },
+      body: tenantEndpoint,
     });
     await call(`/tenants/${digdir}/datasets`, 'kari', {
       body: {
@@ -1147,7 +1104,6 @@ describe('ingestion pipelines', () => {
         residency: 'norway',
         collection: {
           endpoint: 'sok',
-          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
         },
       },
     });
@@ -1207,7 +1163,7 @@ describe('ingestion pipelines', () => {
     });
     await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
       method: 'PUT',
-      body: { ...tenantEndpoint, engine: 'typesense' },
+      body: tenantEndpoint,
     });
     await call(`/tenants/${digdir}/datasets`, 'kari', {
       body: {
@@ -1216,7 +1172,6 @@ describe('ingestion pipelines', () => {
         residency: 'norway',
         collection: {
           endpoint: 'sok',
-          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
         },
       },
     });
@@ -1281,7 +1236,7 @@ describe('ingestion pipelines', () => {
     const { call, platform } = await boot({ ingestion: backend });
     await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
       method: 'PUT',
-      body: { ...tenantEndpoint, engine: 'typesense' },
+      body: tenantEndpoint,
     });
     const dataset = await call(`/tenants/${digdir}/datasets`, 'kari', {
       body: {
@@ -1290,7 +1245,6 @@ describe('ingestion pipelines', () => {
         residency: 'norway',
         collection: {
           endpoint: 'sok',
-          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
         },
       },
     });
@@ -1308,11 +1262,10 @@ describe('ingestion pipelines', () => {
       await call(`${base}/nettsider/executions`, 'kari'),
     );
     expect(runs.data[0]).toMatchObject({ status: 'succeeded', report: { stored: 1, skipped: 1 } });
-    expect(backend.indexes.get('sider_chunks')?.size).toBe(2);
-    expect(backend.jobs[0]?.target).toEqual({
+    expect(backend.indexes.get(`${digdir}/sider-chunks`)?.size).toBe(2);
+    expect(backend.jobs[0]?.target).toMatchObject({
       dataset: `${digdir}/sider`,
       endpoint: `${digdir}/sok`,
-      collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
     });
     expect(platform.ingestion.backend.available).toBe(true);
     expect((await call(`/tenants/${other}/datasets/sider/pipelines`, 'ola')).status).toBe(404);
@@ -1330,7 +1283,7 @@ describe('ingestion pipelines', () => {
     });
     await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
       method: 'PUT',
-      body: { ...tenantEndpoint, engine: 'typesense' },
+      body: tenantEndpoint,
     });
     await call(`/tenants/${digdir}/datasets`, 'kari', {
       body: {
@@ -1339,7 +1292,6 @@ describe('ingestion pipelines', () => {
         residency: 'norway',
         collection: {
           endpoint: 'sok',
-          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
         },
       },
     });
@@ -1495,7 +1447,7 @@ describe('refusing a refresh of fields', () => {
     });
     await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
       method: 'PUT',
-      body: { ...tenantEndpoint, engine: 'typesense' },
+      body: tenantEndpoint,
     });
     await call(`/tenants/${digdir}/datasets`, 'kari', {
       body: {
@@ -1504,7 +1456,6 @@ describe('refusing a refresh of fields', () => {
         residency: 'norway',
         collection: {
           endpoint: 'sok',
-          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
         },
       },
     });

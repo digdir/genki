@@ -40,8 +40,6 @@ const schemaOf = (schema: unknown) => {
   }
 };
 
-export const writeKeyEngines: ReadonlySet<string> = new Set(['typesense']);
-
 const titles: Record<string, ApiKey> = {
   'http-search': 'services.engineHttp',
   mcp: 'services.engineMcp',
@@ -54,26 +52,11 @@ const engineTitle = (engine: string) => {
 
 const probeEmbedding = { model: 'probe', dimensions: 8 };
 
-/** Sample dataset options that make an engine show everything it can offer. */
-const probeOptions: Record<string, Record<string, unknown>> = {
-  typesense: {
-    collections: { docs: 'docs', chunks: 'chunks' },
-    profiles: {
-      content: {
-        collection: 'chunks',
-        queryBy: ['content_markdown'],
-        textField: 'content_markdown',
-        score: 'fusion',
-      },
-    },
-  },
-};
-
 const offered = (adapter: KnowledgeAdapter): KnowledgeCapability[] => {
   if (!adapter.capabilities) return [...legacyCapabilities];
   const draft: DatasetDraft = {
     filters: {},
-    options: probeOptions[adapter.engine] ?? {},
+    options: {},
     embedding: probeEmbedding,
   };
   const options = { ...draft.options, ...(adapter.defaults?.(draft) ?? {}) };
@@ -119,7 +102,7 @@ export const describeEngines = (
         builtin,
         ...(builtin ? { runsAt: 'platform' } : {}),
         ...(dataLocation ? { dataLocation } : {}),
-        writeKeyRequired: writeKeyEngines.has(adapter.engine),
+        writeKeyRequired: false,
         probe: adapter.probe !== undefined,
         requiresBaseURL: !builtin,
         ...(endpoint ? { endpoint } : {}),

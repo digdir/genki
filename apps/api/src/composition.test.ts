@@ -39,7 +39,12 @@ import {
 import { withoutUnknownVariantModels } from './seed-variants.js';
 import { kernelTaskReader, toTimeline } from './timeline.js';
 import { policyKind } from './building-blocks.js';
-import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
+import {
+  defaultCorpus,
+  kudosDocument,
+  seededKnowledge,
+  seedOnMemory,
+} from '@genai/composition/memory-seed.test-utils';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -48,7 +53,7 @@ afterEach(async () => {
 
 const config = join(import.meta.dirname, '..', 'config', 'local');
 const yaml = (file: string) => parseYaml(readFileSync(join(config, file), 'utf8')) as unknown;
-const kudosOnTypesense = () => seedOnTypesense(yaml('knowledge.yaml'));
+const kudosOnMemory = () => seedOnMemory(yaml('knowledge.yaml'));
 
 type Schema = {
   type?: string;
@@ -77,51 +82,8 @@ const completion = (content: string) => ({
   usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
 });
 
-const chunk = (id: string, index: number) => ({
-  id,
-  chunk_id: id,
-  doc_num: 'd1',
-  chunk_index: index,
-  content_markdown: `Tildelingsbrevet for 2025 sier ${id}.`,
-  content_length: 40,
-  metadata: '{"Header 1" "Tildelingsbrev 2025"}',
-  KUDOS_preprod_v4_documents_ab897fbdedfa: {
-    title: 'Tildelingsbrev 2025',
-    url: 'https://kudos.dfo.no/dokument/d1',
-    total_chunks: 2,
-    orgs_short: ['DIGDIR'],
-  },
-});
-
-const typesenseReply = (body: Record<string, unknown>) => ({
-  status: 200,
-  json: {
-    results: (body.searches as Record<string, unknown>[]).map((s) => {
-      const collection = String(s.collection);
-      if (s.facet_by) return { facet_counts: [], hits: [] };
-      if (String(s.filter_by ?? '').includes('ZZZ')) return { found: 0, hits: [] };
-      if (collection.includes('phrases'))
-        return {
-          found: 2,
-          hits: ['c1', 'c2'].map((id, i) => ({
-            document: { chunk_id: id, search_phrase: `tildelingsbrev ${id}`, doc_num: 'd1' },
-            hybrid_search_info: { rank_fusion_score: 0.9 - i * 0.1 },
-          })),
-        };
-      if (collection.includes('documents'))
-        return {
-          hits: [{ document: { doc_num: 'd1', title: 'Tildelingsbrev 2025', total_chunks: 2 } }],
-        };
-      return {
-        found: 2,
-        hits: ['c1', 'c2'].map((id, i) => ({
-          document: chunk(id, i),
-          text_match_info: { score: String(100 - i) },
-        })),
-      };
-    }),
-  },
-});
+const filtered = (filters: unknown, field: string, value: string) =>
+  JSON.stringify((filters as Record<string, unknown> | undefined)?.[field] ?? null).includes(value);
 
 const kari: Principal = {
   kind: 'employee',
@@ -352,22 +314,21 @@ const boot = async (
     log?: InMemoryEventLog;
     configEntries?: InMemoryConfigEntryStore;
     definitions?: Parameters<typeof createPlatform>[0]['definitions'];
-    /** Boots on the shipped seed with no Typesense setting or secret at all. */
     seedOnly?: boolean;
+    corpus?: ReturnType<typeof defaultCorpus>;
   } = {},
 ) => {
   const model = await fakeHttp(modelReply);
-  const search = await fakeHttp(typesenseReply);
-  servers.push(model, search);
+  const search = await seededKnowledge(extra.corpus);
+  servers.push(model);
   const env: Record<string, string> = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
-    ...(extra.seedOnly ? {} : { TYPESENSE_URL: search.url }),
   };
   const platform = await createPlatform({
     catalogs: {
       models: resolveCatalog(extra.models ?? yaml('models.yaml'), 'models', env).catalog,
       knowledge: resolveCatalog(
-        extra.knowledge ?? (extra.seedOnly ? yaml('knowledge.yaml') : kudosOnTypesense()),
+        extra.knowledge ?? (extra.seedOnly ? yaml('knowledge.yaml') : kudosOnMemory()),
         'datasets',
         env,
       ).catalog,
@@ -377,11 +338,8 @@ const boot = async (
     ...(extra.prices ? { prices: extra.prices } : {}),
     ...(extra.log ? { log: extra.log } : {}),
     ...(extra.configEntries ? { configurables: { store: extra.configEntries } } : {}),
-    secrets: envSecrets(
-      extra.seedOnly
-        ? { FOUNDRY_OPENAI_KEY: 'm' }
-        : { FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' },
-    ),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm' }),
+    ...(extra.seedOnly ? {} : { knowledgeEngines: [search.engine] }),
     // A knowledge server as the API has outside tests; nothing here searches it, so it never connects.
     ...(extra.seedOnly
       ? {
@@ -471,7 +429,7 @@ describe('the composed platform', () => {
         expect.objectContaining({ type: 'resource_link', uri: 'https://kudos.dfo.no/dokument/d1' }),
       ]),
     );
-    expect(search.seen.every((r) => r.path === '/multi_search')).toBe(true);
+    expect(search.searches().length).toBeGreaterThan(0);
   });
 
   it("applies KA's retrieve-filter-by override to every chunk search, so a filter matching nothing returns no chunks", async () => {
@@ -495,15 +453,10 @@ describe('the composed platform', () => {
 
     expect(body.result.isError).toBe(false);
     expect(body.result.structuredContent.chunks).toBeUndefined();
-    const searches = search.seen.flatMap(
-      (r) => (r.body as { searches?: Record<string, unknown>[] }).searches ?? [],
-    );
-    const chunkSearches = searches.filter(
-      (s) => String(s.collection).includes('chunks') && s.q !== '*',
-    );
+    const chunkSearches = search.searches().filter((s) => s.profile !== 'phrase');
     expect(chunkSearches.length).toBeGreaterThan(0);
     for (const s of chunkSearches)
-      expect(String(s.filter_by)).toContain('type:=[`ZZZ_ingen_slik_type`]');
+      expect(filtered(s.filters, 'type', 'ZZZ_ingen_slik_type')).toBe(true);
     expect(body.result.structuredContent.filters_applied).toEqual([
       {
         filter: {
@@ -539,31 +492,28 @@ describe('the composed platform', () => {
     );
     expect(published.ok).toBe(true);
     const chunkFilters = async (overrides: Record<string, unknown>) => {
-      search.seen.length = 0;
+      search.reads.length = 0;
       const res = await mcp(app, 'tools/call', {
         name: 'kudos-fixed-filter__default',
         arguments: { query: 'tiltak og resultater', overrides },
       });
       expect(((await res.json()) as { result: { isError: boolean } }).result.isError).toBe(false);
-      const searches = search.seen.flatMap(
-        (r) => (r.body as { searches?: Record<string, unknown>[] }).searches ?? [],
-      );
-      const chunks = searches.filter((s) => String(s.collection).includes('chunks') && s.q !== '*');
+      const chunks = search.searches().filter((s) => s.profile !== 'phrase');
       expect(chunks.length).toBeGreaterThan(0);
-      return chunks.map((s) => String(s.filter_by));
+      return chunks.map((s) => s.filters);
     };
 
-    for (const f of await chunkFilters({})) expect(f).toContain('type:=[`ZZZ_fast_type`]');
+    for (const f of await chunkFilters({})) expect(filtered(f, 'type', 'ZZZ_fast_type')).toBe(true);
     const caller = (field: string, value: string) => ({
       'retrieve-filter-by': { fields: [{ field, 'selected-options': [value] }] },
     });
     for (const f of await chunkFilters(caller('orgs_short', 'DIGDIR'))) {
-      expect(f).toContain('type:=[`ZZZ_fast_type`]');
-      expect(f).toContain('orgs_short:=[`DIGDIR`]');
+      expect(filtered(f, 'type', 'ZZZ_fast_type')).toBe(true);
+      expect(filtered(f, 'orgs_short', 'DIGDIR')).toBe(true);
     }
     for (const f of await chunkFilters(caller('type', 'Tildelingsbrev'))) {
-      expect(f).toContain('type:=[`ZZZ_fast_type`]');
-      expect(f).toContain('type:=[`Tildelingsbrev`]');
+      expect(filtered(f, 'type', 'ZZZ_fast_type')).toBe(true);
+      expect(filtered(f, 'type', 'Tildelingsbrev')).toBe(true);
     }
   });
 
@@ -588,7 +538,7 @@ describe('the composed platform', () => {
       'test',
     );
     expect(published.ok).toBe(true);
-    search.seen.length = 0;
+    search.reads.length = 0;
 
     const res = await mcp(app, 'tools/call', {
       name: 'kudos-source-facts__default',
@@ -596,11 +546,9 @@ describe('the composed platform', () => {
     });
 
     expect(((await res.json()) as { result: { isError: boolean } }).result.isError).toBe(false);
-    const reads = search.seen.flatMap(
-      (r) => (r.body as { searches?: Record<string, unknown>[] }).searches ?? [],
-    );
+    const reads = search.reads.filter((r) => r.filters);
     expect(reads.length).toBeGreaterThan(0);
-    for (const read of reads) expect(String(read.filter_by)).toContain('type:=[`ZZZ_fast_type`]');
+    for (const read of reads) expect(filtered(read.filters, 'type', 'ZZZ_fast_type')).toBe(true);
     const facts = model.seen
       .flatMap((r) => (r.body.messages as Message[] | undefined) ?? [])
       .find((m) => m.role === 'tool');
@@ -737,7 +685,7 @@ describe('the composed platform', () => {
   });
 
   it('offers owner_orgnr filter values only when a dataset of the calling service declares the field', async () => {
-    const knowledge = kudosOnTypesense() as {
+    const knowledge = kudosOnMemory() as {
       datasets: { id: string; filters: Record<string, string> }[];
     };
     const declaring = {
@@ -889,7 +837,7 @@ describe('the composed platform', () => {
     expect(datasets.status).toBe(200);
     expect(JSON.stringify(await datasets.json())).toContain('"id":"kudos"');
     expect(facets.status).toBe(200);
-    expect(search.seen.every((r) => r.path === '/multi_search')).toBe(true);
+    expect(search.reads.some((r) => r.op === 'facets' && r.dataset === 'digdir/kudos')).toBe(true);
   });
 
   it('serves a frontend on a service key: dataset fields, facets, and an ask with filters and per-document sources', async () => {
@@ -1699,21 +1647,14 @@ describe('a draft test run', () => {
 
 describe('settings and datasets at run time', () => {
   const twoDatasets = () => {
-    const catalog = structuredClone(kudosOnTypesense()) as {
-      datasets: {
-        id: string;
-        aliases?: string[];
-        options: { collections: Record<string, string> };
-      }[];
+    const catalog = structuredClone(kudosOnMemory()) as {
+      datasets: { id: string; aliases?: string[] }[];
     };
     const first = catalog.datasets[0];
     if (!first) throw new Error('no dataset in the catalog');
     const archive = structuredClone(first);
     archive.id = 'digdir/kudos-arkiv';
     archive.aliases = [];
-    archive.options.collections = Object.fromEntries(
-      Object.entries(first.options.collections).map(([k, v]) => [k, `${v}_arkiv`]),
-    );
     catalog.datasets.push(archive);
     return catalog;
   };
@@ -1755,7 +1696,10 @@ describe('settings and datasets at run time', () => {
   };
 
   it('searches every dataset on a service and merges the hits', async () => {
-    const { platform, app, search } = await boot(undefined, { knowledge: twoDatasets() });
+    const { platform, app, search } = await boot(undefined, {
+      knowledge: twoDatasets(),
+      corpus: { ...defaultCorpus(), 'digdir/kudos-arkiv': [kudosDocument()] },
+    });
     const published = await platform.definitions.publish(
       retrieveOnly({ datasets: ['digdir/kudos', 'digdir/kudos-arkiv'] }),
       'test',
@@ -1765,15 +1709,9 @@ describe('settings and datasets at run time', () => {
 
     const body = await call(app as unknown as Hono, 'kari');
 
-    const collections = new Set(
-      search.seen.flatMap((r) =>
-        ((r.body as { searches?: { collection: string }[] }).searches ?? []).map(
-          (s) => s.collection,
-        ),
-      ),
-    );
-    expect(collections).toContain('KUDOS_preprod_v4_chunks_ab897fbdedfa');
-    expect(collections).toContain('KUDOS_preprod_v4_chunks_ab897fbdedfa_arkiv');
+    const datasets = new Set(search.searches().map((s) => s.dataset));
+    expect(datasets).toContain('digdir/kudos');
+    expect(datasets).toContain('digdir/kudos-arkiv');
     const ids = body.result?.structuredContent.chunks?.map((c) => c.chunk_id) ?? [];
     expect(ids).toEqual(expect.arrayContaining(['digdir/kudos::c1', 'digdir/kudos-arkiv::c1']));
   });
@@ -2228,7 +2166,7 @@ describe('a service without a reranker', () => {
     return (await res.json()) as { result: { isError: boolean } };
   };
 
-  it('the API starts and seeds its services and catalog without Typesense or ColBERT settings', async () => {
+  it('the API starts and seeds its services and catalog with no search engine settings', async () => {
     const { platform } = await boot(undefined, { seedOnly: true });
     const admin = createAdmin({
       store: platform.definitions,

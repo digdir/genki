@@ -251,7 +251,7 @@ const boot = async (lockdown: boolean) => {
     await send(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'entra', {
       method: 'PUT',
       body: {
-        engine: 'typesense',
+        engine: 'http-search',
         baseURL: 'https://sok.testetaten.example.no',
         auth: { kind: 'bearer', secret: `secret://tenant/${digdir}/search-token` },
       },
@@ -262,7 +262,7 @@ const boot = async (lockdown: boolean) => {
         id: 'sider',
         name: 'Nettsider',
         residency: 'norway',
-        index: { endpoint: 'sok', collections: { docs: 'sider_docs', chunks: 'sider_chunks' } },
+        index: { endpoint: 'sok' },
       },
       reason,
     });
@@ -762,7 +762,7 @@ describe('lockdown', () => {
     const endpointTest = (as: string) =>
       send('/operator/knowledge/endpoints/test', as, {
         body: {
-          engine: 'typesense',
+          engine: 'http-search',
           baseURL: 'http://127.0.0.1:9',
           auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
         },
@@ -781,7 +781,7 @@ describe('lockdown', () => {
 
     const res = await send('/operator/knowledge/endpoints/test', 'operator', {
       body: {
-        engine: 'typesense',
+        engine: 'http-search',
         baseURL: 'http://127.0.0.1:9',
         auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
       },
@@ -1064,14 +1064,14 @@ describe('lockdown', () => {
     expect(await json(res)).toMatchObject({ type: entraNotTrustedType });
   });
 
-  it('gives an Entra login refused in a portal, workspace or console session the platform words', async () => {
+  it('gives an Entra login refused in a portal or console session the platform words', async () => {
     const { app } = await boot(true);
     const token = new UnsecuredJWT({
       acr: 'entraid',
       sub: 'outsider',
       client_id: 'genki-platform-login',
     }).encode();
-    const res = await actAsPlatformApp('workspace', () =>
+    const res = await actAsPlatformApp('console', () =>
       app.request(`/v1/models`, { headers: { authorization: `Bearer ${token}` } }),
     );
     expect(await json(res)).toMatchObject({

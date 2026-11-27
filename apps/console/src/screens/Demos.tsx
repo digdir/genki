@@ -76,7 +76,10 @@ export const cueStarts = (srt: string) =>
 const asVtt = (srt: string) => `WEBVTT\n\n${srt.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2')}`;
 
 const audienceText = (demo: Demo, t: ReturnType<typeof useT>) =>
-  [t(appLabel[demo.app]), demo.audience.map((a) => t(audienceLabel[a])).join(', ')]
+  [
+    appLabel[demo.app] ? t(appLabel[demo.app]) : demo.app,
+    demo.audience.map((a) => t(audienceLabel[a])).join(', '),
+  ]
     .filter(Boolean)
     .join(' · ');
 
@@ -536,7 +539,7 @@ const Detail = ({ api, id }: { api: ApiClient; id: string }) => {
       <div className="page-header">
         <div className="demo-tags">
           <StateTag state={current} />
-          <Tag data-size="sm">{t(appLabel[demo.app])}</Tag>
+          <Tag data-size="sm">{appLabel[demo.app] ? t(appLabel[demo.app]) : demo.app}</Tag>
           {demo.audience.map((a) => (
             <Tag key={a} data-size="sm">
               {t(audienceLabel[a])}

@@ -208,11 +208,11 @@ const main = async () => {
 
   console.log(`
 Next:
-  npm run dev:all     API :8080, worker :8081, portal :5173, console :5174, workspace :5176 (see docs/development.md for other ports)
+  npm run dev:all     API :8080, worker :8081, portal :5173, console :5174 (see docs/development.md for other ports)
   npm run check       format, lint, types, boundaries and tests (needs Docker)
 
 Log in as a test person from apps/api/config/local/identity.yaml (Kari Testansatt has every right).
-Without Foundry settings, chat with "Lokal testchat" in the workspace: it echoes what you write.
+Without Foundry settings, try "Lokal testchat" in the portal's Prøveområdet: it echoes what you write.
 Your API keys for local clients are DEV_API_KEY and DEV_SERVICE_API_KEY in .env.local.`);
 };
 

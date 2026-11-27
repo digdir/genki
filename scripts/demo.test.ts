@@ -410,15 +410,10 @@ describe('demo recordings', () => {
   const apps = {
     portal: 'https://portal.example/',
     console: 'https://console.example',
-    workspace: 'https://workspace.example/#/',
     tenant: '312521172',
   };
   const now = Date.parse('2026-11-13T10:00:00Z');
-  const appOrigins = [
-    'https://portal.example',
-    'https://workspace.example',
-    'https://console.example',
-  ];
+  const appOrigins = ['https://portal.example', 'https://console.example'];
   const hostile = [
     '"',
     "'",
@@ -452,7 +447,7 @@ describe('demo recordings', () => {
     for (const url of [
       '/api/tenants/1/me',
       'https://console.example/api/operator/tenants',
-      'https://workspace.example/api/v1/models',
+      'https://portal.example/api/v1/models',
       '/auth/me',
       '/apiary',
       'https://test.ansattporten.no/api/x',
@@ -503,14 +498,14 @@ describe('demo recordings', () => {
 
   it('answers /auth/me as signed in for the demo tenant', () => {
     const routes = demoSignIn(apps, now).filter((c) => c[0] === 'network');
-    expect(routes.map((c) => c[3])).toEqual(['--body', '--body', '--body']);
+    expect(routes.map((c) => c[3])).toEqual(['--body', '--body']);
     expect(JSON.parse(routes[0]?.[4] ?? '')).toEqual({
       name: 'Demo',
       organisation: '312521172',
       organisations: [{ orgNumber: '312521172', name: 'Demo' }],
       expiresAt: '2026-11-13T11:00:00.000Z',
     });
-    expect(JSON.parse(routes[1]?.[4] ?? '').operator).toBeUndefined();
+    expect(JSON.parse(routes[0]?.[4] ?? '').operator).toBeUndefined();
   });
 
   it('answers /auth/me on the console as signed in as an operator', () => {

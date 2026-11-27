@@ -21,7 +21,6 @@ export const operations = defineNamespace({
   switchChooseEngine: 'velg en søkemotor',
   switchUnknownEngine: 'ukjent søkemotor {to}',
   switchSameEngine: 'Datasettet bruker allerede denne søkemotoren.',
-  switchWriteKeyRequired: 'Krever egen skrivenøkkel',
   switchCannotWrite: 'Plattformen kan ikke skrive til denne søkemotoren.',
   switchSharedStorage: 'Søkemotorene deler lagring. Velg en annen søkemotor.',
   switchMissingModel: 'Vektormodellen {model} er ikke satt opp på plattformen.',

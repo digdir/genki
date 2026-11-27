@@ -25,7 +25,7 @@ export const operatorClientIds = (env: Env) => listOf(env.OPERATOR_CLIENT_IDS);
 
 export const employeeClientIds = (env: Env) => listOf(env.EMPLOYEE_CLIENT_IDS);
 
-/** The portal, workspace and console sign in through the platform login client (ADR 0061). */
+/** The portal and console sign in through the platform login client (ADR 0061). */
 export const platformAppsSignIn = (env: Env) =>
   Boolean(env.PLATFORM_LOGIN_CLIENT_ID?.trim() && env.PLATFORM_APP_ORIGINS?.trim());
 

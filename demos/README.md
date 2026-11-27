@@ -32,7 +32,7 @@ steps:
     focus: [text, Hvor data behandles]
 ```
 
-`signedIn: true` signs the portal, workspace and console in with the key in `DEMO_API_KEY`, the way the smoke test does: agent-browser answers each app's `/auth/me` as signed in to the demo tenant (the console as an operator) and sends the key as a bearer token only to the apps' own origins, never to the login issuer or anyone else. Without the key that demo is skipped. `ready` is a text on the start page to wait for before recording starts.
+`signedIn: true` signs the portal and console in with the key in `DEMO_API_KEY`, the way the smoke test does: agent-browser answers each app's `/auth/me` as signed in to the demo tenant (the console as an operator) and sends the key as a bearer token only to the apps' own origins, never to the login issuer or anyone else. Without the key that demo is skipped. `ready` is a text on the start page to wait for before recording starts.
 
 ## How a film is made
 

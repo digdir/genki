@@ -503,7 +503,7 @@ describe('tenant secrets and registration', () => {
     ],
     [
       'a secret outside any tenant namespace',
-      { auth: { kind: 'bearer', secret: 'secret://env/typesense-key' } },
+      { auth: { kind: 'bearer', secret: 'secret://env/search-key' } },
     ],
     [
       'plain HTTP',

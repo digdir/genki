@@ -20,7 +20,7 @@ import { createAdmin } from './admin.js';
 import { resolveCatalog } from './catalogs.js';
 import { confirmedAs } from './risk-confirmation.js';
 import { createPlatform, definitionSubject } from './composition.js';
-import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
+import { seededKnowledge, seedOnMemory } from '@genai/composition/memory-seed.test-utils';
 
 const tenant = '991825827';
 const other = '974761076';
@@ -73,21 +73,6 @@ const completion = (content: string) => ({
   usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
 });
 
-const chunk = (id: string, index: number) => ({
-  id,
-  chunk_id: id,
-  doc_num: 'd1',
-  chunk_index: index,
-  content_markdown: `Tildelingsbrevet for 2025 sier ${id}.`,
-  content_length: 40,
-  metadata: '{"Header 1" "Tildelingsbrev 2025"}',
-  KUDOS_preprod_v4_documents_ab897fbdedfa: {
-    title: 'Tildelingsbrev 2025',
-    url: 'https://kudos.dfo.no/dokument/d1',
-    total_chunks: 2,
-  },
-});
-
 const boot = async () => {
   const state = { answer: 'Svar uten kilde.', delayMs: 0 };
   const model = await fakeHttp((body) => {
@@ -136,32 +121,10 @@ const boot = async () => {
       ),
     };
   });
-  const search = await fakeHttp((body) => ({
-    status: 200,
-    json: {
-      results: (body.searches as Record<string, unknown>[]).map((s) =>
-        s.facet_by
-          ? { facet_counts: [], hits: [] }
-          : String(s.collection).includes('phrases')
-            ? {
-                hits: ['c1', 'c2'].map((id) => ({
-                  document: { chunk_id: id, search_phrase: id, doc_num: 'd1' },
-                  hybrid_search_info: { rank_fusion_score: 0.8 },
-                })),
-              }
-            : {
-                hits: ['c1', 'c2'].map((id, i) => ({
-                  document: chunk(id, i),
-                  text_match_info: { score: '10' },
-                })),
-              },
-      ),
-    },
-  }));
-  fakes.push(model, search);
+  const search = await seededKnowledge();
+  fakes.push(model);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
-    TYPESENSE_URL: search.url,
   };
   const blobs = new InMemoryBlobStore();
   const people: Record<string, Principal> = {
@@ -191,10 +154,11 @@ const boot = async () => {
   const platform = await createPlatform({
     catalogs: {
       models: resolveCatalog(yaml('models.yaml'), 'models', env).catalog,
-      knowledge: resolveCatalog(seedOnTypesense(yaml('knowledge.yaml')), 'datasets', env).catalog,
+      knowledge: resolveCatalog(seedOnMemory(yaml('knowledge.yaml')), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm' }),
+    knowledgeEngines: [search.engine],
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: { decide: async () => ({ allow: true }) },
     authenticate: async (request) => {

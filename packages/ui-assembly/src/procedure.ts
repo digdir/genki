@@ -1,5 +1,4 @@
-// «Fremgangsmåte» from genki's step frames, as genki's workspace builds it
-// (apps/workspace/src/procedure.ts in #234), with its titles in the assembly's catalogue, lifted
+// «Fremgangsmåte» from genki's step frames, with its titles in the assembly's catalogue, lifted
 // from the UI blocks preview. Only what genki sends: a step's label or its tool's title, in
 // progress until the next one starts.
 import type { Locale } from '@genai/i18n';

@@ -45,7 +45,7 @@ export const exampleLiveDatasets: DatasetDetailView[] = [
     scope: 'platform',
     editable: false,
     residency: 'norway',
-    index: { endpoint: 'typesense-digdir' },
+    index: { endpoint: 'elastic-digdir' },
     facets: ['type', 'orgs_long'],
     source: 'kudos',
     documents: null,

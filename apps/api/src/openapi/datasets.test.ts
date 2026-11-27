@@ -64,7 +64,7 @@ const boot = async (options: BootOptions = {}) => {
     knowledge: {
       endpoints: {
         search: {
-          engine: 'typesense',
+          engine: 'http-search',
           baseURL: 'https://search.example.no',
           auth: { kind: 'api-key', secret: 'secret://env/search-key' },
         },
@@ -74,16 +74,7 @@ const boot = async (options: BootOptions = {}) => {
           id: 'digdir/kudos',
           endpoint: 'search',
           residency: 'norway',
-          options: {
-            collections: { docs: 'kudos_docs', chunks: 'kudos_chunks' },
-            profiles: {
-              content: {
-                collection: 'chunks',
-                queryBy: ['content_markdown'],
-                textField: 'content_markdown',
-              },
-            },
-          },
+          options: {},
         },
       ],
     },

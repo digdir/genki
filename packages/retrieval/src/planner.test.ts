@@ -380,7 +380,7 @@ describe('corpus-aware planning (ported from query_planner_test)', () => {
     const failing: KnowledgePort = {
       ...harvester().port,
       searchMany: async () => {
-        throw new Error('typesense down');
+        throw new Error('search down');
       },
     };
     const plan = await createPlanner({
@@ -389,7 +389,7 @@ describe('corpus-aware planning (ported from query_planner_test)', () => {
     })('q', [], signal);
     expect(plan).toMatchObject({
       queries: ['Intent', 'a'],
-      trace: { corpusAwareFallback: true, errors: ['harvest failed: typesense down'] },
+      trace: { corpusAwareFallback: true, errors: ['harvest failed: search down'] },
     });
   });
 });

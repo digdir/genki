@@ -17,7 +17,7 @@ const uses = [...css.matchAll(/var\((--genai-[a-z-]+), ((?:var\(--[a-z0-9-]+\))|
 );
 const literal = /^\d*\.?\d+(?:px|rem|em|r?lh|ch|%)?$/;
 
-// Pinned to neutral on purpose, as kunnskapsassistenten and the workspace draw them, each with
+// Pinned to neutral on purpose, as kunnskapsassistenten and the hosted assistant draw them, each with
 // a comment in the CSS.
 const neutralPins = [
   '--genai-answer-actions-comment-background',

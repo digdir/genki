@@ -47,7 +47,7 @@
     align-items: center;
     gap: var(--genai-answer-actions-thumbs-gap, var(--ds-size-1));
   }
-  /* The reasons and comment under the row, pinned to neutral as in genki's workspace. */
+  /* The reasons and comment under the row, pinned to neutral as in genki's hosted assistant. */
   .uib-answer-actions-form {
     display: flex;
     flex-direction: column;

@@ -9,6 +9,7 @@ import {
 } from '@genai/definitions';
 import { envSecrets } from '@genai/kernel';
 import type { ModelClassification } from '@genai/port-model';
+import { memoryEngine } from '@genai/port-knowledge/testing';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { InMemoryConnections } from '@genai/providers-mcp-client';
 import {
@@ -157,24 +158,15 @@ const boot = async (shared: {
       },
       knowledge: {
         endpoints: {
-          'ts-gammel': {
-            engine: 'typesense',
-            baseURL: 'http://127.0.0.1:9',
-            auth: { kind: 'api-key', secret: 'secret://env/ts-key' },
-            sharing: { tenants: '*' },
-          },
-          'ts-ny': {
-            engine: 'typesense',
-            baseURL: 'http://127.0.0.1:10',
-            auth: { kind: 'api-key', secret: 'secret://env/ts-key' },
-            sharing: { tenants: '*' },
-          },
+          'sok-gammel': { engine: 'memory', sharing: { tenants: '*' } },
+          'sok-ny': { engine: 'memory', sharing: { tenants: '*' } },
         },
         datasets: [],
       },
       rerank: { endpoints: {}, rerankers: [] },
     },
-    secrets: envSecrets({ FAKE_KEY: 'k', TS_KEY: 't' }),
+    secrets: envSecrets({ FAKE_KEY: 'k' }),
+    knowledgeEngines: [memoryEngine()],
     definitions: (p) => (shared.definitions.store ??= new InMemoryDefinitionStore(p)),
     policy: { decide: async () => ({ allow: true }) },
     configurables: { store: shared.entries },
@@ -413,8 +405,7 @@ describe('several API instances sharing durable stores', () => {
         name: 'Kudos-rapporter',
         residency: 'norway',
         index: {
-          endpoint: 'ts-gammel',
-          collections: { docs: 'kudos_docs', chunks: 'kudos_chunks' },
+          endpoint: 'sok-gammel',
         },
       },
     });
@@ -428,8 +419,8 @@ describe('several API instances sharing durable stores', () => {
       id: 'kudos:1',
       spec: {
         dataset: `${digdir}/kudos`,
-        from: 'ts-gammel',
-        to: 'ts-ny',
+        from: 'sok-gammel',
+        to: 'sok-ny',
         method: 'copy',
         state: 'ready',
         estimate: { costNok: { min: 1, max: 2 }, durationMinutes: { min: 1, max: 2 } },
@@ -453,14 +444,14 @@ describe('several API instances sharing durable stores', () => {
       body: { reason: 'Bedre treff i testsettet' },
     });
     expect(activated).toMatchObject({ status: 200, body: { state: 'active' } });
-    expect(b.catalog.get('dataset', `${digdir}/kudos`)?.spec.endpoint).toBe('ts-gammel');
+    expect(b.catalog.get('dataset', `${digdir}/kudos`)?.spec.endpoint).toBe('sok-gammel');
 
     await feed.emit('config-entries');
 
-    expect(b.catalog.get('dataset', `${digdir}/kudos`)?.spec.endpoint).toBe('ts-ny');
+    expect(b.catalog.get('dataset', `${digdir}/kudos`)?.spec.endpoint).toBe('sok-ny');
     expect((await callB(`/tenants/${digdir}/datasets/kudos/engine`)).body).toMatchObject({
-      endpoint: 'ts-ny',
-      previous: { endpoint: 'ts-gammel' },
+      endpoint: 'sok-ny',
+      previous: { endpoint: 'sok-gammel' },
     });
   });
 

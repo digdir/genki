@@ -72,7 +72,7 @@ const shared = {
   scope: 'platform',
   origin: 'seed',
   version: 2,
-  spec: { engine: 'typesense', baseURL: 'https://search.example.no' },
+  spec: { engine: 'elasticsearch', baseURL: 'https://search.example.no' },
 };
 
 const own = {
@@ -278,11 +278,11 @@ describe("an agency's dataset in the console", () => {
       scope: org,
       origin: 'api',
       version: 1,
-      spec: { name: 'Notater', endpoint: 'kudos-typesense', residency: 'norway' },
+      spec: { name: 'Notater', endpoint: 'kudos-elastic', residency: 'norway' },
     };
     const engine = {
       dataset: `${org}/notater`,
-      endpoint: 'kudos-typesense',
+      endpoint: 'kudos-elastic',
       embedding: null,
       canSwitch: true,
       retentionDays: 14,

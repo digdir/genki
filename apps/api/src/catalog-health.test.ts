@@ -13,10 +13,7 @@ const principals: Record<string, Principal> = {
   ola: { kind: 'employee', issuer: 'test', subject: 'ola', tenant: '312521172' },
 };
 
-const options = {
-  collections: { docs: 'docs', chunks: 'chunks' },
-  profiles: { content: { collection: 'chunks', queryBy: ['text'], textField: 'text' } },
-};
+const options = {};
 
 const boot = async (stored: { endpoint: string; generation?: string }[]) => {
   const store = new InMemoryConfigEntryStore();
@@ -37,17 +34,17 @@ const boot = async (stored: { endpoint: string; generation?: string }[]) => {
       models: { endpoints: {}, models: [] },
       knowledge: {
         endpoints: {
-          'kudos-typesense': {
-            engine: 'typesense',
+          'kudos-sok': {
+            engine: 'http-search',
             baseURL: 'http://127.0.0.1:1',
-            auth: { kind: 'api-key', secret: 'secret://env/ts-key' },
+            auth: { kind: 'api-key', secret: 'secret://env/sok-key' },
             sharing: { tenants: ['991825827', '312521172'] },
           },
         },
         datasets: [
           {
             id: 'kudos',
-            endpoint: 'kudos-typesense',
+            endpoint: 'kudos-sok',
             residency: 'norway',
             options,
           },
@@ -55,7 +52,7 @@ const boot = async (stored: { endpoint: string; generation?: string }[]) => {
       },
       rerank: { endpoints: {}, rerankers: [] },
     },
-    secrets: envSecrets({ TS_KEY: 'x' }),
+    secrets: envSecrets({ SOK_KEY: 'x' }),
     configurables: { store },
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: { decide: async () => ({ allow: true }) },
@@ -86,9 +83,9 @@ describe('where a dataset runs', () => {
     const view = await boot([{ endpoint: 'kunnskapsserveren', generation: 'g-20261116-abcdef' }]);
 
     expect((await view('991825827', 'kari')).effective).toEqual({
-      endpoint: 'kudos-typesense',
-      engine: 'typesense',
-      engineTitle: 'Typesense',
+      endpoint: 'kudos-sok',
+      engine: 'http-search',
+      engineTitle: 'Søk over HTTP',
       version: 0,
       fromSeed: true,
       expected: {
@@ -101,10 +98,10 @@ describe('where a dataset runs', () => {
   });
 
   it('shows no expected version while the newest stored version is the one in use', async () => {
-    const view = await boot([{ endpoint: 'kudos-typesense' }]);
+    const view = await boot([{ endpoint: 'kudos-sok' }]);
 
     const { effective } = await view('991825827', 'kari');
-    expect(effective).toMatchObject({ endpoint: 'kudos-typesense', version: 1, fromSeed: false });
+    expect(effective).toMatchObject({ endpoint: 'kudos-sok', version: 1, fromSeed: false });
     expect(effective).not.toHaveProperty('expected');
   });
 
