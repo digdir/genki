@@ -1,3 +1,4 @@
+import type { PartKind, PartRegion } from './parts.js';
 import type { IndexDocument } from './writer.js';
 export const residencies = ['norway', 'eu', 'global'] as const;
 export type Residency = (typeof residencies)[number];
@@ -18,6 +19,7 @@ export type KnowledgeCapability =
   | 'search.hybrid'
   | 'fetch'
   | 'range'
+  | 'parts'
   | 'facets'
   | `filter.${FilterKind}`;
 
@@ -27,12 +29,13 @@ export const knowledgeCapabilities: readonly KnowledgeCapability[] = [
   ...searchCapabilities,
   'fetch',
   'range',
+  'parts',
   'facets',
   ...filterKinds.map((k) => `filter.${k}` as const),
 ];
 
 export const legacyCapabilities: readonly KnowledgeCapability[] = knowledgeCapabilities.filter(
-  (c) => c !== 'search.vector' && c !== 'search.hybrid',
+  (c) => c !== 'search.vector' && c !== 'search.hybrid' && c !== 'parts',
 );
 
 export const knowledgeProfiles = {
@@ -130,6 +133,38 @@ export interface CitationResolution {
   withdrawnOn?: string;
 }
 
+/**
+ * How a read around a hit follows its file (ADR 0055, "Chunks and reads"): the n body parts before
+ * and after the hit, the hit's section, or the units holding the hit and n units on each side.
+ */
+export const partReads = ['neighbours', 'section', 'units'] as const;
+export type PartRead = (typeof partReads)[number];
+
+/** The most parts or units on each side, and the most characters, a read around a hit returns. */
+export const maxPartsAround = 5;
+export const maxPartsBudget = 20_000;
+
+/** A body part as a read around a hit returns it, with its regions so it can be cited exactly. */
+export interface ReadPart {
+  seq: number;
+  kind: PartKind;
+  level: number | null;
+  headingPath: string[];
+  text: string;
+  start: number | null;
+  end: number | null;
+  regions: PartRegion[];
+}
+
+export interface PartsRead {
+  /** In reading order, cut on a part boundary at the budget. */
+  parts: ReadPart[];
+  /** The units the parts cover, in order, with the label a reader cites each by. */
+  units: { unit: number; label: string | null }[];
+  /** True when parts were left out to keep the text within the budget. */
+  cut: boolean;
+}
+
 export interface FacetValue {
   value: string;
   count: number;
@@ -155,6 +190,8 @@ export interface KnowledgePort {
   searchMany(requests: SearchRequest[]): Promise<SearchResult[]>;
   fetch(ids: string[]): Promise<Hit[]>;
   range(document: string, from: number, to: number): Promise<Hit[]>;
+  /** The parts around a chunk made from parts; none for a chunk made from pages. */
+  parts?(chunkId: string, read: PartRead, n: number, budget: number): Promise<PartsRead>;
   facets(
     fields: string[],
     filters?: Record<string, FilterValue>,

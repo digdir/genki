@@ -591,7 +591,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       serviceFactsLookup && (config.tools ?? []).some(isServiceFactsRef),
     );
     const toolSpecs = [
-      ...(searchable ? agentToolsFor(citeBy) : []),
+      ...(searchable ? agentToolsFor(citeBy, { around: Boolean(searchable.readParts) }) : []),
       ...(sourceFactsOn ? [sourceFactsTool] : []),
       ...(serviceFactsOn ? [serviceFactsTool] : []),
       ...(skills.length ? [useSkillTool] : []),

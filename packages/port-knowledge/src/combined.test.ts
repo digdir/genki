@@ -76,4 +76,38 @@ describe('combineKnowledge', () => {
     expect(combined.info().filters).toEqual({ org: 'select' });
     expect(await combined.facets(['org'])).toEqual({ org: [{ value: 'Digdir', count: 2 }] });
   });
+
+  it('routes a read around a hit to its dataset, and answers none where the dataset does not read parts', async () => {
+    const reads: string[] = [];
+    const withParts = (id: string, declares: boolean): KnowledgePort => {
+      const { knowledge } = port(id);
+      return {
+        ...knowledge,
+        info: () => ({
+          ...knowledge.info(),
+          capabilities: declares ? ['search.text', 'fetch', 'range', 'parts'] : ['search.text'],
+        }),
+        parts: async (chunkId) => {
+          reads.push(`${id}:${chunkId}`);
+          return { parts: [], units: [{ unit: 1, label: id }], cut: false };
+        },
+      };
+    };
+    const combined = combineKnowledge({ a: withParts('a', true), b: withParts('b', false) });
+    expect(combined.info().capabilities).toContain('parts');
+    expect(await combined.parts?.('a::c1', 'units', 1, 100)).toMatchObject({
+      units: [{ unit: 1, label: 'a' }],
+    });
+    expect(await combined.parts?.('b::c1', 'units', 1, 100)).toEqual({
+      parts: [],
+      units: [],
+      cut: false,
+    });
+    expect(await combined.parts?.('c1', 'units', 1, 100)).toEqual({
+      parts: [],
+      units: [],
+      cut: false,
+    });
+    expect(reads).toEqual(['a:c1']);
+  });
 });
