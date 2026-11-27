@@ -93,7 +93,7 @@ import {
 } from '@genai/providers-ai-gateway';
 import { EgressGuard } from '@genai/providers-mcp-client';
 import { nativeOutputStoreFromEnv } from '@genai/providers-azure-blob';
-import { createLocalConverter, pdfPageCount } from '@genai/providers-documents';
+import { createLocalConverter, pdfPageCount, readPdfLayout } from '@genai/providers-documents';
 import {
   createTraceExporter,
   langfuseTraceSink,
@@ -463,7 +463,8 @@ const knowledgeHandlers =
         // Stored conversions, with Docling when the worker has a server (ADR 0042).
         conversions: knowledgeConversionsOf(knowledgeWriter),
         convertConcurrency,
-        ...(docling ? { docling } : {}),
+        // Docling's parts get heading levels from the PDF's outline and text sizes (issue 516).
+        ...(docling ? { docling, pdfLayout: readPdfLayout } : {}),
         // A PDF page the text layer cannot read is left empty and logged; the rest of the file is kept.
         converter: createLocalConverter({
           onUnreadablePage: (page) => log('a PDF page could not be read', { ...page }),

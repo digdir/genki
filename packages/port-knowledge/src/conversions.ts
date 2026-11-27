@@ -51,6 +51,11 @@ export const blankEndOf = (pages: readonly string[]) =>
 export const textLayerDerivation: Derivation = { name: 'text-layer', version: 1 };
 export const doclingPagesDerivation: Derivation = { name: 'docling-pages', version: 1 };
 export const doclingPartsDerivation: Derivation = { name: 'docling-parts', version: 1 };
+/**
+ * `docling-parts` 2: version 1's parts with heading levels from the PDF's outline, section numbers
+ * and text sizes (issue 516). Made where the PDF's bytes are at hand; version 1 stays for the rest.
+ */
+export const doclingPartsLevelledDerivation: Derivation = { name: 'docling-parts', version: 2 };
 export const textLayerPartsDerivation: Derivation = { name: 'text-layer-parts', version: 1 };
 
 /**
@@ -76,9 +81,11 @@ export const acceptedConverters: AcceptedConverter[] = [
 
 /**
  * The converters a pipeline with a parts chunking accepts, in order (issue 635): Docling's parts,
- * kept, then a PDF's text layer's, replaced. A file with neither waits on a parts convert job.
+ * version 2 with its heading levels before version 1 (issue 516), kept, then a PDF's text layer's,
+ * replaced. A file with none of them waits on a parts convert job.
  */
 export const acceptedPartsConverters: AcceptedConverter[] = [
+  { converter: 'docling', derivation: doclingPartsLevelledDerivation, kept: true },
   { converter: 'docling', derivation: doclingPartsDerivation, kept: true },
   { converter: 'text-layer', derivation: textLayerPartsDerivation, kept: false },
 ];

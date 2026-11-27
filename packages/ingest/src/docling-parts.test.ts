@@ -1,7 +1,14 @@
-import { codePointLength, codePointSlice, conversionText } from '@genai/port-knowledge';
+import {
+  codePointLength,
+  codePointSlice,
+  conversionText,
+  type ConversionUnit,
+} from '@genai/port-knowledge';
 import { describe, expect, it } from 'vitest';
 import { doc, type Place } from './docling-document.test-utils.js';
 import { doclingParts } from './docling-parts.js';
+import type { PdfLayout } from './heading-levels.js';
+import { partsUnitChunks } from './parts-unit.js';
 
 const partsOf = (document: ReturnType<typeof doc>) =>
   doclingParts(document).units.flatMap((unit) => unit.parts);
@@ -344,5 +351,89 @@ describe('docling-parts', () => {
       ['text', 'body', 'Avsnitt.'],
       ['page_footer', 'furniture', 'Side 1'],
     ]);
+  });
+});
+
+describe('docling-parts 2', () => {
+  /**
+   * A report whose chapter has no number, with a numbered section under it on the next page; too few
+   * of its headings are numbered for version 1 to level them, so every heading there is level 1.
+   */
+  const report = () =>
+    doc(3, (add) => {
+      add.text('section_header', 'Tildeling av tilskudd', 1, { top: 100 });
+      add.text('section_header', 'Hvem kan søke', 1, { top: 200 });
+      add.text('text', 'Kommuner kan søke.', 1, { top: 250 });
+      add.text('section_header', 'Hva dekkes', 1, { top: 400 });
+      add.text('text', 'Lønn dekkes.', 1, { top: 450 });
+      add.text('section_header', '3.2 Søknad', 2, { top: 100 });
+      add.text('text', 'Slik søker du.', 2, { top: 200 });
+      add.text('text', 'Fristen er 1. mars.', 3, { top: 100 });
+    });
+  const layout: PdfLayout = {
+    outline: [
+      { title: 'Tildeling av tilskudd', level: 1, page: 1 },
+      { title: '3.2 Søknad', level: 2, page: 2 },
+    ],
+    runs: [],
+  };
+
+  it("levels change no part's text and no chunk's text", () => {
+    const before = doclingParts(report()).units;
+    const after = doclingParts(report(), { layout }).units;
+    const spans = (units: ConversionUnit[]) =>
+      units
+        .flatMap((u) => u.parts)
+        .map(({ seq, kind, text, start, end, regions }) => ({
+          seq,
+          kind,
+          text,
+          start,
+          end,
+          regions,
+        }));
+    expect(spans(after)).toEqual(spans(before));
+    const chunks = (units: ConversionUnit[]) =>
+      partsUnitChunks(units, { splitMaxLength: 4000 }).map(({ text, seqFrom, seqTo }) => ({
+        text,
+        seqFrom,
+        seqTo,
+      }));
+    expect(chunks(after)).toEqual(chunks(before));
+    expect(after.flatMap((u) => u.parts).map((p) => p.level)).toEqual([
+      1,
+      2,
+      null,
+      2,
+      null,
+      2,
+      null,
+      null,
+    ]);
+  });
+
+  it("a parts chunk's heading path holds the headings in force where it starts, from earlier pages too", () => {
+    const chunks = partsUnitChunks(doclingParts(report(), { layout }).units, {
+      splitMaxLength: 4000,
+    });
+    expect(chunks.map((c) => c.headingPath)).toEqual([
+      [],
+      ['Tildeling av tilskudd'],
+      ['Tildeling av tilskudd', '3.2 Søknad'],
+    ]);
+    // Version 1 levels every heading 1 here, so the last page says only its own section.
+    const before = partsUnitChunks(doclingParts(report()).units, { splitMaxLength: 4000 });
+    expect(before.at(-1)?.headingPath).toEqual(['3.2 Søknad']);
+  });
+
+  it('a title keeps its level from the walk', () => {
+    const parts = doclingParts(
+      doc(1, (add) => {
+        add.text('title', 'Årsrapport 2025', 1, { top: 50 });
+        add.text('section_header', 'Innledning', 1, { top: 100 });
+      }),
+      { layout: { outline: [{ title: 'Årsrapport 2025', level: 3, page: 1 }], runs: [] } },
+    ).units.flatMap((u) => u.parts);
+    expect(parts.map((p) => p.level)).toEqual([1, 1]);
   });
 });

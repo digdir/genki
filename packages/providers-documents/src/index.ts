@@ -7,6 +7,9 @@ import {
   textLayer,
   type DocumentConverter,
   type DocumentFile,
+  type OutlineEntry,
+  type PdfLayout,
+  type PdfTextRun,
 } from '@genai/ingest';
 import mammoth from 'mammoth';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -254,4 +257,95 @@ export const createLocalConverter = (options: LocalConverterOptions = {}): Docum
       throw new UnsupportedDocumentError(file.name);
     },
   };
+};
+
+/** Whether a font is bold by its name, the only sign of weight pdf.js gives without rendering. */
+const boldFont = (...names: (string | undefined)[]) =>
+  names.some((name) => /bold|black|heavy|demi/i.test(name ?? ''));
+
+interface OutlineNode {
+  title: string;
+  dest: string | unknown[] | null;
+  items: OutlineNode[];
+}
+
+/**
+ * A PDF's outline and the sizes of its text layer's runs, for the heading levels of `docling-parts` 2
+ * (issue 516). Only where text is and how big, never the text itself. An outline entry whose
+ * destination names no page has page null; a page pdf.js cannot read has no runs.
+ */
+export const readPdfLayout = async (bytes: Uint8Array): Promise<PdfLayout> => {
+  const task = getDocument({
+    data: new Uint8Array(bytes),
+    disableFontFace: true,
+    useSystemFonts: false,
+    useWorkerFetch: false,
+    verbosity: 0,
+    // Keeps a font's own name, such as `Inter-SemiBold`, the only sign of its weight.
+    fontExtraProperties: true,
+  });
+  try {
+    const pdf = await task.promise;
+    const pageOf = async (dest: OutlineNode['dest']): Promise<number | null> => {
+      try {
+        const explicit = typeof dest === 'string' ? await pdf.getDestination(dest) : dest;
+        const target = explicit?.[0];
+        if (typeof target === 'number') return target + 1;
+        if (target && typeof target === 'object')
+          return (await pdf.getPageIndex(target as Parameters<typeof pdf.getPageIndex>[0])) + 1;
+      } catch {
+        // A destination that names no page is left without one.
+      }
+      return null;
+    };
+    const outline: OutlineEntry[] = [];
+    const visit = async (nodes: OutlineNode[], level: number) => {
+      for (const node of nodes) {
+        outline.push({ title: node.title, level, page: await pageOf(node.dest) });
+        await visit(node.items ?? [], level + 1);
+      }
+    };
+    await visit(((await pdf.getOutline()) ?? []) as OutlineNode[], 1);
+    const runs: PdfTextRun[] = [];
+    for (let n = 1; n <= pdf.numPages; n += 1) {
+      try {
+        const page = await pdf.getPage(n);
+        try {
+          const [left, bottom, right, top] = page.view as [number, number, number, number];
+          const width = right - left;
+          const height = top - bottom;
+          const content = await page.getTextContent();
+          // The operator list loads the page's fonts, which hold their names.
+          await page.getOperatorList();
+          const fontName = (id: string) =>
+            page.commonObjs.has(id)
+              ? (page.commonObjs.get(id) as { name?: string }).name
+              : undefined;
+          for (const item of content.items) {
+            if (!('str' in item)) continue;
+            const chars = item.str.replace(/\s/g, '').length;
+            if (chars === 0) continue;
+            const [a, b, c, d, e, f] = item.transform as number[];
+            const size = Math.sqrt(Math.abs((a ?? 0) * (d ?? 0) - (b ?? 0) * (c ?? 0)));
+            const x0 = ((e ?? 0) - left) / width;
+            const y1 = (top - (f ?? 0)) / height;
+            runs.push({
+              page: n,
+              box: [x0, y1 - (item.height || size) / height, x0 + item.width / width, y1],
+              size,
+              bold: boldFont(fontName(item.fontName)),
+              chars,
+            });
+          }
+        } finally {
+          page.cleanup();
+        }
+      } catch {
+        // A page pdf.js cannot read gives no runs; its headings are levelled by their box.
+      }
+    }
+    return { outline, runs };
+  } finally {
+    await task.destroy();
+  }
 };

@@ -1,7 +1,9 @@
 /**
  * Parts from a `DoclingDocument`, derivation `docling-parts` 1 (ADR 0055): every item in reading
  * order, furniture included, with a region on every page it covers and its span of the conversion's
- * text, stored one row a page.
+ * text, stored one row a page. Given the PDF's layout, `docling-parts` 2: the same parts, with each
+ * heading's level from the PDF's outline, section number or text size (issue 516). Only `level` and
+ * `headingPath` differ, so the text and the chunks made from it are the same.
  */
 import {
   codePointLength,
@@ -23,6 +25,7 @@ import {
   type DoclingProv,
   type WalkEntry,
 } from './docling-walk.js';
+import { headingLevels, type LevelledHeading, type PdfLayout } from './heading-levels.js';
 import { pageLabels } from './page-labels.js';
 
 const kinds = new Set<string>(partKinds);
@@ -111,8 +114,55 @@ interface Draft {
   pieces: string[];
 }
 
+export interface DoclingPartsOptions {
+  /** The PDF's outline and text sizes: given, the parts are `docling-parts` 2. */
+  layout?: PdfLayout;
+  /** Off only to score the levels against the outline (`headingLevels`). */
+  outline?: boolean;
+}
+
+const isHeading = (draft: Draft, text: string) =>
+  draft.layer === 'body' &&
+  text !== '' &&
+  (draft.kind === 'title' || draft.kind === 'section_header');
+
+const draftText = (draft: Draft) => nfc(draft.pieces.filter((piece) => piece !== '').join(' '));
+
+/**
+ * The levels of the section headers from the PDF, by draft; titles keep the walk's level. Applied
+ * after the walk, which `docling-pages` shares, so its pages never change (issue 516).
+ */
+const levelsFrom = (
+  drafts: Draft[],
+  walk: ReturnType<typeof walkDocling>,
+  options: DoclingPartsOptions,
+) => {
+  const levels = new Map<number, number>();
+  if (!options.layout) return levels;
+  const at: number[] = [];
+  const headings: LevelledHeading[] = [];
+  drafts.forEach((draft, i) => {
+    const text = draftText(draft);
+    if (!isHeading(draft, text) || draft.kind !== 'section_header') return;
+    const [page, provs] = [...byPage(draft.entry.node)][0] ?? [];
+    at.push(i);
+    headings.push({
+      text,
+      page,
+      box: page !== undefined && provs ? boxOn(provs, walk.sizeOf(page)) : undefined,
+      pageHeight: page !== undefined ? walk.sizeOf(page)?.height : undefined,
+    });
+  });
+  const found = headingLevels(headings, options.layout, {
+    ...(options.outline === undefined ? {} : { outline: options.outline }),
+  });
+  found.forEach(({ level }, k) => levels.set(at[k] as number, level));
+  return levels;
+};
+
 export const doclingParts = (
   document: DoclingDocument,
+  options: DoclingPartsOptions = {},
 ): { units: ConversionUnit[]; unmapped: Record<string, number> } => {
   const walk = walkDocling(document);
   const takesPictureText = pagesTakingPictureText(walk);
@@ -141,11 +191,12 @@ export const doclingParts = (
     if (ref.startsWith('#/pictures/')) pictures.set(ref, draft);
   }
 
+  const levels = levelsFrom(drafts, walk, options);
   let length = 0;
   const headings: { level: number; text: string }[] = [];
   const parts: ConversionPart[] = drafts.map((draft, seq) => {
     const { entry, kind, layer } = draft;
-    const text = nfc(draft.pieces.filter((piece) => piece !== '').join(' '));
+    const text = draftText(draft);
     const body = layer === 'body';
     let start: number | null = null;
     let end: number | null = null;
@@ -155,8 +206,8 @@ export const doclingParts = (
       end = start + size;
       if (size > 0) length = end;
     }
-    const heading = body && text !== '' && (kind === 'title' || kind === 'section_header');
-    const level = heading ? (entry.level ?? 1) : null;
+    const heading = isHeading(draft, text);
+    const level = heading ? (levels.get(seq) ?? entry.level ?? 1) : null;
     while (heading && (headings.at(-1)?.level ?? 0) >= (level ?? 0)) headings.pop();
     const headingPath = headings.map((h) => h.text);
     if (heading) headings.push({ level: level ?? 1, text });
