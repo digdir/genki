@@ -53,6 +53,48 @@ const maxSizeLevels = 4;
 const boldBonus = 0.4;
 /** Fewer characters than this in a heading's box: its size is its box height. */
 const minChars = 3;
+/** Smaller than the deepest numbered level by more than this, in points: one level below it. */
+const smallerGap = 0.5;
+
+/** A leading section number, as `numberDepth` in the walk reads it. */
+const sectionNumber = /^[\s#*]*(\d+(?:\.\d+)*)\.?\s+\S/;
+/** A section number with a space before or after its dots, as some PDFs set it: «3 .1. 1», «4 . 4 . 2». */
+const spacedNumber = /^[\s#*]*(\d{1,3}(?: ?\. ?\d{1,3}){1,5})(?![\d.])/;
+/** A chapter or part word and the token after it: «Kapittel 3», «Del II», «CHAPTER THREE:». */
+const chapterWord = /^[\s#*]*(kapittel|kap\.|chapter|del|part)[ \t]+([\p{L}\p{N}]+)/iu;
+const romanNumeral = /^[IVXLC]{1,7}$/;
+const numberWords = new Set(
+  (
+    'en ett to tre fire fem seks sju syv åtte ni ti elleve tolv første andre tredje fjerde femte sjette ' +
+    'one two three four five six seven eight nine ten eleven twelve first second third fourth fifth sixth'
+  ).split(' '),
+);
+
+/** «part» for «Del»/«Part», «chapter» for «Kapittel»/«Chapter», with a number, numeral or number word. */
+const chapterKind = (text: string): 'part' | 'chapter' | undefined => {
+  const match = chapterWord.exec(text.normalize('NFKC'));
+  const [word, token] = [match?.[1]?.toLowerCase(), match?.[2] ?? ''];
+  if (!word) return undefined;
+  const counted =
+    /^\d{1,3}$/.test(token) || romanNumeral.test(token) || numberWords.has(token.toLowerCase());
+  if (!counted) return undefined;
+  return word === 'del' || word === 'part' ? 'part' : 'chapter';
+};
+
+/**
+ * A heading's depth from its section number, for `docling-parts` 2 only: as the walk's `numberDepth`,
+ * except that trailing zero parts do not count («2.0» is a chapter, depth 1) and a number with spaced
+ * dots counts all its parts («3 . 2 . 1» is depth 3).
+ */
+const sectionDepth = (text: string) => {
+  const depth = numberDepth(text);
+  if (depth === undefined) return undefined;
+  const normalized = text.normalize('NFKC');
+  const spaced = spacedNumber.exec(normalized)?.[1];
+  const parts = (spaced ?? sectionNumber.exec(normalized)?.[1] ?? '').replace(/ /g, '').split('.');
+  while (parts.length > 1 && /^0+$/.test(parts.at(-1) ?? '')) parts.pop();
+  return spaced ? parts.length : Math.min(depth, parts.length);
+};
 
 const leadingNumber = /^[\s#*]*(?:\d+(?:\.\d+)*\.?|[ivx]+\.|[a-z]\))\s+/;
 const punctuation = /[^\p{L}\p{N}_ ]+/gu;
@@ -177,9 +219,24 @@ export const headingLevels = (
     else runsOn.set(run.page, [run]);
   }
   const sizes = new Map(rest.map((i) => [i, sizeOf(headings[i] as LevelledHeading, runsOn)]));
-  const depths = new Map(rest.map((i) => [i, numberDepth(headings[i]?.text ?? '')]));
+  const depths = new Map(rest.map((i) => [i, sectionDepth(headings[i]?.text ?? '')]));
+  const byNumber =
+    rest.length > 0 &&
+    rest.filter((i) => depths.get(i) !== undefined).length / rest.length >= minNumberedShare;
+  // In a numbered document, «Kapittel 3» is a chapter, depth 1, and «Del II» a part above the
+  // chapters: with parts, every other depth goes one down. Chapter words do not count towards the
+  // share, so «Del en» alone does not make a document numbered.
+  if (byNumber) {
+    const kinds = new Map(rest.map((i) => [i, chapterKind(headings[i]?.text ?? '')]));
+    const parts = rest.some((i) => depths.get(i) === undefined && kinds.get(i) === 'part');
+    for (const i of rest) {
+      const depth = depths.get(i);
+      const kind = kinds.get(i);
+      if (depth !== undefined) depths.set(i, depth + (parts ? 1 : 0));
+      else if (kind) depths.set(i, kind === 'part' || !parts ? 1 : 2);
+    }
+  }
   const numbered = rest.filter((i) => depths.get(i) !== undefined);
-  const byNumber = rest.length > 0 && numbered.length / rest.length >= minNumberedShare;
   if (byNumber)
     for (const i of numbered) result[i] = { level: depths.get(i) as number, source: 'number' };
 
@@ -204,6 +261,7 @@ export const headingLevels = (
     }
     const medians = [...byLevel].map(([level, values]) => [level, median(values)] as const);
     const first = medians.find(([level]) => level === 1)?.[1];
+    const deepest = [...medians].sort((a, b) => b[0] - a[0])[0];
     for (const i of bySize) {
       const size = sizes.get(i)?.size;
       let level = 1;
@@ -211,13 +269,18 @@ export const headingLevels = (
         level = [...medians].sort(
           (a, b) => Math.abs(a[1] - size) - Math.abs(b[1] - size) || a[0] - b[0],
         )[0]?.[0] as number;
+      // Smaller than the deepest numbered level by more than half a point: one level below it.
+      if (size !== undefined && deepest && size < deepest[1] - smallerGap) level = deepest[0] + 1;
       result[i] = { level, source: sourceOf(i) };
     }
   } else {
     // Sizes to the half point, ranked from the biggest; a size only one heading has joins the nearest
     // size more have. Ranked over every heading the size rung could level, as the prototype does.
+    // «Kapittel 2» or «Del II» is level 1, and the other headings rank from level 2 below them.
+    const chapters = new Set(bySize.filter((i) => chapterKind(headings[i]?.text ?? '')));
     const half = new Map(
       rest.flatMap((i) => {
+        if (chapters.has(i)) return [];
         const size = sizes.get(i)?.size;
         return size === undefined ? [] : [[i, Math.round(size * 2) / 2] as const];
       }),
@@ -233,7 +296,12 @@ export const headingLevels = (
     const order = [...new Set([...half.values()].map(snap))].sort((a, b) => b - a);
     for (const i of bySize) {
       const size = half.get(i);
-      const level = size === undefined ? 1 : Math.min(order.indexOf(snap(size)) + 1, maxSizeLevels);
+      const below = chapters.size > 0 ? 1 : 0;
+      const level = chapters.has(i)
+        ? 1
+        : size === undefined
+          ? 1 + below
+          : Math.min(order.indexOf(snap(size)) + 1 + below, maxSizeLevels);
       result[i] = { level, source: sourceOf(i) };
     }
   }

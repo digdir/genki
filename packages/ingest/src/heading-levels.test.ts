@@ -163,4 +163,101 @@ describe('heading levels', () => {
     const runs = [run(headings[0] as LevelledHeading, 12), run(headings[1] as LevelledHeading, 18)];
     expect(levels(headings, [], runs)).toEqual([2, 1]);
   });
+
+  it('in a numbered document, a chapter word with a number is level 1', () => {
+    const headings = [
+      heading('Kapittel 1', 1),
+      heading('1.1 Mandat', 1, 200),
+      heading('1.2 Sammensetning', 2),
+      heading('CHAPTER TWO: METHODS', 3),
+      heading('2.1 Data', 3, 200),
+    ];
+    const sizes = [12, 12, 12, 12, 12];
+    const runs = headings.map((h, i) => run(h, sizes[i] as number));
+    expect(levels(headings, [], runs)).toEqual([1, 2, 2, 1, 2]);
+  });
+
+  it('a chapter word does not count as a section number towards the numbered share', () => {
+    const headings = [
+      heading('Del en', 1),
+      heading('Om ordningen', 1, 200),
+      heading('Del to', 2),
+      heading('Om søkerne', 2, 200),
+      heading('1 Innledning', 3),
+    ];
+    const runs = headings.map((h, i) => run(h, i % 2 === 0 ? 18 : 13));
+    // One numbered heading in five is under the share, so even «1 Innledning» is levelled by size.
+    expect(headingLevels(headings, { outline: [], runs })[4]?.source).toBe('size-font');
+  });
+
+  it('a section number ending in zero parts counts without them, so «2.0» is depth 1', () => {
+    const headings = [
+      heading('1.0 Introduction', 1),
+      heading('1.1 Scope', 1, 200),
+      heading('2.0 Recommendations', 2),
+      heading('2.1.0 Barriers', 2, 200),
+    ];
+    expect(levels(headings, [])).toEqual([1, 2, 1, 2]);
+  });
+
+  it('a section number with spaces around its dots counts every part', () => {
+    const headings = [
+      heading('3 Methods', 1),
+      heading('3.1 Permanent changes', 1, 200),
+      heading('3 .1. 1 Gene knockout', 2),
+      heading('3 . 2 . 1 Knockdown', 2, 200),
+    ];
+    expect(levels(headings, [])).toEqual([1, 2, 3, 3]);
+  });
+
+  it('in a numbered document with parts, «Del II» is level 1 and the numbered chapters go one level down', () => {
+    const headings = [
+      heading('Del I Forvaltningen', 1),
+      heading('1 Innledning', 1, 200),
+      heading('1.1 Bakgrunn', 2),
+      heading('Del II Avtalen', 3),
+      heading('2 Hovedinnhold', 3, 200),
+    ];
+    expect(levels(headings, [])).toEqual([1, 2, 3, 1, 2]);
+  });
+
+  it('in a numbered document, an unnumbered heading smaller than the deepest numbered level goes one below it', () => {
+    const headings = [
+      heading('1 Innledning', 1),
+      heading('1.1 Bakgrunn', 1, 200),
+      heading('1.1.1 Tidligere vedtak', 2),
+      heading('Lang sikt', 2, 200),
+    ];
+    const sizes = [16, 13, 12, 10];
+    const runs = headings.map((h, i) => run(h, sizes[i] as number));
+    expect(levels(headings, [], runs)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('without section numbers, a chapter word with a number is level 1 and the other headings rank below it', () => {
+    const headings = [
+      heading('Kapittel 2', 1),
+      heading('Rettssystemet', 1, 200),
+      heading('Tidligere anbefalinger', 2),
+      heading('Kapittel 3', 3),
+      heading('Rapporter', 3, 200),
+      heading('Arrangementer', 4),
+    ];
+    // The chapter label is set smaller than the titles under it.
+    const sizes = [10, 18, 14, 10, 18, 14];
+    const runs = headings.map((h, i) => run(h, sizes[i] as number));
+    expect(levels(headings, [], runs)).toEqual([1, 2, 3, 1, 2, 3]);
+  });
+
+  it('reads section numbers and chapter words in linear time on long adversarial headings', () => {
+    const texts = [
+      `${'1 .'.repeat(50_000)}x`,
+      `${'1. '.repeat(50_000)}x`,
+      `Kapittel${' '.repeat(50_000)}${'I'.repeat(50_000)}`,
+      `${' '.repeat(50_000)}Del${'\t'.repeat(50_000)}x`,
+    ];
+    const headings = texts.map((text, i) => heading(text, i + 1));
+    const started = performance.now();
+    headingLevels(headings, { outline: [], runs: [] });
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
 });
