@@ -851,8 +851,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           type: 'kernel.notice',
           data: { event: 'agent/thinking', iteration, reasoning: turn.content },
         };
-      // The read check of the turn before ran alongside this model call; its result is applied
-      // before this turn's tools, so they and this turn's gates see it.
+      // Apply the previous turn's read check before this turn's tools and gates.
       const checkedFirst = await applyReadCheck();
       if (checkedFirst) yield checkedFirst;
       let results: ToolCallResult[] = [];

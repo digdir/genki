@@ -19,8 +19,7 @@ const latch = () => {
   return { open, opened };
 };
 
-// Waits for the latch, or gives up after a second, so a loop that waits for the check
-// before opening the latch logs the check as done first instead of hanging.
+// Waits for the latch for at most a second, so a loop that awaits the check cannot hang.
 const until = (opened: Promise<void>) =>
   Promise.race([opened, new Promise((resolve) => setTimeout(resolve, 1000))]);
 
