@@ -1,7 +1,7 @@
 // Turns a capture into a film: word timings, an edit list from the AI director, review rounds and the render.
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { copyFileSync, existsSync, readFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { direct, estimateReviseUsd, estimateUsd, revise, type Ai } from './demo-director.ts';
 import { baselineEdl, parseEdl, type Edl } from './demo-edl.ts';
 import {
@@ -9,9 +9,12 @@ import {
   estimatedWords,
   fastTranscriptionUrl,
   heardWords,
+  heardWordsSchema,
   parseCaptureLog,
   type CaptureLog,
+  type Heard,
 } from './demo-events.ts';
+import { readJsonIfThere, writeRunJson } from './demo-files.ts';
 import { renderFilm } from './demo-render.ts';
 import { approved, hearingUsd, leftUsd, OverCap, refuseOverCap, type Spend } from './demo-voice.ts';
 
@@ -71,20 +74,22 @@ export const hearClip = async (
   token: () => Promise<string>,
   spend: Spend,
   seconds: number,
-) => {
+): Promise<Heard[] | undefined> => {
+  const known = readJsonIfThere(wordsFile(clip));
+  if (known !== undefined) return heardWordsSchema.parse(known);
   const endpoint = process.env.DEMO_AUDIO_ENDPOINT;
   const cost = hearingUsd(seconds);
-  if (!endpoint || existsSync(wordsFile(clip)) || !approved(spend) || cost > leftUsd(spend)) return;
+  if (!endpoint || !approved(spend) || cost > leftUsd(spend)) return undefined;
   spend.spentUsd += cost;
   try {
-    writeFileSync(
-      wordsFile(clip),
-      JSON.stringify(await hearWords(clip, endpoint, await token(), language)),
-    );
+    const words = await hearWords(clip, endpoint, await token(), language);
+    writeRunJson(dirname(clip), basename(wordsFile(clip)), words);
+    return words;
   } catch (error) {
     console.log(
       `word timings: ${error instanceof Error ? error.message : String(error)}, estimating`,
     );
+    return undefined;
   }
 };
 
@@ -100,10 +105,7 @@ export const timeWords = async (
       continue;
     }
     const clip = join(voices, step.voice.file);
-    await hearClip(clip, log.language, token, spend, step.voice.seconds);
-    const heard = existsSync(wordsFile(clip))
-      ? JSON.parse(readFileSync(wordsFile(clip), 'utf8'))
-      : [];
+    const heard = (await hearClip(clip, log.language, token, spend, step.voice.seconds)) ?? [];
     step.words = alignWords(step.say, heard, step.voice.seconds);
   }
   return log;
@@ -148,11 +150,11 @@ export const makeFilm = async (out: string, name: string, voices: string, spend:
     token,
     spend,
   );
-  writeFileSync(join(out, 'events.json'), JSON.stringify(log, null, 2));
-  const kept = join(out, 'edl.json');
+  writeRunJson(out, 'events.json', log);
+  const kept = readJsonIfThere(join(out, 'edl.json'));
   const extras = ['events.json', 'edl.json', 'capture.mp4', ...keepVoices(log, out, voices)];
   let edl: Edl;
-  if (existsSync(kept)) edl = parseEdl(JSON.parse(readFileSync(kept, 'utf8')), log);
+  if (kept !== undefined) edl = parseEdl(kept, log);
   else {
     const ai = aiFromEnv(process.env, token, spend);
     const estimate = ai ? estimateUsd(log, ai.deployment) : 0;
@@ -177,16 +179,11 @@ export const makeFilm = async (out: string, name: string, voices: string, spend:
         );
       edl = baselineEdl(log);
     }
-    writeFileSync(kept, JSON.stringify(edl, null, 2));
+    writeRunJson(out, 'edl.json', edl);
   }
   const mp4 = join(out, `${name}.mp4`);
   const srt = join(out, `${name}.srt`);
-  await renderFilm(
-    { log, edl, capture: join(out, 'capture.mp4'), voices, fonts: resolve('demos/out/.fonts') },
-    mp4,
-    srt,
-    log.language,
-  );
+  await renderFilm({ log, edl, capture: join(out, 'capture.mp4'), voices }, mp4, srt, log.language);
   return { mp4, srt, extras, posterAt: (edl.intro?.seconds ?? 0) + 2 };
 };
 
@@ -204,7 +201,7 @@ export const editFilm = async (
   refuseOverCap(spend, ai ? estimateReviseUsd(log, before, ai.deployment) : 0, 'The edit');
   if (!ai) throw new Error('Set DEMO_AUDIO_ENDPOINT, with DEMO_DIRECTOR not off, to edit a film');
   const { edl, costUsd } = await revise(log, before, instruction, ai);
-  writeFileSync(join(out, 'edl.json'), JSON.stringify(edl, null, 2));
+  writeRunJson(out, 'edl.json', edl);
   console.log(`director: edited for ${costUsd.toFixed(2)} USD`);
   return makeFilm(out, name, voices, spend);
 };

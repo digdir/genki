@@ -2,10 +2,38 @@
 import {
   audioModelPrices,
   demoVoiceOf,
+  demoVoices,
   speechToTextUsdPerHour,
 } from '../packages/contracts/src/demo-voices.ts';
 
 export const isModelVoice = (voice: string) => demoVoiceOf(voice)?.provider === 'azure-audio';
+
+export const modelVoiceId = (voice: string) => {
+  const known = demoVoices.find((v) => v.id === voice && v.provider === 'azure-audio');
+  if (!known) throw new Error(`${voice} is not a model voice`);
+  return known.id;
+};
+
+export const speechLocale = (language: string) => {
+  const known = demoVoices.find((v) => v.language === language);
+  if (!known)
+    throw new Error(
+      `Speech to text hears ${[...new Set(demoVoices.map((v) => v.language))].join(', ')}, not ${language}`,
+    );
+  return known.language;
+};
+
+export const maxClipBytes = 2 * 1024 * 1024;
+
+export const modelAudio = (base64: string) => {
+  if (base64.length > Math.ceil(maxClipBytes / 3) * 4)
+    throw new Error(`The audio model answered with more than ${maxClipBytes} bytes`);
+  const audio = Buffer.from(base64, 'base64');
+  const id3 = audio.subarray(0, 3).toString('latin1') === 'ID3';
+  const frame = audio[0] === 0xff && ((audio[1] ?? 0) & 0xe0) === 0xe0;
+  if (!id3 && !frame) throw new Error('The audio model answered with something other than mp3');
+  return audio;
+};
 
 export interface Spend {
   capUsd?: number;

@@ -26,29 +26,33 @@ export const edlSchema = z.strictObject({
   captions: z.boolean(),
   intro: card.optional(),
   outro: card.optional(),
-  steps: z.array(
-    z.strictObject({
-      step: z.int().min(1),
-      showAction: z.boolean(),
-      enter: z.enum(['cut', 'crossfade']),
-      lead: z.number().min(0).max(1.5),
-      tail: z.number().min(0.1).max(3),
-      cursor: z.enum(['auto', 'hidden']),
-    }),
-  ),
-  camera: z.array(
-    z.strictObject({
-      at: anchor,
-      zoom: z.number().min(1).max(1.8),
-      target: box.optional(),
-      until: anchor.optional(),
-      why: z.string().max(300).optional(),
-    }),
-  ),
-  callouts: z.array(
-    z.strictObject({ from: anchor, to: anchor, box, why: z.string().max(300).optional() }),
-  ),
-  chapters: z.array(z.strictObject({ at: anchor, title: z.string().min(1).max(60) })),
+  steps: z
+    .array(
+      z.strictObject({
+        step: z.int().min(1),
+        showAction: z.boolean(),
+        enter: z.enum(['cut', 'crossfade']),
+        lead: z.number().min(0).max(1.5),
+        tail: z.number().min(0.1).max(3),
+        cursor: z.enum(['auto', 'hidden']),
+      }),
+    )
+    .max(200),
+  camera: z
+    .array(
+      z.strictObject({
+        at: anchor,
+        zoom: z.number().min(1).max(1.8),
+        target: box.optional(),
+        until: anchor.optional(),
+        why: z.string().max(300).optional(),
+      }),
+    )
+    .max(400),
+  callouts: z
+    .array(z.strictObject({ from: anchor, to: anchor, box, why: z.string().max(300).optional() }))
+    .max(200),
+  chapters: z.array(z.strictObject({ at: anchor, title: z.string().min(1).max(60) })).max(200),
 });
 
 export type Edl = z.infer<typeof edlSchema>;

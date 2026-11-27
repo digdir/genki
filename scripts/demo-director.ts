@@ -1,6 +1,6 @@
 // The AI director: writes the edit list from the capture, then reviews proxy frames against the rubric and revises.
 import { execFileSync } from 'node:child_process';
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import {
@@ -16,6 +16,7 @@ import {
   type Issue,
 } from './demo-edl.ts';
 import type { CaptureLog } from './demo-events.ts';
+import { writeRunJson } from './demo-files.ts';
 import { renderStills } from './demo-render.ts';
 import { OverCap } from './demo-voice.ts';
 
@@ -62,14 +63,16 @@ export const estimateUsd = (log: CaptureLog, deployment: string) => {
 export const reviewSchema = z.object({
   pass: z.boolean(),
   score: z.number().min(0).max(10),
-  issues: z.array(
-    z.object({
-      rule: z.enum(Object.keys(rubric) as [keyof typeof rubric, ...(keyof typeof rubric)[]]),
-      at: z.number(),
-      problem: z.string(),
-      fix: z.string(),
-    }),
-  ),
+  issues: z
+    .array(
+      z.object({
+        rule: z.enum(Object.keys(rubric) as [keyof typeof rubric, ...(keyof typeof rubric)[]]),
+        at: z.number(),
+        problem: z.string().max(1000),
+        fix: z.string().max(1000),
+      }),
+    )
+    .max(100),
 });
 
 export type Review = z.infer<typeof reviewSchema>;
@@ -302,7 +305,7 @@ export const direct = async (log: CaptureLog, out: string, ai: Ai) => {
       },
       ...keyframes,
     ])) ?? fallback;
-  writeFileSync(join(out, 'edl-round-0.json'), JSON.stringify(edl, null, 2));
+  writeRunJson(out, 'edl-round-0.json', edl);
   files.push('edl-round-0.json');
   let passed = false;
   let rounds = 0;
@@ -320,7 +323,6 @@ export const direct = async (log: CaptureLog, out: string, ai: Ai) => {
           edl,
           capture: join(out, 'capture.mp4'),
           voices: resolve('demos/out/.voice'),
-          fonts: resolve('demos/out/.fonts'),
         },
         times,
         proofs,
@@ -353,14 +355,12 @@ export const direct = async (log: CaptureLog, out: string, ai: Ai) => {
         );
       }
       const file = `review-round-${round}.json`;
-      writeFileSync(
-        join(out, file),
-        JSON.stringify(
-          { round, lint, review, costUsd: usd(ai.deployment, usage.input, usage.output) },
-          null,
-          2,
-        ),
-      );
+      writeRunJson(out, file, {
+        round,
+        lint,
+        review,
+        costUsd: usd(ai.deployment, usage.input, usage.output),
+      });
       files.push(file);
       console.log(
         `review ${round}: score ${review.score}, ${review.issues.length} issues from the model, ${lint.length} from the rules`,
@@ -379,7 +379,7 @@ export const direct = async (log: CaptureLog, out: string, ai: Ai) => {
         },
       ]);
       if (revised) edl = revised;
-      writeFileSync(join(out, `edl-round-${round}.json`), JSON.stringify(edl, null, 2));
+      writeRunJson(out, `edl-round-${round}.json`, edl);
       files.push(`edl-round-${round}.json`);
     } catch (error) {
       if (!(error instanceof OverCap)) throw error;

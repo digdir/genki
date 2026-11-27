@@ -57,6 +57,22 @@ describe('word timings', () => {
     expect(heardWords({})).toEqual([]);
   });
 
+  it('keeps only the text and timing of each heard word', () => {
+    const [word] = heardWords({
+      phrases: [
+        { words: [{ text: 'Hei', offsetMilliseconds: 0, durationMilliseconds: 100, x: 1 }] },
+      ],
+    });
+    expect(word).toEqual({ text: 'Hei', offsetMilliseconds: 0, durationMilliseconds: 100 });
+  });
+
+  it('refuses a transcription answer with malformed or too many words', () => {
+    expect(() => heardWords({ phrases: [{ words: [{ text: 1 }] }] })).toThrow();
+    expect(() => heardWords({ phrases: [{ words: heard([['x'.repeat(201), 0, 1]]) }] })).toThrow();
+    const many = Array.from({ length: 3 }, () => ({ words: heard(Array(1000).fill(['a', 0, 1])) }));
+    expect(() => heardWords({ phrases: many })).toThrow();
+  });
+
   it('splits a line into sentences at their full stops', () => {
     expect(sentencesOf(estimatedWords('Én. To tre? Fire', 3)).map((s) => s.length)).toEqual([
       1, 2, 1,

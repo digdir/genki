@@ -102,6 +102,8 @@ describe('the recorded pointer', () => {
   it('puts only a number into the scroll script', () => {
     expect(smoothScrollScript(Number('1;alert(1)'))).toContain('top:0,');
     expect(smoothScrollScript(240)).toContain("top:240,behavior:'smooth'");
+    expect(smoothScrollScript(Infinity)).toContain('top:0,');
+    expect(smoothScrollScript(239.6)).toContain('top:240,');
   });
 
   it('starts the voice after the last command that changes the page, so it never talks over a loading screen', () => {

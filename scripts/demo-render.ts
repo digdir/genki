@@ -1,6 +1,6 @@
 // Renders a film from a capture and its edit list: app in a floating window, spring camera, drawn pointer, type.
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import type { Readable, Writable } from 'node:stream';
@@ -50,19 +50,36 @@ const fontFiles = {
   InterDisplay: ['InterDisplay-Medium', 'InterDisplay-SemiBold'],
 };
 
-export const loadFonts = async (dir: string) => {
-  mkdirSync(dir, { recursive: true });
-  for (const [family, files] of Object.entries(fontFiles))
-    for (const name of files) {
-      const file = join(dir, `${name}.woff2`);
-      if (!existsSync(file)) {
-        const res = await fetch(`https://altinncdn.no/fonts/inter/v4.1/${name}.woff2`);
-        if (!res.ok) throw new Error(`The Inter font answered ${res.status}`);
-        writeFileSync(file, Buffer.from(await res.arrayBuffer()));
-      }
-      GlobalFonts.register(readFileSync(file), family);
-    }
+export const maxFontBytes = 1024 * 1024;
+
+export const woff2Font = (data: Buffer) => {
+  if (data.byteLength > maxFontBytes)
+    throw new Error(`The Inter font is ${data.byteLength} bytes, more than ${maxFontBytes}`);
+  if (data.subarray(0, 4).toString('latin1') !== 'wOF2')
+    throw new Error('The Inter font is not a woff2 file');
+  return data;
 };
+
+const fetchFont = async (name: string) => {
+  const res = await fetch(`https://altinncdn.no/fonts/inter/v4.1/${name}.woff2`, {
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!res.ok) throw new Error(`The Inter font answered ${res.status}`);
+  if (Number(res.headers.get('content-length') ?? 0) > maxFontBytes)
+    throw new Error(`The Inter font is more than ${maxFontBytes} bytes`);
+  return woff2Font(Buffer.from(await res.arrayBuffer()));
+};
+
+let fontsLoaded: Promise<void> | undefined;
+
+export const loadFonts = () =>
+  (fontsLoaded ??= (async () => {
+    for (const [family, files] of Object.entries(fontFiles))
+      for (const name of files) GlobalFonts.register(await fetchFont(name), family);
+  })().catch((error: unknown) => {
+    fontsLoaded = undefined;
+    throw error;
+  }));
 
 export interface Caption {
   from: number;
@@ -733,7 +750,6 @@ export interface RenderInput {
   edl: Edl;
   capture: string;
   voices: string;
-  fonts: string;
 }
 
 export const audioArgs = (
@@ -829,7 +845,7 @@ export const renderFilm = async (
   srt: string,
   language: string,
 ) => {
-  await loadFonts(input.fonts);
+  await loadFonts();
   const plan = planOf(input.log, input.edl);
   writeFileSync(srt, srtOf(plan));
   const size = probeSize(input.capture);
@@ -901,7 +917,7 @@ export const renderStills = async (
   dir: string,
   scale = 0.5,
 ) => {
-  await loadFonts(input.fonts);
+  await loadFonts();
   mkdirSync(dir, { recursive: true });
   const plan = planOf(input.log, input.edl, 30);
   const size = probeSize(input.capture);

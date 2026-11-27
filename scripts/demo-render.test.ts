@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { baselineEdl, segmentsOf } from './demo-edl.ts';
 import { estimatedWords, type CaptureLog } from './demo-events.ts';
-import { audioArgs, captionsOf, dipOf, encoderArgs } from './demo-render.ts';
+import {
+  audioArgs,
+  captionsOf,
+  dipOf,
+  encoderArgs,
+  maxFontBytes,
+  woff2Font,
+} from './demo-render.ts';
 
 const say =
   'Dette er Genki, Digdirs felles plattform for generativ KI i offentlig sektor. Her lager virksomhetene sine egne tjenester.';
@@ -80,5 +87,12 @@ describe('film render', () => {
     expect(() =>
       audioArgs({ log: outside, voices: '/voices' }, { segments, length: 20 }, 2),
     ).toThrow(/not a plain clip name/);
+  });
+
+  it('takes a font only when it is a woff2 file of at most 1 MiB', () => {
+    const font = Buffer.concat([Buffer.from('wOF2'), Buffer.alloc(100)]);
+    expect(woff2Font(font)).toBe(font);
+    expect(() => woff2Font(Buffer.from('<html>not a font</html>'))).toThrow(/not a woff2/);
+    expect(() => woff2Font(Buffer.concat([font, Buffer.alloc(maxFontBytes)]))).toThrow(/more than/);
   });
 });

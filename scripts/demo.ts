@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
+import { z } from 'zod';
 import {
   centre,
   focusArea,
@@ -38,13 +39,17 @@ import {
   bestTake,
   hearingUsd,
   isModelVoice,
+  maxClipBytes,
+  modelAudio,
+  modelVoiceId,
   OverCap,
   refuseOverCap,
+  speechLocale,
   spendOf,
   transcriptionUrl,
   type Spend,
 } from './demo-voice.ts';
-import { voiceCostUsd } from '../packages/contracts/src/demo-voices.ts';
+import { maxCostCapUsd, voiceCostUsd } from '../packages/contracts/src/demo-voices.ts';
 import {
   landmarkScript,
   type Card,
@@ -53,6 +58,7 @@ import {
   type StepLog,
 } from './demo-events.ts';
 import { editFilm, hearClip, makeFilm } from './demo-film.ts';
+import { writeRunFile, writeRunJson } from './demo-files.ts';
 
 export interface DemoStep {
   say: string;
@@ -601,39 +607,57 @@ const readAloud = async (text: string, demo: Pick<Demo, 'voice' | 'language'>, t
   if (!audio) throw new Error('The audio model answered without audio');
   audioTokens.text += body.usage?.prompt_tokens ?? 0;
   audioTokens.audio += body.usage?.completion_tokens_details?.audio_tokens ?? 0;
-  return Buffer.from(audio, 'base64');
+  return modelAudio(audio);
+};
+
+export const wavOf = (pcm: Buffer, rate = 16000) => {
+  const head = Buffer.alloc(44);
+  head.write('RIFF', 0, 'latin1');
+  head.writeUInt32LE(36 + pcm.length, 4);
+  head.write('WAVEfmt ', 8, 'latin1');
+  head.writeUInt32LE(16, 16);
+  head.writeUInt16LE(1, 20);
+  head.writeUInt16LE(1, 22);
+  head.writeUInt32LE(rate, 24);
+  head.writeUInt32LE(rate * 2, 28);
+  head.writeUInt16LE(2, 32);
+  head.writeUInt16LE(16, 34);
+  head.write('data', 36, 'latin1');
+  head.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([head, pcm]);
 };
 
 const transcribe = async (audio: Buffer, base: string, token: string, language: string) => {
-  const dir = mkdtempSync(join(tmpdir(), 'genki-hear-'));
-  try {
-    writeFileSync(join(dir, 'line.mp3'), audio);
-    run('ffmpeg', [
-      '-y',
+  const pcm = execFileSync(
+    'ffmpeg',
+    [
       '-loglevel',
       'error',
+      '-f',
+      'mp3',
       '-i',
-      join(dir, 'line.mp3'),
+      'pipe:0',
       '-ar',
       '16000',
       '-ac',
       '1',
-      join(dir, 'line.wav'),
-    ]);
-    const res = await fetch(transcriptionUrl(base, language), {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${token}`,
-        'content-type': 'audio/wav; codecs=audio/pcm; samplerate=16000',
-      },
-      body: new Uint8Array(readFileSync(join(dir, 'line.wav'))),
-      signal: AbortSignal.timeout(commandTimeoutMs),
-    });
-    if (!res.ok) throw new Error(`Speech to text answered ${res.status}`);
-    return ((await res.json()) as { DisplayText?: string }).DisplayText ?? '';
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+      '-f',
+      's16le',
+      'pipe:1',
+    ],
+    { input: audio, maxBuffer: 64 * 1024 * 1024, timeout: commandTimeoutMs },
+  );
+  const res = await fetch(transcriptionUrl(base, language), {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'audio/wav; codecs=audio/pcm; samplerate=16000',
+    },
+    body: new Uint8Array(wavOf(pcm)),
+    signal: AbortSignal.timeout(commandTimeoutMs),
+  });
+  if (!res.ok) throw new Error(`Speech to text answered ${res.status}`);
+  return ((await res.json()) as { DisplayText?: string }).DisplayText ?? '';
 };
 
 async function speak(
@@ -645,26 +669,28 @@ async function speak(
 ) {
   const file = clipFile(dir, demo.voice, text);
   if (!cached(file) && isModelVoice(demo.voice)) {
-    refuseOverCap(spend, voiceCostUsd([text], demo.voice), `Reading «${text.slice(0, 40)}»`);
+    const model = { voice: modelVoiceId(demo.voice), language: speechLocale(demo.language) };
+    refuseOverCap(spend, voiceCostUsd([text], model.voice), `Reading «${text.slice(0, 40)}»`);
     const { base, token } = await speech();
     const before = { ...audioTokens };
     let heard = 0;
     const take = await bestTake(
       text,
-      () => readAloud(text, demo, token),
+      () => readAloud(text, model, token),
       (audio) => {
         heard++;
-        return transcribe(audio, base, token, demo.language);
+        return transcribe(audio, base, token, model.language);
       },
     ).finally(() => {
       spend.spentUsd +=
         audioUsd(audioTokens.text - before.text, audioTokens.audio - before.audio) +
         heard * hearingUsd(estimateSeconds(text));
     });
-    writeFileSync(
-      file.replace(/\.mp3$/, '.json'),
-      JSON.stringify({ text, ...take, audio: undefined }, null, 2),
-    );
+    writeRunJson(dir, basename(file).replace(/\.mp3$/, '.json'), {
+      text,
+      ...take,
+      audio: undefined,
+    });
     keep(file, take.audio);
     console.log(
       `${take.takes.length} ${take.takes.length === 1 ? 'take' : 'takes'}, ${take.distance} of ${take.words} words heard differently: ${text.slice(0, 50)}`,
@@ -792,10 +818,23 @@ export const queuedOf = async (
   return queued;
 };
 
-const readQueued = () =>
-  (JSON.parse(readFileSync(queuedFile(), 'utf8')) as QueuedNarration[]).filter((q) =>
-    recordingId.test(q.id),
-  );
+const queuedSchema = z.array(
+  z.object({
+    id: z.string().regex(recordingId),
+    demo: z.string().min(1).max(200),
+    voice: z.string().regex(/^[A-Za-z0-9-]{1,100}$/),
+    language: z.string().regex(languageTag),
+    lines: z.array(z.string().max(1000)).max(50),
+    costCapUsd: z.number().min(0).max(maxCostCapUsd).optional(),
+  }),
+);
+
+export const parseQueued = (text: string): QueuedNarration[] =>
+  queuedSchema
+    .parse(JSON.parse(text))
+    .map(({ costCapUsd, ...q }) => ({ ...q, ...(costCapUsd !== undefined ? { costCapUsd } : {}) }));
+
+const readQueued = () => parseQueued(readFileSync(queuedFile(), 'utf8'));
 
 async function voiceQueued() {
   const cache = cacheDir();
@@ -1009,6 +1048,13 @@ async function recordStored(id: string, silent: boolean): Promise<DemoResult> {
 const editSource =
   /^(capture\.mp4|events\.json|edl\.json|step-\d{1,2}\.png|voice-[0-9a-f]{16}\.(mp3|words\.json))$/;
 
+const editSourceMaxBytes = (name: string) =>
+  name === 'capture.mp4'
+    ? 100 * 1024 * 1024
+    : name.endsWith('.png')
+      ? 5 * 1024 * 1024
+      : maxClipBytes;
+
 export const downloadEditSource = async (
   api: string,
   key: string,
@@ -1030,11 +1076,12 @@ export const downloadEditSource = async (
   for (const name of names) {
     const file = await send(`${base}/files/${encodeURIComponent(name)}`, { headers });
     if (!file.ok) throw new Error(`${name} of ${source} answered ${file.status}`);
-    const data = Buffer.from(await file.arrayBuffer());
-    writeFileSync(
-      name.startsWith('voice-') ? join(voices, name.slice('voice-'.length)) : join(out, name),
-      data,
-    );
+    const max = editSourceMaxBytes(name);
+    if (Number(file.headers.get('content-length') ?? 0) > max)
+      throw new Error(`${name} of ${source} is more than ${max} bytes`);
+    const data = new Uint8Array(await file.arrayBuffer());
+    const voice = name.startsWith('voice-');
+    writeRunFile(voice ? voices : out, voice ? name.slice('voice-'.length) : name, data, max);
   }
   return names;
 };
@@ -1436,7 +1483,7 @@ async function capture(
     ...(demo.outro ? { outro: demo.outro } : {}),
     steps,
   };
-  writeFileSync(join(out, 'events.json'), JSON.stringify(log, null, 2));
+  writeRunJson(out, 'events.json', log);
   const film = await makeFilm(out, name, cache, spend);
   await upload(film.mp4, 'demo.mp4');
   await upload(film.srt, 'demo.srt');

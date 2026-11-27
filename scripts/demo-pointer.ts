@@ -149,5 +149,7 @@ export const scrollBy = (box: Box, height: number) => {
   return y < height * 0.15 || y > height * 0.85 ? Math.round(y - height * 0.45) : 0;
 };
 
-export const smoothScrollScript = (delta: number) =>
-  `(()=>{let e=document.elementFromPoint(innerWidth/2,innerHeight/2);while(e&&e!==document.body&&!(/(auto|scroll)/.test(getComputedStyle(e).overflowY)&&e.scrollHeight>e.clientHeight))e=e.parentElement;(e&&e!==document.body?e:document.scrollingElement).scrollBy({top:${JSON.stringify(Number(delta) || 0)},behavior:'smooth'});})()`;
+export const smoothScrollScript = (delta: number) => {
+  const top = Number.isFinite(delta) ? Math.round(delta) : 0;
+  return `(()=>{let e=document.elementFromPoint(innerWidth/2,innerHeight/2);while(e&&e!==document.body&&!(/(auto|scroll)/.test(getComputedStyle(e).overflowY)&&e.scrollHeight>e.clientHeight))e=e.parentElement;(e&&e!==document.body?e:document.scrollingElement).scrollBy({top:${top},behavior:'smooth'});})()`;
+};

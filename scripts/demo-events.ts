@@ -118,8 +118,23 @@ export interface Heard {
   durationMilliseconds: number;
 }
 
+const heardWord = z.object({
+  text: z.string().max(200),
+  offsetMilliseconds: z.number().min(0).max(3_600_000),
+  durationMilliseconds: z.number().min(0).max(3_600_000),
+});
+
+export const heardWordsSchema = z.array(heardWord).max(2000);
+
+const transcription = z.object({
+  phrases: z
+    .array(z.object({ words: z.array(heardWord).max(2000).default([]) }))
+    .max(1000)
+    .default([]),
+});
+
 export const heardWords = (body: unknown): Heard[] =>
-  ((body as { phrases?: { words?: Heard[] }[] }).phrases ?? []).flatMap((p) => p.words ?? []);
+  heardWordsSchema.parse(transcription.parse(body).phrases.flatMap((p) => p.words));
 
 export const estimatedWords = (text: string, seconds: number): Word[] => {
   const words = text.trim().split(/\s+/).filter(Boolean);

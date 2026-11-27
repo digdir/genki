@@ -5,8 +5,12 @@ import {
   bestTake,
   goodEnough,
   isModelVoice,
+  maxClipBytes,
+  modelAudio,
+  modelVoiceId,
   OverCap,
   refuseOverCap,
+  speechLocale,
   spendOf,
   readerInstruction,
   sameWord,
@@ -111,5 +115,29 @@ describe('the approved cost', () => {
     expect(() => refuseOverCap(spend, 0.6, 'Reading')).toThrow(
       /0\.50 USD left of the approved 2 USD/,
     );
+  });
+
+  it('sends the audio model only a model voice from the catalogue', () => {
+    expect(modelVoiceId('cedar')).toBe('cedar');
+    expect(() => modelVoiceId('nb-NO-PernilleNeural')).toThrow(/not a model voice/);
+    expect(() => modelVoiceId('cedar"}')).toThrow(/not a model voice/);
+  });
+
+  it('asks speech to text only for a locale a demo voice speaks', () => {
+    expect(speechLocale('en-GB')).toBe('en-GB');
+    expect(() => speechLocale('nb')).toThrow(/not nb/);
+    expect(() => speechLocale('nb-NO&format=simple')).toThrow();
+  });
+
+  it('takes model audio only when it is mp3 of at most 2 MiB', () => {
+    const id3 = Buffer.concat([Buffer.from('ID3'), Buffer.alloc(10)]);
+    const frame = Buffer.from([0xff, 0xfb, 0x90, 0x00]);
+    expect(modelAudio(id3.toString('base64'))).toEqual(id3);
+    expect(modelAudio(frame.toString('base64'))).toEqual(frame);
+    expect(() => modelAudio(Buffer.from('RIFF....WAVE').toString('base64'))).toThrow(
+      /other than mp3/,
+    );
+    const big = Buffer.concat([id3, Buffer.alloc(maxClipBytes)]).toString('base64');
+    expect(() => modelAudio(big)).toThrow(/more than/);
   });
 });

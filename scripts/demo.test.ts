@@ -29,6 +29,7 @@ import {
   languageScript,
   parseArgs,
   parseDemo,
+  parseQueued,
   pickDemos,
   queuedOf,
   spendFromEnv,
@@ -38,6 +39,7 @@ import {
   sampleLineOf,
   RecordingOpen,
   posterArgs,
+  wavOf,
   readyFailure,
   retrying,
   runStep,
@@ -989,6 +991,61 @@ describe('reporting to the demo library', () => {
       downloadEditSource('https://api.example', 'k', 's', out, out, send),
     ).rejects.toThrow(/no capture\.mp4/);
     expect(readdirSync(out)).toEqual([]);
+  });
+
+  it('refuses an edit source larger than its file type allows', async () => {
+    const out = mkdtempSync(join(tmpdir(), 'genki-edit-'));
+    const files = ['capture.mp4', 'events.json', 'edl.json'].map((name) => ({ name }));
+    const huge = (async (input: string | URL | Request) =>
+      String(input).endsWith('/s')
+        ? Response.json({ files })
+        : new Response(new Uint8Array(2 * 1024 * 1024 + 1))) as typeof fetch;
+    const claims = (async (input: string | URL | Request) =>
+      String(input).endsWith('/s')
+        ? Response.json({ files })
+        : new Response('{}', {
+            headers: { 'content-length': String(200 * 1024 * 1024) },
+          })) as typeof fetch;
+
+    await expect(
+      downloadEditSource('https://api.example', 'k', 's', out, out, huge),
+    ).rejects.toThrow(/events\.json is \d+ bytes, more than/);
+    await expect(
+      downloadEditSource('https://api.example', 'k', 's', out, out, claims),
+    ).rejects.toThrow(/capture\.mp4 of s is more than/);
+    expect(readdirSync(out)).not.toContain('events.json');
+  });
+
+  it('reads the queued narrations only when each is well formed', () => {
+    const one = {
+      id: '0123456789abcdef0123456789abcdef0123',
+      demo: 'portal',
+      voice: 'cedar',
+      language: 'nb-NO',
+      lines: ['Hei'],
+      costCapUsd: 2,
+    };
+    expect(parseQueued(JSON.stringify([one]))).toEqual([one]);
+    for (const bad of [
+      { ...one, id: '../x' },
+      { ...one, voice: 'cedar"}' },
+      { ...one, language: 'nb-NO&x=1' },
+      { ...one, lines: ['x'.repeat(1001)] },
+      { ...one, lines: Array(51).fill('x') },
+      { ...one, costCapUsd: 1000 },
+    ])
+      expect(() => parseQueued(JSON.stringify([bad]))).toThrow();
+  });
+
+  it('wraps 16 kHz mono PCM in a wav header that states its length', () => {
+    const wav = wavOf(Buffer.alloc(320));
+    expect(wav.subarray(0, 4).toString('latin1')).toBe('RIFF');
+    expect(wav.readUInt32LE(4)).toBe(36 + 320);
+    expect(wav.subarray(8, 16).toString('latin1')).toBe('WAVEfmt ');
+    expect(wav.readUInt32LE(24)).toBe(16000);
+    expect(wav.readUInt16LE(34)).toBe(16);
+    expect(wav.readUInt32LE(40)).toBe(320);
+    expect(wav).toHaveLength(364);
   });
 
   it('asks the managed identity for a speech token', () => {
