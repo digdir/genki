@@ -49,6 +49,7 @@ import {
 } from '../../data/service-definition';
 import {
   autoPublicName,
+  withServiceId,
   examplesOf,
   flowOf,
   guardOn,
@@ -1402,7 +1403,10 @@ export const Builder = ({
       variantChoices,
     ) as unknown as Record<string, unknown>;
     const chosen = freeId
-      ? { ...picked, metadata: { ...(picked.metadata as object), id: freeId } }
+      ? (withServiceId(picked as unknown as ServiceDefinition, freeId) as unknown as Record<
+          string,
+          unknown
+        >)
       : picked;
     const outcome = await publishDraft(
       api,

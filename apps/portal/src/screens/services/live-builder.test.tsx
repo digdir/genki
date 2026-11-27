@@ -339,6 +339,19 @@ describe('the live builder', () => {
     expect(published.definition.metadata.id).toBe('ny-tjeneste-2');
   });
 
+  it('gives a new service published under a free id the public name of that id, not of the service that has the name', async () => {
+    const { calls, fetch } = recorded();
+    await startBuilder(withArchived(fetch));
+    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Ny tjeneste' } });
+    await publishFirst();
+    const published = await waitFor(() => {
+      const call = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/definitions'));
+      expect(call).toBeTruthy();
+      return call?.body as { definition: { spec: { variants?: { publicName?: string }[] } } };
+    });
+    expect(published.definition.spec.variants?.[0]?.publicName).toBe('ny-tjeneste-2__default');
+  });
+
   it('says the id belongs to an archived service when the platform refuses it, and links to that service', async () => {
     const { fetch } = recorded();
     await startBuilder(withArchived(fetch, true));
