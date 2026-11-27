@@ -129,9 +129,3 @@ clients:
     postLogoutRedirectUris: ['http://localhost:5174/']
     audience: digdir:genai
     tokenEndpointAuthMethod: none
-
-  - clientId: local-workspace
-    redirectUris: ['http://localhost:5176/callback']
-    postLogoutRedirectUris: ['http://localhost:5176/']
-    audience: digdir:genai
-    tokenEndpointAuthMethod: none

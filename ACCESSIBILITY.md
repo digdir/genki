@@ -1,6 +1,6 @@
 # Accessibility
 
-genki's web apps are used by employees across Norwegian public agencies: the portal, where service owners build and publish services; the workspace, where employees use them; the console, where Digdir runs the platform; and the public pages. Everyone must be able to use them, with a keyboard, a screen reader, magnification or on a phone.
+genki's web apps are used by employees across Norwegian public agencies: the portal, where service owners build and publish services; the hosted assistant, where employees use them; the console, where Digdir runs the platform; and the public pages. Everyone must be able to use them, with a keyboard, a screen reader, magnification or on a phone.
 
 ## Our commitment
 
@@ -13,9 +13,8 @@ genki is under development and not in production. It has not had a manual access
 What is in place:
 
 - The apps are built with [Designsystemet](https://designsystemet.no), Digdir's design system, whose components are built for accessibility.
-- Automated checks with axe run in the unit tests of the portal and the workspace, about 200 of them. Most tests find elements by their accessible role and name, so a control without a name fails its test.
-- The portal, the workspace and the console have a skip link to the main content, and the page language follows the language the person chooses: Norwegian bokmål or English.
-- In the workspace, answers and drafts made with AI are marked as such, and the sources of an answer are numbered.
+- Most unit tests of the portal and the console find elements by their accessible role and name, so a control without a name fails its test.
+- The portal and the console have a skip link to the main content, and the page language follows the language the person chooses: Norwegian bokmål or English.
 
 ## Known limitations
 

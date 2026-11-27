@@ -496,7 +496,7 @@ export const mockFetch = (
           scope: 'platform',
           origin: 'seed',
           version: 1,
-          spec: { name: 'Kudos', endpoint: 'typesense', residency: 'norway' },
+          spec: { name: 'Kudos', endpoint: 'elasticsearch', residency: 'norway' },
         },
       ],
     ],
@@ -672,7 +672,7 @@ export const mockFetch = (
     if (method === 'GET' && /\/pipelines$/.test(path))
       return json({
         data: configs.get(path) ?? [],
-        backend: { name: 'typesense', available: false, reason: 'no write key configured' },
+        backend: { name: 'elasticsearch', available: false, reason: 'no write key configured' },
       });
     const engineOf = /^\/operator\/datasets\/([^/]+)\/engine$/.exec(path);
     if (method === 'GET' && engineOf) {

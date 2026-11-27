@@ -56,9 +56,6 @@
       "path": "packages/port-knowledge"
     },
     {
-      "path": "packages/providers-typesense"
-    },
-    {
       "path": "packages/strategy-single-call"
     },
     {
@@ -146,9 +143,6 @@
       "path": "packages/ingest"
     },
     {
-      "path": "packages/providers-typesense-writer"
-    },
-    {
       "path": "packages/providers-mcp-client"
     },
     {
@@ -180,9 +174,6 @@
     },
     {
       "path": "apps/worker"
-    },
-    {
-      "path": "apps/workspace"
     },
     {
       "path": "apps/assistant"

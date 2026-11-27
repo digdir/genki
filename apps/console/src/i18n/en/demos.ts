@@ -25,7 +25,6 @@ export const demos = {
   stateCount: '{state} {count}',
   appPortal: 'Portal',
   appConsole: 'Console',
-  appWorkspace: 'Workspace',
   audienceMunicipality: 'Municipality',
   audienceStateAgency: 'State agency',
   audienceInternal: 'Internal',

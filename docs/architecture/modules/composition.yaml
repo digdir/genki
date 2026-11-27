@@ -204,20 +204,6 @@ edges:
     witness:
       file: packages/composition/src/runtime.ts
       imports: '@genai/providers-pgvector'
-  - to: providers-typesense
-    label: Composes the Typesense search adapter
-    kind: call
-    target: call
-    witness:
-      file: packages/composition/src/runtime.ts
-      imports: '@genai/providers-typesense'
-  - to: providers-typesense-writer
-    label: Composes the Typesense index writer
-    kind: call
-    target: call
-    witness:
-      file: packages/composition/src/runtime.ts
-      imports: '@genai/providers-typesense-writer'
   - to: strategy-agent-loop
     label: Registers Agent loop
     kind: call

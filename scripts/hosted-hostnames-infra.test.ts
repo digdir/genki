@@ -273,7 +273,7 @@ describe.skipIf(!hasAz && !process.env.CI)('hosted hostnames in the template', (
     expect(['none', 'hostnames', 'certificates']).toContain(values.platformLoginStage?.value);
   }, 120_000);
 
-  it('signs the portal, workspace and console in through the platform login, with no Ansattporten client of their own', () => {
+  it('signs the portal and console in through the platform login, with no Ansattporten client of their own', () => {
     expect(built?.parameters).not.toHaveProperty('portalClientId');
     expect(built?.parameters).not.toHaveProperty('consoleClientId');
     const apps = module('containerapps').properties;
@@ -283,7 +283,9 @@ describe.skipIf(!hasAz && !process.env.CI)('hosted hostnames in the template', (
     );
     expect(env).not.toHaveProperty('EMPLOYEE_CLIENT_IDS');
     expect(apps.parameters?.platformAppsBff?.value).toBe("[variables('platformLoginOn')]");
-    const web = JSON.stringify(apps.template?.variables?.webApps);
+    const webApps = apps.template?.variables?.webApps as unknown as { app: string }[];
+    expect(webApps.map((w) => w.app)).toEqual(['portal', 'console']);
+    const web = JSON.stringify(webApps);
     expect(web).not.toMatch(/OIDC_CLIENT_ID|ANSATTPORTEN_ISSUER|OIDC_ISSUER/);
     expect(apps.template?.variables?.webProxyKeyEnv).toBe(
       "[if(parameters('platformAppsBff'), variables('proxyKeyEnv'), createArray())]",

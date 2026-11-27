@@ -115,8 +115,6 @@ import {
 } from '@genai/providers-openai';
 import { OpenApiToolSource } from '@genai/providers-openapi-tools';
 import { pgvectorEngine, type KnowledgePools } from '@genai/providers-pgvector';
-import { typesense } from '@genai/providers-typesense';
-import { typesenseIndexWriter } from '@genai/providers-typesense-writer';
 import {
   createAgentRetrieval,
   createRagRetrieval,
@@ -593,13 +591,11 @@ export const createRuntime = async (input: RuntimeInput) => {
     onServerMigrated: (ms) => input.logger?.('knowledge server migrated', { ms }),
   });
   const knowledgeAdapters: KnowledgeAdapter[] = [
-    typesense as KnowledgeAdapter,
     pgvector.adapter as KnowledgeAdapter,
     ...searchAdapters,
     ...(input.knowledgeEngines ?? []).map((e) => e.adapter),
   ];
   const writerAdapters: IndexWriterAdapter[] = [
-    typesenseIndexWriter() as IndexWriterAdapter,
     pgvector.writer as IndexWriterAdapter,
     ...(input.knowledgeEngines ?? []).map((e) => e.writer),
   ];

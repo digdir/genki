@@ -25,10 +25,9 @@ const reasonKeys = [
   'answerActions.reasonHard',
 ] as const;
 
-// The reasons are sent in bokmål, whatever language the person reads, as the workspace stores them.
+// The reasons are sent in bokmål, whatever language the person reads, as genki stores them.
 const stored = translator('nb');
 
-/** The longest comment, as in the workspace. */
 export const FEEDBACK_MAX_LENGTH = 300;
 
 interface FeedbackProps {
@@ -37,7 +36,7 @@ interface FeedbackProps {
 }
 
 /**
- * «Var svaret nyttig?», generalised from genki's workspace: two thumbs for the actions' row, and
+ * «Var svaret nyttig?», generalised from genki's former chat client: two thumbs for the actions' row, and
  * under it the optional reasons and comment and how the sending went. A click on a thumb sends
  * the rating at once; the reasons and the comment come after, sent with the rating again. The
  * platform keeps the latest feedback on a run, so each send replaces the one before.

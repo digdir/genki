@@ -213,7 +213,7 @@ const clientOf = (claims: Record<string, unknown>) =>
       ? claims.azp
       : undefined;
 
-/** `platformClients` are the portal's, workspace's and console's; any other client is a service's frontend. */
+/** `platformClients` are the portal's and console's; any other client is a service's frontend. */
 export const refuseUntrustedEntra =
   (
     refusedCode: (request: Request) => Promise<string | undefined>,

@@ -1,4 +1,4 @@
-// The portal, workspace and console in dev: /auth/ and /api/ go to the API's BFF the way nginx sends them.
+// The portal and console in dev: /auth/ and /api/ go to the API's BFF the way nginx sends them.
 import type { Plugin, ProxyOptions } from 'vite';
 
 interface Incoming {

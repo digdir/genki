@@ -1,7 +1,7 @@
 /**
  * Benchmarks one dataset on two search engines with the platform's own evaluators: the same
  * test set and judges run against two services that differ only in the dataset they name, for
- * example `digdir/kudos` on Typesense and `digdir/kudos-pg` copied into the knowledge database
+ * example `digdir/kudos` on its current engine and `digdir/kudos-pg` copied into the knowledge database
  * (issues 366 and 393). Dev tooling: it calls the public API as you, nothing more.
  *
  *   tsx scripts/engine-benchmark.ts dataset --from digdir/kudos --to digdir/kudos-pg --reason "..."
@@ -18,7 +18,7 @@
  * `run` starts one eval run per service, waits for both, and compares every metric they share:
  * each run's mean, the paired difference per case with a 95% bootstrap interval, and per-case
  * wins and losses. Search can answer differently from one run to the next (the same runs gave
- * recall@10 0.67 and 0.75 on Typesense), so use `--repeats` for a number to act on. The report goes to stdout and, as JSON and CSV, to `--out` (default
+ * recall@10 0.67 and 0.75), so use `--repeats` for a number to act on. The report goes to stdout and, as JSON and CSV, to `--out` (default
  * `.data/engine-benchmark/<time>`). The API's own comparison refuses runs on different data, so the
  * script compares them itself.
  *

@@ -115,7 +115,7 @@ describe('ingestion executions', () => {
     dataset,
     pipeline: 'standard',
     pipelineVersion: 2,
-    backend: 'typesense',
+    backend: 'pgvector',
     status: 'running',
     startedBy: 'operator:x',
     startedAt,

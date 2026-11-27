@@ -49,8 +49,6 @@
     "@genai/providers-pgvector": "0.0.0",
     "@genai/providers-postgres": "0.0.0",
     "@genai/providers-postgres-source": "0.0.0",
-    "@genai/providers-typesense": "0.0.0",
-    "@genai/providers-typesense-writer": "0.0.0",
     "@genai/retrieval": "0.0.0",
     "@genai/strategy-agent-loop": "0.0.0",
     "@genai/strategy-builder": "0.0.0",

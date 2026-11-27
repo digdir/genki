@@ -384,8 +384,7 @@ const settings = defineNamespace({
   wsChange: 'Endring:',
   wsTenantHelp: 'Gjelder alle tjenestene til {name} som ikke har eget valg.',
   wsServiceHelp: 'Går foran valget på virksomheten.',
-  wsOrder:
-    'Rekkefølgen: valget på tjenesten går foran valget på virksomheten. «Samme som spørsmålet» lar brukeren velge selv i arbeidsflaten, under brukermenyen.',
+  wsOrder: 'Rekkefølgen: valget på tjenesten går foran valget på virksomheten.',
   wsFailedWith: 'Endringen ble ikke lagret: {title}',
   wsTenantSaved: 'Målform i svar er endret for {name}. Endringen er logget.',
   wsServiceSaved: 'Målform i svar er endret for {name}. Endringen er logget.',

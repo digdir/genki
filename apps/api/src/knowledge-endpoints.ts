@@ -12,7 +12,7 @@ import type { CatalogItem } from './catalog-registry.js';
 import { platformScope } from './config-store.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 import type { EmbedderSource } from './index-ingestion.js';
-import { writeKeyEngines, type EngineDescription } from './knowledge-engines.js';
+import type { EngineDescription } from './knowledge-engines.js';
 import type { ModuleDeps, PlatformModuleFactory } from './platform-modules.js';
 
 export interface SearchModuleExtras {
@@ -180,8 +180,7 @@ export const endpointView = (
     runsAt: runsAtOf(item.spec, builtin),
     ...(description?.dataLocation ? { dataLocation: description.dataLocation } : {}),
     ...(embeddingModel ? { embeddingModel } : {}),
-    writeKeyRequired:
-      description?.writeKeyRequired ?? writeKeyEngines.has(String(item.spec.engine)),
+    writeKeyRequired: description?.writeKeyRequired ?? false,
     capabilities: summarizeCapabilities(description?.capabilities ?? []),
     datasetCount: datasets.length,
     status: skipped ? 'skipped' : datasets.length === 0 ? 'unused' : 'ok',

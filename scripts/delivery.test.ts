@@ -367,7 +367,6 @@ describe('grouping by area', () => {
   it('groups a pull request by the area most of its files are in', () => {
     expect(areaOf(['apps/portal/a.tsx', 'apps/portal/b.tsx', 'docs/x.md'])).toBe('portal');
     expect(areaOf(['apps/console/a.tsx'])).toBe('console');
-    expect(areaOf(['apps/workspace/a.tsx'])).toBe('workspace');
     expect(areaOf(['apps/worker/src/job.ts'])).toBe('worker');
     expect(areaOf(['packages/kernel/src/a.ts', 'apps/api/src/app.ts'])).toBe('api');
     expect(areaOf(['.github/workflows/ci.yml', 'package.json'])).toBe('ci');

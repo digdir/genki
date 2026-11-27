@@ -105,20 +105,20 @@ export const exampleKnowledgeEngines: KnowledgeEngine[] = [
     capabilities: all,
   },
   {
-    engine: 'typesense',
-    title: 'Typesense',
-    tech: 'Typesense 28',
+    engine: 'elasticsearch',
+    title: 'Elasticsearch',
+    tech: 'Elasticsearch 9',
     builtin: false,
     dataLocation: 'norway',
     probe: true,
     requiresBaseURL: true,
     endpoint: remote(
-      'typesense',
+      'elasticsearch',
       {
         type: 'string',
         format: 'uri',
         title: 'Adresse',
-        description: 'Adressen til Typesense-klyngen. Må begynne med https://.',
+        description: 'Adressen til Elasticsearch-klyngen. Må begynne med https://.',
       },
       auth('API-nøkkel', 'Velg en hemmelighet. Nøkkelen vises aldri.'),
       {
@@ -209,8 +209,8 @@ export const exampleKnowledgeEngines: KnowledgeEngine[] = [
 
 export const exampleSecrets: StoredSecret[] = [
   {
-    ref: 'secret://platform/typesense-api-key',
-    name: 'typesense-api-key',
+    ref: 'secret://platform/elastic-api-key',
+    name: 'elastic-api-key',
     updatedAt: '2026-10-02',
   },
   { ref: 'secret://platform/azure-search-key', name: 'azure-search-key', updatedAt: '2026-09-14' },
@@ -251,10 +251,10 @@ export const exampleSpecs: Record<string, Record<string, unknown>> = {
     engine: 'pgvector',
     options: { hnswM: 16, efSearch: 100, language: 'norwegian' },
   },
-  'typesense-digdir': {
-    engine: 'typesense',
-    baseURL: 'https://typesense.ki.digdir.example.no',
-    auth: { kind: 'api-key', secret: 'secret://platform/typesense-api-key' },
+  'elastic-digdir': {
+    engine: 'elasticsearch',
+    baseURL: 'https://elastic.ki.digdir.example.no',
+    auth: { kind: 'api-key', secret: 'secret://platform/elastic-api-key' },
     options: { collectionPrefix: 'ki_prod', connectionTimeoutSeconds: 5, vectorSearch: true },
     sharing: { tenants: '*' },
   },
@@ -274,7 +274,7 @@ export const exampleSpecs: Record<string, Record<string, unknown>> = {
 
 const datasetCounts: Record<string, number> = {
   'innebygd-sok': 184,
-  'typesense-digdir': 23,
+  'elastic-digdir': 23,
   'opensearch-sev': 4,
 };
 
@@ -282,7 +282,7 @@ const datasetsOn: Record<
   string,
   { tenant: string; id: string; name: string; pipelines: number }[]
 > = {
-  'typesense-digdir': [
+  'elastic-digdir': [
     { tenant: '991825827', id: 'kudos', name: 'Kudos', pipelines: 1 },
     { tenant: '999888777', id: 'regelverk', name: 'Regelverk', pipelines: 2 },
   ],
@@ -302,7 +302,7 @@ const viewOf = (id: string, spec: Record<string, unknown>, version = 1): Knowled
     builtin: engine?.builtin ?? false,
     runsAt: hostOf(spec, engine?.builtin ?? false),
     ...(engine?.dataLocation ? { dataLocation: engine.dataLocation } : {}),
-    writeKeyRequired: engine?.engine === 'typesense',
+    writeKeyRequired: engine?.engine === 'elasticsearch',
     capabilities: engine ? capabilitiesOf(engine) : { supported: [], missing: [] },
     datasetCount,
     datasets: (datasetsOn[id] ?? []).map((d) => ({

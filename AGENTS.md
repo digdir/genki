@@ -7,7 +7,7 @@ This file is for any coding agent (Claude Code, Copilot, Codex, Cursor and other
 ## Commands
 
 ```sh
-npm start                      # setup, then API, worker, portal, console and workspace
+npm start                      # setup, then API, worker, portal and console
 npx vitest run <paths>         # the tests you touched, while you work
 npx tsc -b && npx eslint <files>
 npm run boundaries             # dependency rules
@@ -19,7 +19,7 @@ Docker must run for the Postgres, pgvector and knowledge server suites. Without 
 
 ## Where things are
 
-- `apps/api`: the platform API. `apps/portal`, `apps/console`, `apps/workspace`: the three frontends. `apps/worker`: durable jobs.
+- `apps/api`: the platform API. `apps/portal`, `apps/console`: the platform's frontends. `apps/assistant`: the hosted assistant. `apps/worker`: durable jobs.
 - `packages/kernel` and `packages/port-*`: contracts only. `packages/providers-*`: the only place a vendor SDK is imported. `packages/composition`: wires them.
 - `packages/definitions`: the service definition schema. `packages/i18n` and each app's `src/i18n`: user-facing text.
 - `docs/adr`: decisions. `docs/security`: what genki protects and the assurance case. `docs/architecture/modules`: the module atlas.

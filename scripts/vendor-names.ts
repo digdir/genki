@@ -9,8 +9,6 @@ export const vendorNames = [
   'anthropic',
   'azure',
   'foundry',
-  'typesense',
-  'colbert',
   'langfuse',
   'pgvector',
   'cohere',

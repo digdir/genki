@@ -1221,3 +1221,9 @@ describe('the binder through the whole app', () => {
     expect((await claims.find('krav-1'))?.step).toBe('add');
   });
 });
+
+describe('reserved labels', () => {
+  it('keeps the retired workspace label reserved, so no tenant can claim it', () => {
+    expect(defaultReservedLabels).toContain('workspace');
+  });
+});

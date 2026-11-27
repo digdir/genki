@@ -13,9 +13,9 @@ afterEach(cleanup);
 const kudos = exampleLiveDatasets.find((d) => d.id === 'digdir/kudos') as DatasetDetailView;
 
 const onSeed: DatasetEffective = {
-  endpoint: 'kudos-typesense',
-  engine: 'typesense',
-  engineTitle: 'Typesense',
+  endpoint: 'kudos-elastic',
+  engine: 'elasticsearch',
+  engineTitle: 'Elasticsearch',
   version: 0,
   fromSeed: true,
   expected: {
@@ -61,10 +61,10 @@ describe('where a dataset runs, in the portal', () => {
     ).toBeTruthy();
     expect(
       screen.getByText(
-        /Søkene går nå til Typesense\. Den nyeste lagrede versjonen \(4, .+\) bruker Kunnskapsdatabasen/,
+        /Søkene går nå til Elasticsearch\. Den nyeste lagrede versjonen \(4, .+\) bruker Kunnskapsdatabasen/,
       ),
     ).toBeTruthy();
-    expect(screen.getByText('Søkemotor: Typesense')).toBeTruthy();
+    expect(screen.getByText('Søkemotor: Elasticsearch')).toBeTruthy();
   });
 
   it('shows the engine and generation without a warning when the saved version is in use', async () => {

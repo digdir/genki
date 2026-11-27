@@ -15,7 +15,11 @@ import { createPlatform } from './composition.js';
 import { appendVersion } from './config-store.js';
 import { assistantCapabilityPrefix } from '@genai/jobs';
 import { kernelTaskReader } from './timeline.js';
-import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
+import {
+  kudosDocument,
+  seededKnowledge,
+  seedOnMemory,
+} from '@genai/composition/memory-seed.test-utils';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -103,22 +107,20 @@ const service = (id: string, instructions: string) => ({
   },
 });
 
-const boot = async (searchReply: Record<string, unknown> = {}) => {
+const boot = async (corpus?: Parameters<typeof seededKnowledge>[0]) => {
   const model = await fakeHttp(modelReply);
-  const search = await fakeHttp(() => ({ status: 200, json: searchReply }));
-  servers.push(model, search);
-  const env = {
-    FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
-    TYPESENSE_URL: search.url,
-  };
+  const search = await seededKnowledge(corpus);
+  servers.push(model);
+  const env = { FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1` };
   const platform = await createPlatform({
     catalogs: {
       models: resolveCatalog(yaml('models.yaml'), 'models', env).catalog,
-      knowledge: resolveCatalog(seedOnTypesense(yaml('knowledge.yaml')), 'datasets', env).catalog,
+      knowledge: resolveCatalog(seedOnMemory(yaml('knowledge.yaml')), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     prices: { [modelId]: { inputPerThousand: 1, outputPerThousand: 2 } },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm' }),
+    knowledgeEngines: [search.engine],
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: { decide: async () => ({ allow: true }) },
     authenticate: async (request) =>
@@ -147,15 +149,12 @@ const withoutProvenance = (parts: Part[]) =>
 const bokmal = service('utkast-bokmal', 'Svar på bokmål.');
 const nynorsk = service('utkast-nynorsk', 'Svar på nynorsk.');
 
-const facetCounts = [
-  {
-    field_name: 'orgs_short',
-    counts: [
-      { value: 'Udir', count: 3 },
-      { value: 'Digdir', count: 2 },
-    ],
-  },
-];
+const byAgency = (agency: string, count: number) =>
+  Array.from({ length: count }, (_, i) => {
+    const doc = kudosDocument(`${agency}-${i}`);
+    return { ...doc, fields: { ...doc.fields, orgs_short: [agency] } };
+  });
+const facetCorpus = { 'digdir/kudos': [...byAgency('Udir', 3), ...byAgency('Digdir', 2)] };
 
 const withForm = {
   ...service('utkast-skjema', 'Svar på bokmål.'),
@@ -186,10 +185,7 @@ describe('a draft with options drawn from dataset facets', () => {
     });
 
   it('lists the facet values as options, also when the draft is YAML text', async () => {
-    const { app } = await boot({
-      facet_counts: facetCounts,
-      results: [{ facet_counts: facetCounts }],
-    });
+    const { app } = await boot(facetCorpus);
 
     for (const definition of [withForm, stringify(withForm)]) {
       const res = await post(app, '/definitions/input-fields', { definition });
@@ -242,10 +238,7 @@ describe('a draft with options drawn from dataset facets', () => {
   });
 
   it('lists the facet values for published versions in the playground options', async () => {
-    const { platform, get } = await boot({
-      facet_counts: facetCounts,
-      results: [{ facet_counts: facetCounts }],
-    });
+    const { platform, get } = await boot(facetCorpus);
     await platform.definitions.publish(withForm, 'test', 'test', {});
 
     const options = (await get(`/tenants/${tenant}/playground/options`)) as {
@@ -257,10 +250,7 @@ describe('a draft with options drawn from dataset facets', () => {
   });
 
   it('refuses a value that is not one of the facet values in a test run', async () => {
-    const { app } = await boot({
-      facet_counts: facetCounts,
-      results: [{ facet_counts: facetCounts }],
-    });
+    const { app } = await boot(facetCorpus);
 
     const wrong = await post(app, '/definitions/test-run', {
       definition: withForm,

@@ -215,7 +215,7 @@ Nobody is on call: the targets count office hours.
 
 - **Uploads:** the Recovery Services vault `genai-<env>-files-rsv` snapshots the share `data` every day at 01:00 UTC and keeps 30 days; the vault has soft delete, and the share keeps deleted shares for 14 days. The snapshots live in the same storage account, and Azure Backup puts its own delete lock on it.
 - **Secrets:** Key Vault soft delete for 90 days, with purge protection.
-- **Not backed up:** container images (built again from git), and a Typesense server an organisation registers, which its owner backs up.
+- **Not backed up:** container images (built again from git), and a search server an organisation registers, which its owner backs up.
 
 ### Restore the platform database
 
@@ -285,7 +285,7 @@ genki-test signs in through production Ansattporten with genki's production clie
 
 - `curl -fsS https://api.genki.digdir.cloud/health | jq .lockdown` is `false`.
 - The API log has `TestID-era credentials revoked at the production login switch` with the counts of keys, clients, schedules and triggers, and the audit log has one entry for each with that reason. Give anyone who needs one of them a new key.
-- Sign in on `https://portal.genki.digdir.cloud`, `https://workspace.genki.digdir.cloud` and `https://console.genki.digdir.cloud` as a member of the operator group: the login page is `login.ansattporten.no`, goes straight to Entra ID, and comes back signed in. The console shows the operator.
+- Sign in on `https://portal.genki.digdir.cloud` and `https://console.genki.digdir.cloud` as a member of the operator group: the login page is `login.ansattporten.no`, goes straight to Entra ID, and comes back signed in. The console shows the operator.
 - Open a hosted assistant, such as `https://kunnskap.apps.genki.digdir.cloud`, as a member of the service group, and ask one question.
 - Sign in as a person in none of the groups: the BFF shows the page that says the person has no access (403), and no session starts.
 - A member, not an operator, is refused in the console.
@@ -593,3 +593,60 @@ Then:
 ### Moving the DNS zone
 
 The zone stays in `rg-ka-test-weu` until its owner decides where it lives. Azure DNS zones can move to another resource group or subscription with `az resource move`; check that `az network dns zone show ... --query nameServers` is the same before and after, since `digdir.cloud` delegates to those name servers. Once the zone has moved, the empty resource group can be deleted with `az group delete --subscription Altinn-AI-Assistant -n rg-ka-test-weu`.
+
+## Retiring the Workspace in an environment
+
+The Workspace (`apps/workspace`) is gone: each service has its own hosted assistant instead (ADR 0061, issue 1071). Deploys are incremental, so the first deploy without it stops managing the Workspace but deletes nothing in Azure. A person with rights on the resource group removes the rest once, in this order.
+
+What the deploy does by itself:
+
+- Builds the `apps` image without the Workspace, and no longer updates `<name>-workspace`, which keeps running its last image until it is deleted.
+- Leaves `workspace=` out of `PLATFORM_APP_ORIGINS`, so the API's BFF no longer signs anyone in on the Workspace's hostnames. A Workspace page that is still open gets `401`.
+- Writes no DNS records and no certificate for the Workspace.
+- No longer gives the API the Key Vault secret `typesense-key`, since genki has no Typesense engine any more.
+
+Before that deploy, check that no active API revision still reads `typesense-key`; Azure refuses to update an app whose active revision names a secret it no longer has. Every revision listed should be from after #957:
+
+```sh
+az containerapp revision list -g rg-genki-test-weu -n genai-test-api \
+  --query "[?properties.active].{name:name, created:properties.createdTime}" -o table
+```
+
+After it, `curl -fsS https://api.genki.digdir.cloud/health | jq .catalog.skipped` lists no entry with `no adapter for typesense`. One there is a stored endpoint on the removed engine: delete it, and the datasets on it, in the console.
+
+What a person does once the deploy has run, for genki-test (for prod, `NAME=genai-prod RG=rg-genki-prod-weu`, if the Workspace was ever deployed there):
+
+```sh
+NAME=genai-test RG=rg-genki-test-weu
+
+# 1. The deploy ran: no workspace= in the API's PLATFORM_APP_ORIGINS.
+az containerapp show -g $RG -n $NAME-api \
+  --query "properties.template.containers[0].env[?name=='PLATFORM_APP_ORIGINS'].value" -o tsv
+
+# 2. Delete the container app, which also unbinds its hostnames.
+az containerapp delete -g $RG -n $NAME-workspace --yes
+
+# 3. Delete the managed certificates of workspace.genki.digdir.cloud and workspace.genki-test.digdir.cloud.
+az containerapp env certificate list -g $RG -n $NAME-env \
+  --query "[?starts_with(properties.subjectName, 'workspace.')].name" -o tsv \
+  | while read -r CERT; do az containerapp env certificate delete -g $RG -n $NAME-env --certificate "$CERT" --yes; done
+
+# 4. Delete the DNS records in each zone that has them.
+for ZONE in genki.digdir.cloud genki-test.digdir.cloud; do
+  az network dns record-set cname delete -g $RG -z $ZONE -n workspace --yes
+  az network dns record-set txt delete -g $RG -z $ZONE -n asuid.workspace --yes
+done
+
+# 5. Nothing answers on the old names any more.
+for HOST in workspace.genki.digdir.cloud workspace.genki-test.digdir.cloud; do curl -sI "https://$HOST/healthz"; done
+
+# 6. The vault no longer needs the Typesense key.
+az keyvault secret delete --vault-name genai-test-kv-q63pldec6l -n typesense-key
+```
+
+A zone that is not in `$RG` (`az network dns zone list -o table` shows where each one is) is changed in its own resource group, or by whoever hosts it.
+
+Then, outside Azure:
+
+- **Ansattporten.** The Workspace has signed in through the platform login since 2026-11-25, whose only redirect URI is on `login.apps.<zone>`, so no redirect URI names the Workspace. If the Workspace's former client (`WORKSPACE_CLIENT_ID`) still exists in Samarbeidsportalen, delete it there.
+- **GitHub variables.** `gh variable list --env genki-test | grep -i -e workspace -e typesense` should list nothing. Delete what it lists with `gh variable delete <name> --env genki-test`.

@@ -43,7 +43,6 @@ export interface SampleOptions {
   orgField: string;
   typeField: string;
   yearField: string;
-  docsKey: string;
   probes: string[];
   perOrg: number;
   maxOrgs: number;
@@ -54,15 +53,11 @@ export const defaultSampleOptions: SampleOptions = {
   orgField: 'orgs_long',
   typeField: 'type',
   yearField: 'concerned_years',
-  docsKey: 'KUDOS_preprod_v4_documents_ab897fbdedfa',
   probes: ['mål og resultater', 'budsjett og tildeling', 'risiko', 'digitalisering', 'samarbeid'],
   perOrg: 2,
   maxOrgs: 40,
   minTextLength: 400,
 };
-
-const joinedDoc = (chunk: SampledChunk, docsKey: string) =>
-  (chunk.fields[docsKey] ?? {}) as Record<string, unknown>;
 
 const firstString = (value: unknown) =>
   Array.isArray(value)
@@ -113,7 +108,7 @@ export const sampleCandidates = async (
       );
       if (!chunk?.document) continue;
       seenDocuments.add(chunk.document);
-      const doc = joinedDoc(chunk, options.docsKey);
+      const doc = chunk.fields;
       picked.push({
         chunkId: chunk.id,
         document: chunk.document,

@@ -11,12 +11,12 @@ import {
 
 const catalog = {
   endpoints: {
-    'kudos-typesense': { engine: 'typesense', baseURL: 'https://typesense.example' },
+    'kudos-sok': { engine: 'http-search', baseURL: 'https://sok.example' },
     kunnskapsserveren: { engine: 'pgvector' },
     'knowledge-pg': { engine: 'pgvector', options: { connection: 'knowledge' } },
   },
   datasets: [
-    { id: 'digdir/public-docs', endpoint: 'kudos-typesense' },
+    { id: 'digdir/public-docs', endpoint: 'kudos-sok' },
     { id: 'digdir/genki-docs', endpoint: 'kunnskapsserveren' },
     { id: 'digdir/kudos', endpoint: 'knowledge-pg' },
   ],
@@ -26,7 +26,7 @@ describe('the knowledge server at boot', () => {
   it('an endpoint set to `knowledge` without a knowledge server is left out with a warning in development mode', () => {
     const warnings: string[] = [];
     expect(withoutKnowledgeServer(catalog, (m) => warnings.push(m))).toEqual({
-      endpoints: { 'kudos-typesense': catalog.endpoints['kudos-typesense'] },
+      endpoints: { 'kudos-sok': catalog.endpoints['kudos-sok'] },
       datasets: [catalog.datasets[0]],
     });
     expect(warnings).toEqual([expect.stringContaining('kunnskapsserveren, knowledge-pg')]);
@@ -76,7 +76,7 @@ describe('the knowledge server at boot', () => {
         deleted: true,
       },
       { id: 'annen-pg', spec: { engine: 'pgvector' } },
-      { id: 'kudos-typesense', spec: { engine: 'typesense' } },
+      { id: 'kudos-sok', spec: { engine: 'http-search' } },
     ]);
     expect(knowledgeServerProblems({ DATABASE_URL: 'postgres://db/genai' }, saved)).toEqual([
       expect.stringContaining('kunnskap-pg, annen-pg'),

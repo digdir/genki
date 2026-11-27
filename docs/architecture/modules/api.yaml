@@ -19,7 +19,7 @@ responsibilities:
   - Authenticate callers and choose stores
   - Run the BFF for the assistant host: login as a confidential client, sessions in Postgres, and a session swapped for a bearer token (ADR 0061)
   - Run genki's platform login on login.apps.<zone> and hand its session to a hosted hostname with a one-time code (ADR 0061)
-  - Serve the BFF on the portal, workspace and console hostnames, so they sign in with the platform login and hold only a session cookie (ADR 0061)
+  - Serve the BFF on the portal and console hostnames, so they sign in with the platform login and hold only a session cookie (ADR 0061)
   - Run a published service over a document set, with a cost estimate, a cost cap and a retry list
   - Keep projects of document selections, and subscriptions that run a service on new documents under a monthly cost cap
   - Let operators set the maturity of operation kinds and the processor records of model endpoints,
@@ -333,13 +333,6 @@ edges:
     witness:
       file: apps/api/src/main.ts
       imports: '@genai/providers-postgres'
-  - to: providers-typesense
-    label: Composes Typesense reader
-    kind: call
-    target: call
-    witness:
-      file: apps/api/src/composition.ts
-      imports: '@genai/providers-typesense'
   - to: strategy-builder
     label: Composes the builder assistant and serves its turns
     kind: call

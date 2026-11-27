@@ -385,7 +385,7 @@ const settings = {
   wsTenantHelp: 'Applies to all services of {name} that have no choice of their own.',
   wsServiceHelp: 'Takes precedence over the choice for the organisation.',
   wsOrder:
-    'The order: the choice for the service takes precedence over the choice for the organisation. "Same as the question" lets the user choose in the workspace, under the user menu.',
+    'The order: the choice for the service takes precedence over the choice for the organisation.',
   wsFailedWith: 'The change was not saved: {title}',
   wsTenantSaved:
     'The written standard in answers has been changed for {name}. The change is logged.',

@@ -139,14 +139,12 @@ export const darkScript =
 export interface DemoApps {
   portal: string;
   console: string;
-  workspace: string;
   tenant: string;
 }
 
 const appOriginsOf = (apps: DemoApps) =>
   [
     [new URL(apps.portal).origin, false],
-    [new URL(apps.workspace).origin, false],
     [new URL(apps.console).origin, true],
   ] as const;
 
@@ -955,7 +953,6 @@ const libraryFromEnv = (env: NodeJS.ProcessEnv) =>
 export const appBases = (env: NodeJS.ProcessEnv) => ({
   portal: env.DEMO_PORTAL_URL || 'https://portal.genki.digdir.cloud',
   console: env.DEMO_CONSOLE_URL || 'https://console.genki.digdir.cloud',
-  workspace: env.DEMO_WORKSPACE_URL || 'https://workspace.genki.digdir.cloud',
 });
 
 export interface StoredRecording {
@@ -967,7 +964,7 @@ export interface StoredRecording {
   instruction?: string;
   costCapUsd?: number;
   files?: { name: string }[];
-  demoSpec: Omit<Demo, 'start'> & { app: 'portal' | 'console' | 'workspace'; path: string };
+  demoSpec: Omit<Demo, 'start'> & { app: 'portal' | 'console'; path: string };
   settings: { viewport: [number, number]; tenant: string | null };
 }
 

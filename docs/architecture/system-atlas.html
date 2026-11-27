@@ -1484,74 +1484,6 @@
             schemas: [],
           },
           {
-            id: 'workspace',
-            plane: 'consumers',
-            name: 'Workspace',
-            note: 'Employee chat app',
-            icon: 'chat',
-            color: '#74a7ff',
-            status: 'React app',
-            packages: ['@genai/workspace'],
-            summary:
-              'The employee-facing chat over published services, with sources, approvals and feedback.',
-            description:
-              'A React app on Designsystemet where an employee signs in with Ansattporten, picks a service and chats with it through the OpenAI-compatible API. It shows provenance, handles human approval steps and sends feedback that becomes kernel feedback events.',
-            responsibilities: [
-              'Sign in with Ansattporten and pick the acting organisation',
-              'Chat over /v1 with streamed answers and sources',
-              'Send feedback and show approval requests',
-            ],
-            files: [
-              'apps/workspace/src/App.tsx',
-              'apps/workspace/src/api.ts',
-              'apps/workspace/src/bff-login.ts',
-              'apps/workspace/src/Conversation.tsx',
-            ],
-            input: 'Employee messages',
-            output: 'Chat requests, feedback',
-            replaces: [
-              {
-                module: 'playground',
-                how: 'The chat half of the playground, for employees instead of developers',
-              },
-            ],
-            edges: [
-              {
-                to: 'i18n',
-                label: 'Language state and catalogues',
-                kind: 'call',
-                target: 'call',
-                witness: { file: 'apps/workspace/src/App.tsx', imports: '@genai/i18n' },
-              },
-              {
-                to: 'ui-blocks',
-                label: 'Draws the approach above an answer',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'apps/workspace/src/Conversation.tsx',
-                  imports: '@genai/ui-blocks',
-                },
-              },
-              {
-                to: 'adapter-openai',
-                label: 'Chat completions and model list',
-                kind: 'http',
-                target: 'http',
-                witness: { file: 'apps/workspace/src/api.ts', contains: '/v1/chat/completions' },
-              },
-              {
-                to: 'api',
-                label: 'Feedback on an answer',
-                kind: 'http',
-                target: 'http',
-                witness: { file: 'apps/workspace/src/api.ts', contains: '/api/feedback' },
-              },
-            ],
-            keywords: 'workspace chat employee frontend react designsystemet feedback',
-            schemas: [],
-          },
-          {
             id: 'assistant-host',
             plane: 'consumers',
             name: 'Assistant host',
@@ -2035,9 +1967,9 @@
             status: 'Library',
             packages: ['@genai/ui-blocks'],
             summary:
-              "Shared React components for assistants, such as Approach, Sources and Filter, used by the workspace and later the builder's preview.",
+              "Shared React components for assistants, such as Approach, Sources and Filter, used by ui-assembly in the hosted assistant and the builder's preview.",
             description:
-              "A shared React package (ADR 0053) with the components an assistant is made from, built on Designsystemet. Components get plain props and report what the person did through callbacks; they do not fetch. The workspace turns the stream into props, and the builder's preview will draw the draft with the same components. Each component has a page in docs/components.",
+              "A shared React package (ADR 0053) with the components an assistant is made from, built on Designsystemet. Components get plain props and report what the person did through callbacks; they do not fetch. ui-assembly turns the stream into props, for the hosted assistant and the builder's preview. Each component has a page in docs/components.",
             responsibilities: [
               'Draw the components assistants are made from with Designsystemet',
               'Texts in bokmål and English',
@@ -2412,7 +2344,7 @@
                   'login as a confidential client, sessions in Postgres, and a session swapped for a bearer token (ADR 0061)',
               },
               "Run genki's platform login on login.apps.\u003czone> and hand its session to a hosted hostname with a one-time code (ADR 0061)",
-              'Serve the BFF on the portal, workspace and console hostnames, so they sign in with the platform login and hold only a session cookie (ADR 0061)',
+              'Serve the BFF on the portal and console hostnames, so they sign in with the platform login and hold only a session cookie (ADR 0061)',
               'Run a published service over a document set, with a cost estimate, a cost cap and a retry list',
               'Keep projects of document selections, and subscriptions that run a service on new documents under a monthly cost cap',
               "Let operators set the maturity of operation kinds and the processor records of model endpoints, and refuse a service's call-operation step at publish unless both allow it (ADR 0047)",
@@ -2771,16 +2703,6 @@
                 kind: 'call',
                 target: 'call',
                 witness: { file: 'apps/api/src/main.ts', imports: '@genai/providers-postgres' },
-              },
-              {
-                to: 'providers-typesense',
-                label: 'Composes Typesense reader',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'apps/api/src/composition.ts',
-                  imports: '@genai/providers-typesense',
-                },
               },
               {
                 to: 'strategy-builder',
@@ -3289,26 +3211,6 @@
                 witness: {
                   file: 'packages/composition/src/runtime.ts',
                   imports: '@genai/providers-pgvector',
-                },
-              },
-              {
-                to: 'providers-typesense',
-                label: 'Composes the Typesense search adapter',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/composition/src/runtime.ts',
-                  imports: '@genai/providers-typesense',
-                },
-              },
-              {
-                to: 'providers-typesense-writer',
-                label: 'Composes the Typesense index writer',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/composition/src/runtime.ts',
-                  imports: '@genai/providers-typesense-writer',
                 },
               },
               {
@@ -7166,7 +7068,7 @@
             summary:
               'Hashes values exactly like the Clojure library, so ids and collection names match headless-rag.',
             description:
-              'Fixture-tested against the Clojure implementation. Used by ingest and the Typesense writer so re-ingested documents keep their ids.',
+              'Fixture-tested against the Clojure implementation. Used by ingest so re-ingested documents keep their ids.',
             responsibilities: [
               'Byte-exact value hashing',
               'Collection suffixes compatible with headless-rag',
@@ -9727,7 +9629,7 @@
             summary:
               'Search and fetch over datasets, with grants checked and a timeout on every call.',
             description:
-              'A router over a knowledge catalog maps datasets to endpoints and adapters, so Typesense can be replaced (ADR 0001). A dataset can set links: kudos-legacy, which gives hits and documents with an old numeric Kudos id their Kudos page by UUID as their url, from the map of earlier ids, or a Kudos title search where the map has none and the hit has a title (publicSourceUrl in @genai/contracts); other datasets keep their own url or none.',
+              'A router over a knowledge catalog maps datasets to endpoints and adapters, so a search engine can be replaced (ADR 0001). A dataset can set links: kudos-legacy, which gives hits and documents with an old numeric Kudos id their Kudos page by UUID as their url, from the map of earlier ids, or a Kudos title search where the map has none and the hit has a title (publicSourceUrl in @genai/contracts); other datasets keep their own url or none.',
             responsibilities: [
               'Dataset catalog',
               'Search and fetch with timeouts',
@@ -10430,116 +10332,6 @@
               },
             ],
             keywords: 'anthropic claude provider messages',
-            schemas: [],
-          },
-          {
-            id: 'providers-typesense',
-            plane: 'providers',
-            name: 'Typesense reader',
-            note: 'Search-only client',
-            icon: 'search',
-            color: '#8fa8b3',
-            status: 'Provider',
-            packages: ['@genai/providers-typesense'],
-            summary: 'Knowledge adapter for Typesense that refuses anything but search.',
-            description:
-              'Searches and fetches documents with a timeout and asserts the client is search-only.',
-            responsibilities: ['Search and fetch', 'Search-only guard'],
-            files: [
-              'packages/providers-typesense/src/index.ts',
-              'packages/providers-typesense/src/client.ts',
-            ],
-            input: 'Port query',
-            output: 'Typesense search',
-            replaces: [{ module: 'typesense', how: 'Typesense search client' }],
-            edges: [
-              {
-                to: 'plugins',
-                label: 'Manifest and read-only contract fake',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/providers-typesense/src/plugin.ts',
-                  imports: '@genai/plugins',
-                },
-              },
-              {
-                to: 'kernel',
-                label: 'Kernel SPI: tasks, events, principals, capabilities',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/providers-typesense/src/client.ts',
-                  imports: '@genai/kernel',
-                },
-              },
-              {
-                to: 'port-knowledge',
-                label: 'Search and fetch through the knowledge port',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/providers-typesense/src/client.ts',
-                  imports: '@genai/port-knowledge',
-                },
-              },
-            ],
-            keywords: 'typesense search provider',
-            schemas: [],
-          },
-          {
-            id: 'providers-typesense-writer',
-            plane: 'providers',
-            name: 'Typesense writer',
-            note: 'Generations',
-            icon: 'database',
-            color: '#8fa8b3',
-            status: 'Provider',
-            packages: ['@genai/providers-typesense-writer'],
-            summary: 'Writes ingest output to Typesense in generations.',
-            description:
-              "Creates collections, upserts documents and swaps generations, with the Typesense endpoint's own key, which must be allowed to write.",
-            responsibilities: ['Collection generations', 'Upsert and delete'],
-            files: [
-              'packages/providers-typesense-writer/src/writer.ts',
-              'packages/providers-typesense-writer/src/adapter.ts',
-            ],
-            input: 'Documents + schemas',
-            output: 'Indexed collections',
-            replaces: [{ module: 'pipeline', how: 'Index materialisation' }],
-            edges: [
-              {
-                to: 'port-knowledge',
-                label: 'Index writer adapter',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/providers-typesense-writer/src/adapter.ts',
-                  imports: '@genai/port-knowledge',
-                },
-              },
-              {
-                to: 'providers-typesense',
-                label: 'Reuses the search adapter dataset options',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/providers-typesense-writer/src/adapter.ts',
-                  imports: '@genai/providers-typesense',
-                },
-              },
-              {
-                to: 'kernel',
-                label: 'Kernel SPI: tasks, events, principals, capabilities',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/providers-typesense-writer/src/writer.ts',
-                  imports: '@genai/kernel',
-                },
-              },
-            ],
-            keywords: 'typesense writer index collections generation',
             schemas: [],
           },
           {
@@ -11775,8 +11567,8 @@
                 text: "The knowledge port routes the search to the dataset's endpoint, with a timeout.",
               },
               {
-                module: 'providers-typesense',
-                text: 'The search-only Typesense adapter runs multi_search.',
+                module: 'providers-pgvector',
+                text: 'The pgvector engine searches the knowledge server.',
               },
               {
                 module: 'port-model',
@@ -11830,9 +11622,13 @@
           },
           {
             id: 'employee-chat',
-            name: 'An employee chats in Workspace',
+            name: "An employee chats in a service's assistant",
             steps: [
-              { module: 'workspace', text: 'An employee signs in and picks a published service.' },
+              { module: 'assistant-host', text: "An employee signs in on the service's hostname." },
+              {
+                module: 'ui-assembly',
+                text: 'The assistant sends the question through the client.',
+              },
               {
                 module: 'adapter-openai',
                 text: '/v1/chat/completions resolves the model name to a capability.',
@@ -12140,7 +11936,7 @@
           `<p class="lead">Every edge whose kind today differs from its target. Each row is an integration that runs against a fake now and must be switched to the real national service.</p>` +
             `<div class="edge-list">${changingEdges.map((e) => edgeRow(e, `<span>${link(e.from)} → ${link(e.to)}</span>`)).join('')}</div>` +
             `<div class="detail-section"><h3>Not in this set</h3><ul class="bullets">
-          <li><b>${counts('http')}</b> HTTP edges already reach real systems: Azure AI Foundry, Typesense, Langfuse, tenant MCP servers and the frontends.</li>
+          <li><b>${counts('http')}</b> HTTP edges already reach real systems: Azure AI Foundry, Langfuse, tenant MCP servers and the frontends.</li>
           <li><b>${counts('sql')}</b> SQL edge to Postgres, used when DATABASE_URL is set; memory stores otherwise.</li>
           <li><b>${counts('call')}</b> in-process imports between workspace packages, each matched to a real import by the atlas test.</li>
         </ul></div>`,

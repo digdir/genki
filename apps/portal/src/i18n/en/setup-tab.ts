@@ -46,7 +46,7 @@ export const setup = {
   groupSystem: 'From a system',
   groupTrigger: 'Trigger',
   groupBatch: 'Batch run',
-  startChatOwn: "AI workspace (the platform's chat)",
+  startChatOwn: "The platform's chat",
   startFrontends: 'own frontends: {names}',
   registeredFrontends:
     'Registered own frontends: {names}. They are managed under "Own frontends" above.',

@@ -144,7 +144,7 @@ describe('the status of a dataset', () => {
     const deps = {
       ingestion,
       countable: (engine: string) => engine === 'memory',
-      engineOf: () => 'typesense',
+      engineOf: () => 'ekstern-sok',
     };
 
     expect(await datasetStatus({ ...deps, documentCount: async () => 45_321 }, shared)).toEqual({

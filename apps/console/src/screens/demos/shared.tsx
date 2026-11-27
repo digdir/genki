@@ -34,7 +34,6 @@ const stateColor: Record<DemoState, 'success' | 'warning' | 'danger' | 'neutral'
 export const appLabel: Record<DemoApp, PlainKey> = {
   portal: 'demos.appPortal',
   console: 'demos.appConsole',
-  workspace: 'demos.appWorkspace',
 };
 
 export const audienceLabel: Record<DemoAudience, PlainKey> = {

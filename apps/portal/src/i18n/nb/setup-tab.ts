@@ -45,7 +45,7 @@ export const setup = defineNamespace({
   groupSystem: 'Fra et system',
   groupTrigger: 'Utløser',
   groupBatch: 'Massekjøring',
-  startChatOwn: 'KI-arbeidsflaten (plattformens chat)',
+  startChatOwn: 'Plattformens chat',
   startFrontends: 'egne løsninger: {names}',
   registeredFrontends:
     'Registrerte egne løsninger: {names}. De styres under «Egne løsninger» over.',

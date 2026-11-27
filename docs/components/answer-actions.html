@@ -92,8 +92,8 @@
                 the app has no link to give.
               </li>
               <li>
-                <strong>Feedback</strong>, after genki's workspace: a thumb up, «Nyttig», and a
-                thumb down, «Ikke nyttig», first in the row as icons, which send the rating on the
+                <strong>Feedback</strong>, after genki's hosted assistant: a thumb up, «Nyttig», and
+                a thumb down, «Ikke nyttig», first in the row as icons, which send the rating on the
                 click; then, under the row, optional reasons for a no, a comment, «Send» and «Hopp
                 over». Off unless the app asks for it with <code>feedback</code>:
                 kunnskapsassistenten took the feedback under each answer out on 6 October 2026,
@@ -156,8 +156,8 @@
               <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
               and reads every token through its own variable, with the token as the fallback. Set
               one on any ancestor to change that detail only. Eight are pinned to neutral on
-              purpose, as kunnskapsassistenten and the workspace draw them: the helper text, the
-              rule above the feedback, and the form's ground and field.
+              purpose, as kunnskapsassistenten and the hosted assistant draw them: the helper text,
+              the rule above the feedback, and the form's ground and field.
             </p>
             <table>
               <thead>
@@ -308,8 +308,8 @@
                 so it is not lost with the button that had it.
               </li>
               <li>
-                The reasons are sent in bokmål whatever language the person reads, as the workspace
-                stores them, so the service reads them the same way.
+                The reasons are sent in bokmål whatever language the person reads, as genki stores
+                them, so the service reads them the same way.
               </li>
             </ul>
           </div>
@@ -322,10 +322,11 @@
                 before the app copies. «Lenke til tråden» is left out where the app gives no link.
               </li>
               <li>
-                Feedback after the workspace: the thumbs are icon toggle buttons named «Nyttig» and
-                «Ikke nyttig», with a <code>Tooltip</code> and <code>aria-pressed</code>, the icon
-                filled when chosen; a <code>Fieldset</code> of <code>Chip</code> checkboxes for a
-                no, a <code>Textarea</code> with its count, and a status line.
+                Feedback after the hosted assistant: the thumbs are icon toggle buttons named
+                «Nyttig» and «Ikke nyttig», with a <code>Tooltip</code> and
+                <code>aria-pressed</code>, the icon filled when chosen; a <code>Fieldset</code> of
+                <code>Chip</code> checkboxes for a no, a <code>Textarea</code> with its count, and a
+                status line.
               </li>
               <li>
                 A click on a thumb sends the rating at once and opens the optional form; the status

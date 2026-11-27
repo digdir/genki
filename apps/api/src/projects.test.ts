@@ -19,7 +19,12 @@ import { InMemoryIngestionBackend, pipelineSpec } from './ingestion.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { createProjectsModule, projectsModule } from './project-routes.js';
 import { subscriptionStateKind, type SubscriptionState } from './projects.js';
-import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
+import {
+  memoryTestEndpoint,
+  seededKnowledge,
+  seedOnMemory,
+} from '@genai/composition/memory-seed.test-utils';
+import type { IndexDocument } from '@genai/port-knowledge';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -89,50 +94,18 @@ const initialDocs = (): KudosDoc[] => [
   },
 ];
 
-const docsCollection = 'KUDOS_preprod_v4_documents_ab897fbdedfa';
-
-const clauseHolds = (record: Record<string, unknown>, clause: string): boolean => {
-  const joined = /^\$\w+\((.*)\)$/.exec(clause);
-  if (joined) return (joined[1] ?? '').split(' && ').every((c) => clauseHolds(record, c));
-  const m = /^(\w+):(>=|<=|=)?(.*)$/.exec(clause);
-  if (!m) return true;
-  const value = record[m[1] ?? ''];
-  const raw = (m[3] ?? '').replace(/`/g, '');
-  const list = raw.startsWith('[') ? raw.slice(1, -1).split(',') : [raw];
-  return list.includes(String(value));
-};
-
-const matchesFilter = (record: Record<string, unknown>, filter: unknown) => {
-  if (typeof filter !== 'string') return true;
-  const joined = /^\$\w+\((.*)\)$/.exec(filter);
-  const clauses = (joined ? (joined[1] ?? '') : filter).split(' && ');
-  return clauses.every((c) => clauseHolds(record, c));
-};
-
-const typesenseSearch = (docs: KudosDoc[], s: Record<string, unknown>) => {
-  const records: Record<string, unknown>[] =
-    s.collection === docsCollection
-      ? docs.map((d) => ({ ...d }))
-      : docs.flatMap((d) =>
-          [0, 1].map((position) => ({
-            ...d,
-            chunk_id: `${d.doc_num}-${position}`,
-            chunk_index: position,
-            content_markdown: `Fra ${d.title}: tekst ${position + 1}.`,
-            [docsCollection]: { title: d.title, url: `https://kudos.example.no/${d.doc_num}` },
-          })),
-        );
-  const found = records.filter((r) => matchesFilter(r, s.filter_by));
-  if (typeof s.facet_by === 'string') return { found: found.length, hits: [], facet_counts: [] };
-  const perPage = Number(s.per_page ?? 10);
-  const page = Number(s.page ?? 1);
-  return {
-    found: found.length,
-    hits: found
-      .slice((page - 1) * perPage, page * perPage)
-      .map((document) => ({ document, text_match_info: { score: 1 } })),
-  };
-};
+const indexed = ({ doc_num, title, ...fields }: KudosDoc): IndexDocument => ({
+  id: doc_num,
+  title,
+  url: `https://kudos.example.no/${doc_num}`,
+  fields,
+  chunks: [0, 1].map((position) => ({
+    id: `${doc_num}-${position}`,
+    position,
+    text: `Fra ${title}: tekst ${position + 1}.`,
+  })),
+  phrases: [],
+});
 
 const reply = (content: string, stream: boolean) =>
   stream
@@ -239,27 +212,19 @@ const boot = async (world: Shared = shared()) => {
     state.modelCalls.push(user.split('\n')[0] ?? '');
     return reply(`Sammendrag av ${user.split('\n')[0] ?? ''}`, Boolean(body.stream));
   });
-  const search = await fakeHttp((body: Record<string, unknown>) => {
-    const searches = (body.searches ?? []) as Record<string, unknown>[];
-    return {
-      status: 200,
-      json: { results: searches.map((s) => typesenseSearch(world.docs, s)) },
-    };
-  });
-  servers.push(model, search);
-  const env = {
-    FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
-    TYPESENSE_URL: search.url,
-  };
+  const search = await seededKnowledge(() => ({ 'digdir/kudos': world.docs.map(indexed) }));
+  servers.push(model);
+  const env = { FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1` };
   const background: Promise<void>[] = [];
   let deps: ModuleDeps | undefined;
   const platform = await createPlatform({
     catalogs: {
       models: resolveCatalog(yaml('models.yaml'), 'models', env).catalog as ModelCatalog,
-      knowledge: resolveCatalog(seedOnTypesense(yaml('knowledge.yaml')), 'datasets', env).catalog,
+      knowledge: resolveCatalog(seedOnMemory(yaml('knowledge.yaml')), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm' }),
+    knowledgeEngines: [search.engine],
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     blobStore: new InMemoryBlobStore(),
     policy: { decide: async () => ({ allow: true }) },
@@ -699,7 +664,7 @@ describe('subscriptions to new documents', () => {
         at: '2026-10-08T09:00:00.000Z',
         reason: 'test',
       },
-      target: { dataset: 'digdir/kudos', endpoint: 'kudos-typesense', collections: {} },
+      target: { dataset: 'digdir/kudos', endpoint: memoryTestEndpoint, collections: {} },
       by: 'test',
     });
     if (!executed.ok) throw new Error(JSON.stringify(executed.errors));
@@ -790,7 +755,7 @@ describe('subscriptions to new documents', () => {
 
     const second = await boot(world);
     world.time.fire();
-    await second.settled();
+    await Promise.all([first.settled(), second.settled()]);
     expect(second.state.modelCalls).toEqual([]);
 
     world.docs.push(report(6, 'SB'));

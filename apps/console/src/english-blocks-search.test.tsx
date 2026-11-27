@@ -27,7 +27,7 @@ describe('search engines in English', () => {
     render(inEnglish(<SearchEngines api={api()} />));
     expect(await screen.findByRole('heading', { level: 1, name: 'Search engines' })).toBeTruthy();
     const table = screen.getByRole('region', { name: 'Endpoints' });
-    const row = within(table).getByRole('link', { name: 'typesense-digdir' }).closest('tr');
+    const row = within(table).getByRole('link', { name: 'elastic-digdir' }).closest('tr');
     expect(row?.textContent).toContain('6 of 7: no reading passages in order');
     expect(row?.textContent).toContain('Data in Norway');
     expect(row?.textContent).toContain('23 document collections');

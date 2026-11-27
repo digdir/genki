@@ -8,7 +8,7 @@ You need [mise](https://mise.jdx.dev) and Docker.
 
 ```sh
 mise trust && mise install   # Node 24.21.0, pinned in mise.toml
-npm start                    # setup, then API, worker, portal, console and workspace
+npm start                    # setup, then API, worker, portal and console
 ```
 
 `npm start` runs `npm run setup` (starts Postgres with pgvector and the knowledge server in Docker, creates `.env.local` if it is missing or adds the knowledge settings it lacks, and sets up the knowledge server) and then `npm run dev:all`. Setup turns on dev mode (`GENAI_DEV_MODE=true`), which gives you the mock login with test persons and lets the API run without real identity settings. Never turn it on anywhere else. [docs/development.md](docs/development.md) lists the ports, test persons and the settings that need your own model and search accounts; everything works without them on the local test model.
@@ -29,7 +29,7 @@ The code follows these standards, and CI refuses a change that breaks them:
 - **Boundaries:** dependency-cruiser rules in `.dependency-cruiser.cjs` (`npm run boundaries`).
 - **Compatibility:** no unannounced breaking change to the public `/v1` API (`npm run api:compat`), and every stored definition still validates (`npm run definitions:compat`). See [API changes](docs/api/README.md#api-changes).
 
-Docker must be running: the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers. While you work, run a part with `npx vitest run <paths>` from the repository root, plus `npx tsc -b` and `npx eslint <files>`. CI runs the same steps as `npm run check`, with the tests split over four runners, plus a gitleaks secret scan and a Docker image build on every pull request.
+Docker must be running: the Postgres and pgvector suites start containers with Testcontainers. While you work, run a part with `npx vitest run <paths>` from the repository root, plus `npx tsc -b` and `npx eslint <files>`. CI runs the same steps as `npm run check`, with the tests split over four runners, plus a gitleaks secret scan and a Docker image build on every pull request.
 
 ## Repository rules
 

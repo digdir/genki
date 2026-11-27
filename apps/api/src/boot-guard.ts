@@ -41,7 +41,7 @@ export const bootProblems = (env: Env): string[] => [
     {
       met: !env.ANSATTPORTEN_ISSUER || employeeClientIds(env).length > 0 || platformAppsSignIn(env),
       problem:
-        'set PLATFORM_LOGIN_CLIENT_ID and PLATFORM_APP_ORIGINS so the portal, workspace and console sign in through the platform login, or EMPLOYEE_CLIENT_IDS',
+        'set PLATFORM_LOGIN_CLIENT_ID and PLATFORM_APP_ORIGINS so the portal and console sign in through the platform login, or EMPLOYEE_CLIENT_IDS',
     },
     databaseRequirement(env),
     {

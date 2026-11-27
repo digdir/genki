@@ -18,7 +18,7 @@ export const recordingKind = 'demo-recording';
 export const demoSeedActor = 'platform:seed';
 export const recorderActor = 'recorder';
 
-export const demoApps = ['portal', 'console', 'workspace'] as const;
+export const demoApps = ['portal', 'console'] as const;
 export const demoAudiences = ['municipality', 'state-agency', 'internal'] as const;
 export const recordingStatuses = ['queued', 'running', 'recorded', 'failed', 'cancelled'] as const;
 export const settingsKind = 'demo-settings';

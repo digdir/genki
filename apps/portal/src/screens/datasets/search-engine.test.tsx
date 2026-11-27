@@ -132,13 +132,13 @@ describe('Dokumentsamlinger: søkemotor', () => {
     ).toBeTruthy();
     expect(within(flow).queryByRole('radio', { name: /Innebygd søk/ })).toBeNull();
     expect(
-      (within(flow).getByRole('radio', { name: /Typesense/ }) as HTMLInputElement).checked,
+      (within(flow).getByRole('radio', { name: /Elasticsearch/ }) as HTMLInputElement).checked,
     ).toBe(true);
     expect(within(flow).getByText('Krever egen skrivenøkkel')).toBeTruthy();
     const table = within(flow).getByRole('region', { name: 'Sammenligning av søkemotorer' });
     expect(within(table).getByRole('columnheader', { name: /Innebygd søk\s*Nå/ })).toBeTruthy();
     const warning = within(flow).getByRole('heading', {
-      name: 'Med Typesense mister dokumentsamlingen 1 egenskap',
+      name: 'Med Elasticsearch mister dokumentsamlingen 1 egenskap',
     });
     expect(warning.parentElement?.textContent).toMatch(
       /Lese avsnitt i rekkefølge:.*Tjenesten kan ikke lese avsnittene rundt et treff/,
@@ -446,7 +446,7 @@ describe('Dokumentsamlinger: søkemotor', () => {
     });
   });
 
-  it('a Typesense target is refused with the API message', async () => {
+  it('an Elasticsearch target is refused with the API message', async () => {
     await openOwn();
     fireEvent.click(within(await block()).getByRole('button', { name: 'Bytt søkemotor' }));
     const flow = await switchSection();

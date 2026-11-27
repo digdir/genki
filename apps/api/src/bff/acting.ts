@@ -5,7 +5,7 @@ export interface ActingClient {
   client: string;
 }
 
-export const platformApps = ['portal', 'workspace', 'console'] as const;
+export const platformApps = ['portal', 'console'] as const;
 
 export type PlatformApp = (typeof platformApps)[number];
 

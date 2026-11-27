@@ -49,7 +49,6 @@ export const defaultPorts = {
   worker: 8081,
   portal: 5173,
   console: 5174,
-  workspace: 5176,
   block: 8090,
 };
 
@@ -63,7 +62,6 @@ export const devPorts = (env: Record<string, string | undefined>) => {
     worker: pick('GENAI_WORKER_PORT', defaultPorts.worker),
     portal: pick('GENAI_PORTAL_PORT', defaultPorts.portal),
     console: pick('GENAI_CONSOLE_PORT', defaultPorts.console),
-    workspace: pick('GENAI_WORKSPACE_PORT', defaultPorts.workspace),
     block: pick('GENAI_BLOCK_PORT', defaultPorts.block),
   };
 };
@@ -82,7 +80,7 @@ export const devPlatformLogin = (
     PLATFORM_LOGIN_CLIENT_SECRET: randomBytes(24).toString('base64url'),
     PLATFORM_LOGIN_HOSTNAME: 'localhost',
     PLATFORM_LOGIN_ORIGIN: `http://localhost:${ports.portal}`,
-    PLATFORM_APP_ORIGINS: (['portal', 'workspace', 'console'] as const)
+    PLATFORM_APP_ORIGINS: (['portal', 'console'] as const)
       .map((app) => `${app}=http://${app}.localhost:${ports[app]}`)
       .join(','),
   });
@@ -156,10 +154,6 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
     },
     vite('portal', ports.portal, apiEnv),
     vite('console', ports.console, apiEnv),
-    vite('workspace', ports.workspace, {
-      ...apiEnv,
-      VITE_PORTAL_URL: `http://portal.localhost:${ports.portal}`,
-    }),
   ];
 };
 
@@ -290,7 +284,7 @@ const main = async () => {
   const run = runAll(processes, { cwd: repoRoot, colour, write: (t) => process.stdout.write(t) });
   const ports = devPorts({ ...fileEnv, ...process.env });
   console.log(
-    `API http://localhost:${ports.api}  portal http://portal.localhost:${ports.portal}  console http://console.localhost:${ports.console}  workspace http://workspace.localhost:${ports.workspace}  blocks http://localhost:${ports.block}  (Ctrl-C stops all)`,
+    `API http://localhost:${ports.api}  portal http://portal.localhost:${ports.portal}  console http://console.localhost:${ports.console}  blocks http://localhost:${ports.block}  (Ctrl-C stops all)`,
   );
   process.on('SIGINT', () => run.stop(0));
   process.on('SIGTERM', () => run.stop(0));
