@@ -12,3 +12,4 @@ export * from './tombstone.js';
 export * from './conversions.js';
 export * from './parts.js';
 export * from './code-points.js';
+export * from './parts-read.js';

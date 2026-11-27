@@ -193,6 +193,9 @@ export const problems = defineNamespace({
   status405: 'Metoden støttes ikke her',
   status409: 'Konflikt',
   serviceArchivedTitle: 'Tjenesten er arkivert',
+  serviceIdTakenTitle: 'Navnet er i bruk',
+  newServiceIdTaken:
+    'Tjenesten «{id}» finnes allerede, eventuelt arkivert. Gi den nye tjenesten et annet navn.',
   serviceNotArchivedTitle: 'Tjenesten er ikke arkivert',
   serviceInUseTitle: 'Tjenesten er i bruk',
   serviceUsedByFrontend: 'Frontenden {name} bruker tjenesten',

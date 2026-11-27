@@ -191,6 +191,9 @@ export const problems = {
   status405: 'The method is not supported here',
   status409: 'Conflict',
   serviceArchivedTitle: 'The service is archived',
+  serviceIdTakenTitle: 'The name is taken',
+  newServiceIdTaken:
+    'The service "{id}" already exists, possibly archived. Give the new service another name.',
   serviceNotArchivedTitle: 'The service is not archived',
   serviceInUseTitle: 'The service is in use',
   serviceUsedByFrontend: 'The frontend {name} uses the service',

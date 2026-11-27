@@ -10,11 +10,16 @@ import {
   KnowledgeError,
   knowledgeProfiles,
   matchAllQuery,
+  maxPartsAround,
+  maxPartsBudget,
+  partReads,
   searchCapabilities,
   type FacetValue,
   type FieldFilter,
   type KnowledgeCapability,
   type KnowledgePort,
+  type PartRead,
+  type PartsRead,
   type SearchRequest,
 } from '../port.js';
 import { KnowledgeRouter } from '../router.js';
@@ -25,6 +30,7 @@ import {
   fixtureDocuments,
   fixtureFilters,
   fixtureQueries,
+  partsCases,
   rangeCase,
   trickyCases,
   withVectors,
@@ -138,6 +144,8 @@ const refusal = async (run: () => Promise<unknown>) => {
 export const knowledgeAdapterContract = (
   name: string,
   setup: (input: { dataset: ContractDataset }) => Promise<KnowledgeTarget>,
+  /** An engine that declares `parts` seeds `partsFiles` and `partsDocuments` in a dataset of its own. */
+  partsSetup?: (input: { dataset: ContractDataset }) => Promise<KnowledgeTarget>,
 ) =>
   describe(`knowledge adapter contract: ${name}`, () => {
     const dataset: ContractDataset = { id: `contract/${slug(name)}`, filters: fixtureFilters };
@@ -301,6 +309,128 @@ export const knowledgeAdapterContract = (
       await expect(
         port.search({ query: fixtureQueries.everywhere, profile: 'finnes-ikke' }),
       ).rejects.toMatchObject({ code: 'bad_request' });
+    });
+
+    describe('reads around a hit', () => {
+      const partsDataset: ContractDataset = { id: `${dataset.id}-parts`, filters: {} };
+      let partsTarget: KnowledgeTarget | undefined;
+      let parts: KnowledgePort;
+      const around = (
+        c: { chunk: string; read?: PartRead; n?: number },
+        budget = maxPartsBudget,
+      ) => {
+        if (!parts.parts) throw new Error('the port has no parts read');
+        return parts.parts(c.chunk, c.read ?? 'units', c.n ?? 0, budget);
+      };
+      const seqs = (read: PartsRead) => read.parts.map((p) => p.seq);
+
+      beforeAll(async () => {
+        if (!has('parts')) return;
+        if (!partsSetup)
+          throw new Error(`${name} declares parts but gives the contract no parts setup`);
+        partsTarget = await partsSetup({ dataset: partsDataset });
+        parts = openTarget(partsTarget, partsDataset);
+      });
+      afterAll(async () => partsTarget?.close?.());
+      beforeEach((ctx) => {
+        if (!has('parts')) ctx.skip();
+      });
+
+      it('a units read returns a part that starts any number of units before', async () => {
+        expect(seqs(await around(partsCases.startsBefore))).toEqual(partsCases.startsBefore.seqs);
+      });
+
+      it('a neighbours read returns n parts on each side in reading order', async () => {
+        expect(seqs(await around(partsCases.neighbours))).toEqual(partsCases.neighbours.seqs);
+      });
+
+      it('a section read runs from the heading at or before the hit to the next heading', async () => {
+        expect(seqs(await around(partsCases.section))).toEqual(partsCases.section.seqs);
+      });
+
+      it('a section read holds every part of a hit that runs past the next heading', async () => {
+        expect(seqs(await around(partsCases.sectionAcross))).toEqual(partsCases.sectionAcross.seqs);
+      });
+
+      it('a units read returns the pages around the hit with the labels a reader cites them by', async () => {
+        const read = await around(partsCases.units);
+        expect(seqs(read)).toEqual(partsCases.units.seqs);
+        expect(read.units.map((u) => u.label)).toEqual(partsCases.units.labels);
+        expect(read.cut).toBe(false);
+        const table = read.parts.find((p) => p.kind === 'table');
+        expect(table?.regions.map((r) => r.unit)).toEqual([2, 3, 4]);
+        expect(table?.headingPath).toEqual(['Bakgrunn']);
+      });
+
+      it('a read around a hit stops at the edge of its file', async () => {
+        expect(seqs(await around(partsCases.lastPage))).toEqual(partsCases.lastPage.seqs);
+        expect((await around(partsCases.attachment)).parts.map((p) => p.text)).toEqual([
+          'Vedlegget lister kaiene.',
+        ]);
+      });
+
+      it('a read never returns furniture', async () => {
+        for (const read of partReads) {
+          const got = seqs(await around({ ...partsCases.whole, read }));
+          expect(got.length, read).toBeGreaterThan(0);
+          for (const seq of partsCases.whole.furniture) expect(got, read).not.toContain(seq);
+        }
+      });
+
+      it('a read over its budget is cut on a part boundary and says so', async () => {
+        const whole = await around(partsCases.whole);
+        expect(whole.cut).toBe(false);
+        const three = whole.parts.slice(0, 3).reduce((n, p) => n + [...p.text].length, 0);
+        const cut = await around(partsCases.whole, three + 1);
+        expect(cut.parts).toEqual(whole.parts.slice(0, 3));
+        expect(cut.cut).toBe(true);
+        const none = await around(partsCases.whole, 1);
+        expect(none).toMatchObject({ parts: [], cut: true });
+      });
+
+      it('a read over its budget keeps the hit and the parts nearest it', async () => {
+        // The hit on page 4 is the last part of its section, so a read counted from the
+        // section's start would spend the budget before it.
+        const whole = await around(partsCases.section);
+        const hit = whole.parts.find((p) => p.seq === 7);
+        const table = whole.parts.find((p) => p.seq === 5);
+        if (!hit || !table) throw new Error('the section read lost its hit or its table');
+        const length = (text: string) => [...text].length;
+        const onlyHit = await around(partsCases.section, length(hit.text) + 1);
+        expect(seqs(onlyHit)).toEqual([7]);
+        expect(onlyHit.cut).toBe(true);
+        const nearest = await around(partsCases.section, length(hit.text) + length(table.text));
+        expect(seqs(nearest)).toEqual([5, 7]);
+        expect(nearest.cut).toBe(true);
+      });
+
+      it('a chunk made from pages has no parts to read', async () => {
+        for (const read of partReads)
+          expect(await around({ ...partsCases.pages, read, n: 5 })).toEqual({
+            parts: [],
+            units: [],
+            cut: false,
+          });
+        expect((await around({ chunk: 'finnes-ikke' })).parts).toEqual([]);
+      });
+
+      it('a read around a hit refuses an unknown read, n or a budget out of bounds, and no chunk', async () => {
+        const read = partsCases.units;
+        await expect(around({ ...read, n: -1 })).rejects.toMatchObject({ code: 'bad_request' });
+        await expect(around(read, 0)).rejects.toMatchObject({ code: 'bad_request' });
+        await expect(around({ ...read, chunk: '' })).rejects.toMatchObject({
+          code: 'bad_request',
+        });
+        await expect(around({ ...read, read: 'all' as PartRead })).rejects.toMatchObject({
+          code: 'bad_request',
+        });
+        await expect(around({ ...read, n: maxPartsAround + 1 })).rejects.toMatchObject({
+          code: 'bad_request',
+        });
+        await expect(around(read, maxPartsBudget + 1)).rejects.toMatchObject({
+          code: 'bad_request',
+        });
+      });
     });
   });
 

@@ -428,6 +428,26 @@ describe('search hooks', () => {
     expect(seen).toEqual(['before_search', 'after_search']);
   });
 
+  it('keeps the read around a hit on a knowledge port it wraps for search hooks', async () => {
+    const around = { parts: [], units: [{ unit: 4, label: '6' }], cut: false };
+    const withParts: KnowledgePort = { ...fakeKnowledge, parts: async () => around };
+    const strategy = withHooks(
+      inner(async function* (c) {
+        const port = await c.use<KnowledgePort>('knowledge', { kind: 'dataset', id: 'kudos' });
+        yield { type: 'x.test.parts', data: await port.parts?.('h1', 'units', 1, 100) };
+      }),
+      { invoke, hooks: async () => [hook('logg', { point: 'before_search' })] },
+    );
+    const events = await collect(
+      strategy.run(
+        { ...ctx(), use: async () => withParts } as unknown as InvocationContext,
+        { parts: [] } as never,
+        {},
+      ),
+    );
+    expect(events.find((e) => e.type === 'x.test.parts')?.data).toEqual(around);
+  });
+
   it('does not let an on_feedback hook refuse, since feedback is already given', () => {
     expect(
       hookSpec.safeParse({

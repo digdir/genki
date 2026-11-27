@@ -19,7 +19,7 @@ If the tools are missing, the server is not set up: see `apps/admin-mcp/README.m
 6. **Publish only what the person asked for.** `publish_definition` with a reason that says what changed and why, in the person's language. The server adds `(via kodeagent, genki-admin)` to it, so do not add it yourself. It validates first, refuses a reason under 10 characters, and answers with what changed and a link to the service in the portal. It publishes to the testutgave (`test`) only: users keep the version «I bruk» until a person publishes it from the portal. A service without a testutgave is refused; ask the person to add one in the portal. Tell the person where the version went.
 7. **Check the result** with `get_service` and one more playground run.
 
-To **create a service**, start from `new_service_template`, change `metadata.id`, `metadata.name` and `spec.purpose`, validate, and try it with `run_playground` and `yaml`. A new service with a risk class above `minimal` must be published by a person in the portal.
+To **create a service**, start from `new_service_template`, change `metadata.id`, `metadata.name` and `spec.purpose`, validate, and try it with `run_playground` and `yaml`. Publish it with `publish_definition` and `newService: true`: it is then refused when another service, archived ones too, has the id, instead of becoming that service's next version. A new service with a risk class above `minimal` must be published by a person in the portal.
 
 ## Design elements
 

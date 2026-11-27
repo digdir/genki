@@ -8,6 +8,9 @@ import {
   type FacetValue,
   type Hit,
   type KnowledgeConnection,
+  type PartKind,
+  type PartRegion,
+  type PartsRead,
   type SearchRequest,
   type SearchResult,
 } from '@genai/port-knowledge';
@@ -46,6 +49,41 @@ interface CitationRow {
   url: string | null;
   withdrawn_on: string | null;
 }
+
+interface PartRow {
+  /** Null on the last row when the budget cut the read. */
+  seq: number | null;
+  kind: PartKind;
+  level: number | null;
+  heading_path: string[];
+  text: string;
+  start: number | null;
+  end: number | null;
+  regions: PartRegion[];
+  units: { unit: number; label: string | null }[];
+}
+
+const partsOf = (rows: PartRow[]): PartsRead => {
+  const parts = rows
+    .filter((r) => r.seq !== null)
+    .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+    .map((r) => ({
+      seq: r.seq as number,
+      kind: r.kind,
+      level: r.level,
+      headingPath: r.heading_path,
+      text: r.text,
+      start: r.start,
+      end: r.end,
+      regions: r.regions,
+    }));
+  const units = new Map(rows.flatMap((r) => r.units ?? []).map((u) => [u.unit, u.label]));
+  return {
+    parts,
+    units: [...units].sort(([a], [b]) => a - b).map(([unit, label]) => ({ unit, label })),
+    cut: rows.some((r) => r.seq === null),
+  };
+};
 
 interface Recipe {
   embedding?: DatasetEmbedding;
@@ -340,6 +378,15 @@ export const knowledgeReads = <D>(
           (g) => [dataset.id, g, document, from, to],
         ),
       ),
+    parts: async (dataset, chunkId, read, n, budget, signal) => {
+      const rows = await versioned<PartRow>(
+        dataset,
+        signal,
+        `select * from kn_parts($1, $2, $3, $4, $5, $6)`,
+        (g) => [dataset.id, g, chunkId, read, n, budget],
+      );
+      return partsOf(rows);
+    },
     facets: async (dataset, fields, filters, signal) => {
       const rows = await versioned<{ field: string; value: string; count: number }>(
         dataset,

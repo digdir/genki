@@ -25,6 +25,9 @@ import {
   kindsOf,
   legacyCapabilities,
   maxDocumentQueryLength,
+  maxPartsAround,
+  maxPartsBudget,
+  partReads,
   searchCapabilities,
   type DocumentsRequest,
   type FieldFilter,
@@ -35,6 +38,7 @@ import {
   type Hit,
   type KnowledgeCapability,
   type KnowledgePort,
+  type PartRead,
   type Residency,
   type SearchRequest,
 } from './port.js';
@@ -369,6 +373,7 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
       return query;
     };
     const resolveCitations = connection.resolveCitations?.bind(connection);
+    const readParts = connection.parts?.bind(connection);
     const exporter = connection.export;
 
     return {
@@ -415,6 +420,25 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
           await guard(() => connection.range(config, document, from, to, ctx.signal)),
         );
       },
+      ...(readParts
+        ? {
+            parts: async (chunkId: string, read: PartRead, n: number, budget: number) => {
+              need('parts');
+              if (typeof chunkId !== 'string' || chunkId === '')
+                throw new KnowledgeError('bad_request', 'a read around a hit names its chunk');
+              if (!partReads.includes(read))
+                throw new KnowledgeError('bad_request', `a read is ${partReads.join(', ')}`);
+              if (!Number.isInteger(n) || n < 0 || n > maxPartsAround)
+                throw new KnowledgeError('bad_request', `n is 0 to ${maxPartsAround}`);
+              if (!Number.isInteger(budget) || budget < 1 || budget > maxPartsBudget)
+                throw new KnowledgeError(
+                  'bad_request',
+                  `a budget is 1 to ${maxPartsBudget} characters`,
+                );
+              return guard(() => readParts(config, chunkId, read, n, budget, ctx.signal));
+            },
+          }
+        : {}),
       facets: async (fields, filters) => {
         need('facets');
         for (const field of fields) {

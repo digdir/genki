@@ -183,6 +183,7 @@ export const withHooks = <C>(inner: Strategy<C>, options: WithHooksOptions): Str
         };
         if (!has('before_search') && !has('after_search')) return port;
         const documents = port.documents?.bind(port);
+        const parts = port.parts?.bind(port);
         return {
           info: () => port.info(),
           search: async (request) => {
@@ -202,6 +203,7 @@ export const withHooks = <C>(inner: Strategy<C>, options: WithHooksOptions): Str
           range: (document, from, to) => port.range(document, from, to),
           facets: (fields, filters) => port.facets(fields, filters),
           ...(documents ? { documents } : {}),
+          ...(parts ? { parts } : {}),
           ...(port.export ? { export: port.export } : {}),
         };
       };

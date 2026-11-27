@@ -19,6 +19,8 @@ import {
   type SearchRequest,
   type SearchResult,
 } from '../port.js';
+import type { ConversionUnit } from '../parts.js';
+import { readPartsAround } from '../parts-read.js';
 import { clauseFits } from '../router.js';
 import type { IndexDocument, IndexWriter, IndexWriterAdapter } from '../writer.js';
 import { fixtureVector } from './corpus.js';
@@ -124,6 +126,9 @@ const failIfAborted = (signal: AbortSignal) => {
 
 export const memoryEngine = (options: MemoryEngineOptions = {}) => {
   const indexes = new Map<string, Index>();
+  // Stored conversions' units by conversion number, shared by every dataset as on the knowledge server.
+  const stored = new Map<string, ConversionUnit[]>();
+  let nextConversion = 1;
   const embed = options.embed ?? fixtureVector;
   const keyOf = (dataset: Dataset) => dataset.options.index ?? dataset.id;
   const indexOf = (dataset: Dataset) => {
@@ -270,6 +275,21 @@ export const memoryEngine = (options: MemoryEngineOptions = {}) => {
         .sort((a, b) => a.position - b.position)
         .map((c) => hitOf(doc, c, 0));
     },
+    parts: async (dataset, chunkId, read, n, budget, signal) => {
+      failIfAborted(signal);
+      const chunk = activeDocs(dataset)
+        .flatMap((d) => d.chunks)
+        .find((c) => c.id === chunkId);
+      if (chunk?.conversion === undefined || chunk.seqFrom === undefined)
+        return { parts: [], units: [], cut: false };
+      return readPartsAround(
+        stored.get(chunk.conversion) ?? [],
+        { seqFrom: chunk.seqFrom, seqTo: chunk.seqTo ?? chunk.seqFrom },
+        read,
+        n,
+        budget,
+      );
+    },
     facets: async (dataset, fields, filters, signal) => {
       failIfAborted(signal);
       const docs = activeDocs(dataset).filter((d) => matches(dataset, d, filters));
@@ -376,5 +396,15 @@ export const memoryEngine = (options: MemoryEngineOptions = {}) => {
     connect: () => writer,
   };
 
-  return { adapter, writer: indexWriter };
+  /** Stores a conversion's units, as a convert job does, and returns its number. */
+  const conversions = {
+    store: (units: ConversionUnit[]) => {
+      const id = String(nextConversion++);
+      stored.set(id, structuredClone(units));
+      return id;
+    },
+    delete: (id: string) => void stored.delete(id),
+  };
+
+  return { adapter, writer: indexWriter, conversions };
 };

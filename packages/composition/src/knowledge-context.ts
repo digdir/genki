@@ -10,6 +10,7 @@ const withinContext = (port: KnowledgePort, ctx: PortContext): KnowledgePort => 
     <A extends unknown[], R>(run: (...args: A) => Promise<R>) =>
     (...args: A) =>
       portContexts.run(ctx, () => run(...args));
+  const parts = port.parts ? within(port.parts.bind(port)) : undefined;
   return {
     info: () => port.info(),
     search: within((request) => port.search(request)),
@@ -17,6 +18,7 @@ const withinContext = (port: KnowledgePort, ctx: PortContext): KnowledgePort => 
     fetch: within((ids) => port.fetch(ids)),
     range: within((document, from, to) => port.range(document, from, to)),
     facets: within((fields, filters) => port.facets(fields, filters)),
+    ...(parts ? { parts } : {}),
     ...(port.documents
       ? {
           documents: within(

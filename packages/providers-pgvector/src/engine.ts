@@ -142,6 +142,7 @@ export const pgvectorEngine = (options: PgvectorEngineOptions = {}): PgvectorEng
     ...(dataset.embedding && options.embedder ? (['search.vector', 'search.hybrid'] as const) : []),
     'fetch',
     'range',
+    'parts',
     'facets',
     ...filterKinds.map((k) => `filter.${k}` as const),
   ];
