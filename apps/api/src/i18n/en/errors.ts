@@ -710,6 +710,12 @@ export const demoErrors = {
   recordedByWorkflow: 'recordings are made by the demos workflow',
   recordingNotQueued: 'the recording could not be queued',
   statusMustBeQueued: 'status must be queued',
+  editOfRecorded: 'editOf is a recorded recording of this demo with its capture and edit list',
+  editNeedsInstruction: 'editOf and instruction go together',
+  editWholeFilm: 'an edit is of the whole film, without upTo',
+  costCapForModelVoice: 'the voice is read by a model and needs costCapUsd, the approved cost',
+  costCapForEdit: 'an edit calls the AI director and needs costCapUsd, the approved cost',
+  trialNoCostCap: 'a trial is silent and takes no costCapUsd',
 } satisfies Translation<typeof source.demoErrors>;
 
 export const hostnameErrors = {

@@ -2,13 +2,13 @@ import type { Translation } from '@genai/i18n';
 import type { datasetSearch as source } from '../nb/datasetSearch';
 
 export const datasetSearch = {
-  title: 'Search the dataset',
+  title: 'Search the document collection',
   intro:
     'Search as a service searches, without calling a language model. You see the hits as they come.',
   query: 'Search text',
   queryMissing: 'Write what you want to search for',
   profile: 'Search profile',
-  profileHint: "Leave it empty to use the dataset's first profile.",
+  profileHint: "Leave it empty to use the document collection's first profile.",
   limit: 'Number of hits',
   limitInvalid: 'Choose a whole number from 1 to 100',
   filters: 'Filters',
@@ -22,7 +22,7 @@ export const datasetSearch = {
   booleanNo: 'No',
   freeField: 'Field',
   freeValue: 'Value',
-  freeHint: 'The dataset declares no filters. You can still try a field and a value.',
+  freeHint: 'The document collection declares no filters. You can still try a field and a value.',
   search: 'Search',
   hits: 'Hits',
   summary: {
@@ -44,10 +44,10 @@ export const datasetSearch = {
   kernelRefused: 'The search was stopped before it reached the search engine.',
   timedOut: 'The search took longer than the limit.',
   invalid: 'The search was refused:',
-  blocked: 'The dataset cannot be used: {rule} ({owner})',
-  needsRight: 'You lack the right to search the dataset.',
+  blocked: 'The document collection cannot be used: {rule} ({owner})',
+  needsRight: 'You lack the right to search the document collection.',
   quota: 'The search quota is used up. Try again later.',
-  notFound: 'The dataset is not in the catalogue.',
+  notFound: 'The document collection is not in the catalogue.',
   engineFailed: 'The search engine did not answer as it should.',
   failed: 'The search failed. Try again.',
 } satisfies Translation<typeof source>;

@@ -373,15 +373,15 @@ export const noAccess = {
   product: 'Generative AI platform',
   yourOrg: 'your organisation',
   request:
-    'Hi!\n\nI need access to {product} for {organisation}. Can you give me the right "Use services" in Altinn?\n\nBest regards, {name}',
+    'Hi!\n\nI need access to {product} for {organisation}. Can you give me the right "Use services"?\n\nBest regards, {name}',
   mailSubject: 'Access to {product}',
   checkAgain: 'You still have no rights. Try again in a little while.',
   title: 'You do not have access yet',
   intro:
-    'You are signed in as {name} and acting for {organisation}. To use {product}, someone at {organisation} must give you access in Altinn. It usually takes only a few minutes.',
+    'You are signed in as {name} and acting for {organisation}. To use {product}, someone at {organisation} must give you access.',
   whoHeading: 'These people can give you access',
-  whoLive: 'You can find the access managers for {organisation} in Altinn, under Access.',
-  whoMock: 'They are access managers for {organisation} in Altinn.',
+  whoLive: 'Ask the person who manages access for {organisation}.',
+  whoMock: 'They manage access for {organisation}.',
   askHeading: 'What you can ask for',
   askMost: 'Most people only need "Use services".',
   useDesc:
@@ -393,12 +393,10 @@ export const noAccess = {
   suggested: 'Suggested message you can send',
   copyMessage: 'Copy the message',
   copied: 'The message is copied.',
-  requestInAltinn: 'Request access in Altinn',
-  newTab: '(opens in a new tab)',
   switchOrg: 'Switch organisation',
   justGot: 'Have you just been given access?',
-  mayTake: 'It can take a few minutes before changes in Altinn show up here.',
-  checking: 'Checking Altinn',
+  mayTake: 'It can take a few minutes before changes show up here.',
+  checking: 'Checking your access',
   checkNow: 'Check again',
 } satisfies Translation<typeof noAccessSource>;
 

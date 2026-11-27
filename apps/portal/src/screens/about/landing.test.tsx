@@ -7,7 +7,7 @@ import { mockFetch } from '../../mock';
 import { kari, renderAt } from '../../test-utils';
 
 const landingHeading = 'Genki: generativ KI for offentlige virksomheter';
-const architecture = 'Slik er Genki bygd';
+const architecture = 'Slik er Genki tenkt';
 
 const renderSignedOut = () => render(<App auth={mockAnsattporten(kari)} fetch={mockFetch()} />);
 

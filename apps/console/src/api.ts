@@ -56,10 +56,7 @@ import type {
   ProcessorRecord,
   WireExchange,
   SettingOverrides,
-  SettingsGrid,
   TaskTimeline,
-  TraceSettings,
-  Availability,
   ConfigEntry,
   ConfigVersion,
   DefinitionVersion,
@@ -135,12 +132,24 @@ export interface DemoRecording {
   requestedBy?: string;
   upTo?: number;
   cancelledBy?: string;
+  editOf?: string;
+  instruction?: string;
+  costCapUsd?: number;
+  costUsd?: number;
 }
 
 export interface DemoStep {
   say: string;
   do?: string[][];
   hold?: number;
+  chapter?: string;
+  focus?: string[];
+}
+
+export interface DemoCard {
+  title: string;
+  subtitle?: string;
+  presenter?: string;
 }
 
 export interface DemoSpec {
@@ -154,6 +163,8 @@ export interface DemoSpec {
   path: string;
   signedIn?: boolean;
   ready?: string;
+  intro?: DemoCard;
+  outro?: DemoCard;
   steps: DemoStep[];
 }
 
@@ -212,7 +223,6 @@ export interface ApiClientOptions {
   token: () => string | undefined;
   actorName?: () => string | undefined;
   locale?: () => Locale;
-  settingsGrid?: boolean;
 }
 
 interface MonthUsage {
@@ -318,7 +328,6 @@ export const createApiClient = ({
   token,
   actorName,
   locale,
-  settingsGrid = true,
 }: ApiClientOptions) => {
   const say = () => translator(locale?.() ?? 'nb');
   let askContentReason: ContentReasonHandler | undefined;
@@ -411,9 +420,6 @@ export const createApiClient = ({
         signal,
         ...(language ? { headers: { 'accept-language': language } } : {}),
       }),
-    hasSettingsGrid: settingsGrid,
-    settingsGrid: (signal?: AbortSignal) =>
-      call<SettingsGrid>('GET', '/operator/settings/grid', { signal }),
     actor: () => actorName?.(),
     listTenants: async (signal?: AbortSignal, options: { usage?: boolean } = {}) => {
       const tenants = (
@@ -645,9 +651,23 @@ export const createApiClient = ({
           ...(version === undefined ? {} : { 'if-match': String(version) }),
         },
       }),
-    requestRecording: (id: string, reason: string, upTo?: number) =>
+    requestRecording: (id: string, reason: string, upTo?: number, costCapUsd?: number) =>
       call<DemoRecording>('POST', `/operator/demos/${encodeURIComponent(id)}/recordings`, {
-        body: upTo === undefined ? {} : { upTo },
+        body: {
+          ...(upTo === undefined ? {} : { upTo }),
+          ...(costCapUsd === undefined ? {} : { costCapUsd }),
+        },
+        headers: { 'change-reason': reason },
+      }),
+    requestEdit: (
+      id: string,
+      reason: string,
+      editOf: string,
+      instruction: string,
+      costCapUsd: number,
+    ) =>
+      call<DemoRecording>('POST', `/operator/demos/${encodeURIComponent(id)}/recordings`, {
+        body: { editOf, instruction, costCapUsd },
         headers: { 'change-reason': reason },
       }),
     recording: (id: string, signal?: AbortSignal) =>
@@ -778,10 +798,6 @@ export const createApiClient = ({
         body: { count },
         headers: { 'change-reason': say()('api.exportReason') },
       }),
-    remindOnboarding: (orgNumber: string) =>
-      call<unknown>('POST', `/operator/onboarding/${encodeURIComponent(orgNumber)}/reminders`, {
-        headers: { 'change-reason': say()('api.reminderReason') },
-      }),
     lookupOrganization: (orgNumber: string, signal?: AbortSignal) =>
       call<OrganizationLookup>('GET', `/operator/organizations/${encodeURIComponent(orgNumber)}`, {
         signal,
@@ -807,26 +823,6 @@ export const createApiClient = ({
       ),
     operations: (signal?: AbortSignal) =>
       call<OperationsOverview>('GET', '/operator/operations', { signal }),
-    setBlockAvailability: (
-      id: string,
-      availability: Availability,
-      agencies: string[],
-      reason: string,
-    ) =>
-      call<unknown>('PUT', `/operator/building-blocks/${encodeURIComponent(id)}/availability`, {
-        body: { availability, agencies },
-        headers: { 'change-reason': reason },
-      }),
-    releaseBlockVersion: (id: string, version: string, reason: string) =>
-      call<unknown>(
-        'POST',
-        `/operator/building-blocks/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/release`,
-        { headers: { 'change-reason': reason } },
-      ),
-    disableBlock: (id: string, reason: string) =>
-      call<unknown>('POST', `/operator/building-blocks/${encodeURIComponent(id)}/disable`, {
-        headers: { 'change-reason': reason },
-      }),
     rerunContractTests: (id: string, reason: string) =>
       call<Partial<ContractRun>>(
         'POST',
@@ -851,7 +847,7 @@ export const createApiClient = ({
         body: { manifest },
         headers: {
           'change-reason':
-            `Registrerte ekstern byggekloss ${typeof manifest.id === 'string' ? manifest.id : ''}`.trim(),
+            `Registrerte ekstern del ${typeof manifest.id === 'string' ? manifest.id : ''}`.trim(),
         },
       }),
     releaseMatrixColumn: (kind: 'models' | 'blocks', name: string, reason?: string) =>
@@ -860,20 +856,6 @@ export const createApiClient = ({
         headers: {
           'change-reason': reason ?? `Gjort tilgjengelig fra kvalitetsmatrisen: ${name}`,
         },
-      }),
-    saveTracing: (tool: string, settings: TraceSettings) =>
-      call<unknown>('PUT', `/operator/tracing/${encodeURIComponent(tool)}`, {
-        body: settings,
-        headers: { 'change-reason': say()('api.tracingReason') },
-      }),
-    testTracing: (tool: string) =>
-      call<{ delivered: boolean; seconds?: number; code?: string }>(
-        'POST',
-        `/operator/tracing/${encodeURIComponent(tool)}/test`,
-      ),
-    disconnectTracing: (tool: string) =>
-      call<unknown>('DELETE', `/operator/tracing/${encodeURIComponent(tool)}`, {
-        headers: { 'change-reason': 'Koblet fra sporing' },
       }),
     tenantDefinitions: async (tenant: string, signal?: AbortSignal) =>
       (

@@ -9,3 +9,6 @@ packages/ingest/src/fixtures/docling/
 
 # The public /v1 OpenAPI, written by apps/api/src/openapi/public-api.test.ts and kept byte for byte
 docs/api/openapi-v1.json
+
+# Local demo recordings and voice clips (demos/.gitignore)
+demos/out/

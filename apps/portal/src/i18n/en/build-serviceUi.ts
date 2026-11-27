@@ -355,7 +355,7 @@ export const serviceUi = {
     copyClientId: 'Copy client ID for {name}',
     redirects: 'Return address after sign-in',
     login: 'Sign-in',
-    loginValue: 'Ansattporten. The rights from Altinn for the signed-in person apply.',
+    loginValue: 'Ansattporten. The rights of the signed-in person apply.',
     notifications: 'Notifications',
     signedWith: 'Signed with the secret <code>{secret}</code>',
     lastSent: ' · last sent {when}: {result}',
@@ -489,7 +489,7 @@ export const serviceUi = {
     serverDescription: 'Its server holds the key. The browser only talks to your server.',
     browser: 'From the browser with sign-in through Ansattporten',
     browserDescription:
-      'The platform is called on behalf of the person, so the rights from Altinn apply.',
+      'The platform is called on behalf of the person, so the rights of the person apply.',
     url: 'Address of the own frontend',
     urlDescription: 'Optional. Shown as a link on the service.',
     channelsLegend: 'Channels it can use',

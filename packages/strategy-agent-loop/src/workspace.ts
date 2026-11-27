@@ -95,6 +95,21 @@ export interface ConversationTurn {
   text: string;
 }
 
+/** How a read around a hit follows its file (ADR 0055): parts on each side, its section, or its pages. */
+export const partReadKinds = ['neighbours', 'section', 'units'] as const;
+export type PartReadKind = (typeof partReadKinds)[number];
+
+/** The most parts or pages on each side, and the most characters, one read around a hit returns. */
+export const maxAround = 5;
+export const maxAroundChars = 20_000;
+
+/** The body parts around a hit in reading order, with the labels of the units they cover. */
+export interface PartsAround {
+  parts: { seq: number; text: string; regions: { unit: number }[] }[];
+  units: { unit: number; label: string | null }[];
+  cut: boolean;
+}
+
 export interface AgentRetrieval {
   search(
     queries: string[],
@@ -103,6 +118,14 @@ export interface AgentRetrieval {
   ): Promise<SearchOutcome>;
   read(chunkIds: string[], signal: AbortSignal): Promise<Chunk[]>;
   readRange(document: string, from: number, to: number, signal: AbortSignal): Promise<Chunk[]>;
+  /** Absent when the dataset's engine cannot read parts; `read_chunks` then has no `around`. */
+  readParts?(
+    chunkId: string,
+    read: PartReadKind,
+    n: number,
+    budget: number,
+    signal: AbortSignal,
+  ): Promise<PartsAround>;
   plan(
     query: string,
     history: ConversationTurn[],

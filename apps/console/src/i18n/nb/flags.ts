@@ -3,7 +3,7 @@ import { defineNamespace } from '@genai/i18n';
 export const flags = defineNamespace({
   title: 'Funksjonsbrytere',
   intro:
-    'Større funksjoner kommer avslått og slås på uten ny utrulling. En person vinner over virksomheten, og virksomheten over standarden, som er av. Hver endring føres i revisjonsloggen med begrunnelsen.',
+    'Større funksjoner kommer avslått og slås på uten ny utrulling. En person vinner over virksomheten, og virksomheten over standarden, som er av. Hver endring føres i loggen med begrunnelsen.',
   loading: 'Henter funksjonsbryterne',
   noneTitle: 'Ingen funksjonsbrytere',
   noneText: 'Ingen funksjoner er registrert bak en bryter nå.',
@@ -30,9 +30,9 @@ export const flags = defineNamespace({
   switchTitle: 'Slå {key} på eller av',
   switchText:
     'Velg en virksomhet, og en person i den om valget bare skal gjelde én. Valget for en person vinner over virksomheten.',
-  tenant: 'Organisasjonsnummer',
+  tenant: 'Org.nr.',
   issuer: 'Personens utsteder (valgfritt)',
-  personDescription: 'Utsteder og subjekt fra innloggingen, som i revisjonsloggen.',
+  personDescription: 'Utsteder og subjekt fra innloggingen, som i loggen.',
   subject: 'Personens subjekt (valgfritt)',
   choice: 'Valg',
   turnOn: 'Slå på',
@@ -40,6 +40,6 @@ export const flags = defineNamespace({
   save: 'Lagre',
   saved: 'Lagret valget for {key}.',
   saveFailed: 'Fikk ikke lagret valget.',
-  tenantInvalid: 'Skriv et organisasjonsnummer med ni sifre.',
+  tenantInvalid: 'Skriv et org.nr. med ni sifre.',
   personIncomplete: 'Fyll ut både utsteder og subjekt, eller ingen av dem.',
 });

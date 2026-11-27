@@ -134,6 +134,9 @@ export const servicesUi = {
     archivedId:
       'Id-en er brukt av en arkivert tjeneste. Velg en annen id, eller gjenopprett den arkiverte tjenesten.',
     archivedIdOpen: 'Åpne den arkiverte tjenesten {id}',
+    takenId:
+      'Tjenesten «{id}» finnes allerede, kanskje arkivert. Publiser igjen for å få neste ledige id, eller gi den nye tjenesten et annet navn under Formål og målgruppe.',
+    takenIdOpen: 'Åpne tjenesten {id}',
     changeFirstVersion: 'Første utgave av tjenesten',
     changeDraft: 'Endringer i utkastet som ikke er publisert',
     changeForm: 'Endringer gjort i skjemaet',

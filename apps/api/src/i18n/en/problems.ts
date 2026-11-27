@@ -191,6 +191,9 @@ export const problems = {
   status405: 'The method is not supported here',
   status409: 'Conflict',
   serviceArchivedTitle: 'The service is archived',
+  serviceIdTakenTitle: 'The name is taken',
+  newServiceIdTaken:
+    'The service "{id}" already exists, possibly archived. Give the new service another name.',
   serviceNotArchivedTitle: 'The service is not archived',
   serviceInUseTitle: 'The service is in use',
   serviceUsedByFrontend: 'The frontend {name} uses the service',
@@ -198,6 +201,7 @@ export const problems = {
   serviceUsedByService: 'The service {service} uses the service',
   serviceUsedByOthers: '{count} services in other organisations use the service',
   serviceUsedByInternal: '{count} internal services use the service',
+  serviceAddressNotRemoved: 'The address genki made for the service was not removed. Try again.',
   serviceOutdatedTitle: 'The service uses something that no longer exists',
   hostNotFoundTitle: 'No service on this hostname',
   bffProxyRefused: "The request did not come through the host's proxy",

@@ -51,15 +51,7 @@ import type {
   SettingsGrid,
   ValidationProblem,
 } from '../types';
-import {
-  Flash,
-  formatWhen,
-  isMissing,
-  SidePanel,
-  TableRegion,
-  useFlash,
-  VisuallyHidden,
-} from '../ui';
+import { Flash, formatWhen, SidePanel, TableRegion, useFlash, VisuallyHidden } from '../ui';
 import { Transfer } from './Transfer';
 import { reasonProblem } from '../reason';
 import type { Format } from '@genai/i18n';
@@ -1041,13 +1033,6 @@ export const Settings = ({ api }: { api: ApiClient }) => {
   tRef.current = t;
   const [state, retry] = useAsync(
     async (signal) => {
-      if (api.hasSettingsGrid) {
-        try {
-          return await api.settingsGrid(signal);
-        } catch (error) {
-          if (!isMissing(error)) throw error;
-        }
-      }
       const [catalog, defaults, overrides] = await Promise.all([
         api.settingsCatalog(signal),
         api.defaults(signal),

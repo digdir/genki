@@ -604,11 +604,17 @@ export const createApiClient = ({
       files: Record<string, string>,
       reason: string,
       draftRevision?: number,
+      newService = false,
     ) =>
       request<PublishResult>(
         'POST',
         '/definitions',
-        { definition, files, ...(draftRevision === undefined ? {} : { draftRevision }) },
+        {
+          definition,
+          files,
+          ...(draftRevision === undefined ? {} : { draftRevision }),
+          ...(newService ? { newService } : {}),
+        },
         { 'change-reason': reason },
       ),
     listTestSets: async (tenant: string, service: string, signal?: AbortSignal) =>

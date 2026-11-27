@@ -1,5 +1,4 @@
 import {
-  exampleAgencies,
   exampleBlockTypes,
   exampleEffective,
   exampleHistory,
@@ -47,8 +46,6 @@ import type {
   OnboardingRequest,
   Residency,
   Tenant,
-  TraceConnection,
-  TraceSettings,
   TenantKey,
 } from './types';
 
@@ -218,7 +215,6 @@ export const exampleBlocks: BuildingBlocks = {
   ],
   types: exampleBlockTypes,
   registry: exampleRegistry,
-  agencies: exampleAgencies,
 };
 
 export const exampleQuality: QualityOverview = {
@@ -405,7 +401,6 @@ export const mockFetch = (
   const matrixRuns = new Map<string, { run: Record<string, unknown>; polls: number }>();
   let tenantList = structuredClone(tenants);
   let log = structuredClone(audit);
-  const tracing = structuredClone(exampleTracing);
   const grid = structuredClone(exampleSettingsGrid);
   const history = structuredClone(exampleSettingHistory);
   const searchEngines = searchEnginesMock();
@@ -1146,7 +1141,33 @@ export const mockFetch = (
     if (path === '/health') return json({ status: 'ok', version: '484179f' });
     if (path === '/settings') return json({ data: catalog() });
     if (path === '/settings/defaults') return json({ data: defaults() });
-    if (path === '/operator/settings/grid') return json(grid);
+    if (path === '/operator/settings/overrides')
+      return json({
+        tenants: Object.fromEntries(
+          grid.tenants.map((tenant) => [
+            tenant,
+            {
+              values: Object.fromEntries(
+                grid.settings.flatMap((s) =>
+                  tenant in s.tenants ? [[s.key, s.tenants[tenant]]] : [],
+                ),
+              ),
+              pins: {},
+            },
+          ]),
+        ),
+        services: grid.services.map((service) => ({
+          tenant: service.tenant,
+          service: service.name,
+          version: 1,
+          settings: Object.fromEntries(
+            grid.settings.flatMap((s) => {
+              const id = `${service.tenant}/${service.name}`;
+              return id in s.services ? [[s.key, s.services[id]]] : [];
+            }),
+          ),
+        })),
+      });
     const changelogPath = /^\/settings\/defaults\/([^/]+)\/changelog$/.exec(path);
     if (changelogPath) {
       const key = decodeURIComponent(changelogPath[1] ?? '');
@@ -1472,61 +1493,17 @@ export const mockFetch = (
       return json({ availableTo: b.availableTo });
     }
     if (path === '/operator/building-blocks') return json(blocks);
-    const block =
-      /^\/operator\/building-blocks\/([^/]+)\/(availability|disable|contract-tests|versions\/([^/]+)\/release)$/.exec(
-        path,
-      );
-    if (block) {
-      const id = decodeURIComponent(block[1] ?? '');
+    const contractTests = /^\/operator\/building-blocks\/([^/]+)\/contract-tests$/.exec(path);
+    if (contractTests && method === 'POST') {
+      const id = decodeURIComponent(contractTests[1] ?? '');
       const found = blocks.registry?.find((b) => b.id === id);
       if (!found) return notFound();
-      if (block[2] === 'contract-tests') return json({ ok: true });
-      if (!reason) return needReason();
-      const update = (patch: Partial<typeof found>) => {
-        blocks = {
-          ...blocks,
-          registry: (blocks.registry ?? []).map((b) => (b.id === id ? { ...b, ...patch } : b)),
-        };
-      };
-      if (block[2] === 'availability') {
-        const b = body() as { availability: 'all' | 'selected' | 'none'; agencies: string[] };
-        update({ availability: b.availability, agencies: b.agencies });
-        record('alle', 'Endret tilgjengelighet', found.name, reason);
-      } else if (block[2] === 'disable') {
-        update({
-          availability: 'none',
-          agencies: [],
-          badge: 'Deaktivert',
-          serviceCount: 0,
-          services: [],
-        });
-        record('alle', 'Deaktiverte byggekloss', found.name, reason);
-      } else {
-        if (!found.next || !found.next.testPassed)
-          return json({ title: 'Contract tests failed', status: 409 }, 409);
-        const released = { ...found };
-        delete released.next;
-        blocks = {
-          ...blocks,
-          registry: (blocks.registry ?? []).map((b) =>
-            b.id === id
-              ? {
-                  ...released,
-                  changelog: [
-                    {
-                      version: `${found.next?.version ?? ''} (tilgjengelig)`,
-                      at: 'I dag',
-                      text: found.next?.description ?? '',
-                    },
-                    ...(found.changelog ?? []),
-                  ],
-                }
-              : b,
-          ),
-        };
-        record('alle', 'Gjorde versjon tilgjengelig', `${found.name} ${block[3] ?? ''}`, reason);
-      }
-      return json({ ok: true });
+      return json({
+        passed: true,
+        version: found.version,
+        endedAt: new Date().toISOString(),
+        results: [],
+      });
     }
     if (path === '/operator/quality') return json(exampleQuality);
     if (path === '/operator/quality/matrix/estimate' && method === 'POST') {
@@ -1643,7 +1620,7 @@ export const mockFetch = (
           },
         ],
       };
-      record('alle', 'Registrerte ekstern byggekloss', manifest.id, reason);
+      record('alle', 'Registrerte ekstern del', manifest.id, reason);
       return json({ manifest: { ...manifest, origin: 'external' } }, 201);
     }
     if (path === '/operator/quality/matrix/release' && method === 'POST') {
@@ -1681,44 +1658,7 @@ export const mockFetch = (
       queue = queue.filter((q) => q.item !== b.item);
       return json(b);
     }
-    if (path === '/operator/tracing' && method === 'GET') return json(tracing);
-    const trace = /^\/operator\/tracing\/([^/]+)(\/test)?$/.exec(path);
-    if (trace) {
-      const tool = decodeURIComponent(trace[1] ?? '');
-      const existing = tracing.connections?.[tool];
-      if (trace[2]) {
-        return existing?.status === 'failing'
-          ? json({ delivered: false, code: '401' })
-          : json({ delivered: true, seconds: 0.8 });
-      }
-      if (!reason) return needReason();
-      if (method === 'DELETE') {
-        tracing.connections = Object.fromEntries(
-          Object.entries(tracing.connections ?? {}).filter(([id]) => id !== tool),
-        );
-        return json({ ok: true });
-      }
-      const b = body() as TraceSettings;
-      const newSecret = Object.values(b.secrets).some(Boolean);
-      const next: TraceConnection = {
-        hosting: b.hosting,
-        values: b.values,
-        scope: b.scope,
-        content: b.content,
-        mask: b.mask,
-        sampleRate: b.sampleRate,
-        syncScores: b.syncScores,
-        annotations: b.annotations,
-        status: !existing || newSecret ? 'ok' : existing.status,
-        secretsStored: true,
-        lastDelivery: existing?.lastDelivery ?? new Date().toISOString(),
-        sent24h: existing?.sent24h ?? 0,
-        queued: existing?.queued ?? 0,
-      };
-      tracing.connections = { ...tracing.connections, [tool]: next };
-      record('alle', existing ? 'Endret sporing' : 'Koblet til sporing', tool, reason);
-      return json(next);
-    }
+    if (path === '/operator/tracing' && method === 'GET') return json(exampleTracing);
     if (path === '/operator/running-tasks') {
       const tenant = url.searchParams.get('tenant');
       const service = url.searchParams.get('service');
@@ -1745,15 +1685,6 @@ export const mockFetch = (
       return json({ task: cancel[1], cancelled: true });
     }
     if (path === '/operator/operations') return json(exampleOperations);
-    const remind = /^\/operator\/onboarding\/(\d+)\/reminders$/.exec(path);
-    if (remind && method === 'POST') {
-      const found =
-        onboarding.find((o) => o.orgNumber === remind[1]) ??
-        tenantList.find((t) => t.orgNumber === remind[1]);
-      if (!found) return notFound();
-      record(found.orgNumber, 'Sendte påminnelse', found.name);
-      return json({ ok: true });
-    }
     return notFound();
   };
 };

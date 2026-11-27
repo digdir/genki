@@ -327,12 +327,44 @@ const productionDefinition = async (deps: ClaimDeps, tenant: string, service: st
   return found?.definition.kind === 'Service' ? (found.definition as ServiceDefinition) : undefined;
 };
 
-const clientIdFor = (service: string, taken: ReadonlySet<string>) => {
+const addressChannels = ['openai', 'conversations', 'feedback', 'facets'] as const;
+
+const addressClientIds = (service: string) => {
   const base = `${service.slice(0, 57)}-host`;
-  return [base, ...Array.from({ length: 8 }, (_, i) => `${base}-${i + 2}`)].find(
-    (id) => !taken.has(id),
+  return [base, ...Array.from({ length: 8 }, (_, i) => `${base}-${i + 2}`)];
+};
+
+/** The hosted Client genki made for the service's address, still set up as genki made it. */
+export const isAddressClientOf = (
+  client: StoredClient,
+  service: string,
+  claims: readonly HostnameClaim[],
+) => {
+  const { metadata, spec } = client.definition;
+  const own = claims.filter((c) => c.client === metadata.id);
+  return (
+    addressClientIds(service).includes(metadata.id) &&
+    spec.service === service &&
+    spec.hosted === true &&
+    spec.kind === 'browser' &&
+    !spec.oidc &&
+    !spec.webhook &&
+    !spec.url &&
+    !spec.environments?.length &&
+    !spec.hostnames?.length &&
+    spec.allowedOrigins.length === 0 &&
+    spec.channels.length === addressChannels.length &&
+    addressChannels.every((channel) => spec.channels.includes(channel)) &&
+    own.length > 0 &&
+    own.every((c) => c.service === service && c.assigned)
   );
 };
+
+export const liveHostnamesOf = (claims: readonly HostnameClaim[], client: string) =>
+  claims.filter((c) => c.client === client && live(c)).map((c) => c.hostname);
+
+const clientIdFor = (service: string, taken: ReadonlySet<string>) =>
+  addressClientIds(service).find((id) => !taken.has(id));
 
 export type AssignResult =
   | { ok: true; claim: HostnameClaim; client: StoredClient }
@@ -401,7 +433,7 @@ export const assignAddress = async (
         spec: {
           service,
           kind: 'browser',
-          channels: ['openai', 'conversations', 'feedback', 'facets'],
+          channels: [...addressChannels],
           allowedOrigins: [],
           hosted: true,
           hostnames: [],

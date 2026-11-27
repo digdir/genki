@@ -298,7 +298,7 @@ export const componentsByBlock: Record<string, Component[]> = {
       name: 'Sky',
       tagline: 'Modeller som tjeneste i EU-regioner',
       description:
-        'Skyleverandørene tilbyr frontier-modeller som tjeneste: Azure AI Foundry (OpenAI og Anthropic), AWS Bedrock og Google Vertex. Genki bruker Azure AI Foundry i dag, med deployments i EU. Modellene kjører hos leverandøren, og residens settes per modell i katalogen.',
+        'Skyleverandørene tilbyr frontier-modeller som tjeneste: Azure AI Foundry (OpenAI og Anthropic), AWS Bedrock og Google Vertex. Testmiljøet bruker Azure AI Foundry. Modellene kjører hos leverandøren, og residens settes per modell i katalogen.',
       capabilities: [
         'Azure AI Foundry med GPT og Claude',
         'AWS Bedrock og Google Vertex via KI-porten',
@@ -412,13 +412,13 @@ export const componentsByBlock: Record<string, Component[]> = {
       name: 'Embeddings og indeksering',
       tagline: 'Vektorer og nøkkelord, i en indeks som kan byttes',
       description:
-        'Hver bit får en embedding fra en modell som forstår norsk, og lagres i en vektorindeks sammen med en klassisk fulltekstindeks. Indeksen sitter bak en port, så Typesense, pgvector eller en annen motor kan byttes i konfigurasjon. Embeddingsmodellen er versjonert, for når den byttes må alt indekseres på nytt.',
+        'Hver bit får en embedding fra en modell som forstår norsk, og lagres i en vektorindeks sammen med en klassisk fulltekstindeks. Indeksen sitter bak en port, så motoren kan byttes i konfigurasjon. I dag er det kunnskapsserveren, Postgres med pgvector. Embeddingsmodellen er versjonert, for når den byttes må alt indekseres på nytt.',
       capabilities: [
         'Flerspråklige embeddingsmodeller med god dekning for norsk',
         'Vektorindeks (HNSW) og fulltekstindeks (BM25) side om side',
         'Fasetter og metadatafelter for filtrering',
         'Versjonert indeks, reindeksering uten nedetid',
-        'Søkemotor bak en port: Typesense og pgvector innebygd',
+        'Søkemotor bak en port: pgvector på kunnskapsserveren innebygd',
       ],
       practices: [
         'Embeddingsmodell innenfor samme residenskrav som svarmodellen',
@@ -429,13 +429,13 @@ export const componentsByBlock: Record<string, Component[]> = {
     {
       id: 'gjenfinning',
       name: 'Gjenfinning',
-      tagline: 'Semantisk søk, nøkkelordsøk og hybrid, med tilgangsfilter',
+      tagline: 'Semantisk søk, nøkkelordsøk og hybrid',
       description:
-        'Gjenfinning (retrieval) finner bitene som kan svare på spørsmålet. Semantisk søk fanger mening, nøkkelordsøk fanger eksakte termer og saksnumre, og hybridsøk slår dem sammen. Spørsmålet kan omskrives eller deles i flere før søket, og tilgangsfilteret sørger for at ingen får treff de ikke har rett til å se.',
+        'Gjenfinning (retrieval) finner bitene som kan svare på spørsmålet. Semantisk søk fanger mening, nøkkelordsøk fanger eksakte termer og saksnumre, og hybridsøk slår dem sammen. Spørsmålet kan omskrives eller deles i flere før søket. Tjenesten søker bare i datasettene den har tilgang til.',
       capabilities: [
         'Semantisk søk, nøkkelordsøk og hybrid med rangeringsfusjon (RRF)',
         'Metadatafiltre: datasett, dato, dokumenttype, språk',
-        'Tilgangsfiltrering på dokumentnivå før rangering',
+        'Treff bare fra datasett tjenesten har tilgang til',
         'Omskriving av spørsmål og flere delspørsmål (multi-query)',
         'Topp-k og terskler konfigurert per tjeneste',
       ],
@@ -546,15 +546,15 @@ export const componentsByBlock: Record<string, Component[]> = {
     {
       id: 'dommere',
       name: 'Automatiske dommere',
-      tagline: 'LLM-som-dommer på produksjonstrafikk og testsett',
+      tagline: 'LLM-som-dommer på testsett',
       description:
-        'En dommer er en evaluering som kjører automatisk: deterministiske sjekker (format, lengde, forbudte ord) og modellbaserte dommere som vurderer relevans, faktatroskap mot kildene, fullstendighet og tone. Dommere kjører på en andel av produksjonstrafikken og på hele testsett ved hver versjon.',
+        'En dommer er en evaluering som kjører automatisk: deterministiske sjekker (format, lengde, forbudte ord) og modellbaserte dommere som vurderer relevans, faktatroskap mot kildene, fullstendighet og tone. Dommere kjører på hele testsett ved hver versjon.',
       capabilities: [
         'Deterministiske dommere: skjema, lengde, språk, forbudt innhold',
         'LLM-som-dommer forankret i kildene: faktatroskap, relevans, fullstendighet',
         'Sikkerhetsdommere: skadelig innhold, lekkasje av persondata',
         'Egne dommer-maler per tjeneste',
-        'Kjøres på utvalg av produksjon og på alle testsett',
+        'Kjøres på alle testsett',
       ],
       practices: [
         'Dommeren bruker en annen modell enn tjenesten',
@@ -584,7 +584,7 @@ export const componentsByBlock: Record<string, Component[]> = {
       description:
         'Noen vurderinger krever et menneske: er svaret juridisk riktig, er tonen passende for målgruppen. Annoteringskøer sender et utvalg traces til fagpersoner med klare retningslinjer, samler vurderingene som skårer og bruker dem til å kalibrere de automatiske dommerne.',
       capabilities: [
-        'Køer med utvalg fra produksjon eller testsett',
+        'Køer med utvalg fra trafikken eller testsett',
         'Retningslinjer og skala per kø',
         'Flere vurderere per case, med enighet som mål',
         'Vurderingene blir skårer og nye testcases',
@@ -656,12 +656,12 @@ export const componentsByBlock: Record<string, Component[]> = {
       name: 'Ansattporten',
       tagline: 'Ansatte logger inn gjennom egen virksomhets identitetsleverandør',
       description:
-        'Ansattporten lar ansatte i offentlig sektor logge inn med virksomhetens egen løsning, for eksempel Entra ID, og gir tjenesten et token som sier hvem personen er og hvilken virksomhet de representerer. Genki bruker Ansattporten for alle som jobber i arbeidsflaten og portalen.',
+        'Ansattporten lar ansatte i offentlig sektor logge inn med virksomhetens egen løsning, for eksempel Entra ID, og gir tjenesten et token som sier hvem personen er og hvilken virksomhet de representerer. Portalen og tjenestenes egne assistenter bruker Ansattporten. I testmiljøet logger man inn med Entra ID bak Ansattporten.',
       capabilities: [
         'OpenID Connect med virksomhetens egen identitetsleverandør bak',
         'Organisasjonsnummer og person i samme token',
         'Valg av virksomhet for personer med flere roller',
-        'Kombineres med Altinn Autorisasjon for rettigheter',
+        'Rettigheter fra Altinn Autorisasjon eller Entra-grupper',
         'Testmiljø og mock med testpersoner lokalt',
       ],
       status: 'bygd',
@@ -698,7 +698,7 @@ export const componentsByBlock: Record<string, Component[]> = {
     {
       id: 'operatorer',
       name: 'Operatørpålogging',
-      tagline: 'Digdirs driftere logger inn med Entra ID',
+      tagline: 'Plattformens operatører logger inn med Entra ID',
       description:
         'De som drifter plattformen trenger en egen pålogging med sterk autentisering og egne roller, skilt fra virksomhetenes brukere. Operatører logger inn via Entra ID og alle admin-operasjoner krever begrunnelse og havner i revisjonsloggen.',
       capabilities: [
@@ -731,7 +731,7 @@ export const componentsByBlock: Record<string, Component[]> = {
       name: 'Altinn Autorisasjon',
       tagline: 'Hvem har rett til hva, på vegne av hvilken virksomhet',
       description:
-        'Altinn Autorisasjon er den nasjonale løsningen for rettigheter i offentlig sektor. En tjeneste spør om en person eller et system har en gitt rettighet for en virksomhet, og får svar basert på roller fra Enhetsregisteret og delegeringer virksomheten selv har gjort. Genki henter rettigheter herfra per organisasjon.',
+        'Altinn Autorisasjon er den nasjonale løsningen for rettigheter i offentlig sektor. En tjeneste spør om en person eller et system har en gitt rettighet for en virksomhet, og får svar basert på roller fra Enhetsregisteret og delegeringer virksomheten selv har gjort. Plattformen kan hente rettigheter herfra per organisasjon, men i testmiljøet er det slått av for nå.',
       capabilities: [
         'Rettighetssjekk (PDP) per person, system og organisasjon',
         'Roller fra Enhetsregisteret: daglig leder, styreleder, regnskapsfører',
@@ -800,12 +800,11 @@ export const componentsByBlock: Record<string, Component[]> = {
     {
       id: 'datatilgang',
       name: 'Tilgang til data',
-      tagline: 'Hvem får se hvilke dokumenter, helt ned på treffnivå',
+      tagline: 'Hvem får søke i hvilke datasett',
       description:
-        'Tilgang stopper ikke ved tjenesten. Et datasett kan ha tilgangsregler fra kilden, og søket filtrerer treff etter hva den som spør har rett til å se, før modellen får konteksten. Tenant-isolasjon i databasen sikrer at ingen spørring krysser organisasjonsgrenser.',
+        'Tilgang styres per datasett: bare tjenester med rett kan søke i det. Tilgang per dokument, der søket filtrerer treff etter hva den som spør har rett til å se, er ikke bygd. Tenant-isolasjon i databasen sikrer at ingen spørring krysser organisasjonsgrenser.',
       capabilities: [
-        'Tilgangsregler per datasett og per dokument',
-        'Filtrering før rangering, aldri etter',
+        'Tilgangsregler per datasett',
         'Row-level security per tenant',
         'Deling av datasett mellom virksomheter krever eksplisitt vedtak',
       ],
@@ -848,13 +847,13 @@ export const componentsByBlock: Record<string, Component[]> = {
     {
       id: 'utrulling',
       name: 'Utrulling og CI/CD',
-      tagline: 'Fra commit til produksjon gjennom tester og miljøer',
+      tagline: 'Fra commit til testmiljøet gjennom tester',
       description:
-        'All infrastruktur er kode, og hver endring går gjennom en pipeline: bygg, tester, sikkerhetsskanning, signering og utrulling til utvikling, test og produksjon. Konfigurasjon per miljø ligger i Git, så enhver tilstand kan gjenskapes.',
+        'All infrastruktur er kode, og hver endring går gjennom en pipeline: bygg, tester, sikkerhetsskanning, signering og utrulling til testmiljøet. Konfigurasjon per miljø ligger i Git, så enhver tilstand kan gjenskapes.',
       capabilities: [
         'Infrastruktur som kode (Bicep, Terraform)',
         'Pipeline med tester, skanning og signering',
-        'Miljøer: utvikling, test, produksjon',
+        'Miljøer: lokalt og ett testmiljø',
         'GitOps: ønsket tilstand i Git',
         'Signerte images og SBOM',
       ],
@@ -1174,7 +1173,7 @@ export const componentsByBlock: Record<string, Component[]> = {
       name: 'Katalog og godkjenning',
       tagline: 'Hvilke verktøy finnes, og hvem har godkjent dem',
       description:
-        'Alle verktøy ligger i en katalog per virksomhet, med manifest som sier hvilke verter og hemmeligheter de får bruke. Der policy krever det, må Digdir godkjenne før et verktøy kan brukes i en publisert tjeneste. Kontrakttester kjøres ved registrering.',
+        'Alle verktøy ligger i en katalog per virksomhet, med manifest som sier hvilke verter og hemmeligheter de får bruke. Der policy krever det, må operatørene godkjenne før et verktøy kan brukes i en publisert tjeneste. Kontrakttester kjøres ved registrering.',
       capabilities: [
         'Katalog per virksomhet, delte verktøy på tvers',
         'Manifest med tillatte verter og hemmeligheter',
@@ -1199,8 +1198,8 @@ export const componentsByBlock: Record<string, Component[]> = {
         'YAML med skjema, eller skjema i portalen',
         'Formål, målgruppe, risikoklasse og språkinstruksjoner',
         'Datasett, verktøy, skills, modell og arbeidsmåte, med dataresidens',
-        'Tilgang: ressurs i Ressursregisteret, rettigheter i Altinn, nøkler og systembrukere',
-        'Kanaler: arbeidsflate, API, MCP, A2A, og om tjenesten er åpen for anonyme',
+        'Tilgang: rettigheter, nøkler og systembrukere',
+        'Kanaler: egen assistent, API, MCP og A2A',
         'Budsjett og kvoter per tjeneste, kanal og organisasjon',
         'Guardrails på inn- og utdata etter risikoklasse, krav til kilder og KI-merking',
         'Publiseringsporter: testsett og terskler som må bestås',
@@ -1283,16 +1282,16 @@ export const componentsByBlock: Record<string, Component[]> = {
   /* ---------------------------------------------------------------- Brukergrensesnitt */
   kanaler: [
     {
-      id: 'arbeidsflate',
-      name: 'Arbeidsflate',
-      tagline: 'Ferdig chat-klient der ansatte bruker tjenestene',
+      id: 'assistent',
+      name: 'Tjenestens egen assistent',
+      tagline: 'En assistent for tjenesten, på et eget vertsnavn',
       description:
-        'En ferdig webapp der ansatte finner virksomhetens tjenester, stiller spørsmål, ser kilder og gir tilbakemelding. Krever ingen utvikling hos virksomheten og får nye tjenester automatisk når de publiseres.',
+        'Plattformen tegner en assistent for en tjeneste fra oppsettet i definisjonen, på et eget vertsnavn. Ansatte logger inn, stiller spørsmål, ser kilder og gir tilbakemelding. Kunnskapsassistenten er prøvd slik i testmiljøet.',
       capabilities: [
-        'Tjenestekatalog per virksomhet',
+        'Én assistent per tjeneste, på eget vertsnavn',
         'Samtaler med kilder og streaming',
         'Tilbakemelding per svar',
-        'Filopplasting der tjenesten tillater det',
+        'Oppsett, tema og meny fra definisjonen',
       ],
       status: 'bygd',
     },
@@ -1313,7 +1312,7 @@ export const componentsByBlock: Record<string, Component[]> = {
     {
       id: 'openai-api',
       name: 'OpenAI-kompatibelt API',
-      tagline: 'Bruk Genki fra ethvert verktøy som snakker OpenAI',
+      tagline: 'Bruk tjenestene fra ethvert verktøy som snakker OpenAI',
       description:
         'Tjenestene eksponeres som modeller på et OpenAI-kompatibelt endepunkt. Dermed kan eksisterende verktøy, biblioteker og KI-assistenter bruke en KI-tjeneste ved å bytte URL og nøkkel.',
       capabilities: [
@@ -1354,9 +1353,9 @@ export const componentsByBlock: Record<string, Component[]> = {
     {
       id: 'portal-konsoll',
       name: 'Portal og konsoll',
-      tagline: 'Der virksomheter bygger, og Digdir drifter',
+      tagline: 'Der virksomheter bygger, og operatørene drifter',
       description:
-        'Portalen er virksomhetens arbeidsplass: tjenester, datasett, testsett, nøkler og forbruk. Konsollet er Digdirs: godkjenne organisasjoner, modeller, priser og drift. Begge er klienter av samme API.',
+        'Portalen er virksomhetens arbeidsplass: tjenester, datasett, testsett, nøkler og forbruk. Konsollet er operatørenes: godkjenne organisasjoner, modeller, priser og drift. Begge er klienter av samme API.',
       capabilities: [
         'Portal for virksomheter',
         'Konsoll for operatører',

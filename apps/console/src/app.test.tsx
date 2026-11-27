@@ -47,7 +47,7 @@ describe('a locked environment', () => {
 
     expect(
       await screen.findByText(
-        'Låst testmiljø: du kan se deg rundt, men endringer, modeller og innlesing krever innlogging med Entra ID.',
+        'Låst testplattform: du kan se deg rundt, men endringer, modeller og innlesing krever innlogging med Entra ID.',
       ),
     ).toBeTruthy();
   });
@@ -62,14 +62,14 @@ describe('a locked environment', () => {
 
     await waitFor(() => expect(seen.some((url) => url.endsWith('/me'))).toBe(true));
     expect(await screen.findByRole('heading', { level: 1, name: 'Virksomheter' })).toBeTruthy();
-    expect(screen.queryByText(/Låst testmiljø/)).toBeNull();
+    expect(screen.queryByText(/Låst testplattform/)).toBeNull();
   });
 
   it('shows no banner when the environment is not locked', async () => {
     await signedIn('#/tenants', [operatorRole], health(false));
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Virksomheter' })).toBeTruthy();
-    expect(screen.queryByText(/Låst testmiljø/)).toBeNull();
+    expect(screen.queryByText(/Låst testplattform/)).toBeNull();
   });
 });
 
@@ -120,7 +120,7 @@ describe('operator shell', () => {
 
     expect(screen.getByText('Driftskonsoll')).toBeTruthy();
     expect(screen.getByText('Lokalt')).toBeTruthy();
-    expect(screen.getByRole('note').textContent).toMatch(/Alt du gjør her, logges i Revisjon/);
+    expect(screen.getByRole('note').textContent).toMatch(/Alt du gjør her, logges/);
     const menu = screen.getByRole('navigation', { name: 'Konsollmeny' });
     expect(
       within(menu)
@@ -128,7 +128,7 @@ describe('operator shell', () => {
         .map((l) => l.getAttribute('aria-labelledby')),
     ).toEqual(['gruppe-customers', 'gruppe-platform', 'gruppe-support']);
     for (const label of [
-      'Tillegg',
+      'Katalog',
       'Søkemotorer',
       'Innstillinger',
       'Kvalitet',
@@ -237,7 +237,7 @@ describe('revisjon', () => {
     vi.setSystemTime(new Date('2026-10-07T12:00:00+02:00'));
     await signedIn('#/audit');
 
-    const log = await screen.findByRole('region', { name: 'Revisjonslogg' });
+    const log = await screen.findByRole('region', { name: 'Logg' });
     expect(screen.getByText('10 hendelser')).toBeTruthy();
     expect(within(log).getAllByText('Digdir').length).toBeGreaterThan(0);
 
@@ -291,7 +291,7 @@ describe('revisjon', () => {
         : base(input, init);
     await signedIn('#/audit', [operatorRole], raw);
 
-    const log = await screen.findByRole('region', { name: 'Revisjonslogg' });
+    const log = await screen.findByRole('region', { name: 'Logg' });
     const first = within(log).getByText('Ny innlesing').closest('tr') as HTMLElement;
     expect(within(first).getByText('Startet innlesing')).toBeTruthy();
     expect(within(first).getByText('Person i Digdir')).toBeTruthy();
@@ -322,7 +322,7 @@ describe('revisjon', () => {
         : base(input, init);
     await signedIn('#/audit', [operatorRole], raw);
 
-    const log = await screen.findByRole('region', { name: 'Revisjonslogg' });
+    const log = await screen.findByRole('region', { name: 'Logg' });
     const row = within(log).getByText('local configuration').closest('tr') as HTMLElement;
     expect(within(row).getByText('Plattformen')).toBeTruthy();
     expect(row.textContent).not.toMatch(/Person i/);
@@ -350,7 +350,7 @@ describe('revisjon', () => {
         : base(input, init);
     await signedIn('#/audit', [operatorRole], raw);
 
-    const log = await screen.findByRole('region', { name: 'Revisjonslogg' });
+    const log = await screen.findByRole('region', { name: 'Logg' });
     const row = within(log).getByText('Ny versjon av klarspråk').closest('tr') as HTMLElement;
     expect(within(row).getByText('Kari Testansatt')).toBeTruthy();
     expect(within(row).getByText('versjon 3')).toBeTruthy();

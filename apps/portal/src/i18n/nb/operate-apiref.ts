@@ -14,7 +14,7 @@ export const apirefArea = {
     tabActions: 'Vis API-kall i portalen',
     unknownEndpoint:
       'Endepunktet «{endpoint}» finnes ikke i API-et ennå. Disse delene har ikke endepunkter ennå: {areas}.',
-    missingRights: 'Mine rettigheter fra Altinn',
+    missingRights: 'Mine rettigheter i plattformen',
     missingAccess: 'Sette tilgang til en tjeneste',
     missingStatus: 'Hente status for én kjøring uten tidslinje',
     navLabel: 'Endepunkter',
@@ -59,9 +59,9 @@ export const apirefArea = {
     copy: 'Kopier {what}',
     tryHeading: 'Prøv',
     tryAs:
-      'Du kaller som <strong>{name}</strong> for {tenant}, med rettighetene dine fra Altinn: {held}. Kallet sendes til API-et med din innlogging.',
+      'Du kaller som <strong>{name}</strong> for {tenant}, med rettighetene dine i plattformen: {held}. Kallet sendes til API-et med din innlogging.',
     tryAnonymous:
-      'Du kaller for {tenant}, med rettighetene dine fra Altinn: {held}. Kallet sendes til API-et med din innlogging.',
+      'Du kaller for {tenant}, med rettighetene dine i plattformen: {held}. Kallet sendes til API-et med din innlogging.',
     heldNone: 'ingen',
     tryReadOnly:
       'Her kan du bare prøve lesekall (GET), så ingenting endres ved et uhell. Bruk curl-eksempelet over for å sende dette kallet.',

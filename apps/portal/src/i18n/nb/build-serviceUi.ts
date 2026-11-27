@@ -355,7 +355,7 @@ export const serviceUi = {
     copyClientId: 'Kopier klient-ID for {name}',
     redirects: 'Tilbake etter innlogging',
     login: 'Innlogging',
-    loginValue: 'Ansattporten. Rettighetene fra Altinn til den innloggede personen gjelder.',
+    loginValue: 'Ansattporten. Rettighetene til den innloggede personen gjelder.',
     notifications: 'Varsler',
     signedWith: 'Signeres med hemmeligheten <code>{secret}</code>',
     lastSent: ' · siste sending {when}: {result}',
@@ -488,7 +488,7 @@ export const serviceUi = {
       'Serveren til løsningen holder nøkkelen. Nettleseren snakker bare med deres server.',
     browser: 'Fra nettleseren med innlogging i Ansattporten',
     browserDescription:
-      'Plattformen kalles på vegne av personen, så rettighetene fra Altinn gjelder.',
+      'Plattformen kalles på vegne av personen, så rettighetene til personen gjelder.',
     url: 'Adressen til løsningen',
     urlDescription: 'Valgfri. Vises som lenke på tjenesten.',
     channelsLegend: 'Kanaler den kan bruke',

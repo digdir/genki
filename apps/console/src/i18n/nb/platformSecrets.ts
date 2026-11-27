@@ -3,7 +3,7 @@ import { defineNamespace } from '@genai/i18n';
 export const platformSecrets = defineNamespace({
   title: 'Plattformhemmeligheter',
   intro:
-    'Nøkler og passord tilkoblingene bruker, lagret i plattformens hemmelighetslager. Verdiene vises aldri, bare om de er satt og når de sist ble endret. Hver endring føres i revisjonsloggen med begrunnelsen.',
+    'Nøkler og passord tilkoblingene bruker, lagret i plattformens hemmelighetslager. Verdiene vises aldri, bare om de er satt og når de sist ble endret. Hver endring føres i loggen med begrunnelsen.',
   loading: 'Henter hemmelighetene',
   add: 'Ny hemmelighet',
   tableLabel: 'Plattformhemmeligheter',

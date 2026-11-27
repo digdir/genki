@@ -94,10 +94,14 @@ const specOnly = (spec: DemoSpec): DemoSpec => ({
   path: spec.path,
   ...(spec.signedIn !== undefined ? { signedIn: spec.signedIn } : {}),
   ...(spec.ready ? { ready: spec.ready } : {}),
+  ...(spec.intro ? { intro: spec.intro } : {}),
+  ...(spec.outro ? { outro: spec.outro } : {}),
   steps: spec.steps.map((s) => ({
     say: s.say,
     ...(s.do && s.do.length > 0 ? { do: s.do } : {}),
     ...(s.hold !== undefined ? { hold: s.hold } : {}),
+    ...(s.chapter ? { chapter: s.chapter } : {}),
+    ...(s.focus ? { focus: s.focus } : {}),
   })),
 });
 
@@ -481,7 +485,6 @@ const EditorForm = ({
               ))}
             </Fieldset>
             <VoiceSelect
-              id="demo-voice"
               label={t('demos.fieldVoice')}
               description={t('demos.fieldVoiceHelp')}
               value={draft.spec.voice}

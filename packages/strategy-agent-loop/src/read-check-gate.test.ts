@@ -216,7 +216,8 @@ describe('the gate after a read check', () => {
       },
     });
 
-    expect(loopTurns(out)).toBe(2);
+    // The read check runs alongside the turn after the read, and its verdict ends that turn.
+    expect(loopTurns(out)).toBe(3);
     expect(out.seen.filter((s) => s.kind === 'sufficiency')).toHaveLength(0);
     expect(gates(out)).toEqual([
       expect.objectContaining({

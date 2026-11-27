@@ -1098,14 +1098,7 @@ const titles: Record<string, [PlainKey, PlainKey]> = {
   sink: ['qualityMatrix.sinkTitle', 'qualityMatrix.sinkPageIntro'],
 };
 
-export const QualityMatrix = ({
-  api,
-  tab: initial,
-}: {
-  api: ApiClient;
-  tab: string;
-  live?: boolean;
-}) => {
+export const QualityMatrix = ({ api, tab: initial }: { api: ApiClient; tab: string }) => {
   const t = useT();
   const f = useFormat();
   const [state, retry] = useAsync((signal) => api.quality(signal), [api]);

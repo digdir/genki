@@ -97,7 +97,7 @@ type Step = (request: ChatRequest, signal: AbortSignal) => ChatResult | Promise<
 export interface Script {
   loop: Step[];
   synth?: ((request: ChatRequest) => string | ChatResult)[];
-  read?: ((prompt: string) => string)[];
+  read?: ((prompt: string) => string | Promise<string>)[];
   sufficiency?: ((prompt: string) => string)[];
   smallTalk?: (message: string) => string;
   final?: string | ChatResult;
@@ -137,7 +137,7 @@ export const models = (scripts: Record<string, Script>, stream = false) => {
         }
         if (system === readEvaluatorSystemPrompt) {
           seen.push({ model: ref.id, kind: 'read', request });
-          return result((pick(script.read, 'read') ?? allSupported)(user));
+          return result(await (pick(script.read, 'read') ?? allSupported)(user));
         }
         if (system === smallTalkCheck) {
           seen.push({ model: ref.id, kind: 'small-talk', request });

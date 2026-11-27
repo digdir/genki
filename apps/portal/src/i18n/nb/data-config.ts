@@ -111,7 +111,7 @@ export const sharedServices = defineNamespace({
   notFoundTitle: 'Fant ikke den delte tjenesten',
   notFoundBody: 'Den finnes ikke, eller er ikke tilgjengelig for dere.',
   gotoList: 'Gå til Delte tjenester',
-  lead: 'Ferdige tjenester som Digdir drifter og tester. Prøv dem her, kall dem fra egne systemer, eller bruk dem som verktøy i deres egne tjenester.',
+  lead: 'Delte tjenester under utprøving. Prøv dem her, kall dem fra egne systemer, eller bruk dem som verktøy i deres egne tjenester.',
   emptyTitle: 'Ingen delte tjenester er tilgjengelige ennå',
   emptyBody:
     'Delte tjenester er ferdige tjenester Digdir drifter for alle, for eksempel klarspråk og oversetting til nynorsk. Si fra hvilke dere trenger, så prioriterer vi dem.',

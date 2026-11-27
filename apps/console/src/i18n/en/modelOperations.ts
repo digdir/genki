@@ -2,9 +2,9 @@ import type { Translation } from '@genai/i18n';
 import type { modelOperations as source } from '../nb/modelOperations';
 
 export const modelOperations = {
-  environmentTest: 'This is a test environment, so you can try recipes here.',
+  environmentTest: 'This is the test platform, so you can try recipes here.',
   environmentProduction:
-    'This is a production environment. Recipes are tried only in the test environment; do the rest here as usual.',
+    'This is the production platform. Recipes are tried only on the test platform; do the rest here as usual.',
   loadingOne: 'Loading the recipe',
   statusReview: 'In review',
   statusDescribed: 'Approved',
@@ -29,7 +29,7 @@ export const modelOperations = {
   deleteKindFor: 'Delete {kind}',
   deleteKindTitle: 'Delete the kind {kind}?',
   deleteKindText:
-    'No API describes the kind, and it is not built in. It disappears from the list in this environment. If an API for the kind comes later, it starts in test.',
+    'No API describes the kind, and it is not built in. It disappears from the list here. If an API for the kind comes later, it starts in test.',
   deleteKindFailed: 'We could not delete the kind.',
   kindDeleted: 'The kind {kind} is deleted.',
   demoteFor: 'Move {kind} back to test',
@@ -38,8 +38,8 @@ export const modelOperations = {
   promoteText:
     'Services can then use approved recipes of this kind with real data, on endpoints with a recorded processor.',
   demoteText: 'Services that use the kind stop at their next call until it is in production again.',
-  promoted: '{kind} is in production. The change is logged in Audit.',
-  demoted: '{kind} is back in test. The change is logged in Audit.',
+  promoted: '{kind} is in production. The change is logged.',
+  demoted: '{kind} is back in test. The change is logged.',
   uploadTitle: 'Upload recipe',
   replaceTitle: 'Upload a new edition of {id}',
   uploadIntro:
@@ -56,10 +56,10 @@ export const modelOperations = {
   },
   uploadAndCheck: 'Upload and check',
   uploadFailed: 'Could not upload the recipe. Try again shortly.',
-  uploaded: '{id} is uploaded and in review. The change is logged in Audit.',
-  tryOnlyInTest: 'Recipes are tried only in the test environment.',
+  uploaded: '{id} is uploaded and in review. The change is logged.',
+  tryOnlyInTest: 'Recipes are tried only on the test platform.',
   trySynthetic:
-    'Use made-up data only. All personal data is masked before the call leaves, and the try is logged in Audit.',
+    'Use made-up data only. All personal data is masked before the call leaves, and the try is logged.',
   tryModel: 'Model',
   choose: 'Choose',
   optionalField: '{name} (optional)',
@@ -89,7 +89,7 @@ export const modelOperations = {
   fixtureNameHint: 'Lower case letters, digits and hyphens, for example first-try.',
   recordSave: 'Save as test case',
   recordFailed: 'Could not save the test case.',
-  recorded: 'The test case {name} is saved on {id}. The change is logged in Audit.',
+  recorded: 'The test case {name} is saved on {id}. The change is logged.',
   whenApprovingText:
     'Services can use the recipe once the kind is in production and the endpoint has a recorded processor. An approved recipe is not changed; the next edition is uploaded with a new version number.',
   bundledNote: 'The recipe comes with Genki and changes through Genki, not here.',
@@ -105,12 +105,12 @@ export const modelOperations = {
     'The services below stop at their next call until the recipe is approved again.',
   withdrawTitle: 'Withdraw {id}',
   withdrawText:
-    'The recipe is removed. The services below stop at their next call. The history stays in Audit.',
+    'The recipe is removed. The services below stop at their next call. The history stays in the log.',
   usedByCount: { one: 'Services that use it ({count})', other: 'Services that use it ({count})' },
   usedByNone: 'No published service uses it.',
   versionN: 'version {n}',
   decideFailed: 'Could not save the change.',
-  approved: '{id} is approved. The change is logged in Audit.',
-  movedBack: '{id} is back in review. The change is logged in Audit.',
-  withdrawn: '{id} is withdrawn. The change is logged in Audit.',
+  approved: '{id} is approved. The change is logged.',
+  movedBack: '{id} is back in review. The change is logged.',
+  withdrawn: '{id} is withdrawn. The change is logged.',
 } satisfies Translation<typeof source>;

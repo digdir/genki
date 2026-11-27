@@ -41,9 +41,9 @@ export const transfer = {
   include: 'Include',
   includeSettings: 'Organisation settings',
   includeSettingsHelp: 'Values the organisation has set. Secrets only as a reference.',
-  includeServices: 'Services and step flows',
+  includeServices: 'Services and workflows',
   includeServicesHelp:
-    'The definitions with the settings applied to them. Datasets and documents are not included.',
+    'The definitions with the settings applied to them. Document collections are not included.',
   reasonHelp: "The reason goes with the change and shows in the organisation's log.",
   summary: '{settings} settings · {services} services',
   fileContents: 'The contents of the export file',
@@ -63,7 +63,7 @@ export const transfer = {
   conflictNote: 'The value is set locally and differs from the file',
   onConflictFor: 'On conflict for {label}',
   doneSummary:
-    '{create} created, {change} changed, {skip} skipped. Secrets have not been copied, only the references. All changes are logged in the audit log.',
+    '{create} created, {change} changed, {skip} skipped. Secrets have not been copied, only the references. All changes are logged.',
   previous: 'Previous',
   next: 'Next',
   runDry: 'Run dry run',

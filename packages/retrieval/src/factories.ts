@@ -1,4 +1,5 @@
 import {
+  capabilitiesOf,
   knowledgeProfiles,
   matchAllQuery,
   type DocumentSummary,
@@ -6,6 +7,7 @@ import {
   type FilterValue,
   type Hit,
   type KnowledgePort,
+  type PartRead,
 } from '@genai/port-knowledge';
 import type { ModelPort } from '@genai/port-model';
 import type { RerankPort } from '@genai/port-rerank';
@@ -390,6 +392,24 @@ const searchRerankByDefault = (raw: unknown, rerank: RerankPort | undefined): un
   return { ...config, rerank: { ...settings, enabled: true } };
 };
 
+/** A read around a hit (ADR 0055), only where the dataset's engine declares it and can. */
+const partsReader = (knowledge: KnowledgePort) => {
+  const parts = knowledge.parts?.bind(knowledge);
+  if (!parts || !capabilitiesOf(knowledge.info()).includes('parts')) return {};
+  return {
+    readParts: async (
+      chunkId: string,
+      read: PartRead,
+      n: number,
+      budget: number,
+      signal: AbortSignal,
+    ) => {
+      signal.throwIfAborted();
+      return parts(chunkId, read, n, budget);
+    },
+  };
+};
+
 export const createAgentRetrieval = (options: RetrievalFactoryOptions) => {
   const backend = createRetrievalBackend({
     ...options,
@@ -425,6 +445,7 @@ export const createAgentRetrieval = (options: RetrievalFactoryOptions) => {
     },
     read: backend.read,
     readRange: backend.readRange,
+    ...partsReader(options.knowledge),
     plan: backend.plan,
     rerank: backend.rerank,
     reranks: options.rerank !== undefined,

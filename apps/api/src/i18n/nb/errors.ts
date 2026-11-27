@@ -716,6 +716,12 @@ export const demoErrors = defineNamespace({
   recordedByWorkflow: 'opptakene gjøres av arbeidsflyten demos',
   recordingNotQueued: 'opptaket kunne ikke settes i kø',
   statusMustBeQueued: 'status må være queued',
+  editOfRecorded: 'editOf er et ferdig opptak av denne demoen med opptak og klippeliste',
+  editNeedsInstruction: 'editOf og instruction hører sammen',
+  editWholeFilm: 'en endring gjelder hele filmen, uten upTo',
+  costCapForModelVoice: 'stemmen leses av en modell og trenger costCapUsd, den godkjente kostnaden',
+  costCapForEdit: 'en endring bruker KI-regissøren og trenger costCapUsd, den godkjente kostnaden',
+  trialNoCostCap: 'en prøve er uten stemme og tar ikke costCapUsd',
 });
 
 export const hostnameErrors = defineNamespace({

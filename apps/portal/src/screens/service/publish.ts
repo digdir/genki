@@ -15,10 +15,12 @@ export type PublishOutcome =
       refusedByGates: boolean;
       outdated?: true;
       archivedId?: string;
+      takenId?: string;
     };
 
 export const draftOutdated = 'urn:genai:problem:draft-outdated';
 export const serviceArchived = 'urn:genai:problem:service-archived';
+export const serviceIdTaken = 'urn:genai:problem:service-id-taken';
 
 const idOf = (definition: Record<string, unknown>) => {
   const id = (definition.metadata as { id?: unknown } | undefined)?.id;
@@ -31,6 +33,7 @@ export const publishDraft = async (
   files: Record<string, string>,
   reason: string,
   draftRevision?: number,
+  newService = false,
 ): Promise<PublishOutcome> => {
   const failed = (errors: PublishProblem[]): PublishOutcome => ({
     ok: false,
@@ -43,7 +46,7 @@ export const publishDraft = async (
     if (!check.valid) return failed(check.errors);
     return {
       ok: true,
-      published: await api.publishDefinition(completed, files, reason, draftRevision),
+      published: await api.publishDefinition(completed, files, reason, draftRevision, newService),
     };
   } catch (error) {
     if (error instanceof ApiError && error.problem?.type === draftOutdated)
@@ -53,6 +56,8 @@ export const publishDraft = async (
         refusedByGates: false,
         outdated: true,
       };
+    if (error instanceof ApiError && error.problem?.type === serviceIdTaken)
+      return { ok: false, errors: [], refusedByGates: false, takenId: idOf(definition) };
     if (error instanceof ApiError && error.problem?.type === serviceArchived)
       return { ok: false, errors: [], refusedByGates: false, archivedId: idOf(definition) };
     return failed(problemErrors(error));

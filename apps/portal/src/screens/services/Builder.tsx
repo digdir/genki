@@ -49,6 +49,7 @@ import {
 } from '../../data/service-definition';
 import {
   autoPublicName,
+  withServiceId,
   examplesOf,
   flowOf,
   guardOn,
@@ -323,6 +324,9 @@ const withRiskStamp = (definition: Record<string, unknown>, stamp: object) => {
 };
 
 const archivedSections: ServiceSection[] = ['overview', 'quality', 'versions', 'log'];
+
+/** A refused publish whose reason, a taken or archived id, the page already shows in an alert. */
+class ShownRefusal extends Error {}
 
 // New services whose Publiser was pressed this page session; the publish page remounts the Builder.
 const publishTriedFor = new Set<string>();
@@ -1186,6 +1190,7 @@ export const Builder = ({
     refusedByGates: boolean;
     outdated?: true;
     archivedId?: string;
+    takenId?: string;
   }>();
   const rebasedDraft = useRef<ServiceDraft | undefined>(undefined);
 
@@ -1401,7 +1406,10 @@ export const Builder = ({
       variantChoices,
     ) as unknown as Record<string, unknown>;
     const chosen = freeId
-      ? { ...picked, metadata: { ...(picked.metadata as object), id: freeId } }
+      ? (withServiceId(picked as unknown as ServiceDefinition, freeId) as unknown as Record<
+          string,
+          unknown
+        >)
       : picked;
     const outcome = await publishDraft(
       api,
@@ -1414,6 +1422,7 @@ export const Builder = ({
       files,
       reason,
       serverDraft && revisionRef.current > 0 ? revisionRef.current : undefined,
+      isNew,
     );
     if (!outcome.ok) {
       draftBlocked.current = false;
@@ -1431,10 +1440,14 @@ export const Builder = ({
         ),
       });
       setProblems(outcome);
-      throw new Error(
-        outcome.archivedId !== undefined
-          ? tRef.current('services.archivedId')
-          : (outcome.errors[0]?.message ?? tRef.current('services.publishFailed')),
+      const Refusal =
+        outcome.takenId !== undefined || outcome.archivedId !== undefined ? ShownRefusal : Error;
+      throw new Refusal(
+        outcome.takenId !== undefined
+          ? tRef.current('services.takenId', { id: outcome.takenId })
+          : outcome.archivedId !== undefined
+            ? tRef.current('services.archivedId')
+            : (outcome.errors[0]?.message ?? tRef.current('services.publishFailed')),
       );
     }
     unsaved.current = false;
@@ -2147,6 +2160,15 @@ export const Builder = ({
           onRebase={rebaseDraft}
           onResolve={resolveConflicts}
         />
+      ) : problems?.takenId !== undefined ? (
+        <Alert data-color="danger" data-size="sm" role="alert">
+          <Paragraph data-size="sm">{t('services.takenId', { id: problems.takenId })}</Paragraph>
+          <Paragraph data-size="sm">
+            <Link href={`#${servicePath(problems.takenId)}`}>
+              {t('services.takenIdOpen', { id: problems.takenId })}
+            </Link>
+          </Paragraph>
+        </Alert>
       ) : problems?.archivedId !== undefined ? (
         <Alert data-color="danger" data-size="sm" role="alert">
           <Paragraph data-size="sm">{t('services.archivedId')}</Paragraph>
@@ -2554,12 +2576,24 @@ export const Builder = ({
         action: t('services.publishAction'),
         method: 'POST',
         path: '/definitions',
-        body: { definition: publishable, files },
+        body: isNew
+          ? {
+              definition: withServiceId(publishable as unknown as ServiceDefinition, serviceId),
+              files,
+              newService: true,
+            }
+          : { definition: publishable, files },
         right: rightLabel(t, 'manage-services'),
       }}
       canPublish={canPublish}
       onPublish={async (reason) => {
-        await doPublish({ reason, include: [] });
+        try {
+          await doPublish({ reason, include: [] });
+        } catch (error) {
+          // The alert above the reason says why and what to do; the page's own failure text would repeat it.
+          if (error instanceof ShownRefusal) return;
+          throw error;
+        }
         if (!(isNew && serverDraft)) go('setup');
       }}
     />

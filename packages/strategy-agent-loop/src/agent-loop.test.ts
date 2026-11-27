@@ -86,7 +86,8 @@ describe('agent-loop strategy', () => {
     });
 
     expect(out.task.status).toBe('completed');
-    expect(out.loops).toHaveLength(2);
+    // The read check runs alongside the turn after the read, and its verdict ends that turn.
+    expect(out.loops).toHaveLength(3);
     expect(out.text).toBe('Digdir skal digitalisere [2] og samordne [2][1].');
     expect(out.meta).toEqual({
       citations: [
@@ -296,14 +297,17 @@ describe('agent-loop strategy', () => {
           loop: [
             () => result('', [call('search', { queries: ['x'] })]),
             () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result('', [call('search', { queries: ['y'] })]),
             () => result('Ferdig.'),
           ],
           read: [() => readSignal('gap-remaining')],
+          sufficiency: [() => decision('insufficient', 're-search')],
         },
       },
     });
 
-    expect(toolMessages(out.loops[2])[1]).toContain(
+    // The read check runs alongside the turn after the read, so its hint comes with that turn.
+    expect(toolMessages(out.loops[3])[2]).toContain(
       '[SYSTEM: The chunks you just read came from doc_num="d1" (title="Rapport 1", total_chunks=4). You have read chunk_index(es) [1] from this doc but chunk_index(es) [0 2 3] are still unread in the SAME doc. The answer is often in an adjacent chunk — before issuing any new search, call read_chunks with these exact args: {"doc_num": "d1", "chunk_range": {"from": 0, "to": 3}}.]',
     );
   });
@@ -1354,6 +1358,8 @@ describe("what KA reads from the agent's wire output", () => {
       'agent/turn-completed',
       'agent/iteration-started',
       'agent/turn-completed',
+      'agent/iteration-started',
+      'agent/turn-completed',
       'agent/finalized',
     ]);
     expect(events[0]).toEqual({
@@ -1365,7 +1371,7 @@ describe("what KA reads from the agent's wire output", () => {
       iteration: 0,
       'tool-calls': [{ tool: 'search', args: { queries: ['tildelingsbrev 2025'] }, 'ok?': true }],
     });
-    expect(events[4]).toEqual({ event: 'agent/finalized', iteration: 1, 'response-length': 9 });
+    expect(events[6]).toEqual({ event: 'agent/finalized', iteration: 2, 'response-length': 9 });
   });
 
   it("streams the agent's own answer as it is written, once, before the result", async () => {

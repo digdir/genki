@@ -19,11 +19,11 @@ export const about = defineNamespace({
   toDark: 'Mørkt tema',
   toLight: 'Lyst tema',
   language: 'English',
-  footerSource: 'Genki er åpen kildekode fra Digdir (MIT-lisens) og under utvikling.',
+  footerSource: 'Genki er åpen kildekode (MIT-lisens) og en utforskning, ikke en tjeneste i drift.',
   nbOnly: 'Dokumentasjonen finnes bare på bokmål foreløpig.',
   heroTitle: 'Genki: generativ KI for offentlige virksomheter',
   heroLede:
-    'Genki er Digdirs felles plattform for generativ KI. Virksomheten lager egne tjenester som svarer med kilder, oppsummerer, skriver utkast og henter ut opplysninger fra dokumenter. Digdir drifter plattformen og velger hvilke språkmodeller dere kan bruke.',
+    'En utforskning (proof of concept), ikke en tjeneste i drift. Tenkt som en felles nasjonal løsning for stat og kommune, sammen med KS og KS Digital. Virksomheten lager egne tjenester som svarer med kilder, oppsummerer, skriver utkast og henter ut opplysninger fra dokumenter.',
   requestAccess: 'Be om tilgang',
   exploreBlocks: 'Utforsk byggeklossene',
   factsLabel: 'Kort fortalt',
@@ -36,22 +36,21 @@ export const about = defineNamespace({
   buildHeading: 'Hva dere kan lage',
   buildLede:
     'Bruk de delte tjenestene som de er, eller lag egne tjenester på de samme byggeklossene.',
-  sharedHeading: 'Delte tjenester, klare fra første dag',
+  sharedHeading: 'Delte tjenester',
   examplesHeading: 'Tre eksempler',
   layersLabel: 'Lagene i Genki',
   architectureFigure: 'Målarkitekturen',
   architectureCaption: 'Målarkitektur',
-  architectureHeading: 'Slik er Genki bygd',
+  architectureHeading: 'Slik er Genki tenkt',
   architectureSub: 'Velg et lag for å lese om byggeklossene i det.',
   moreHeading: 'Pris, vilkår og data',
-  notice:
-    'Genki er under utvikling. Pris etter utprøvingen, vilkår og databehandleravtale er ikke bestemt ennå.',
+  notice: 'Pris, vilkår og databehandleravtale er ikke bestemt.',
   tilePriceTitle: 'Pris og vilkår',
   tilePriceBody: 'Hva det koster, kvoten per måned og vilkårene virksomheten godtar.',
   tileDataTitle: 'Slik behandles data',
   tileDataBody: 'Hva som lagres og logges, og hvem som kan se det.',
   tileStatusTitle: 'Status',
-  tileStatusBody: 'Hva som er bygd, og hva som er planlagt.',
+  tileStatusBody: 'Hva som er prøvd i test, og hva som er planlagt.',
   accessHeading: 'Slik får dere tilgang',
   stepsLabel: 'Stegene',
   haveAccess: 'Har dere allerede tilgang? <login>Logg inn</login>',
@@ -61,7 +60,7 @@ export const about = defineNamespace({
   sourceLink: 'Kildekoden på GitHub',
   adrLink: 'Arkitekturbeslutningene',
   priceTitle: 'Pris og vilkår',
-  priceLede: 'Under utprøving er bruken gratis. Pris og vilkår avklares våren 2027.',
+  priceLede: 'Under utprøving er bruken gratis. Pris og vilkår er ikke bestemt.',
   priceUsageHeading: 'Slik regnes bruken',
   priceUsage1:
     'Bruken måles i tokens, omtrent tre fjerdedeler av et ord. Hvert spørsmål, hvert svar og hver innlesing av dokumenter bruker tokens.',
@@ -74,7 +73,7 @@ export const about = defineNamespace({
   priceFree3: 'Trenger dere mer, kan dere be om mer kvote fra Statistikk når dere er logget inn.',
   priceTermsHeading: 'Vilkår',
   priceTerms:
-    'Vilkårene for bruk etter utprøvingen avklares sammen med prisen. Til da gjelder det som står om data, lagring og underleverandører på <link>Slik behandles data</link>.',
+    'Vilkårene er ikke bestemt. Til da gjelder det som står om data, lagring og underleverandører på <link>Slik behandles data</link>.',
   residencyStatement:
     'Alt genki lagrer, lagres i EU/EØS. Hver modell behandler data der den er merket: i Norge, i EU/EØS eller med global behandling, som kan være utenfor EU/EØS. En tjeneste kan begrenses til modeller i EU/EØS eller i Norge.',
   dhUpdated:

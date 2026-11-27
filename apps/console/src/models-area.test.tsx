@@ -677,7 +677,7 @@ describe('Modeller: one model', () => {
     giveReason(box, 'Microsoft avslutter versjonen');
     fireEvent.click(within(box).getByRole('button', { name: 'Fas ut' }));
 
-    expect(await screen.findByText(/er faset ut\. Endringen er logget i Revisjon\./)).toBeTruthy();
+    expect(await screen.findByText(/er faset ut\. Endringen er logget\./)).toBeTruthy();
     expect(changes()[0]?.body).toEqual({ enabled: false });
   });
 });
@@ -810,7 +810,7 @@ describe('Modeller: APIs and the guided path', () => {
       return Response.json({ ...((await response.json()) as object), environment: 'production' });
     });
 
-    expect(await screen.findByText('Oppskrifter prøves bare i testmiljøet.')).toBeTruthy();
+    expect(await screen.findByText('Oppskrifter prøves bare på testplattformen.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Prøv' })).toBeNull();
   });
 

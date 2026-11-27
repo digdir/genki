@@ -79,59 +79,12 @@ describe('byggeklosser', () => {
     expect(screen.queryByRole('button', { name: /Borealis-27B/ })).toBeNull();
   });
 
-  it('closes an open preview when the availability choice changes, and keeps it open until then', async () => {
+  it('offers no availability, release or disable action, since the API has none', async () => {
     await open('#/building-blocks?block=borealis');
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Gjør 2.2 tilgjengelig' }));
-    expect(await screen.findByText(/Ingen tjeneste bytter versjon av seg selv/)).toBeTruthy();
-    // Nothing else closes it: the preview stays while the person reads it.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(screen.getByText(/Ingen tjeneste bytter versjon av seg selv/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('radio', { name: 'Ingen (bare Digdir kan teste den)' }));
-
-    expect(screen.queryByText(/Ingen tjeneste bytter versjon av seg selv/)).toBeNull();
-  });
-
-  it('makes a new version available with a preview that says no service switches', async () => {
-    const { calls, fetch } = recording();
-    await open('#/building-blocks?block=borealis', fetch);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Gjør 2.2 tilgjengelig' }));
-    expect(screen.getByText(/Ingen tjeneste bytter versjon av seg selv/)).toBeTruthy();
-    expect(screen.getByText('Svarer i snitt 6 % lengre')).toBeTruthy();
-    const confirm = screen
-      .getAllByRole('button', { name: 'Gjør 2.2 tilgjengelig' })
-      .at(-1) as HTMLElement;
-    fireEvent.click(confirm);
-    expect(await screen.findByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
-
-    fireEvent.change(screen.getByRole('textbox', { name: 'Begrunnelse' }), {
-      target: { value: 'Bedre på nynorsk' },
-    });
-    fireEvent.click(confirm);
-    expect(
-      await screen.findByText(/Borealis-27B \(AIVAR, Norge\) 2.2 er tilgjengelig/),
-    ).toBeTruthy();
-    expect(calls.find((c) => c.method === 'POST')?.path).toBe(
-      '/api/operator/building-blocks/borealis/versions/2.2/release',
-    );
-  });
-
-  it('blocks a version that failed its contract tests with aria-disabled', async () => {
-    const { calls, fetch } = recording();
-    await open('#/building-blocks?block=mcp', fetch);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Gjør 2.0 tilgjengelig' }));
-    expect(screen.getByText(/har ikke bestått kontrakttestene/)).toBeTruthy();
-    const confirm = screen
-      .getAllByRole('button', { name: 'Gjør 2.0 tilgjengelig' })
-      .at(-1) as HTMLElement;
-    expect(confirm.getAttribute('aria-disabled')).toBe('true');
-    fireEvent.change(screen.getByRole('textbox', { name: 'Begrunnelse' }), {
-      target: { value: 'Ny spesifikasjon' },
-    });
-    fireEvent.click(confirm);
-    expect(calls.filter((c) => c.method === 'POST')).toEqual([]);
+    expect(await screen.findByRole('heading', { level: 1, name: /Borealis-27B/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /tilgjengelig|Deaktiver|Forhåndsvis/ })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'Utvalgte virksomheter' })).toBeNull();
   });
 
   it('falls back to the live registry shape when types are missing', async () => {
@@ -206,7 +159,7 @@ describe('byggeklosser fra manifestene', () => {
     const auth = mockEntra({ name: 'Lise Dahl', roles: [operatorRole] });
     await auth.login();
     window.location.hash = '#/building-blocks';
-    render(<App auth={auth} fetch={live} live />);
+    render(<App auth={auth} fetch={live} />);
 
     const models = await screen.findByRole('region', { name: 'Modellprotokoller' });
     fireEvent.click(within(models).getByRole('button', { name: /OpenAI-kompatibel chat/ }));
@@ -226,27 +179,24 @@ describe('byggeklosser fra manifestene', () => {
 });
 
 describe('innstillinger', () => {
+  it('builds the settings from the platform routes and never asks for a grid', async () => {
+    const { calls, fetch } = recording();
+    await open('#/settings', fetch);
+
+    await screen.findByRole('region', { name: 'Innstillinger per lag' });
+    expect(calls.some((c) => c.path.endsWith('/operator/settings/overrides'))).toBe(true);
+    expect(calls.some((c) => c.path.includes('/settings/grid'))).toBe(false);
+  });
+
   it('shows the layered grid with the effective value marked and its source', async () => {
     await open('#/settings');
 
     const grid = await screen.findByRole('region', { name: 'Innstillinger per lag' });
     const row = within(grid)
-      .getByRole('button', { name: 'Antall treff som leses' })
+      .getByRole('button', { name: 'search.top_k' })
       .closest('tr') as HTMLElement;
     expect(within(row).getByText('Satt på tjenesten')).toBeTruthy();
     expect(within(row).getByText('(gjelder)')).toBeTruthy();
-    const pinned = within(grid)
-      .getByRole('button', { name: 'Oppbevaring av logg' })
-      .closest('tr') as HTMLElement;
-    expect(within(pinned).getByText('Festet til v11')).toBeTruthy();
-    const risk = within(grid)
-      .getByRole('button', { name: 'Fjern personopplysninger før modellkall' })
-      .closest('tr') as HTMLElement;
-    expect(
-      within(risk).getAllByText(/Per risikonivå: av \/ på \/ på \(gulv: på for høy\)/).length,
-    ).toBeGreaterThan(0);
-    expect(within(risk).getByText('På (begrenset risiko)')).toBeTruthy();
-    expect(within(grid).getAllByText('Foreslått som standard').length).toBeGreaterThan(0);
   });
 
   it('switches to all agencies and filters to overridden settings', async () => {
@@ -260,27 +210,18 @@ describe('innstillinger', () => {
     expect(within(grid).queryByRole('button', { name: 'Kildehenvisning' })).toBeNull();
   });
 
-  it('previews a platform default with who changes, keeps or breaks, and needs a reason to save', async () => {
+  it('previews a platform default with who keeps their own value, and needs a reason to save', async () => {
     const { calls, fetch } = recording();
     await open('#/settings', fetch);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Maks tokens per kjøring' }));
-    const panel = screen.getByRole('dialog', { name: 'Maks tokens per kjøring' });
+    fireEvent.click(await screen.findByRole('button', { name: 'limits.max_tokens_run' }));
+    const panel = screen.getByRole('dialog', { name: 'limits.max_tokens_run' });
     expect(panel.getAttribute('aria-modal')).toBe('false');
-    fireEvent.change(within(panel).getByRole('textbox', { name: /Verdi/ }), {
-      target: { value: '16000' },
-    });
-    fireEvent.click(within(panel).getByRole('button', { name: 'Forhåndsvis endring' }));
-    expect(await within(panel).findByText('Ville brutt')).toBeTruthy();
-    const save = within(panel).getByRole('button', { name: 'Lagre' });
-    expect(save.getAttribute('aria-disabled')).toBe('true');
-
     fireEvent.change(within(panel).getByRole('textbox', { name: /Verdi/ }), {
       target: { value: '64000' },
     });
     fireEvent.click(within(panel).getByRole('button', { name: 'Forhåndsvis endring' }));
-    await waitFor(() => expect(within(panel).queryByText('Ville brutt')).toBeNull());
-    expect(within(panel).getByText('Beholder egen verdi')).toBeTruthy();
+    expect(await within(panel).findByText('Beholder egen verdi')).toBeTruthy();
     fireEvent.click(within(panel).getByRole('button', { name: 'Lagre' }));
     expect(await within(panel).findByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
 
@@ -288,9 +229,7 @@ describe('innstillinger', () => {
       target: { value: 'Lange høringer' },
     });
     fireEvent.click(within(panel).getByRole('button', { name: 'Lagre' }));
-    expect(
-      await screen.findByText(/Maks tokens per kjøring er lagret \(64 000 tokens\)/),
-    ).toBeTruthy();
+    expect(await screen.findByText(/limits\.max_tokens_run er lagret/)).toBeTruthy();
     expect(calls.find((c) => c.method === 'PUT' && !c.path.includes('dryRun'))).toMatchObject({
       body: { value: 64000 },
       reason: 'Lange høringer',
@@ -299,10 +238,10 @@ describe('innstillinger', () => {
 
   it('closes the side panel with Escape', async () => {
     await open('#/settings');
-    fireEvent.click(await screen.findByRole('button', { name: 'Svarspråk' }));
-    expect(screen.getByRole('dialog', { name: 'Svarspråk' })).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'answer.language' }));
+    expect(screen.getByRole('dialog', { name: 'answer.language' })).toBeTruthy();
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(screen.queryByRole('dialog', { name: 'Svarspråk' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'answer.language' })).toBeNull();
   });
 
   it('formats and validates risk-level defaults with a floor', () => {
@@ -354,10 +293,9 @@ describe('innstillinger', () => {
     expect(screen.getByText('2 konflikter')).toBeTruthy();
     const table = screen.getByRole('region', { name: 'Endringer i prøvekjøringen' });
     fireEvent.click(
-      within(within(table).getByRole('radiogroup', { name: /Antall treff som leses/ })).getByRole(
-        'radio',
-        { name: 'Overskriv' },
-      ),
+      within(within(table).getByRole('radiogroup', { name: /search\.top_k/ })).getByRole('radio', {
+        name: 'Overskriv',
+      }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Bruk endringene' }));
 
@@ -500,7 +438,7 @@ describe('kvalitetsmatrise og dommere', () => {
     await open('#/quality-matrix?tab=rate', fetch);
 
     expect(await screen.findByRole('heading', { name: /frivillige organisasjoner/ })).toBeTruthy();
-    expect(screen.queryByText(/Dommeren svarte/)).toBeNull();
+    expect(screen.queryByText(/Den automatiske vurderingen svarte/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Lagre vurderingen' }));
     expect(screen.getAllByText('Velg et svar.')).toHaveLength(2);
 
@@ -509,7 +447,7 @@ describe('kvalitetsmatrise og dommere', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Lagre vurderingen' }));
     expect(
       await screen.findByText(
-        /Dommeren svarte: riktig «Delvis», dekket av kilder «Nei». Dere er uenige/,
+        /Den automatiske vurderingen svarte: riktig «Delvis», dekket av kilder «Nei». Dere er uenige/,
       ),
     ).toBeTruthy();
     expect(calls.find((c) => c.path === '/api/operator/quality/labels')?.body).toMatchObject({
@@ -530,7 +468,7 @@ describe('etiketter fra Langfuse', () => {
     const batch = await screen.findByRole('region', { name: /kudos_quotes_covered/ });
     expect(
       within(batch).getByText(
-        '3 etiketter venter: 1 lik dommeren, 1 ulik, 1 uten dommerscore · 2 merkere',
+        '3 etiketter venter: 1 lik vurderingen, 1 ulik, 1 uten score · 2 merkere',
       ),
     ).toBeTruthy();
     expect(within(batch).getAllByText(/^pseudonym:/).length).toBe(3);
@@ -539,7 +477,7 @@ describe('etiketter fra Langfuse', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Godta etikettene' }));
     expect(
       await within(dialog).findByText(
-        /Skriv en begrunnelse på minst \d+ tegn\. Den vises i Revisjon\./,
+        /Skriv en begrunnelse på minst \d+ tegn\. Den vises i loggen\./,
       ),
     ).toBeTruthy();
     expect(calls.some((c) => c.path.endsWith('/sink-labels/accept'))).toBe(false);
@@ -549,7 +487,7 @@ describe('etiketter fra Langfuse', () => {
     });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Godta etikettene' }));
 
-    expect(await screen.findByText('3 etiketter teller nå i dommerens samsvar.')).toBeTruthy();
+    expect(await screen.findByText('3 etiketter teller nå i samsvaret.')).toBeTruthy();
     await waitFor(() =>
       expect(screen.queryByRole('region', { name: /kudos_quotes_covered/ })).toBeNull(),
     );
@@ -586,40 +524,15 @@ describe('etiketter fra Langfuse', () => {
 });
 
 describe('sporing og evaluering', () => {
-  it('states the fixed privacy rule and warns when the tool is hosted outside EU/EØS', async () => {
+  it('shows the platform tracing and the fixed rule, with no actions the API does not have', async () => {
     await open('#/tracing');
 
+    expect(await screen.findByRole('heading', { name: 'Plattformens sporing' })).toBeTruthy();
+    expect(screen.getByText(/navn på ansatte sendes aldri til eksterne verktøy/)).toBeTruthy();
+    expect(screen.getByText('https://langfuse.digdir.example.no/api/public/otel')).toBeTruthy();
     expect(
-      await screen.findByText(/navn på ansatte sendes aldri til eksterne verktøy/),
-    ).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Langfuse/ }).getAttribute('aria-pressed')).toBe(
-      'true',
-    );
-    fireEvent.click(screen.getByRole('radio', { name: 'Utenfor EU/EØS' }));
-    expect(screen.getByText(/Spor sendes da ut av EU\/EØS/)).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'Virksomheter med egen kobling' })).toBeTruthy();
-  });
-
-  it('validates a new connection with an error summary and never shows the secret', async () => {
-    const { calls, fetch } = recording();
-    await open('#/tracing', fetch);
-
-    fireEvent.click(await screen.findByRole('button', { name: /Arize Phoenix/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Koble til' }));
-    expect(await screen.findByText('Rett opp i dette før du lagrer:')).toBeTruthy();
-
-    fireEvent.change(screen.getByRole('textbox', { name: 'Adresse til Phoenix' }), {
-      target: { value: 'https://phoenix.digdir.example.no' },
-    });
-    fireEvent.change(screen.getByLabelText(/API-nøkkel/), {
-      target: { value: 'hemmelig-nokkel-123456' },
-    });
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Kontrollrådet' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Koble til' }));
-
-    expect(await screen.findByText(/Arize Phoenix er koblet til/)).toBeTruthy();
-    expect((screen.getByLabelText(/API-nøkkel/) as HTMLInputElement).value).toBe('');
-    expect(calls.find((c) => c.method === 'PUT')?.path).toBe('/api/operator/tracing/phoenix');
+      screen.queryByRole('button', { name: /^(Lagre|Koble til|Koble fra|Send testspor)$/ }),
+    ).toBeNull();
   });
 });
 
@@ -655,7 +568,7 @@ describe('drift', () => {
 
     const panel = await screen.findByRole('region', { name: 'Definisjoner i karantene' });
     const row = (await within(panel).findByText('vedtaksutkast')).closest('tr') as HTMLElement;
-    expect(within(row).getByText('Tjeneste · versjon 4')).toBeTruthy();
+    expect(within(row).getByText('Tjeneste · utgave 4')).toBeTruthy();
     expect(within(row).getByText('spec.strategy.ref: ukjent strategi «agent-loop@3»')).toBeTruthy();
     await waitFor(() => expect(within(row).getByText('Testetaten')).toBeTruthy());
   });
@@ -699,7 +612,7 @@ describe('diagnostikk', () => {
       .getByRole('rowheader', { name: 'Logg oppbevares' })
       .closest('tr') as HTMLElement;
     expect(within(pinned).getByText('Festet til v11')).toBeTruthy();
-    expect(screen.getAllByText('Satt på datasettet').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Satt på dokumentsamlingen').length).toBeGreaterThan(0);
   });
 
   it("shows the provider's status and error body on a failed run", async () => {
