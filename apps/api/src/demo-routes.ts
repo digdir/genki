@@ -659,10 +659,10 @@ export const createDemosModule =
                     const current = (await latestRecording(store, id)) ?? claimed;
                     if (current.spec.status !== 'queued')
                       throw new DemoRefused('status', 'the recording has finished');
-                    await refuseOpen(demo.id, id);
+                    await refuseOpen(mode === 'job' ? undefined : demo.id, id);
                     return update(current, spec, `platform:${principal.subject}`, 'started');
                   }
-                  await refuseOpen(demo.id);
+                  await refuseOpen(mode === 'job' ? undefined : demo.id);
                   return appendVersion<RecordingSpec>(store, {
                     kind: recordingKind,
                     scope: platformScope,

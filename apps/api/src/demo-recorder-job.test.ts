@@ -242,6 +242,19 @@ describe('recording in the recorder job', () => {
     expect([second.status, cancelled.status, afterCancel.status]).toEqual([409, 200, 202]);
   });
 
+  it('refuses a recorder start of another demo while the job has a recording open', async () => {
+    const { queue, call, token } = await boot({ job: async () => undefined });
+    await queue();
+    const bearer = await token();
+
+    const started = await call('/recorder/demos/catalog/recordings', bearer, {
+      method: 'POST',
+      json: { genkiVersion: '0.43.0', narrated: false },
+    });
+
+    expect(started.status).toBe(409);
+  });
+
   it('opens no route but the recorder routes with the recorder’s Entra token', async () => {
     const { call, token } = await boot({ job: async () => undefined });
     const bearer = await token();
