@@ -1,6 +1,6 @@
 # Review instructions
 
-genki is a shared platform for many AI services. Review against that: what holds for one service must hold for all of them. The repository rules are in [CONTRIBUTING.md](CONTRIBUTING.md) and the testing and security rules and the recurring mistakes in [AGENTS.md](AGENTS.md).
+genki is a shared platform for many AI services. Review against that: what holds for one service must hold for all of them. The repository rules, the testing and security rules and the recurring mistakes are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## What Important means here
 
@@ -38,7 +38,6 @@ Report every finding in one review. Never hold one back for a later round: the a
 - Every new rule has a test whose name states it. A bug fix has the regression test that would have caught it.
 - Tests do not depend on today's date, on test order or on rows another test left behind.
 - Text a user sees goes through the i18n catalogues with both bokmål and English. A bokmål screen never shows English.
-- Vendor SDKs are imported only in `packages/providers-*`.
 - New behaviour is configuration or API first and works for any service, not only one.
 - New routes are in the API description and return problem types (`urn:genai:problem:...`) on error.
 - No em-dashes in user-facing copy or docs.

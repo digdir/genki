@@ -158,7 +158,7 @@ export function verdict(outcomes: string): { ok: boolean; summary: string } {
   const summary =
     [...setup, progress].join('; ') +
     (sealed
-      ? '; findings sealed for the maintainers. See the security sweep section in CONTRIBUTING.md to open them.'
+      ? '; findings sealed for the maintainers. See the security sweep section in docs/review.md to open them.'
       : '; nothing was sealed.');
   return { ok: setup.length === 0 && missed.length === 0 && sealed, summary };
 }

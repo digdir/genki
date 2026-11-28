@@ -31,7 +31,7 @@ const workflow = parse(text) as {
 const job = workflow.jobs['cross-model'] ?? { if: '', permissions: {}, steps: [] };
 const step = (id: string) => job.steps.find((s) => s.id === id);
 const script = readFileSync(join(root, 'scripts/review-cross.ts'), 'utf8');
-const contributing = readFileSync(join(root, 'CONTRIBUTING.md'), 'utf8');
+const reviewDoc = readFileSync(join(root, 'docs/review.md'), 'utf8');
 
 describe('the cross-model review', () => {
   it('stays off until a repository variable names the deployment', () => {
@@ -138,8 +138,8 @@ describe('the cross-model review', () => {
   });
 
   it('is documented with its one-time setup', () => {
-    expect(contributing).toContain('CROSS_REVIEW_DEPLOYMENT');
-    expect(contributing).toContain('Cognitive Services OpenAI User');
-    expect(contributing).toContain('CROSS_REVIEW_REASONING');
+    expect(reviewDoc).toContain('CROSS_REVIEW_DEPLOYMENT');
+    expect(reviewDoc).toContain('Cognitive Services OpenAI User');
+    expect(reviewDoc).toContain('CROSS_REVIEW_REASONING');
   });
 });
