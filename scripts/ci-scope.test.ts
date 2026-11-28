@@ -153,9 +153,9 @@ describe('the static jobs', () => {
     expect(workflow.jobs.typecheck?.if).toBe("needs.scope.outputs.static == 'true'");
   });
 
-  it('checks the System Atlas and the workflows, and runs the quarantine check when the script exists', () => {
+  it('checks the System Atlas and the workflows, and runs the quarantine check', () => {
     expect(runs('static')).toContain('npm run atlas:build -- --check');
-    expect(runs('static')).toContain('npm run quarantine:check --if-present');
+    expect(runs('static')).toContain('npm run quarantine:check');
     expect(runs('static').find((r) => r.includes('rhysd/actionlint'))).toMatch(
       /rhysd\/actionlint:[\d.]+@sha256:[0-9a-f]{64}/,
     );
