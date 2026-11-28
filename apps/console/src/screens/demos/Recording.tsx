@@ -1,4 +1,5 @@
 import { Alert, Button, Heading, Link, Paragraph, Tag } from '@digdir/designsystemet-react';
+import { useFormat } from '@genai/i18n/react';
 import { useEffect, useState } from 'react';
 import { ApiError, type ApiClient, type DemoDetail, type DemoRecording } from '../../api';
 import { useAsync } from '../../hooks';
@@ -7,18 +8,20 @@ import { EmptyState, ErrorState, Loading } from '../../states';
 import { DialogError, Flash, ReasonDialog, useFlash } from '../../ui';
 import { commandLine, describeCommand, parseCommands } from './commands';
 import {
-  CostLine,
+  HeardLines,
   actorName,
   Crumbs,
   demoHref,
   editHref,
+  editionsOf,
   hasFile,
   isOpen,
+  progressText,
   stepsDone,
   recordingHref,
   useFileUrl,
 } from './shared';
-import { hasStudio, Studio } from './Studio';
+import { DemoStudio } from './Studio';
 
 const pollMs = 2000;
 
@@ -63,11 +66,13 @@ const Progress = ({
   const status = (n: number): StepStatus =>
     n <= done ? 'done' : n === done + 1 && recording.status === 'running' ? 'now' : 'waiting';
   return (
-    <section aria-labelledby="recording-steps" className="card stack">
-      <Heading level={2} data-size="sm" id="recording-steps">
-        {t('demos.progressHeading')}
-      </Heading>
-      <ol className="demo-progress">
+    <section aria-labelledby="recording-steps" className="dp">
+      <div className="dp-head">
+        <Heading level={2} data-size="xs" id="recording-steps">
+          {t('demos.progressHeading')}
+        </Heading>
+      </div>
+      <ol className="demo-progress dp-body">
         {Array.from({ length: recording.steps }, (_, i) => {
           const n = i + 1;
           const s = status(n);
@@ -88,6 +93,42 @@ const Progress = ({
   );
 };
 
+interface Stage {
+  key: string;
+  label: string;
+  status: StepStatus;
+  text: string;
+}
+
+const stagesOf = (recording: DemoRecording, t: ReturnType<typeof useT>): Stage[] => {
+  const running = recording.status === 'running';
+  const done = stepsDone(recording);
+  const captured = done >= recording.steps;
+  const word = (status: StepStatus) => t(statusKey[status]);
+  if (recording.editOf) {
+    const status: StepStatus = running ? 'now' : 'waiting';
+    return [{ key: 'edit', label: t('studio.stageEdit'), status, text: word(status) }];
+  }
+  const capture: StepStatus = captured ? 'done' : done > 0 ? 'now' : 'waiting';
+  const stages: Stage[] = [];
+  if (recording.narrated) {
+    const voice: StepStatus = done > 0 ? 'done' : running ? 'now' : 'waiting';
+    stages.push({ key: 'voice', label: t('studio.stageVoice'), status: voice, text: word(voice) });
+  }
+  stages.push({
+    key: 'capture',
+    label: t('studio.stageCapture'),
+    status: capture,
+    text:
+      capture === 'waiting' ? word(capture) : t('studio.stepsOf', { done, steps: recording.steps }),
+  });
+  if (recording.upTo === undefined) {
+    const film: StepStatus = captured && running ? 'now' : 'waiting';
+    stages.push({ key: 'film', label: t('studio.stageFilm'), status: film, text: word(film) });
+  }
+  return stages;
+};
+
 const Running = ({
   api,
   recording,
@@ -100,41 +141,59 @@ const Running = ({
   onCancelled: () => void;
 }) => {
   const t = useT();
+  const f = useFormat();
   const [asking, setAsking] = useState(false);
   const done = stepsDone(recording);
+  const queued = recording.status === 'queued';
+  const edition = demo ? editionsOf(demo.recordings).length + 1 : undefined;
+  const cap = recording.costCapUsd;
   return (
     <>
-      <div className="page-header">
-        <div className="demo-tags">
+      <nav aria-label={t('demos.breadcrumb')} className="demo-crumbs">
+        <Link href="#/demos">{t('demos.back')}</Link>
+        {demo ? (
+          <>
+            <span aria-hidden="true">›</span>
+            <Link href={demoHref(demo.id)}>{demo.title}</Link>
+          </>
+        ) : null}
+        <span aria-hidden="true">›</span>
+        <span aria-current="page">
+          {recording.upTo
+            ? t('demos.trialOf', { upTo: recording.upTo })
+            : edition
+              ? t('studio.edition', { n: edition })
+              : t('demos.recordingRunningTitle')}
+        </span>
+      </nav>
+      <div className="film-head">
+        <div className="film-head-title">
+          <Heading level={1} data-size="md">
+            {queued ? t('demos.recordingQueuedTitle') : t('studio.recordingTitle')}
+          </Heading>
           <Tag data-color="info" data-size="sm">
-            {recording.status === 'queued' ? t('demos.resultQueued') : t('demos.stateRecording')}
+            {queued ? null : <span className="spin" aria-hidden="true" />}
+            {progressText(recording, t, demo?.recorder)}
           </Tag>
         </div>
-        <Heading level={1} data-size="lg">
-          {recording.status === 'queued'
-            ? t('demos.recordingQueuedTitle')
-            : t('demos.recordingRunningTitle')}
-        </Heading>
-        <p className="intro">
-          {recording.status === 'queued'
-            ? t(
-                demo?.recorder === 'scheduled'
-                  ? 'demos.recordingQueuedTextScheduled'
-                  : 'demos.recordingQueuedText',
-              )
-            : t('demos.recordingProgress', { done, steps: recording.steps })}
-        </p>
-      </div>
-      <div className="actions-row">
         <Button
           data-size="sm"
           variant="secondary"
           data-color="danger"
           onClick={() => setAsking(true)}
         >
-          {t('demos.cancel')}
+          {t('studio.stopRecording')}
         </Button>
       </div>
+      {queued ? (
+        <Paragraph className="muted">
+          {t(
+            demo?.recorder === 'scheduled'
+              ? 'demos.recordingQueuedTextScheduled'
+              : 'demos.recordingQueuedText',
+          )}
+        </Paragraph>
+      ) : null}
       <ReasonDialog
         open={asking}
         title={t('demos.cancelTitle')}
@@ -152,32 +211,90 @@ const Running = ({
           onCancelled();
         }}
       />
-      <CostLine recording={recording} />
-      {recording.editOf ? (
-        <section aria-labelledby="recording-edit" className="card stack">
-          <Heading level={2} data-size="sm" id="recording-edit">
-            {t('demos.studioAsked')}
-          </Heading>
-          <Paragraph>{recording.instruction}</Paragraph>
-          <Link href={recordingHref(recording.editOf)}>{t('demos.studioEditOf')}</Link>
-        </section>
-      ) : (
-        <div className="demo-detail">
-          <section aria-labelledby="recording-shot" className="stack">
-            <Heading level={2} data-size="sm" id="recording-shot">
-              {t('demos.screenshotNow')}
-            </Heading>
-            <Screenshot
-              api={api}
-              recording={recording.id}
-              name={done > 0 ? `step-${done}.png` : undefined}
-              alt={t('demos.screenshotAlt', { n: done })}
-              empty={t('demos.noScreenshot')}
-            />
-          </section>
-          <Progress recording={recording} demo={demo} />
+      <ol className="stages" aria-label={t('studio.stages')}>
+        {stagesOf(recording, t).map((s) => (
+          <li
+            key={s.key}
+            className={`is-${s.status}`}
+            aria-current={s.status === 'now' ? 'step' : undefined}
+          >
+            <span>{s.label}</span>
+            <span className="stage-status">
+              {s.status === 'done' ? '✓ ' : ''}
+              {s.text}
+            </span>
+          </li>
+        ))}
+      </ol>
+      <div className="rec-grid">
+        <div className="stack">
+          {recording.editOf ? (
+            <section aria-labelledby="recording-edit" className="dp">
+              <div className="dp-head">
+                <Heading level={2} data-size="xs" id="recording-edit">
+                  {t('demos.studioAsked')}
+                </Heading>
+              </div>
+              <div className="dp-body stack-sm">
+                <Paragraph>{recording.instruction}</Paragraph>
+                <Link href={recordingHref(recording.editOf)}>{t('demos.studioEditOf')}</Link>
+              </div>
+            </section>
+          ) : (
+            <>
+              <section aria-labelledby="recording-shot" className="dp">
+                <div className="dp-head">
+                  <Heading level={2} data-size="xs" id="recording-shot">
+                    {t('studio.lastShot')}
+                  </Heading>
+                  {done > 0 ? (
+                    <span className="muted small">{t('demos.stepHeading', { n: done })}</span>
+                  ) : null}
+                </div>
+                <div className="dp-body">
+                  <Screenshot
+                    api={api}
+                    recording={recording.id}
+                    name={done > 0 ? `step-${done}.png` : undefined}
+                    alt={t('demos.screenshotAlt', { n: done })}
+                    empty={t('demos.noScreenshot')}
+                  />
+                </div>
+              </section>
+              <Progress recording={recording} demo={demo} />
+            </>
+          )}
         </div>
-      )}
+        <div className="stack">
+          {cap !== undefined ? (
+            <section aria-labelledby="recording-cost" className="dp">
+              <div className="dp-head">
+                <Heading level={2} data-size="xs" id="recording-cost">
+                  {t('studio.cost')}
+                </Heading>
+              </div>
+              <div className="dp-body stack-sm">
+                <div className="spend">
+                  <span className="spend-big num">
+                    {recording.costUsd !== undefined
+                      ? `${f.decimal(recording.costUsd, 2)} USD`
+                      : t('studio.notMeasured')}
+                  </span>
+                  <span className="muted">{t('studio.ofAtMost', { cap })}</span>
+                </div>
+                <span className="meter-bar is-large" aria-hidden="true">
+                  <span
+                    style={{ width: `${Math.min(100, (100 * (recording.costUsd ?? 0)) / cap)}%` }}
+                  />
+                </span>
+                <Paragraph data-size="sm" className="muted">
+                  {t('studio.stopsAtCap')}
+                </Paragraph>
+              </div>
+            </section>
+          ) : null}
+        </div>
+      </div>
     </>
   );
 };
@@ -205,7 +322,7 @@ const Failed = ({
             {t('demos.stateFailed')}
           </Tag>
         </div>
-        <Heading level={1} data-size="lg">
+        <Heading level={1} data-size="md">
           {failure.step === 0
             ? t('demos.failedStartTitle')
             : t('demos.failedTitle', { step: failure.step, steps: recording.steps })}
@@ -308,6 +425,23 @@ export const RecordingScreen = ({ api, id }: { api: ApiClient; id: string }) => 
       </>
     );
   const found = state.data;
+  if (found.status === 'recorded' && found.upTo === undefined)
+    return <DemoStudio api={api} id={found.demo} recording={found.id} />;
+  if (isOpen(found))
+    return (
+      <>
+        <Flash message={flash.message} />
+        <Running
+          api={api}
+          recording={found}
+          demo={demo}
+          onCancelled={() => {
+            flash.show(t('demos.cancelled'));
+            retry();
+          }}
+        />
+      </>
+    );
   return (
     <>
       {crumbs}
@@ -318,28 +452,17 @@ export const RecordingScreen = ({ api, id }: { api: ApiClient; id: string }) => 
           {found.upTo ? ` · ${t('demos.trialOf', { upTo: found.upTo })}` : ''}
         </Paragraph>
       ) : null}
-      {isOpen(found) ? (
-        <Running
-          api={api}
-          recording={found}
-          demo={demo}
-          onCancelled={() => {
-            flash.show(t('demos.cancelled'));
-            retry();
-          }}
-        />
-      ) : found.status === 'failed' ? (
+      {found.status === 'failed' ? (
         <Failed api={api} recording={found} demo={demo} />
       ) : found.status === 'cancelled' ? (
         <EmptyState title={t('demos.cancelledTitle')}>
           <Paragraph>{t('demos.cancelledText', { who: actorName(found.cancelledBy) })}</Paragraph>
           <Link href={demoHref(found.demo)}>{t('demos.toDemo')}</Link>
         </EmptyState>
-      ) : hasStudio(found) ? (
-        <Studio api={api} recording={found} demo={demo} />
       ) : (
         <EmptyState title={t('demos.recordedTitle')}>
           <Paragraph>{t('demos.recordedText')}</Paragraph>
+          <HeardLines recording={found} />
           <Link href={demoHref(found.demo)}>{t('demos.toDemo')}</Link>
         </EmptyState>
       )}

@@ -1,4 +1,5 @@
 import type { FlagState } from '@genai/contracts/flags';
+import type { ColorScheme, DemoScene, DemoVoiceProvider } from '@genai/contracts';
 import { translator, type Locale, type T } from './i18n';
 import { definitionKindSegments } from './definition-kinds';
 import type {
@@ -140,6 +141,18 @@ export interface DemoRecording {
   instruction?: string;
   costCapUsd?: number;
   costUsd?: number;
+  lines?: DemoLineScore[];
+  sound?: { voice?: number; music?: number; mix: number; peak: number };
+}
+
+export interface DemoLineScore {
+  step: number;
+  takes: number;
+  score: number;
+  missing: string[];
+  extra: string[];
+  keyTermsMissing: string[];
+  wordsPerSecond?: number;
 }
 
 export interface DemoStep {
@@ -148,6 +161,9 @@ export interface DemoStep {
   hold?: number;
   chapter?: string;
   focus?: string[];
+  spoken?: Partial<Record<DemoVoiceProvider, string>>;
+  scene?: DemoScene;
+  page?: string;
 }
 
 export interface DemoCard {
@@ -169,6 +185,11 @@ export interface DemoSpec {
   ready?: string;
   intro?: DemoCard;
   outro?: DemoCard;
+  respell?: Partial<Record<DemoVoiceProvider, Record<string, string>>>;
+  music?: 'pulse';
+  exampleData?: boolean;
+  scrub?: string[];
+  colorScheme?: ColorScheme;
   steps: DemoStep[];
 }
 
@@ -180,6 +201,7 @@ export interface Demo extends DemoSpec {
   latest?: DemoRecording;
   recorded?: DemoRecording;
   open?: DemoRecording;
+  editions?: number;
 }
 
 export interface DemoLibrary {

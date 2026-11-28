@@ -123,17 +123,33 @@ export interface Segment {
   to: number;
   transition: 'cut' | 'crossfade';
   at: number;
+  card?: number;
 }
+
+export const chapterCardSeconds = 2.6;
+
+export const isFilmLook = (log: Pick<CaptureLog, 'steps'>) => log.steps.some((s) => s.scene);
 
 export const loadingWorthCutting = 0.6;
 
+export const filmEdl = (edl: Edl, log: Pick<CaptureLog, 'steps'>): Edl =>
+  isFilmLook(log)
+    ? {
+        ...edl,
+        chapters: [],
+        steps: edl.steps.map((s) => ({ ...s, showAction: false, cursor: 'hidden' as const })),
+      }
+    : edl;
+
 export const segmentsOf = (edl: Edl, log: CaptureLog): Segment[] => {
   const pieces: Omit<Segment, 'at'>[] = [];
+  const film = isFilmLook(log);
   log.steps.forEach((step, i) => {
     const e = edl.steps[i] as Edl['steps'][number];
     const talkFrom = step.cue - e.lead;
     const talkTo = Math.min(step.end, step.cue + step.voice.seconds + e.tail);
-    const acts = step.moves.length > 0 || step.clicks.length > 0 || step.scrolls.length > 0;
+    const acts =
+      !film && (step.moves.length > 0 || step.clicks.length > 0 || step.scrolls.length > 0);
     const loading = step.navigateAt === undefined ? 0 : step.cue - step.navigateAt;
     if (step.navigateAt !== undefined && loading >= loadingWorthCutting) {
       if (e.showAction && acts)
@@ -160,7 +176,10 @@ export const segmentsOf = (edl: Edl, log: CaptureLog): Segment[] => {
     const last = segments.at(-1);
     const from = last ? Math.max(p.from, last.to) : p.from;
     if (p.to - from < 0.2) continue;
-    segments.push({ ...p, from, at });
+    const card =
+      film && log.steps[p.step - 1]?.chapter && last?.step !== p.step ? chapterCardSeconds : 0;
+    at += card;
+    segments.push({ ...p, from, at, ...(card ? { card } : {}) });
     at += p.to - from;
   }
   return segments;
@@ -247,12 +266,14 @@ export const cameraShots = (edl: Edl, log: CaptureLog, segments: Segment[]): Sho
 };
 
 export const baselineEdl = (log: CaptureLog, fps: 30 | 60 = 60): Edl => {
+  const film = isFilmLook(log);
+  const stage = stageOf(log);
   const camera: Edl['camera'] = [];
   log.steps.forEach((step, i) => {
     if (step.focus) {
       camera.push({
         at: { step: i + 1, word: 0 },
-        zoom: zoomFor(step.focus, log.viewport),
+        zoom: zoomFor(step.focus, log.viewport, stage),
         target: step.focus,
       });
     }
@@ -265,17 +286,17 @@ export const baselineEdl = (log: CaptureLog, fps: 30 | 60 = 60): Edl => {
     ...(log.outro ? { outro: { seconds: 4 } } : {}),
     steps: log.steps.map((s, i) => ({
       step: i + 1,
-      showAction: s.clicks.length > 0 || s.moves.length > 0,
+      showAction: !film && (s.clicks.length > 0 || s.moves.length > 0),
       enter: 'crossfade' as const,
       lead: 0.25,
       tail: Math.min(1.2, Math.max(0.35, s.hold ?? 0.5)),
-      cursor: 'auto' as const,
+      cursor: film ? ('hidden' as const) : ('auto' as const),
     })),
     camera,
     callouts: [],
-    chapters: log.steps.flatMap((s, i) =>
-      s.chapter ? [{ at: { step: i + 1 }, title: s.chapter }] : [],
-    ),
+    chapters: film
+      ? []
+      : log.steps.flatMap((s, i) => (s.chapter ? [{ at: { step: i + 1 }, title: s.chapter }] : [])),
   };
 };
 
@@ -283,11 +304,47 @@ export const frame: [number, number] = [1920, 1080];
 export const contentWidth = 1700;
 export const maxZoom = 1.8;
 
-export const zoomFor = (target: Box, [w]: [number, number]) => {
-  const onScreen = contentWidth / w;
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface Stage {
+  page: Rect;
+  window: Rect;
+}
+
+export const windowStage: Stage = {
+  page: { x: 110, y: 74, width: contentWidth, height: 956 },
+  window: { x: 0, y: 0, width: frame[0], height: frame[1] },
+};
+
+export const filmFrame: Rect = { x: 120, y: 200, width: 1560, height: 730 };
+
+export const filmStage = ([w, h]: [number, number]): Stage => {
+  const scale = Math.min(filmFrame.width / w, filmFrame.height / h);
+  const width = w * scale;
+  return {
+    page: {
+      x: filmFrame.x + (filmFrame.width - width) / 2,
+      y: filmFrame.y,
+      width,
+      height: h * scale,
+    },
+    window: filmFrame,
+  };
+};
+
+export const stageOf = (log: Pick<CaptureLog, 'steps' | 'viewport'>) =>
+  isFilmLook(log) ? filmStage(log.viewport) : windowStage;
+
+export const zoomFor = (target: Box, [w]: [number, number], stage = windowStage) => {
+  const onScreen = stage.page.width / w;
   const fit = Math.min(
-    (frame[0] * 0.9) / (target.width * onScreen),
-    (frame[1] * 0.8) / (target.height * onScreen),
+    (stage.window.width * 0.9) / (target.width * onScreen),
+    (stage.window.height * 0.8) / (target.height * onScreen),
   );
   return Math.floor(Math.min(maxZoom, Math.max(1, fit)) * 100) / 100;
 };
@@ -338,12 +395,12 @@ export const lintEdl = (edl: Edl, log: CaptureLog): Issue[] => {
         `camera ${i + 1} zooms only ${c.zoom}x, which reads as a wobble`,
         'zoom at least 1.2x or not at all',
       );
-    if (c.target && c.zoom > zoomFor(c.target, log.viewport) + 0.01)
+    if (c.target && c.zoom > zoomFor(c.target, log.viewport, stageOf(log)) + 0.01)
       add(
         'legible-zoom',
         at,
         `camera ${i + 1} at ${c.zoom}x cuts off its target`,
-        `zoom at most ${zoomFor(c.target, log.viewport)}x`,
+        `zoom at most ${zoomFor(c.target, log.viewport, stageOf(log))}x`,
       );
   });
   for (let i = 1; i < shots.length; i++) {
@@ -415,7 +472,8 @@ export const lintEdl = (edl: Edl, log: CaptureLog): Issue[] => {
 
 export const holdZoom = 2.5;
 
-export const tidyCamera = (edl: Edl, log: CaptureLog): Edl => {
+export const tidyCamera = (given: Edl, log: CaptureLog): Edl => {
+  const edl = filmEdl(given, log);
   const segments = segmentsOf(edl, log);
   const fixed = [...pageEntries(log, segments), ...pageLeaves(log, segments)];
   const leaves = pageLeaves(log, segments);
@@ -443,7 +501,9 @@ export const tidyCamera = (edl: Edl, log: CaptureLog): Edl => {
     if (leaves.some((l) => l > t.at && l - t.at < holdZoom)) continue;
     const back = cameraShots({ ...edl, camera: [c] }, log, segments).find((s) => s.back);
     if (c.zoom > 1 && back && back.at - t.at < holdZoom) continue;
-    const zoom = c.target ? Math.min(c.zoom, zoomFor(c.target, log.viewport)) : c.zoom;
+    const zoom = c.target
+      ? Math.min(c.zoom, zoomFor(c.target, log.viewport, stageOf(log)))
+      : c.zoom;
     kept.push({ ...t, c: { ...c, zoom: Math.max(1, zoom) } });
   }
   return { ...edl, camera: kept.map((k) => k.c) };

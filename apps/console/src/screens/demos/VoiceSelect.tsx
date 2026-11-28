@@ -1,5 +1,11 @@
 import { Fieldset, FieldsetDescription, FieldsetLegend, Radio } from '@digdir/designsystemet-react';
-import { demoVoiceOf, demoVoiceProviders, demoVoices, type DemoVoice } from '@genai/contracts';
+import {
+  demoVoiceOf,
+  demoVoiceProviders,
+  demoVoices,
+  silentVoice,
+  type DemoVoice,
+} from '@genai/contracts';
 import { useId, useState } from 'react';
 import { useT } from '../../i18n';
 
@@ -25,7 +31,7 @@ export const VoiceSelect = ({
   const t = useT();
   const name = useId();
   const [first] = useState(value);
-  const unlisted = [...new Set([first, value])].filter((v) => !demoVoiceOf(v));
+  const unlisted = [...new Set([first, value])].filter((v) => v !== silentVoice && !demoVoiceOf(v));
   const pick = (voice: string) => onChange(voice, demoVoiceOf(voice));
   return (
     <Fieldset>
@@ -73,6 +79,14 @@ export const VoiceSelect = ({
           />
         ),
       )}
+      <Radio
+        name={name}
+        value={silentVoice}
+        label={t('demos.voiceNone')}
+        description={t('demos.voiceNoneHelp')}
+        checked={value === silentVoice}
+        onChange={() => pick(silentVoice)}
+      />
     </Fieldset>
   );
 };

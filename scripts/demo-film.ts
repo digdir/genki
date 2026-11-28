@@ -183,8 +183,14 @@ export const makeFilm = async (out: string, name: string, voices: string, spend:
   }
   const mp4 = join(out, `${name}.mp4`);
   const srt = join(out, `${name}.srt`);
-  await renderFilm({ log, edl, capture: join(out, 'capture.mp4'), voices }, mp4, srt, log.language);
-  return { mp4, srt, extras, posterAt: (edl.intro?.seconds ?? 0) + 2 };
+  const { sound } = await renderFilm(
+    { log, edl, capture: join(out, 'capture.mp4'), voices },
+    mp4,
+    srt,
+    log.language,
+  );
+  if (sound) console.log(`sound: ${JSON.stringify(sound)}`);
+  return { mp4, srt, extras, posterAt: (edl.intro?.seconds ?? 0) + 2, sound };
 };
 
 export const editFilm = async (

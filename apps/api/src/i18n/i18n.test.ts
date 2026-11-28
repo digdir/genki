@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { problem } from '../http.js';
 import { setup } from '../testkit.js';
+import { pageProblem, sceneProblem } from '@genai/contracts';
 import { en, localeMiddleware, nb, requestLocale, t, translateMessage } from './index.js';
 
 const app = new Hono();
@@ -74,6 +75,21 @@ describe('API languages', () => {
     expect(translateMessage('task emitted more than 10000 events', 'nb')).toBe(
       'Kjøringen ble stoppet fordi den laget mer enn 10000 hendelser.',
     );
+  });
+
+  it('shows every refusal of a demo scene or page in bokmål on bokmål screens', () => {
+    for (const scene of [
+      {},
+      { template: 'title', base: 'x', nope: 1 },
+      { template: 'board', title: 'T', columns: [] },
+      { template: 'board', title: 'T', columns: [{ title: 'K' }] },
+      { template: 'code', title: 'K', definition: 'x', lines: 2 },
+      { template: 'close' },
+    ]) {
+      const english = sceneProblem(scene) ?? '';
+      expect(translateMessage(english, 'nb')).not.toBe(english);
+    }
+    expect(translateMessage(pageProblem('//x') ?? '', 'nb')).toMatch(/^page er en sti/);
   });
 
   it('names a variant a variant, never a mode, in bokmål validation messages', () => {

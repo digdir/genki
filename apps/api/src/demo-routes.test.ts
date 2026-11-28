@@ -91,7 +91,7 @@ describe('the demo library', () => {
     expect((await send('/operator/demos', 'operator')).status).toBe(200);
   });
 
-  it('lists each demo with its newest recording and its newest finished one', async () => {
+  it('lists each demo with its newest recording, its newest finished one and how many films finished', async () => {
     const { send, record, start } = await booted();
     const good = await start();
     await record(`/recorder/recordings/${good.id}/files/demo.mp4`, {
@@ -101,20 +101,29 @@ describe('the demo library', () => {
     await record(`/recorder/recordings/${good.id}/finish`, {
       json: { status: 'recorded', seconds: 64 },
     });
+    const again = await start();
+    await record(`/recorder/recordings/${again.id}/files/demo.mp4`, {
+      method: 'PUT',
+      body: new Uint8Array([4]),
+    });
+    await record(`/recorder/recordings/${again.id}/finish`, {
+      json: { status: 'recorded', seconds: 62 },
+    });
     const broken = await start();
     await record(`/recorder/recordings/${broken.id}/finish`, {
       json: { status: 'failed', failure: { step: 2, message: 'fant ikke knappen Send' } },
     });
 
     const library = await readJson<{
-      data: { id: string; latest?: Recording; recorded?: Recording }[];
+      data: { id: string; latest?: Recording; recorded?: Recording; editions: number }[];
     }>(await send('/operator/demos', 'operator'));
 
     expect(library.data).toMatchObject([
       {
         id: 'playground',
+        editions: 2,
         latest: { id: broken.id, status: 'failed', failure: { step: 2 } },
-        recorded: { id: good.id, status: 'recorded', demoVersion: 1 },
+        recorded: { id: again.id, status: 'recorded', demoVersion: 1 },
       },
     ]);
   });
@@ -552,9 +561,10 @@ describe('recording from the console', () => {
       await record(`/recorder/recordings/${trial.id}/finish`, { json: { status: 'recorded' } }),
     );
 
-    const library = await readJson<{ data: { latest?: Recording; recorded?: Recording }[] }>(
-      await send('/operator/demos', 'operator'),
-    );
+    const library = await readJson<{
+      data: { latest?: Recording; recorded?: Recording; editions: number }[];
+    }>(await send('/operator/demos', 'operator'));
+    expect(library.data[0]?.editions).toBe(0);
     expect(trial).toMatchObject({ upTo: 1, steps: 1 });
     expect(finished).toMatchObject({ narrated: false });
     expect(library.data[0]?.latest).toBeUndefined();
@@ -1207,5 +1217,122 @@ describe('approving the cost of a recording', () => {
     });
 
     expect(await finished.json()).toMatchObject({ status: 'recorded', costUsd: 1.27 });
+  });
+});
+
+describe('how a film was voiced and mixed', () => {
+  const putYaml = (app: Awaited<ReturnType<typeof booted>>['app'], body: string) =>
+    app.request('/operator/demos/playground', {
+      method: 'PUT',
+      headers: {
+        authorization: 'Bearer operator',
+        'content-type': 'application/yaml',
+        'change-reason': 'stemme, uttale og musikk',
+      },
+      body,
+    });
+
+  it('saves respellings, spoken lines, music, example data and words to hide with a demo', async () => {
+    const { app } = await booted();
+
+    const saved = await putYaml(
+      app,
+      demoYaml
+        .replace('voice: nb-NO-PernilleNeural', 'voice: elevenlabs-film')
+        .replace(
+          'steps:',
+          'respell:\n  elevenlabs:\n    Digdir: Digg-dir\nmusic: pulse\nexampleData: true\nscrub: [Intern]\nsteps:',
+        )
+        .replace(
+          '  - say: Først velger vi hva vi vil prøve.',
+          '  - say: Genki er her.\n    spoken:\n      elevenlabs: Genn-ki er her.',
+        ),
+    );
+
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toMatchObject({
+      respell: { elevenlabs: { Digdir: 'Digg-dir' } },
+      music: 'pulse',
+      exampleData: true,
+      scrub: ['Intern'],
+      steps: [{ say: 'Genki er her.', spoken: { elevenlabs: 'Genn-ki er her.' } }, {}],
+    });
+  });
+
+  it('refuses a demo with a key-like value, and says where it is', async () => {
+    const { app } = await booted();
+
+    const refused = await putYaml(
+      app,
+      demoYaml.replace(
+        'Så stiller vi et spørsmål.',
+        'Nøkkelen er sk_0123456789abcdef0123456789abcdef0123456789abcdef',
+      ),
+    );
+
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({
+      errors: [{ path: 'steps.1.say', message: expect.stringMatching(/Key Vault/) as string }],
+    });
+  });
+
+  it('refuses a respelling for a voice provider it does not know', async () => {
+    const { app } = await booted();
+
+    const refused = await putYaml(
+      app,
+      demoYaml.replace('steps:', 'respell:\n  polly:\n    Genki: Genn-ki\nsteps:'),
+    );
+
+    expect(refused.status).toBe(400);
+  });
+
+  it('keeps the score of each voiced line and the measured loudness when the recorder finishes', async () => {
+    const { start, record, send } = await booted();
+    const recording = await start();
+    await record(`/recorder/recordings/${recording.id}/files/demo.mp4`, {
+      method: 'PUT',
+      body: new Uint8Array([1]),
+    });
+    const lines = [
+      {
+        step: 2,
+        takes: 4,
+        score: 3,
+        missing: ['spørsmål'],
+        extra: ['spørre'],
+        keyTermsMissing: [],
+        wordsPerSecond: 2.4,
+      },
+    ];
+    const sound = { voice: -15.1, music: -37.2, mix: -15.4, peak: -1.6 };
+
+    const finished = await record(`/recorder/recordings/${recording.id}/finish`, {
+      json: { status: 'recorded', seconds: 12, lines, sound },
+    });
+    const shown = await readJson(
+      await send(`/operator/recordings/${recording.id}`, 'operator', { method: 'GET' }),
+    );
+
+    expect(finished.status).toBe(200);
+    expect(shown).toMatchObject({ lines, sound });
+  });
+
+  it('refuses a line score with more than four takes or a loudness outside what can be measured', async () => {
+    const { start, record } = await booted();
+    const recording = await start();
+    await record(`/recorder/recordings/${recording.id}/files/demo.mp4`, {
+      method: 'PUT',
+      body: new Uint8Array([1]),
+    });
+    const line = { step: 1, takes: 5, score: 0, missing: [], extra: [], keyTermsMissing: [] };
+
+    for (const json of [
+      { status: 'recorded', lines: [line] },
+      { status: 'recorded', sound: { mix: 40, peak: 0 } },
+    ])
+      expect((await record(`/recorder/recordings/${recording.id}/finish`, { json })).status).toBe(
+        400,
+      );
   });
 });

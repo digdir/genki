@@ -4,6 +4,8 @@ export * from './block-bridge.js';
 export * from './block-fields.js';
 export * from './block-fixtures.js';
 export * from './blocks.js';
+export * from './demo-scenes.js';
+export * from './demo-secrets.js';
 export * from './demo-voices.js';
 export * from './input-fields.js';
 export * from './kudos-earlier-ids.js';

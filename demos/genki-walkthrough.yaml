@@ -1,0 +1,232 @@
+title: Genki, plattformen i sin helhet og hvor langt vi har kommet
+language: nb-NO
+voice: elevenlabs-film
+viewport: [1440, 674]
+colorScheme: light
+start: https://portal.genki-test.digdir.cloud/#/overview
+signedIn: true
+exampleData: true
+music: pulse
+ready: Mest brukt siste 7 dager
+steps:
+  - say: Hver virksomhet som lager en KI-tjeneste, bygger det samme. Innlogging, logging, avtaler og drift.
+    scene:
+      template: title
+      title: Hver KI-tjeneste trenger det samme
+      centre: KI-tjeneste
+      items:
+        - { text: Innlogging, cue: innlogging }
+        - { text: Logging, cue: logging }
+        - { text: Avtaler, cue: avtaler }
+        - { text: Drift, cue: drift }
+    hold: 0.3
+  - say: Det er dyrt, det tar tid, og det er vanskelig å gjøre trygt.
+    scene:
+      template: title
+      title: Bygget på nytt, hver gang
+      subtitle: Dyrt, tidkrevende og vanskelig å gjøre trygt.
+    hold: 0.4
+  - say: Genki er Digdirs felles plattform. Her lager og drifter offentlige virksomheter egne KI-tjenester, på samme grunnmur.
+    spoken:
+      elevenlabs: Genn-ki er Digg-dirs felles plattform. Her lager og drifter offentlige virksomheter egne KI-tjenester, på samme grunnmur.
+    scene:
+      template: title
+      logo: true
+      subtitle: Digdirs felles plattform for KI-tjenester i offentlig sektor
+      items:
+        - { text: KI-tjeneste, cue: egne }
+        - { text: KI-tjeneste, cue: egne }
+        - { text: KI-tjeneste, cue: egne }
+        - { text: KI-tjeneste, cue: egne }
+        - { text: KI-tjeneste, cue: egne }
+      base: 'Felles i Genki: innlogging · logging · avtaler · drift'
+    hold: 0.6
+  - say: I portalen ser virksomheten alle sine KI-tjenester på ett sted.
+    chapter: Plattformen i sin helhet
+    scene:
+      template: screen
+      title: Tjenestene på ett sted
+    page: /#/services
+  - say: Vi følger Rapportassistenten, en eksempeltjeneste som svarer saksbehandlere om evalueringer.
+    focus: [role, link, Rapportassistenten]
+    hold: 1
+  - say: Oversikten viser hvordan tjenesten går. Kjøringer, feil, svartid, kostnad og kvalitet.
+    scene:
+      template: screen
+      title: 'Oversikt: slik går tjenesten'
+    do:
+      - [find, role, link, click, --name, Rapportassistenten]
+      - [wait, --text, Slik går det, --timeout, '30000']
+    focus: [role, heading, Slik går det]
+  - say: Og den sier fra når noe trenger dere.
+    focus: [role, heading, Trenger deg]
+    hold: 1
+  - say: Under Oppsett beskriver dere hva tjenesten skal gjøre, hvem den er for, og instruksjonene den følger.
+    scene:
+      template: screen
+      title: 'Oppsett: en kort beskrivelse'
+    do:
+      - [find, role, tab, click, --name, Oppsett]
+  - say: Alt dette blir en kort beskrivelse i tekst. Hver endring blir en ny utgave, og alt kan også gjøres gjennom API-et.
+    hold: 1
+  - say: Tjenesten svarer fra virksomhetens egne dokumenter.
+    scene:
+      template: screen
+      title: 'Dokumentsamlinger: egne kilder'
+    do:
+      - [find, role, link, click, --name, Dokumentsamlinger]
+      - [wait, --text, Trenger oppfølging, --timeout, '30000']
+  - say: Dere leser inn filer og nettsider, og ser hva som ble lest inn.
+    hold: 1
+  - say: Men hvilken KI-modell skal tjenesten bruke?
+    scene:
+      template: screen
+      title: 'Modeller: velg etter hvor data behandles'
+      question: Hvilken KI-modell skal tjenesten bruke?
+    do:
+      - [find, role, link, click, --name, Katalog]
+      - [wait, --text, Har sitt eget sted, --timeout, '30000']
+      - [find, role, link, click, --name, Modeller]
+      - [wait, --text, Borealis 27B, --timeout, '30000']
+    hold: 0.4
+  - say: Genki er ikke låst til én modell. Dere velger etter hvor dataene behandles.
+    hold: 1
+  - say: Katalogen har resten av delene, som søkemotorer, verktøy og automatiske vurderinger.
+    scene:
+      template: screen
+      title: 'Katalogen: delene tjenestene bygges av'
+    do:
+      - [find, role, link, click, --name, Katalog]
+      - [wait, --text, Har sitt eget sted, --timeout, '30000']
+    focus: [role, heading, Typer]
+  - say: Mangler dere noe, kobler dere til et eget verktøy eller en egen motor. Genki styrer fortsatt tilgang, logg og kostnad.
+    hold: 1
+  - say: Men svarer tjenesten riktig?
+    scene:
+      template: screen
+      title: 'Prøveområdet: svar med kilder'
+      question: Svarer tjenesten riktig?
+    do:
+      - [find, role, link, click, --name, Prøveområde]
+      - [wait, --text, Forhåndsvisning av tjenesten, --timeout, '30000']
+    hold: 0.4
+  - say: I Prøveområdet stiller dere et spørsmål, og får svaret med kilder.
+    do:
+      - [
+          find,
+          role,
+          textbox,
+          fill,
+          Hva sier evalueringer om digital veiledning siden 2020?,
+          --name,
+          Still et spørsmål,
+        ]
+      - [find, role, button, click, --name, Send spørsmålet]
+      - [wait, --text, Evalueringene peker på tre ting, --timeout, '30000']
+  - say: Tidslinjen viser hvert steg, hvor lang tid det tok, og hva det kostet.
+    focus: [css, iframe]
+    hold: 1
+  - say: Før publisering kjøres et testsett med kjente spørsmål.
+    scene:
+      template: screen
+      title: 'Kvalitet: testet før publisering'
+    do:
+      - [find, role, link, click, --name, Tjenester]
+      - [find, role, link, click, --name, Rapportassistenten]
+      - [find, role, tab, click, --name, Kvalitet]
+  - say: Klarer ikke utkastet kravene til kvalitet, stopper publiseringen.
+    hold: 1
+  - say: Hver publisering lagres med hvem som gjorde det, og hvorfor.
+    scene:
+      template: screen
+      title: 'Historikk: hvem, hva og hvorfor'
+    do:
+      - [find, role, tab, click, --name, Historikk]
+  - say: Går noe galt, gjenoppretter dere en tidligere utgave.
+    hold: 1
+  - say: Loggen viser hver kjøring, med status, tid og kostnad.
+    scene:
+      template: screen
+      title: Logg og statistikk
+    page: /#/log
+  - say: Statistikken viser forbruk og kostnad per tjeneste.
+    page: /#/statistics
+    hold: 1
+  - say: Og hvor møter folk tjenesten?
+    scene:
+      template: screen
+      title: Én tjeneste, mange innganger
+      question: Hvor møter folk tjenesten?
+    page: /#/developer/frontends
+    hold: 0.4
+  - say: I en egen app på egen adresse, der ansatte logger inn med Ansattporten.
+  - say: Egne systemer bruker en API-nøkkel, og andre KI-agenter kobler seg på gjennom MCP og A2A.
+    page: /#/developer/keys
+    hold: 1
+  - say: For brukeren ser det slik ut, med nummererte kilder i svaret.
+    scene:
+      template: screen
+      title: Slik ser brukeren det
+    do:
+      - [find, role, link, click, --name, Prøveområde]
+      - [
+          find,
+          role,
+          textbox,
+          fill,
+          Hva sier evalueringer om digital veiledning siden 2020?,
+          --name,
+          Still et spørsmål,
+        ]
+      - [find, role, button, click, --name, Send spørsmålet]
+      - [wait, --text, Evalueringene peker på tre ting, --timeout, '30000']
+    hold: 1
+  - say: Den første tjenesten på Genki er Kunnskapsassistenten, bygget som en helt vanlig tjeneste.
+    chapter: Hvor langt vi har kommet
+    scene:
+      template: code
+      eyebrow: Første tjeneste på Genki
+      title: "Kunnskaps\u00adassistenten"
+      text: Bygget som en helt vanlig tjeneste, med samme slags beskrivelse som alle andre.
+      definition: kunnskapsassistenten
+    hold: 1
+  - say: Grunnmuren er bygget og testet. Beskrivelser med API, flere KI-teknikker, egne verktøy, og tilgang, logg og kostnad.
+    scene:
+      template: board
+      title: Hvor langt vi har kommet
+      columns:
+        - title: Bygget og testet
+          mark: done
+          items:
+            - { text: 'Tjenester som beskrivelser, med API', cue: beskrivelser }
+            - { text: Flere KI-teknikker, cue: flere }
+            - { text: Egne verktøy og motorer, cue: egne }
+            - { text: 'Tilgang, logg og kostnad', cue: tilgang }
+            - { text: Testing før publisering, cue: kostnad }
+        - title: I test nå
+          mark: now
+          items:
+            - { text: 'Plattformen, med portal og API', cue: test }
+            - { text: Innlogging med Ansattporten, cue: innlogging }
+            - { text: Kunnskapsassistenten, cue: ansattporten }
+        - title: På vei
+          mark: next
+          items:
+            - {
+                text: 'Klar for produksjon: overvåking, sikkerhetskopier, kostnadsramme',
+                cue: produksjon,
+              }
+            - { text: Test- og produksjonsutgave per tjeneste, cue: test- }
+            - { text: Egne apper med eget utseende på Designsystemet, cue: egne }
+            - { text: 'Flere kilder, som Lovdata og LOS', cue: flere }
+            - { text: Vurdering av norske språkmodeller, cue: vurdering }
+  - say: Genki er i test nå, med innlogging gjennom Ansattporten.
+  - say: På vei er det som trengs for produksjon, test- og produksjonsutgave per tjeneste, egne apper med eget utseende, flere kilder som Lovdata og LOS, og vurdering av norske språkmodeller.
+    hold: 1
+  - say: Skal dere lage en KI-tjeneste? Kom i gang på genki.digdir.cloud.
+    scene:
+      template: close
+      question: Skal dere lage en KI-tjeneste?
+      action: Kom i gang på
+      address: genki.digdir.cloud
+    hold: 1.5

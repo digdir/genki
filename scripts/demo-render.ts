@@ -1,7 +1,7 @@
 // Renders a film from a capture and its edit list: app in a floating window, spring camera, drawn pointer, type.
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { once } from 'node:events';
 import type { Readable, Writable } from 'node:stream';
 import {
@@ -14,20 +14,54 @@ import {
   type Image,
   type SKRSContext2D,
 } from '@napi-rs/canvas';
-import { cameraPath, content, onScreen, pointerAt, speedOf, type View } from './demo-camera.ts';
+import {
+  cameraPath,
+  content,
+  onScreen,
+  placeOf,
+  pointerAt,
+  restOf,
+  speedOf,
+  type View,
+} from './demo-camera.ts';
 import {
   cameraShots,
   filmLength,
   frame,
+  isFilmLook,
   outputTime,
   segmentsOf,
   sourceAt,
   sourceTime,
+  stageOf,
   tidyCamera,
   voiceTimes,
   type Edl,
   type Segment,
+  type Shot,
+  type Stage,
 } from './demo-edl.ts';
+import type { DemoScene } from '../packages/contracts/src/demo-scenes.ts';
+import {
+  backdropOf,
+  definitionExcerpt,
+  filmLayout,
+  frameEntrance,
+  paintBackdrop,
+  paintCaption,
+  paintChapterCard,
+  paintEyebrow,
+  paintFrameShell,
+  paintNarrator,
+  paintQuestion,
+  paintRing,
+  paintScene,
+  paintSceneTitle,
+  paintTag,
+  sectionLabel,
+  type Assets,
+  type TimedWord,
+} from './demo-scenes.ts';
 import {
   subtitles,
   voiceFileName,
@@ -37,6 +71,7 @@ import {
   type Move,
   type Word,
 } from './demo-events.ts';
+import { mixSound, type SoundPlan, type VoiceClip } from './demo-sound.ts';
 
 const [W, H] = frame;
 const substeps = 4;
@@ -46,7 +81,7 @@ const blue = '#1e98f5';
 const chapterSeconds = 3.4;
 
 const fontFiles = {
-  Inter: ['Inter-Regular', 'Inter-Medium', 'Inter-SemiBold'],
+  Inter: ['Inter-Regular', 'Inter-Medium', 'Inter-SemiBold', 'Inter-Bold'],
   InterDisplay: ['InterDisplay-Medium', 'InterDisplay-SemiBold'],
 };
 
@@ -135,7 +170,8 @@ export const captionsOf = (log: CaptureLog, segments: Segment[]): Caption[] => {
   return captions;
 };
 
-const ease = (t: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 4);
+const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
+const ease = (t: number) => 1 - Math.pow(1 - clamp01(t), 4);
 const smooth = (t: number) => {
   const x = Math.min(1, Math.max(0, t));
   return x * x * (3 - 2 * x);
@@ -339,7 +375,79 @@ interface Plan {
   hidden: { from: number; to: number }[];
   titles: { from: number; title: string }[];
   fps: number;
+  look: 'window' | 'film';
+  stage: Stage;
+  shots: Shot[];
+  spans: SceneSpan[];
+  cards: ChapterGap[];
+  chapterTitles: string[];
+  voice: number[];
 }
+
+export interface SceneSpan {
+  scene?: DemoScene;
+  first: number;
+  last: number;
+  start: number;
+  end: number;
+  chapter?: number;
+}
+
+export interface ChapterGap {
+  from: number;
+  to: number;
+  chapter: number;
+}
+
+export const chapterTitlesOf = (log: CaptureLog) =>
+  log.steps.flatMap((s) => (s.chapter ? [s.chapter] : []));
+
+const chapterAt = (log: CaptureLog, step: number) => {
+  let n = 0;
+  for (let i = 0; i <= step; i++) if (log.steps[i]?.chapter) n++;
+  return n || undefined;
+};
+
+export const sceneSpans = (log: CaptureLog, segments: Segment[], filmTo: number): SceneSpan[] => {
+  const startOf = (step: number) => segments.find((s) => s.step === step + 1)?.at;
+  const spans: SceneSpan[] = [];
+  log.steps.forEach((step, i) => {
+    const open = spans.at(-1);
+    if (open && ((!step.scene && !step.chapter) || startOf(i) === undefined)) {
+      open.last = i;
+      return;
+    }
+    const scene = step.scene ?? open?.scene;
+    const chapter = chapterAt(log, i);
+    spans.push({
+      ...(scene ? { scene } : {}),
+      first: i,
+      last: i,
+      start: startOf(i) ?? open?.end ?? 0,
+      end: filmTo,
+      ...(chapter ? { chapter } : {}),
+    });
+  });
+  spans.forEach((span, k) => {
+    const next = spans[k + 1];
+    if (!next) return;
+    const card = segments.find((s) => s.step === next.first + 1)?.card ?? 0;
+    span.end = next.start - card;
+  });
+  return spans;
+};
+
+export const frameStartOf = (span: SceneSpan, segments: Segment[]) => {
+  const question = span.scene?.template === 'screen' && span.scene.question;
+  if (!question) return span.start;
+  if (span.last === span.first) return span.end;
+  return segments.find((s) => s.step === span.first + 2)?.at ?? span.end;
+};
+
+export const chapterGaps = (log: CaptureLog, segments: Segment[]): ChapterGap[] =>
+  segments.flatMap((s) =>
+    s.card ? [{ from: s.at - s.card, to: s.at, chapter: chapterAt(log, s.step - 1) ?? 1 }] : [],
+  );
 
 export const planOf = (log: CaptureLog, given: Edl, fps = given.fps): Plan => {
   const edl = tidyCamera(given, log);
@@ -348,10 +456,19 @@ export const planOf = (log: CaptureLog, given: Edl, fps = given.fps): Plan => {
   const filmFrom = edl.intro?.seconds ?? 0;
   const filmTo = length - (edl.outro?.seconds ?? 0);
   const shots = cameraShots(edl, log, segments);
+  const film = isFilmLook(log);
+  const stage = stageOf(log);
   const clicks = log.steps.flatMap((s, i) => (edl.steps[i]?.cursor === 'hidden' ? [] : s.clicks));
   const outClicks = clicks.map((c) => ({ ...c, at: outputTime(segments, c.at) }));
-  const views = cameraPath(shots, outClicks, length, fps, log.viewport, substeps);
+  const views = cameraPath(shots, outClicks, length, fps, log.viewport, substeps, stage);
   return {
+    look: film ? 'film' : 'window',
+    stage,
+    shots,
+    spans: film ? sceneSpans(log, segments, filmTo) : [],
+    cards: film ? chapterGaps(log, segments) : [],
+    chapterTitles: chapterTitlesOf(log),
+    voice: voiceTimes(log, segments),
     log,
     edl,
     segments,
@@ -392,10 +509,22 @@ class Painter {
   readonly sourceSize: [number, number];
   readonly logo: Image;
   readonly scale: number;
-  constructor(plan: Plan, sourceSize: [number, number], logo: Image, scale = 1) {
+  readonly assets: Assets;
+  sequential = false;
+  private previous: Canvas | undefined;
+  private lastUnit: string | undefined;
+  private switchAt = -Infinity;
+  private readonly excerpts = new Map<string, string[]>();
+  constructor(
+    plan: Plan,
+    sourceSize: [number, number],
+    assets: Assets & { logo: Image },
+    scale = 1,
+  ) {
     this.plan = plan;
     this.sourceSize = sourceSize;
-    this.logo = logo;
+    this.logo = assets.logo;
+    this.assets = assets;
     this.scale = scale;
     this.canvas = createCanvas(Math.round(W * scale), Math.round(H * scale));
     this.ctx = this.canvas.getContext('2d');
@@ -462,6 +591,7 @@ class Painter {
       ctx.drawImage(this.backdrop, 0, 0, W, H);
       return t < plan.filmFrom ? this.intro(t) : this.outro(t);
     }
+    if (plan.look === 'film') return this.paintFilm(t);
     const view = this.viewAt(t);
     const before = this.viewAt(t, substeps);
     const speed = speedOf(before, view);
@@ -475,6 +605,219 @@ class Painter {
     ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
     this.chapter(t);
     this.caption(t);
+    if (plan.log.exampleData) this.exampleTag(plan.log.language);
+  }
+
+  private unitAt(t: number) {
+    const card = this.plan.cards.findIndex((c) => t >= c.from && t < c.to);
+    if (card >= 0) return `card:${card}`;
+    return `span:${Math.max(
+      0,
+      this.plan.spans.findLastIndex((s) => s.start <= t),
+    )}`;
+  }
+
+  private wordsOf(span: SceneSpan): TimedWord[] {
+    const { log, voice } = this.plan;
+    const words: TimedWord[] = [];
+    for (let i = span.first; i <= span.last; i++)
+      for (const w of log.steps[i]?.words ?? [])
+        words.push({ text: w.text, at: (voice[i] ?? 0) + w.at });
+    return words;
+  }
+
+  private excerptOf(scene: DemoScene) {
+    if (scene.template !== 'code') return [];
+    const key = `${scene.definition}:${scene.lines ?? 13}`;
+    let excerpt = this.excerpts.get(key);
+    if (!excerpt) {
+      excerpt = definitionExcerpt(scene.definition, scene.lines);
+      this.excerpts.set(key, excerpt);
+    }
+    return excerpt;
+  }
+
+  private narratorShown(t: number) {
+    const { spans } = this.plan;
+    const narrated = (s: SceneSpan | undefined) =>
+      Boolean(s) && ['screen', 'board', 'code'].includes(s?.scene?.template ?? 'screen');
+    const k = spans.findLastIndex((s) => s.start <= t);
+    if (k < 0 || !narrated(spans[k]) || this.plan.cards.some((c) => t >= c.from && t < c.to))
+      return 0;
+    let first = k;
+    while (first > 0 && narrated(spans[first - 1]) && spans[first - 1]?.end === spans[first]?.start)
+      first--;
+    let last = k;
+    while (narrated(spans[last + 1]) && spans[last]?.end === spans[last + 1]?.start) last++;
+    const from = (spans[first] as SceneSpan).start;
+    const to = (spans[last] as SceneSpan).end;
+    return clamp01((t - from + 0.2) / 0.55) * (1 - clamp01((t - (to - 0.5)) / 0.4));
+  }
+
+  private paintFilm(t: number) {
+    const { ctx, plan } = this;
+    const unit = this.unitAt(t);
+    if (this.sequential && this.lastUnit !== undefined && unit !== this.lastUnit) {
+      this.previous ??= createCanvas(this.canvas.width, this.canvas.height);
+      const keep = this.previous.getContext('2d');
+      keep.clearRect(0, 0, this.previous.width, this.previous.height);
+      keep.drawImage(this.canvas, 0, 0);
+      this.switchAt = t;
+    }
+    this.lastUnit = unit;
+    ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
+    ctx.globalAlpha = 1;
+    const draw = { ctx, assets: this.assets, language: plan.log.language };
+    const card = plan.cards.find((c) => t >= c.from && t < c.to);
+    if (card) {
+      paintBackdrop(ctx, 'dark');
+      paintChapterCard(
+        draw,
+        { chapters: plan.chapterTitles, current: card.chapter },
+        t - card.from,
+        card.to - card.from,
+      );
+    } else {
+      const span =
+        plan.spans[
+          Math.max(
+            0,
+            plan.spans.findLastIndex((s) => s.start <= t),
+          )
+        ];
+      const scene = span?.scene;
+      const template = scene?.template ?? 'screen';
+      paintBackdrop(ctx, backdropOf(template));
+      if (span && template === 'screen')
+        this.paintScreen(t, span, scene?.template === 'screen' ? scene : undefined);
+      else if (span && scene) {
+        if (span.chapter && (template === 'board' || template === 'code'))
+          paintEyebrow(draw, this.section(span.chapter), t - span.start, template === 'code');
+        paintScene(
+          draw,
+          scene,
+          { t, start: span.start, end: span.end, words: this.wordsOf(span) },
+          this.excerptOf(scene),
+        );
+      }
+    }
+    paintNarrator(draw, this.narratorShown(t));
+    this.caption(t);
+    const fade = (t - this.switchAt) / 0.35;
+    if (this.previous && fade >= 0 && fade < 1) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1 - smooth(fade);
+      ctx.drawImage(this.previous, 0, 0);
+      ctx.restore();
+    }
+  }
+
+  private section(chapter: number) {
+    const { chapterTitles, log } = this.plan;
+    return sectionLabel(chapter, chapterTitles[chapter - 1] ?? '', log.language);
+  }
+
+  private paintScreen(
+    t: number,
+    span: SceneSpan,
+    scene: { title: string; question?: string } | undefined,
+  ) {
+    const { ctx, plan } = this;
+    const draw = { ctx, assets: this.assets, language: plan.log.language };
+    if (span.chapter) paintEyebrow(draw, this.section(span.chapter), t - span.start);
+    const frameAt = frameStartOf(span, plan.segments);
+    if (scene?.question)
+      paintQuestion(
+        draw,
+        scene.question,
+        t,
+        span.start + 0.05,
+        span.last > span.first ? frameAt : span.end + 1,
+      );
+    if (t < frameAt) return;
+    if (scene?.title) paintSceneTitle(draw, scene.title, t, frameAt);
+    const rect = filmLayout.frame;
+    const e = frameEntrance(t, frameAt + 0.1);
+    paintFrameShell(ctx, rect, e.alpha, e.dy);
+    const view = this.viewAt(t);
+    const centre = restOf(plan.stage);
+    const { page } = plan.stage;
+    ctx.save();
+    ctx.globalAlpha *= e.alpha;
+    ctx.beginPath();
+    ctx.roundRect(rect.x, rect.y + e.dy, rect.width, rect.height, 12);
+    ctx.clip();
+    ctx.save();
+    ctx.translate(centre.x, centre.y + e.dy);
+    ctx.scale(view.zoom, view.zoom);
+    ctx.translate(-view.x, -view.y);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(this.source, page.x, page.y, page.width, page.height);
+    const at = sourceAt(plan.segments, Math.min(plan.filmTo - 0.001, Math.max(plan.filmFrom, t)));
+    const segment = plan.segments[at.segment];
+    if (
+      segment &&
+      segment.transition === 'crossfade' &&
+      at.segment > 0 &&
+      segment.step - 1 > span.first
+    ) {
+      const p = (t - segment.at) / 0.45;
+      if (p < 1) {
+        const alpha = ctx.globalAlpha;
+        const { cover, held } = dipOf(p);
+        ctx.globalAlpha = alpha * cover;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(page.x, page.y, page.width, page.height);
+        if (held > 0) {
+          ctx.globalAlpha = alpha * held;
+          ctx.drawImage(this.held, page.x, page.y, page.width, page.height);
+        }
+        ctx.globalAlpha = alpha;
+      }
+    }
+    ctx.restore();
+    const shot = plan.shots.findLast((s) => s.at <= t);
+    if (shot?.target && shot.zoom > 1 && shot.at >= frameAt) {
+      const a = onScreen({ x: shot.target.x, y: shot.target.y }, plan.log.viewport, plan.stage);
+      const b = onScreen(
+        { x: shot.target.x + shot.target.width, y: shot.target.y + shot.target.height },
+        plan.log.viewport,
+        plan.stage,
+      );
+      const p = placeOf(a, view, plan.stage);
+      const q = placeOf(b, view, plan.stage);
+      paintRing(
+        ctx,
+        { x: p.x, y: p.y + e.dy, width: q.x - p.x, height: q.y - p.y },
+        smooth((t - shot.at - 1) / 0.4),
+      );
+    }
+    ctx.restore();
+    if (plan.log.exampleData) paintTag(ctx, exampleDataLabel(plan.log.language), rect, e.dy);
+  }
+
+  private exampleTag(language: string) {
+    const { ctx } = this;
+    const label = exampleDataLabel(language);
+    ctx.save();
+    ctx.font = '600 22px Inter';
+    const w = ctx.measureText(label).width + 36;
+    const x = W - w - 48;
+    const y = 40;
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = 'rgba(10,22,38,0.82)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, 44, 22);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = ink;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + 18, y + 23);
+    ctx.restore();
   }
 
   private composition(t: number, v: View, outer = { zoom: 1, lift: 0 }) {
@@ -610,6 +953,7 @@ class Painter {
     const c = plan.captions.find((x) => t >= x.from && t < x.to);
     if (!c) return;
     const a = Math.min(smooth((t - c.from) / 0.12), smooth((c.to - t) / 0.12));
+    if (plan.look === 'film') return paintCaption(ctx, c.text, a);
     ctx.save();
     ctx.globalAlpha = a;
     ctx.font = '500 30px Inter';
@@ -740,10 +1084,23 @@ class Painter {
 
 const sourceFps = 30;
 
-const loadLogo = async () =>
-  loadImage(
-    readFileSync(new URL('../apps/portal/public/emblem-felleslosning.svg', import.meta.url)),
-  );
+export const exampleDataLabel = (language: string) =>
+  language.startsWith('en') ? 'Example data' : 'Eksempeldata';
+
+const emblemSvg = () =>
+  readFileSync(new URL('../apps/portal/public/emblem-felleslosning.svg', import.meta.url));
+
+export const whiteEmblem = (svg: Buffer) =>
+  Buffer.from(svg.toString('utf8').replace(/fill="#[0-9A-Fa-f]{6}"/g, 'fill="#ffffff"'));
+
+const loadLogo = async () => {
+  const [logo, emblem, lockupDark] = await Promise.all([
+    loadImage(emblemSvg()),
+    loadImage(whiteEmblem(emblemSvg())),
+    loadImage(readFileSync(new URL('../docs/images/genki-dark.png', import.meta.url))),
+  ]);
+  return { logo, emblem, lockupDark };
+};
 
 export interface RenderInput {
   log: CaptureLog;
@@ -752,13 +1109,12 @@ export interface RenderInput {
   voices: string;
 }
 
-export const audioArgs = (
+export const voiceClipsOf = (
   input: Pick<RenderInput, 'log' | 'voices'>,
-  plan: Pick<Plan, 'segments' | 'length'>,
-  first: number,
-) => {
+  plan: Pick<Plan, 'segments'>,
+): VoiceClip[] => {
   const voice = voiceTimes(input.log, plan.segments);
-  const clips = input.log.steps.flatMap((s, i) => {
+  return input.log.steps.flatMap((s, i) => {
     if (s.voice.file && !voiceFileName.test(s.voice.file))
       throw new Error(`step ${i + 1} has a voice file that is not a plain clip name`);
     return s.voice.file
@@ -771,25 +1127,42 @@ export const audioArgs = (
         ]
       : [];
   });
-  if (!clips.length) return { inputs: [], filter: [], map: [] };
-  const filter = [
-    ...clips.map(
-      (c, i) =>
-        `[${first + i}:a]afade=t=in:d=0.02,afade=t=out:st=${Math.max(0, c.seconds - 0.08).toFixed(3)}:d=0.08,adelay=${Math.round(c.at * 1000)}:all=1[a${i}]`,
-    ),
-    `${clips.map((_, i) => `[a${i}]`).join('')}amix=inputs=${clips.length}:normalize=0,apad,atrim=0:${plan.length.toFixed(3)},afade=t=out:st=${Math.max(0, plan.length - 1.2).toFixed(3)}:d=1.2[voice]`,
-  ];
+};
+
+export const soundPlanOf = (
+  input: Pick<RenderInput, 'log' | 'voices'>,
+  plan: Pick<Plan, 'segments' | 'length' | 'filmFrom' | 'filmTo' | 'chapters' | 'cards'>,
+): SoundPlan => {
+  const clips = voiceClipsOf(input, plan);
   return {
-    inputs: clips.flatMap((c) => ['-i', c.file]),
-    filter,
-    map: ['-map', '[voice]', '-c:a', 'aac', '-b:a', '192k'],
+    clips,
+    talk: clips.map((c) => [c.at, c.at + c.seconds]),
+    length: plan.length,
+    ...(input.log.music ? { music: input.log.music } : {}),
+    kickFrom: plan.filmFrom,
+    accents: [
+      plan.filmFrom,
+      ...plan.chapters.map((c) => c.at),
+      ...plan.cards.map((c) => c.from),
+      plan.filmTo,
+    ],
   };
 };
+
+export interface Audio {
+  inputs: string[];
+  map: string[];
+}
+
+export const audioOf = (mix: string | undefined): Audio =>
+  mix
+    ? { inputs: ['-i', mix], map: ['-map', '2:a', '-c:a', 'aac', '-b:a', '192k'] }
+    : { inputs: [], map: [] };
 
 export const encoderArgs = (
   fps: number,
   srt: string,
-  audio: ReturnType<typeof audioArgs>,
+  audio: Audio,
   out: string,
   language: string,
 ) => [
@@ -809,7 +1182,6 @@ export const encoderArgs = (
   '-i',
   srt,
   ...audio.inputs,
-  ...(audio.filter.length ? ['-filter_complex', audio.filter.join(';')] : []),
   '-map',
   '0:v',
   ...audio.map,
@@ -850,8 +1222,10 @@ export const renderFilm = async (
   writeFileSync(srt, srtOf(plan));
   const size = probeSize(input.capture);
   const painter = new Painter(plan, size, await loadLogo());
+  painter.sequential = true;
   const frames = new SourceFrames(input.capture, size, sourceFps);
-  const audio = audioArgs(input, plan, 2);
+  const sound = mixSound(soundPlanOf(input, plan), dirname(out));
+  const audio = audioOf(sound?.file);
   const encoder = spawn('ffmpeg', encoderArgs(plan.fps, srt, audio, out, language), {
     stdio: ['pipe', 'inherit', 'inherit'],
   });
@@ -885,7 +1259,7 @@ export const renderFilm = async (
   sink.end();
   const [code] = (await once(encoder, 'close')) as [number];
   if (code !== 0) throw new Error(`ffmpeg ended with ${code}`);
-  return plan;
+  return { plan, sound: sound?.report };
 };
 
 const grab = (capture: string, at: number, size: [number, number]) =>

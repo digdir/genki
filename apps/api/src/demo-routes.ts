@@ -231,6 +231,7 @@ export const createDemosModule =
               const open = own.find((r) => isOpen(r.spec));
               return {
                 ...demoView(demo),
+                editions: full.filter((r) => r.spec.status === 'recorded').length,
                 ...(latest ? { latest: recordingView(latest) } : {}),
                 ...(recorded ? { recorded: recordingView(recorded) } : {}),
                 ...(open ? { open: recordingView(open) } : {}),
@@ -746,7 +747,7 @@ export const createDemosModule =
           if ('response' in g) return g.response;
           const body = recordingFinish.safeParse(await c.req.json().catch(() => undefined));
           if (!body.success) return problem(c, 400, problemsOf(body.error));
-          const { status, seconds, failure, costUsd } = body.data;
+          const { status, seconds, failure, costUsd, lines, sound } = body.data;
           if (status === 'recorded' && !g.found.spec.files.some((f) => f.name === 'demo.mp4'))
             return problem(c, 400, [
               { path: 'status', message: 'upload demo.mp4 before finishing as recorded' },
@@ -770,6 +771,8 @@ export const createDemosModule =
                       ...(seconds !== undefined ? { seconds } : {}),
                       ...(status === 'failed' && failure ? { failure } : {}),
                       ...(costUsd !== undefined ? { costUsd } : {}),
+                      ...(lines?.length ? { lines } : {}),
+                      ...(sound ? { sound } : {}),
                     },
                     `platform:${principal.subject}`,
                     status,

@@ -165,6 +165,37 @@ describe('demo production', () => {
   });
 });
 
+describe('demo scenes', () => {
+  it("keeps a step's scene and page, and the demo's colour scheme", () => {
+    const read = readDemo(
+      yaml(
+        '    page: /#/developer/frontends\n    scene:\n      template: board\n      title: Hvor langt\n      columns:\n        - { title: Bygget, mark: done, items: [API, { text: Logg, cue: logg }] }\n',
+      ).replace('steps:', 'colorScheme: light\nsteps:'),
+    );
+    expect(read.ok && read.spec.colorScheme).toBe('light');
+    expect(read.ok && read.spec.steps[0]).toMatchObject({
+      page: '/#/developer/frontends',
+      scene: {
+        template: 'board',
+        columns: [{ title: 'Bygget', mark: 'done', items: ['API', { text: 'Logg', cue: 'logg' }] }],
+      },
+    });
+  });
+
+  it('refuses a scene field from another template, a page on another host, a definition path and an unknown colour scheme', () => {
+    expect(readDemo(yaml('    scene: { template: screen, title: T, columns: [] }\n')).ok).toBe(
+      false,
+    );
+    expect(readDemo(yaml('    page: //evil.example/\n')).ok).toBe(false);
+    expect(readDemo(yaml('    page: /\\evil.example/\n')).ok).toBe(false);
+    expect(readDemo(`colorScheme: sepia\n${yaml()}`).ok).toBe(false);
+    expect(readDemo(`colorScheme: light\n${yaml()}`).ok).toBe(true);
+    expect(
+      readDemo(yaml('    scene: { template: code, title: T, definition: ../../etc/passwd }\n')).ok,
+    ).toBe(false);
+  });
+});
+
 describe('demo voices', () => {
   it('accepts every voice in the console list, in a demo and as the default voice', () => {
     for (const voice of demoVoices) {
@@ -173,8 +204,11 @@ describe('demo voices', () => {
       expect(demoSettings.safeParse({ ...defaultDemoSettings, voice: voice.id }).success).toBe(
         true,
       );
-      expect(voice.id === 'cedar' || voice.id.startsWith(`${voice.language}-`)).toBe(true);
+      expect(voice.provider !== 'azure-speech' || voice.id.startsWith(`${voice.language}-`)).toBe(
+        true,
+      );
     }
+    expect(readDemo(yaml().replace('nb-NO-PernilleNeural', 'none')).ok).toBe(true);
   });
 
   it('still accepts a voice name that is not in the console list', () => {

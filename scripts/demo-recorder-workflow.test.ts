@@ -157,12 +157,10 @@ describe('the demo-recorder workflow', () => {
     expect(voice['timeout-minutes']).toBe(30);
   });
 
-  it('uploads the voiced clips, their word timings and what voicing cost from the hidden .voice folder and downloads them where recording looks', () => {
+  it('uploads the voiced clips, their scores, word timings and what voicing cost from the hidden .voice folder and downloads them where recording looks', () => {
     const upload = voice.steps.find((s) => s.with?.name === 'demo-voice');
     const download = record.steps.find((s) => s.with?.name === 'demo-voice');
-    expect(upload?.with?.path).toBe(
-      'demos/out/.voice/*.mp3\ndemos/out/.voice/*.words.json\ndemos/out/.voice/spent.json\n',
-    );
+    expect(upload?.with?.path).toBe('demos/out/.voice/*.mp3\ndemos/out/.voice/*.json\n');
     expect(upload?.with?.['include-hidden-files']).toBe(true);
     expect(download?.with?.path).toBe('demos/out/.voice');
   });
@@ -172,6 +170,15 @@ describe('the demo-recorder workflow', () => {
     const download = record.steps.find((s) => s.with?.name === 'demo-voice');
     expect(upload?.if).toBe("${{ !cancelled() && vars.SPEECH_RESOURCE != '' }}");
     expect(download?.if).toBe("needs.voice.result == 'success' || needs.voice.result == 'failure'");
+  });
+
+  it('names the Key Vault secret with the ElevenLabs key to the voice job only, never the key itself', () => {
+    const voicing = voice.steps.find((s) => s.run === 'node scripts/demo.ts voice --queued');
+    expect(voicing?.env?.DEMO_ELEVENLABS_KEY_SECRET).toBe('${{ vars.DEMO_ELEVENLABS_KEY_SECRET }}');
+    expect(JSON.stringify(workflow)).not.toMatch(
+      /ELEVENLABS_API_KEY|xi-api-key|secrets\.[A-Z_]*ELEVEN/,
+    );
+    expect(JSON.stringify(record)).not.toContain('ELEVENLABS');
   });
 
   it('records the queued recordings with the key in genki-test, with read access only', () => {

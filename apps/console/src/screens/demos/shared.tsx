@@ -43,7 +43,7 @@ export const audienceLabel: Record<DemoAudience, PlainKey> = {
 };
 
 export const demoState = (demo: Demo, genkiVersion: string | null): DemoState => {
-  if (demo.latest?.status === 'failed') return 'failed';
+  if (demo.latest?.status === 'failed' && !demo.latest.editOf) return 'failed';
   if (!demo.recorded) return 'none';
   return genkiVersion && demo.recorded.genkiVersion !== genkiVersion ? 'outdated' : 'ready';
 };
@@ -241,6 +241,56 @@ export const CostLine = ({ recording }: { recording: DemoRecording }) => {
   );
 };
 
+export const HeardLines = ({ recording }: { recording: DemoRecording }) => {
+  const t = useT();
+  const f = useFormat();
+  const weak = (recording.lines ?? []).filter((l) => l.score > 0);
+  const { sound } = recording;
+  if (!sound && !recording.lines?.length) return null;
+  const none = t('demos.heardNone');
+  const level = (v: number | undefined) => (v === undefined ? none : f.decimal(v, 1));
+  return (
+    <section aria-labelledby="recording-heard" className="stack">
+      <Paragraph data-size="sm" className="muted" id="recording-heard">
+        {[
+          recording.lines?.length
+            ? weak.length
+              ? t('demos.heardWeak', { weak: weak.length, lines: recording.lines.length })
+              : t('demos.heardClean', { lines: recording.lines.length })
+            : '',
+          sound
+            ? t('demos.loudness', {
+                voice: level(sound.voice),
+                music: level(sound.music),
+                mix: level(sound.mix),
+              })
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      </Paragraph>
+      {weak.length ? (
+        <ul className="muted">
+          {weak.map((l) => (
+            <li key={l.step}>
+              {t('demos.heardLine', {
+                step: l.step,
+                score: l.score,
+                missing: l.missing.join(', ') || none,
+                extra: l.extra.join(', ') || none,
+                takes: l.takes,
+              })}
+              {l.wordsPerSecond === undefined
+                ? ''
+                : ` ${t('demos.heardPace', { pace: f.decimal(l.wordsPerSecond, 1) })}`}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+};
+
 export const queueing = async (t: ReturnType<typeof useT>, send: () => Promise<DemoRecording>) => {
   try {
     return await send();
@@ -252,3 +302,21 @@ export const queueing = async (t: ReturnType<typeof useT>, send: () => Promise<D
     throw error;
   }
 };
+
+export interface Edition {
+  n: number;
+  recording: DemoRecording;
+}
+
+export const editionsOf = (recordings: DemoRecording[]): Edition[] =>
+  recordings
+    .filter((r) => r.status === 'recorded' && r.upTo === undefined)
+    .sort((a, b) => a.startedAt.localeCompare(b.startedAt))
+    .map((recording, i) => ({ n: i + 1, recording }));
+
+export type Tone = 'ok' | 'warn' | 'bad';
+
+export const toneOf = (score: number): Tone => (score === 0 ? 'ok' : score <= 3 ? 'warn' : 'bad');
+
+export const scoreOf = (recording: DemoRecording | undefined, step: number) =>
+  recording?.lines?.find((l) => l.step === step);

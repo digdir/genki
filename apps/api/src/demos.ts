@@ -2,7 +2,18 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { maxCostCapUsd, type Principal } from '@genai/contracts';
+import {
+  boardMarks,
+  colorSchemes,
+  definitionIdPattern,
+  demoPagePattern,
+  demoVoiceProviders,
+  maxCostCapUsd,
+  sceneProblem,
+  secretPathIn,
+  type DemoVoiceProvider,
+  type Principal,
+} from '@genai/contracts';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import {
@@ -104,15 +115,92 @@ export const demoCard = z.strictObject({
   presenter: z.string().trim().min(1).max(120).optional(),
 });
 
+const provider = z.enum(
+  demoVoiceProviders.map((p) => p.id) as [DemoVoiceProvider, ...DemoVoiceProvider[]],
+);
+
+const spoken = z.partialRecord(provider, z.string().trim().min(1).max(1000));
+
+const respellings = z.partialRecord(
+  provider,
+  z
+    .record(z.string().trim().min(1).max(60), z.string().trim().min(1).max(120))
+    .refine((words) => Object.keys(words).length <= 100, {
+      message: 'a provider takes at most 100 respelled words',
+    }),
+);
+
+export const musicBeds = ['pulse'] as const;
+
+const sceneText = (max: number) => z.string().trim().min(1).max(max);
+
+const sceneItem = z.union([
+  sceneText(80),
+  z.strictObject({ text: sceneText(80), cue: sceneText(40).optional() }),
+]);
+
+export const demoScene = z
+  .discriminatedUnion('template', [
+    z.strictObject({
+      template: z.literal('title'),
+      title: sceneText(80).optional(),
+      logo: z.boolean().optional(),
+      subtitle: sceneText(120).optional(),
+      centre: sceneText(40).optional(),
+      items: z.array(sceneItem).min(1).max(6).optional(),
+      base: sceneText(120).optional(),
+    }),
+    z.strictObject({
+      template: z.literal('screen'),
+      title: sceneText(80),
+      question: sceneText(80).optional(),
+    }),
+    z.strictObject({
+      template: z.literal('board'),
+      title: sceneText(80),
+      columns: z
+        .array(
+          z.strictObject({
+            title: sceneText(60),
+            mark: z.enum(boardMarks),
+            items: z.array(sceneItem).min(1).max(8),
+          }),
+        )
+        .min(1)
+        .max(3),
+    }),
+    z.strictObject({
+      template: z.literal('code'),
+      eyebrow: sceneText(60).optional(),
+      title: sceneText(60),
+      text: sceneText(200).optional(),
+      definition: z.string().regex(definitionIdPattern),
+      lines: z.number().int().min(3).max(14).optional(),
+    }),
+    z.strictObject({
+      template: z.literal('close'),
+      question: sceneText(80).optional(),
+      action: sceneText(40).optional(),
+      address: sceneText(60),
+    }),
+  ])
+  .superRefine((scene, ctx) => {
+    const problem = sceneProblem(scene);
+    if (problem) ctx.addIssue({ code: 'custom', message: problem });
+  });
+
 export const demoStep = z.strictObject({
   say: z.string().trim().min(1).max(1000),
+  spoken: spoken.optional(),
   do: z.array(command).max(20).optional(),
   hold: z.number().min(0).max(10).optional(),
   chapter: z.string().trim().min(1).max(60).optional(),
   focus: focus.optional(),
+  scene: demoScene.optional(),
+  page: z.string().regex(demoPagePattern, 'page is a path on the demo app').optional(),
 });
 
-export const demoSpec = z.strictObject({
+export const demoFields = z.strictObject({
   title: z.string().trim().min(1).max(200),
   description: z.string().max(1000).default(''),
   audience: z.array(z.enum(demoAudiences)).max(demoAudiences.length).default([]),
@@ -132,7 +220,22 @@ export const demoSpec = z.strictObject({
   ready: z.string().trim().min(1).max(200).optional(),
   intro: demoCard.optional(),
   outro: demoCard.optional(),
+  respell: respellings.optional(),
+  music: z.enum(musicBeds).optional(),
+  exampleData: z.boolean().optional(),
+  scrub: z.array(z.string().trim().min(1).max(60)).max(30).optional(),
+  colorScheme: z.enum(colorSchemes).optional(),
   steps: z.array(demoStep).min(1).max(50),
+});
+
+export const demoSpec = demoFields.superRefine((spec, ctx) => {
+  const path = secretPathIn(spec);
+  if (path)
+    ctx.addIssue({
+      code: 'custom',
+      path: path.split('.'),
+      message: 'this looks like a key or token; keys belong in Key Vault, never in a demo',
+    });
 });
 
 export type DemoSpec = z.infer<typeof demoSpec>;
@@ -199,11 +302,34 @@ export const defaultDemoSettings: DemoSettings = {
   writerDailyTokens: 100_000,
 };
 
+const words = z.array(z.string().max(80)).max(20);
+
+export const lineScore = z.strictObject({
+  step: z.number().int().min(1).max(50),
+  takes: z.number().int().min(1).max(4),
+  score: z.number().int().min(0).max(1000),
+  missing: words,
+  extra: words,
+  keyTermsMissing: words,
+  wordsPerSecond: z.number().min(0).max(20).optional(),
+});
+
+const lufs = z.number().min(-120).max(10);
+
+export const soundReport = z.strictObject({
+  voice: lufs.optional(),
+  music: lufs.optional(),
+  mix: lufs,
+  peak: lufs,
+});
+
 export const recordingFinish = z.strictObject({
   status: z.enum(['recorded', 'failed']),
   seconds: z.number().min(0).max(3600).optional(),
   failure: recordingFailure.optional(),
   costUsd: z.number().min(0).max(1000).optional(),
+  lines: z.array(lineScore).max(50).optional(),
+  sound: soundReport.optional(),
 });
 
 export interface RecordingFile {
@@ -232,6 +358,8 @@ export interface RecordingSpec {
   instruction?: string;
   costCapUsd?: number;
   costUsd?: number;
+  lines?: z.infer<typeof lineScore>[];
+  sound?: z.infer<typeof soundReport>;
 }
 
 export const recordingFileTypes: Record<string, { contentType: string; maxBytes: number }> = {

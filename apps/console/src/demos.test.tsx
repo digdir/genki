@@ -2,7 +2,8 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createApiClient, type Demo, type DemoRecording } from './api';
-import { cueStarts, Demos } from './screens/Demos';
+import { Demos } from './screens/Demos';
+import { cuesOf } from './screens/demos/film';
 
 document.getAnimations ??= () => [];
 afterEach(cleanup);
@@ -96,10 +97,11 @@ describe('the demo library', () => {
   it('marks a demo recorded on another genki version as out of date, and a failed one as failed', async () => {
     render(<Demos api={apiFor({ '/operator/demos': library })} />);
 
-    await screen.findByText('1 demo er utdatert');
-    const failed = screen.getByRole('link', { name: 'Lag et testsett' }).closest('li');
+    const failed = (await screen.findByRole('link', { name: 'Lag et testsett' })).closest('li');
     expect(within(failed as HTMLElement).getByText('Feilet')).toBeTruthy();
-    expect(within(failed as HTMLElement).getByText(/stoppet på steg 4 av 6/)).toBeTruthy();
+    expect(within(failed as HTMLElement).getByText('Stoppet i steg 4 av 6')).toBeTruthy();
+    const outdated = screen.getByRole('link', { name: 'Følg en kjøring i kjøringsloggen' });
+    expect(within(outdated.closest('li') as HTMLElement).getByText('Utdatert')).toBeTruthy();
   });
 
   it('lists a stored demo of an app genki no longer has under the app name it was saved with', async () => {
@@ -114,49 +116,43 @@ describe('the demo library', () => {
 
   it('filters by state and area together', async () => {
     render(<Demos api={apiFor({ '/operator/demos': library })} />);
-    await screen.findByText('1 demo er utdatert');
+    await screen.findByRole('link', { name: 'Lag et testsett' });
 
     fireEvent.change(screen.getByLabelText('Område'), { target: { value: 'portal' } });
-    fireEvent.click(screen.getByRole('radio', { name: 'Utdatert 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Utdatert 1' }));
 
     expect(cards()).toEqual(['Følg en kjøring i kjøringsloggen']);
   });
 
-  it('keeps the filters when the list is shown again', async () => {
+  it('keeps the area filter when the state filter changes', async () => {
     render(<Demos api={apiFor({ '/operator/demos': library })} />);
-    await screen.findByText('1 demo er utdatert');
-    fireEvent.change(screen.getByLabelText('Søk'), { target: { value: 'testsett' } });
+    await screen.findByRole('link', { name: 'Lag et testsett' });
+    fireEvent.change(screen.getByLabelText('Område'), { target: { value: 'console' } });
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Feilet 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Feilet 1' }));
 
-    expect((screen.getByLabelText('Søk') as HTMLInputElement).value).toBe('testsett');
+    expect((screen.getByLabelText('Område') as HTMLSelectElement).value).toBe('console');
+    expect(screen.getByRole('button', { name: 'Feilet 1' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
     expect(cards()).toEqual(['Lag et testsett']);
+  });
+
+  it('shows an empty library with a way to make the first film', async () => {
+    render(<Demos api={apiFor({ '/operator/demos': { genkiVersion: '0.43.0', data: [] } })} />);
+
+    expect(await screen.findByRole('heading', { name: 'Ingen filmer ennå' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Ny film' })).toBeTruthy();
   });
 });
 
 describe('a demo', () => {
-  it('lists the narration with the time each step starts in the video', async () => {
+  it('lists the script with the time each line starts in the film', async () => {
     const detail = { ...demo(), genkiVersion: '0.43.0', recordings: [recording()] };
     render(<Demos api={apiFor({ '/operator/demos/playground': detail })} demo="playground" />);
 
-    expect(
-      await screen.findByRole('button', { name: 'Hopp til 1:05: Så stiller vi et spørsmål.' }),
-    ).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Last ned mp4' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Undertekster (srt)' })).toBeTruthy();
-  });
-
-  it('shows the narration without times when the video was recorded from an older version of the demo', async () => {
-    const detail = {
-      ...demo({ version: 2 }),
-      genkiVersion: '0.43.0',
-      recordings: [recording({ demoVersion: 1 })],
-    };
-    render(<Demos api={apiFor({ '/operator/demos/playground': detail })} demo="playground" />);
-
-    expect(await screen.findByLabelText('Video: Prøv en tjeneste i prøveområdet')).toBeTruthy();
-    expect(screen.getByText('Så stiller vi et spørsmål.')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Hopp til/ })).toBeNull();
+    expect(await screen.findByRole('textbox', { name: 'Vist tekst, replikk 2' })).toBeTruthy();
+    expect(await screen.findByText('1:05')).toBeTruthy();
   });
 
   it('plays the last good recording and says the latest one failed', async () => {
@@ -182,7 +178,10 @@ describe('a demo', () => {
 });
 
 describe('subtitle cues', () => {
-  it('reads the start of each cue in seconds', () => {
-    expect(cueStarts(srt)).toEqual([0, 64.5]);
+  it('reads the start, end and text of each cue', () => {
+    expect(cuesOf(srt)).toEqual([
+      { from: 0, to: 4, text: 'Først.' },
+      { from: 64.5, to: 68, text: 'Så.' },
+    ]);
   });
 });

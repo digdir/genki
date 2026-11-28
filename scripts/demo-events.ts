@@ -1,7 +1,9 @@
 // What the recorder saw: the event log of a capture and the spoken words with their timings.
 import { z } from 'zod';
+import { sceneProblem, type DemoScene } from '../packages/contracts/src/demo-scenes.ts';
 import { sameWord, wordsOf } from './demo-voice.ts';
 import type { Box, Point } from './demo-pointer.ts';
+import { musicBeds, type MusicBed } from './demo-sound.ts';
 
 export interface Card {
   title: string;
@@ -50,6 +52,7 @@ export interface StepLog {
   scrolls: { at: number; seconds: number }[];
   chapter?: string;
   hold?: number;
+  scene?: DemoScene;
 }
 
 export interface CaptureLog {
@@ -59,6 +62,8 @@ export interface CaptureLog {
   language: string;
   intro?: Card;
   outro?: Card;
+  music?: MusicBed;
+  exampleData?: boolean;
   steps: StepLog[];
 }
 
@@ -96,6 +101,7 @@ const stepLogSchema = z.strictObject({
   scrolls: z.array(z.strictObject({ at: time, seconds: time })).max(1000),
   chapter: text(200).optional(),
   hold: time.optional(),
+  scene: z.custom<DemoScene>((v) => sceneProblem(v) === undefined).optional(),
 });
 
 export const captureLogSchema = z.strictObject({
@@ -105,6 +111,8 @@ export const captureLogSchema = z.strictObject({
   language: z.string().regex(/^[a-z]{2,3}(-[A-Z]{2})?$/),
   intro: card.optional(),
   outro: card.optional(),
+  music: z.enum(musicBeds).optional(),
+  exampleData: z.boolean().optional(),
   steps: z.array(stepLogSchema).min(1).max(200),
 });
 

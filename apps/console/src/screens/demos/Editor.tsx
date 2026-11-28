@@ -83,7 +83,7 @@ const emptySpec = (voice: string, viewport: [number, number]): DemoSpec => ({
   steps: [{ say: '' }],
 });
 
-const specOnly = (spec: DemoSpec): DemoSpec => ({
+export const specOnly = (spec: DemoSpec): DemoSpec => ({
   title: spec.title,
   description: spec.description ?? '',
   audience: spec.audience ?? [],
@@ -96,12 +96,20 @@ const specOnly = (spec: DemoSpec): DemoSpec => ({
   ...(spec.ready ? { ready: spec.ready } : {}),
   ...(spec.intro ? { intro: spec.intro } : {}),
   ...(spec.outro ? { outro: spec.outro } : {}),
+  ...(spec.respell ? { respell: spec.respell } : {}),
+  ...(spec.music ? { music: spec.music } : {}),
+  ...(spec.exampleData !== undefined ? { exampleData: spec.exampleData } : {}),
+  ...(spec.scrub ? { scrub: spec.scrub } : {}),
+  ...(spec.colorScheme ? { colorScheme: spec.colorScheme } : {}),
   steps: spec.steps.map((s) => ({
     say: s.say,
     ...(s.do && s.do.length > 0 ? { do: s.do } : {}),
     ...(s.hold !== undefined ? { hold: s.hold } : {}),
     ...(s.chapter ? { chapter: s.chapter } : {}),
     ...(s.focus ? { focus: s.focus } : {}),
+    ...(s.spoken ? { spoken: s.spoken } : {}),
+    ...(s.scene ? { scene: s.scene } : {}),
+    ...(s.page ? { page: s.page } : {}),
   })),
 });
 
@@ -118,7 +126,7 @@ const build = (draft: Draft, t: ReturnType<typeof useT>): Built => {
   return { ok: true, spec: specOnly({ ...draft.spec, steps }) };
 };
 
-const problemText = (error: unknown, t: ReturnType<typeof useT>) => {
+export const problemText = (error: unknown, t: ReturnType<typeof useT>) => {
   if (error instanceof ApiError && error.status === 409) return t('demos.saveMoved');
   if (error instanceof ApiError && error.problem?.errors?.length)
     return `${t('demos.saveRefused')} ${error.problem.errors
@@ -454,6 +462,19 @@ const EditorForm = ({
                     {t(appLabel[a])}
                   </Select.Option>
                 ))}
+              </Select>
+            </div>
+            <div className="field">
+              <Label htmlFor="demo-color-scheme">{t('demos.fieldColorScheme')}</Label>
+              <Select
+                id="demo-color-scheme"
+                value={draft.spec.colorScheme ?? 'dark'}
+                onChange={(e) =>
+                  setSpec({ colorScheme: e.target.value === 'light' ? 'light' : 'dark' })
+                }
+              >
+                <Select.Option value="dark">{t('demos.colorSchemeDark')}</Select.Option>
+                <Select.Option value="light">{t('demos.colorSchemeLight')}</Select.Option>
               </Select>
             </div>
             <Textfield
