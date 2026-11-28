@@ -1,7 +1,21 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { configure, getConfig } from '@testing-library/dom';
-import { expect } from 'vitest';
+import { beforeEach, expect } from 'vitest';
+import { quarantinedTests } from './scripts/quarantine-check.ts';
 
 configure({ asyncUtilTimeout: 12_000 });
+
+if (process.env.QUARANTINE !== 'off') {
+  const quarantined = quarantinedTests(
+    JSON.parse(readFileSync(join(import.meta.dirname, 'test', 'quarantine.json'), 'utf8')),
+    new Date().toISOString().slice(0, 10),
+  );
+  if (quarantined.size > 0)
+    beforeEach((context) => {
+      if (quarantined.has(context.task.fullName)) context.skip();
+    });
+}
 
 const app = /[\\/]apps[\\/](portal|console)[\\/]/.exec(expect.getState().testPath ?? '')?.[1];
 

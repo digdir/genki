@@ -365,23 +365,49 @@ describe('pg-boss on the platform server', () => {
   }, 90_000);
 
   it('a nightly schedule sends one job per occurrence with two instances', async () => {
-    const runtime = login({ role: WORKER });
-    const first = await start(runtime, { cronIntervalSeconds: 1 });
+    const admin = superuser();
+    const first = await start(login({ role: WORKER }), { cronIntervalSeconds: 1 });
     const second = await start(login({ role: WORKER }), { cronIntervalSeconds: 1 });
+    await admin.query(
+      `delete from pgboss.job where name = $1 or (name = '__pgboss__send-it' and data->>'name' = $1)`,
+      [nightly.name],
+    );
     await first.schedule(nightly, '* * * * *', {}, { tz: 'Europe/Oslo' });
     await second.schedule(nightly, '* * * * *', {}, { tz: 'Europe/Oslo' });
-    const perMinute = () =>
-      runtime
-        .query<{ minute: string; n: number }>(
-          `select date_trunc('minute', created_on)::text as minute, count(*)::int as n
-               from pgboss.job where name = $1 group by 1 order by 1`,
+    const perOccurrence = () =>
+      admin
+        .query<{ slot: string; n: number }>(
+          `select data->>'slot' as slot, count(*)::int as n from pgboss.job
+             where name = '__pgboss__send-it' and data->>'name' = $1 group by 1 order by 1`,
           [nightly.name],
         )
         .then((result) => result.rows);
-    await waitFor(async () => (await perMinute()).length >= 1, 75_000);
-    await new Promise((resolve) => setTimeout(resolve, 5_000));
-    expect((await perMinute()).every((row) => row.n === 1)).toBe(true);
+    const jobs = () =>
+      admin
+        .query<{ n: number }>(`select count(*)::int as n from pgboss.job where name = $1`, [
+          nightly.name,
+        ])
+        .then((result) => result.rows[0]?.n ?? 0);
+    await waitFor(async () => (await perOccurrence()).length >= 1, 75_000);
+    const seen = await admin.query<{ at: string }>(`select now()::text as at`);
+    const firstSeen = seen.rows[0]?.at ?? '';
+    await waitFor(
+      async () =>
+        (
+          await admin.query<{ passed: boolean }>(
+            `select coalesce(max(cron_on) > $1::timestamptz + interval '3 seconds', false) as passed
+               from pgboss.version`,
+            [firstSeen],
+          )
+        ).rows[0]?.passed === true,
+      30_000,
+    );
     await first.unschedule(nightly);
+    await waitFor(
+      async () => (await jobs()) === (await perOccurrence()).reduce((sum, row) => sum + row.n, 0),
+      30_000,
+    );
+    expect((await perOccurrence()).every((row) => row.n === 1)).toBe(true);
     await first.stop();
     await second.stop();
   }, 100_000);

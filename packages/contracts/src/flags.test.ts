@@ -6,14 +6,13 @@ import { expiredFlags, flagKeys, flags, isFlagKey, type FlagKey } from './flags.
 const root = join(import.meta.dirname, '..', '..', '..');
 const skipped = new Set(['node_modules', 'dist', 'i18n', 'mock']);
 const registry = join('packages', 'contracts', 'src', 'flags.ts');
-const thisTest = join('packages', 'contracts', 'src', 'flags.test.ts');
 
 const sources = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     if (skipped.has(entry.name)) return [];
     const path = join(dir, entry.name);
     if (entry.isDirectory()) return sources(path);
-    return /\.tsx?$/.test(entry.name) ? [path] : [];
+    return /\.tsx?$/.test(entry.name) && !/\.test(-utils)?\.tsx?$/.test(entry.name) ? [path] : [];
   });
 
 describe('the feature flag registry', () => {
@@ -32,15 +31,17 @@ describe('the feature flag registry', () => {
     }
   });
 
-  it('has every registered flag used somewhere outside the registry', () => {
-    const files = [...sources(join(root, 'apps')), ...sources(join(root, 'packages'))]
-      .filter((file) => ![registry, thisTest].includes(relative(root, file)))
-      .map((file) => readFileSync(file, 'utf8'));
-    const unused = flagKeys.filter(
-      (key) => !files.some((text) => text.includes(`'${key}'`) || text.includes(`"${key}"`)),
-    );
+  it('has every registered flag used in production code outside the registry', () => {
+    const unused = new Set<string>(flagKeys);
+    for (const file of [...sources(join(root, 'apps')), ...sources(join(root, 'packages'))]) {
+      if (unused.size === 0) break;
+      if (relative(root, file) === registry) continue;
+      const text = readFileSync(file, 'utf8');
+      for (const key of unused)
+        if (text.includes(`'${key}'`) || text.includes(`"${key}"`)) unused.delete(key);
+    }
 
-    expect(unused).toEqual([]);
+    expect([...unused]).toEqual([]);
   });
 
   it('makes an unknown flag key a type error and refuses it at runtime', () => {
