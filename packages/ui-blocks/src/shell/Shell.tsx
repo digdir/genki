@@ -762,8 +762,13 @@ const Side = ({
           data-side={side}
           hidden={!filled}
           ref={fill}
+          style={{ '--uib-shell-sheet-width': `${width}px` } as CSSProperties}
           // A click on its text keeps the focus, and so Escape, in the panel.
           tabIndex={-1}
+          // A click on the dimmed main column beside the sheet closes it, as a click outside does.
+          onClick={(event) => {
+            if (event.target === event.currentTarget) onCollapse(side, true);
+          }}
         >
           <div className="uib-shell-box">
             <div className="uib-shell-header">

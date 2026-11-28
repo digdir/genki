@@ -44,6 +44,7 @@ const neutralPins = [
   '--genai-shell-companion-subtitle-color',
   '--genai-shell-divider-color',
   '--genai-shell-drawer-background',
+  '--genai-shell-drawer-scrim-color',
   '--genai-shell-primary-background',
   // The profile menu's top: the reader's name and organisation, the panel's own words.
   '--genai-shell-profile-organisation-color',
@@ -107,6 +108,8 @@ describe('the Shell styles', () => {
       '--uib-shell-primary-width',
       '--uib-shell-secondary-min-width',
       '--uib-shell-secondary-width',
+      // The open panel's own width as a sheet over the shell in a narrow window.
+      '--uib-shell-sheet-width',
     ]);
     expect(css).not.toMatch(/--uib-shell-[a-z-]+\s*:/);
   });
@@ -140,12 +143,17 @@ describe('the Shell styles', () => {
       '.uib-shell[data-drawer] > .uib-shell-side { position: static; container-type: normal; }',
     );
     expect(css).toContain(
-      '.uib-shell-fill { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; container-type: inline-size;',
+      '.uib-shell-fill { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: flex-start;',
     );
     // The main column's own layers, such as its pinned head, stay under the panel.
     expect(css).toContain('.uib-shell[data-drawer] > .uib-shell-main { isolation: isolate; }');
     expect(css).not.toMatch(/::backdrop|dialog|uib-shell-drawer\b|drawer-width/);
     expect(css).toContain('.uib-shell-close { flex: 0 0 auto; margin-inline-start: auto; }');
+  });
+
+  it('draw an open panel as a sheet at its own width from its own edge, over a dimmed main column, as wide as the shell where it is wider', () => {
+    expect(css).toContain(".uib-shell-fill[data-side='secondary'] { align-items: flex-end; }");
+    expect(css).toContain('inline-size: min(var(--uib-shell-sheet-width, 100%), 100%);');
   });
 
   it('never hide the main column, so it comes back as it was when the panel over it closes', () => {

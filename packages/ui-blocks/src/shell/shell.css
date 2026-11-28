@@ -491,15 +491,24 @@
     isolation: isolate;
   }
 
-  /* Over the shell's whole box, on a ground of its own: no dialog, no backdrop, no top layer. */
+  /* Over the shell's whole box, no dialog, no top layer: the main column stays in view, dimmed, and
+     the panel is a sheet at its own width from its own edge, as wide as the shell where it is wider. */
   .uib-shell-fill {
     position: absolute;
     inset: 0;
     z-index: 1;
     display: flex;
     flex-direction: column;
-    container-type: inline-size;
-    background: var(--genai-shell-drawer-background, var(--ds-color-neutral-surface-default));
+    align-items: flex-start;
+    background: color-mix(
+      in srgb,
+      var(--genai-shell-drawer-scrim-color, var(--ds-color-neutral-text-default)) 40%,
+      transparent
+    );
+  }
+
+  .uib-shell-fill[data-side='secondary'] {
+    align-items: flex-end;
   }
 
   /* `min-block-size: 0` lets the content scroll; the head row starts closer to the top. */
@@ -509,7 +518,11 @@
     flex: 1 1 auto;
     block-size: auto;
     min-block-size: 0;
+    inline-size: min(var(--uib-shell-sheet-width, 100%), 100%);
+    container-type: inline-size;
     padding-block-start: var(--genai-shell-drawer-close-margin, var(--ds-size-3));
+    background: var(--genai-shell-drawer-background, var(--ds-color-neutral-surface-default));
+    box-shadow: var(--genai-shell-drawer-shadow, var(--ds-shadow-lg));
   }
 
   /* Ends the head row even alone, where the panel has no title and no head. */
