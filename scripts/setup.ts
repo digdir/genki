@@ -99,7 +99,7 @@ export const nodeProblem = (version: string, pinned: string | undefined): string
   return undefined;
 };
 
-const pinnedNode = (root: string) => {
+export const pinnedNode = (root: string) => {
   const mise = join(root, 'mise.toml');
   if (!existsSync(mise)) return undefined;
   return /^node\s*=\s*"([^"]+)"/m.exec(readFileSync(mise, 'utf8'))?.[1];
@@ -160,6 +160,9 @@ const startPostgres = async (root: string) => {
   return true;
 };
 
+export const hooksPathArgs = ['config', 'core.hooksPath', '.githooks'];
+export const hooksPathWanted = (current: string | undefined) => !current || current === '.githooks';
+
 export const knowledgeSetupWanted = (root: string) =>
   Boolean(parseEnv(readFileSync(join(root, '.env.local'), 'utf8')).KNOWLEDGE_DATABASE_URL);
 
@@ -172,6 +175,19 @@ const main = async () => {
   const problem = nodeProblem(process.versions.node, pinnedNode(root));
   if (problem) console.warn(problem);
   if (Number(process.versions.node.split('.')[0]) < 24) process.exit(1);
+
+  if (existsSync(join(root, '.git'))) {
+    const current = spawnSync('git', ['config', '--get', 'core.hooksPath'], {
+      cwd: root,
+      encoding: 'utf8',
+    });
+    if (!hooksPathWanted(current.stdout.trim()))
+      console.warn(
+        `core.hooksPath is ${current.stdout.trim()}, so the pre-push hook in .githooks that runs npm run verify is not installed`,
+      );
+    else if (run('git', hooksPathArgs, root))
+      console.log('Git hooks: .githooks (pre-push runs npm run verify)');
+  }
 
   if (!existsSync(join(root, 'node_modules'))) {
     console.log('Installing dependencies');
@@ -209,7 +225,7 @@ const main = async () => {
   console.log(`
 Next:
   npm run dev:all     API :8080, worker :8081, portal :5173, console :5174 (see docs/development.md for other ports)
-  npm run check       format, lint, types, boundaries and tests (needs Docker)
+  npm run verify      pull request CI's checks, for your change (needs Docker)
 
 Log in as a test person from apps/api/config/local/identity.yaml (Kari Testansatt has every right).
 Without Foundry settings, try "Lokal testchat" in the portal's Prøveområdet: it echoes what you write.
