@@ -1,29 +1,16 @@
-import {
-  Alert,
-  Button,
-  Checkbox,
-  Label,
-  Paragraph,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeaderCell,
-  TableRow,
-  Tag,
-  Textfield,
-} from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { ApiClient } from '../api';
 import { definitionKindParams, type DefinitionKind } from '../definition-kinds';
-import { navigate, useAsync } from '../hooks';
+import { useAsync } from '../hooks';
+import type { AuditQuery } from '../operator-types';
 import { useT, type PlainKey, type T } from '../i18n';
 import { ErrorState, Loading } from '../states';
 import { tenantLabel, useTenantNames } from '../tenant-names';
 import type { AuditEntry } from '../types';
-import { Flash, formatWhen, isMissing, PageHeader, TableRegion, useFlash } from '../ui';
+import { Flash, isMissing, useFlash } from '../ui';
+import { Chip, clock, dayMonth, orgHref, useKept } from './operate/parts';
+import './operate/operate.css';
 
 export const actionKey: Record<string, PlainKey> = {
   'platform.service.publish': 'audit.actionServicePublish',
@@ -130,8 +117,6 @@ const catalogActionKey: Record<string, PlainKey> = {
   'platform.catalog.publish:price': 'audit.actionModelPriceSave',
 };
 
-type Period = 'day' | 'week' | 'month';
-
 const catalogChangeKey: Record<string, PlainKey> = {
   'model-endpoint': 'audit.actionModelEndpointChange',
   model: 'audit.actionCatalogModelChange',
@@ -207,25 +192,6 @@ export const targetTextOf = (e: AuditEntry, t: T) => {
     : targetOf(e, t);
 };
 
-const Target = ({ entry, t }: { entry: AuditEntry; t: T }) => {
-  const found = definitionTarget(entry);
-  if (!found) return <>{targetOf(entry, t)}</>;
-  return (
-    <>
-      <Button
-        variant="tertiary"
-        data-size="sm"
-        onClick={() =>
-          navigate('/tenants/services', { tenant: entry.tenant, kind: found.kind, id: found.id })
-        }
-      >
-        {found.id}
-      </Button>{' '}
-      <span className="meta">{t('audit.targetVersion', { version: found.version })}</span>
-    </>
-  );
-};
-
 const describe = (name: (orgNumber: string) => string, t: T) => {
   const tenantOf = (e: AuditEntry) =>
     e.tenantName === 'Alle' || e.tenant === 'alle'
@@ -241,204 +207,311 @@ const describe = (name: (orgNumber: string) => string, t: T) => {
   return { tenantOf, orgOf, personOf };
 };
 
-const Log = ({ api, entries }: { api: ApiClient; entries: AuditEntry[] }) => {
+type ActionFilter = 'all' | 'limit' | 'content' | 'flag' | 'publish';
+
+const actionFilters: Record<ActionFilter, { label: PlainKey; prefix?: string }> = {
+  all: { label: 'auditLog.all' },
+  limit: { label: 'auditLog.actionLimit', prefix: 'platform.setting' },
+  content: { label: 'auditLog.actionContent', prefix: 'platform.content.read' },
+  flag: { label: 'auditLog.actionFlag', prefix: 'platform.flag' },
+  publish: { label: 'auditLog.actionPublish', prefix: 'platform.service.publish' },
+};
+
+type WhoFilter = 'all' | 'operator' | 'tenant';
+
+const pageSize = 100;
+const exportPage = 500;
+
+const isoDay = (d: Date) => d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Oslo' });
+
+const defaultFrom = (now: Date) => {
+  const [y, m] = isoDay(now).split('-').map(Number) as [number, number];
+  const back = new Date(Date.UTC(y, m - 3, 1));
+  return back.toISOString().slice(0, 10);
+};
+
+export const Audit = ({ api, now = () => new Date() }: { api: ApiClient; now?: () => Date }) => {
   const t = useT();
   const f = useFormat();
+  const id = useId();
   const tRef = useRef(t);
   tRef.current = t;
   const { tenantOf, orgOf, personOf } = describe(useTenantNames(api), t);
-  const [tenant, setTenant] = useState('all');
-  const [person, setPerson] = useState('');
-  const [action, setAction] = useState('all');
-  const [period, setPeriod] = useState<Period>('month');
-  const [onlyDigdir, setOnlyDigdir] = useState(false);
+  const [tenants] = useAsync((signal) => api.listTenants(signal), [api]);
+  const [today] = useState(() => isoDay(now()));
+  const [tenantText, setTenantText] = useState('');
+  const [action, setAction] = useState<ActionFilter>('all');
+  const [who, setWho] = useState<WhoFilter>('all');
+  const [from, setFrom] = useState(() => defaultFrom(now()));
+  const [to, setTo] = useState(today);
+  const [limit, setLimit] = useState(pageSize);
+  const [exporting, setExporting] = useState(false);
   const flash = useFlash();
-  const now = Date.now();
-  const startOfToday = new Date(now).setHours(0, 0, 0, 0);
-  const since = startOfToday - { day: 0, week: 6, month: 29 }[period] * 86400000;
-  const p = person.trim().toLowerCase();
-  const rows = [...entries]
-    .filter(
-      (e) =>
-        (tenant === 'all' || tenantOf(e) === tenant) &&
-        (!p || personOf(e).toLowerCase().includes(p)) &&
-        (action === 'all' || labelOf(e, t) === action) &&
-        (!onlyDigdir || orgOf(e) === 'Digdir') &&
-        new Date(e.at).getTime() >= since,
-    )
-    .sort((a, b) => b.at.localeCompare(a.at));
-  const tenants = [...new Set(entries.map(tenantOf))];
-  const actions = [...new Set(entries.map((e) => labelOf(e, t)))];
-  const reset = () => {
-    setTenant('all');
-    setPerson('');
-    setAction('all');
-    setPeriod('month');
-    setOnlyDigdir(false);
+  const known = tenants.status === 'ready' ? tenants.data : [];
+  const typed = tenantText.trim().toLowerCase();
+  const tenant = typed
+    ? known.find((x) => x.name.toLowerCase() === typed || x.orgNumber === typed.replace(/\s/g, ''))
+        ?.orgNumber
+    : undefined;
+  const unknownTenant = Boolean(typed) && tenants.status === 'ready' && !tenant;
+  const blocked = Boolean(typed) && !tenant;
+  const query: AuditQuery = {
+    ...(tenant ? { tenant } : {}),
+    ...(actionFilters[action].prefix ? { action: actionFilters[action].prefix } : {}),
+    ...(who === 'all' ? {} : { by: who }),
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
   };
+  const key = JSON.stringify(query);
+  const [state, retry] = useAsync(
+    (signal) =>
+      blocked
+        ? Promise.resolve({ data: [], total: 0 })
+        : api.auditPage({ ...query, limit }, signal),
+    [api, key, limit, blocked],
+  );
+  const page = useKept(state);
+  const reset = () => {
+    setTenantText('');
+    setAction('all');
+    setWho('all');
+    setFrom(defaultFrom(now()));
+    setTo(today);
+    setLimit(pageSize);
+  };
+  const changeFilter = (apply: () => void) => {
+    apply();
+    setLimit(pageSize);
+  };
+  const handling = (e: AuditEntry) => {
+    const label = labelOf(e, t);
+    if (e.action.startsWith('platform.content.')) return label;
+    const target = targetTextOf(e, t);
+    return target && target !== '–'
+      ? t('auditLog.actionWithTarget', { action: label, target })
+      : label;
+  };
+  const whoOf = (e: AuditEntry) =>
+    e.actorName && orgOf(e) === 'Digdir'
+      ? t('auditLog.digdirPerson', { name: e.actorName })
+      : personOf(e);
   const exportCsv = async () => {
-    const csv = [
-      t('audit.csvHeader'),
-      ...rows.map((e) =>
-        [e.at, personOf(e), orgOf(e), tenantOf(e), labelOf(e, t), targetTextOf(e, t), e.reason]
-          .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-          .join(';'),
-      ),
-    ].join('\n');
+    if (exporting || blocked) return;
+    setExporting(true);
     try {
+      const rows: AuditEntry[] = [];
+      for (let offset = 0; ; offset += exportPage) {
+        const next = await api.auditPage({ ...query, limit: exportPage, offset });
+        rows.push(...next.data);
+        if (next.data.length < exportPage || rows.length >= next.total) break;
+      }
+      const csv = [
+        t('audit.csvHeader'),
+        ...rows.map((e) =>
+          [e.at, personOf(e), orgOf(e), tenantOf(e), labelOf(e, t), targetTextOf(e, t), e.reason]
+            .map(
+              (v) =>
+                `"${String(v)
+                  .replace(/^[=+\-@\t\r]/, "'$&")
+                  .replace(/"/g, '""')}"`,
+            )
+            .join(';'),
+        ),
+      ].join('\n');
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }));
+      a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv' }));
       a.download = t('audit.csvFile');
       a.click();
+      await api.logAuditExport(rows.length).catch(() => undefined);
+      flash.show(tRef.current('audit.downloaded'));
     } catch {
-      flash.show(t('audit.downloadFailed'), 'danger');
-      return;
+      flash.show(tRef.current('audit.downloadFailed'), 'danger');
+    } finally {
+      setExporting(false);
     }
-    await api.logAuditExport(rows.length).catch(() => undefined);
-    flash.show(tRef.current('audit.downloaded'));
   };
   return (
-    <div className="stack">
+    <div className="op-page">
+      <div className="op-head">
+        <h1>{t('auditLog.title')}</h1>
+        <button
+          type="button"
+          className="op-btn"
+          aria-disabled={exporting || undefined}
+          onClick={() => void exportCsv()}
+        >
+          {t('auditLog.export')}
+        </button>
+      </div>
       <Flash message={flash.message} />
-      <div className="filters">
-        <div className="field">
-          <Label htmlFor="r-virk">{t('audit.tenant')}</Label>
-          <Select id="r-virk" value={tenant} onChange={(e) => setTenant(e.target.value)}>
-            <Select.Option value="all">{t('common.allTenants')}</Select.Option>
-            {tenants.map((name) => (
-              <Select.Option key={name} value={name}>
-                {name}
-              </Select.Option>
+      <div className="op-filters">
+        <div className="op-field grow-small">
+          <label htmlFor={`${id}-org`}>{t('auditLog.tenant')}</label>
+          <input
+            id={`${id}-org`}
+            className="op-input"
+            type="text"
+            list={`${id}-orgs`}
+            placeholder={t('auditLog.tenantPlaceholder')}
+            value={tenantText}
+            aria-invalid={unknownTenant || undefined}
+            aria-describedby={unknownTenant ? `${id}-org-e` : undefined}
+            onChange={(e) => changeFilter(() => setTenantText(e.target.value))}
+          />
+          <datalist id={`${id}-orgs`}>
+            {known.map((x) => (
+              <option key={x.orgNumber} value={x.name} />
             ))}
-          </Select>
+          </datalist>
+          {unknownTenant ? (
+            <p id={`${id}-org-e`} className="op-error">
+              {t('auditLog.unknownTenant')}
+            </p>
+          ) : null}
         </div>
-        <Textfield
-          id="r-person"
-          label={t('audit.person')}
-          type="search"
-          value={person}
-          onChange={(e) => setPerson(e.target.value)}
-        />
-        <div className="field">
-          <Label htmlFor="r-handling">{t('audit.action')}</Label>
-          <Select id="r-handling" value={action} onChange={(e) => setAction(e.target.value)}>
-            <Select.Option value="all">{t('audit.allActions')}</Select.Option>
-            {actions.map((a) => (
-              <Select.Option key={a} value={a}>
-                {a}
-              </Select.Option>
+        <div className="op-field">
+          <label htmlFor={`${id}-kind`}>{t('auditLog.action')}</label>
+          <select
+            id={`${id}-kind`}
+            className="op-input"
+            value={action === 'all' ? '' : action}
+            onChange={(e) =>
+              changeFilter(() => setAction((e.target.value || 'all') as ActionFilter))
+            }
+          >
+            {(Object.keys(actionFilters) as ActionFilter[]).map((k) => (
+              <option key={k} value={k === 'all' ? '' : k}>
+                {t(actionFilters[k].label)}
+              </option>
             ))}
-          </Select>
+          </select>
         </div>
-        <div className="field">
-          <Label htmlFor="r-tid">{t('audit.period')}</Label>
-          <Select id="r-tid" value={period} onChange={(e) => setPeriod(e.target.value as Period)}>
-            <Select.Option value="day">{t('audit.today')}</Select.Option>
-            <Select.Option value="week">{t('audit.last7')}</Select.Option>
-            <Select.Option value="month">{t('audit.last30')}</Select.Option>
-          </Select>
+        <div className="op-field">
+          <label htmlFor={`${id}-who`}>{t('auditLog.who')}</label>
+          <select
+            id={`${id}-who`}
+            className="op-input"
+            value={who === 'all' ? '' : who}
+            onChange={(e) => changeFilter(() => setWho((e.target.value || 'all') as WhoFilter))}
+          >
+            <option value="">{t('auditLog.all')}</option>
+            <option value="operator">{t('auditLog.whoDigdir')}</option>
+            <option value="tenant">{t('auditLog.whoTenants')}</option>
+          </select>
         </div>
-        <Checkbox
-          label={t('audit.onlyDigdir')}
-          checked={onlyDigdir}
-          onChange={() => setOnlyDigdir((v) => !v)}
-        />
+        <fieldset className="op-period">
+          <legend>{t('auditLog.period')}</legend>
+          <div className="op-field">
+            <label htmlFor={`${id}-from`} className="plain">
+              {t('auditLog.from')}
+            </label>
+            <input
+              id={`${id}-from`}
+              className="op-input"
+              type="date"
+              value={from}
+              max={to || undefined}
+              onChange={(e) => changeFilter(() => setFrom(e.target.value))}
+            />
+          </div>
+          <div className="op-field">
+            <label htmlFor={`${id}-to`} className="plain">
+              {t('auditLog.to')}
+            </label>
+            <input
+              id={`${id}-to`}
+              className="op-input"
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(e) => changeFilter(() => setTo(e.target.value))}
+            />
+          </div>
+        </fieldset>
       </div>
-      <div className="card-head">
-        <span aria-live="polite" className="meta">
-          {t('audit.events', { count: rows.length })}
-        </span>
-        <Button variant="secondary" data-size="sm" onClick={() => void exportCsv()}>
-          {t('audit.exportCsv')}
-        </Button>
-      </div>
-      {rows.length === 0 ? (
-        <Paragraph>
-          {t('audit.noMatch')}{' '}
-          <Button variant="tertiary" data-size="sm" onClick={reset}>
-            {t('audit.resetFilter')}
-          </Button>
-        </Paragraph>
-      ) : (
-        <TableRegion label={t('audit.tableLabel')}>
-          <Table className="wide-900">
-            <TableHead>
-              <TableRow>
-                <TableHeaderCell scope="col">{t('audit.colTime')}</TableHeaderCell>
-                <TableHeaderCell scope="col">{t('audit.person')}</TableHeaderCell>
-                <TableHeaderCell scope="col">{t('audit.tenant')}</TableHeaderCell>
-                <TableHeaderCell scope="col">{t('audit.action')}</TableHeaderCell>
-                <TableHeaderCell scope="col">{t('audit.colTarget')}</TableHeaderCell>
-                <TableHeaderCell scope="col">{t('common.reason')}</TableHeaderCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {rows.map((e) => {
-                const digdir = orgOf(e) === 'Digdir';
-                return (
-                  <TableRow key={e.task} className={digdir ? 'digdir-row' : undefined}>
-                    <TableCell className="sm nowrap">{formatWhen(e.at, f, t)}</TableCell>
-                    <TableCell>
-                      <span className="two-line">
-                        <span className="label-strong">{personOf(e)}</span>
-                        <Tag data-size="sm" data-color={digdir ? 'info' : 'neutral'}>
-                          {orgOf(e)}
-                        </Tag>
-                      </span>
-                    </TableCell>
-                    <TableCell>{tenantOf(e)}</TableCell>
-                    <TableCell>
-                      {labelOf(e, t)}
-                      {e.outcome === 'rejected' ? (
-                        <>
-                          {' '}
-                          <Tag data-size="sm" data-color="danger">
-                            {t('audit.rejected')}
-                          </Tag>
-                        </>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="sm">
-                      <Target entry={e} t={t} />
-                    </TableCell>
-                    <TableCell className="sm">{e.reason || '–'}</TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </TableRegion>
-      )}
-    </div>
-  );
-};
-
-export const Audit = ({ api }: { api: ApiClient }) => {
-  const t = useT();
-  const [state, retry] = useAsync((signal) => api.operatorAudit(signal), [api]);
-  return (
-    <>
-      <PageHeader title={t('audit.title')} intro={t('audit.intro')} />
-      {state.status === 'loading' ? (
-        <Loading label={t('audit.loading')} />
-      ) : state.status === 'error' ? (
+      {state.status === 'error' ? (
         isMissing(state.error) ? (
-          <Alert data-color="info">
-            <Paragraph>{t('audit.unavailable')}</Paragraph>
-            <Button
-              variant="secondary"
-              data-size="sm"
-              onClick={() => (window.location.hash = '/support-access')}
-            >
-              {t('audit.openOrganisation')}
-            </Button>
-          </Alert>
+          <p>{t('audit.unavailable')}</p>
         ) : (
           <ErrorState error={state.error} onRetry={retry} />
         )
+      ) : !page ? (
+        <Loading label={t('auditLog.loading')} />
       ) : (
-        <Log api={api} entries={state.data} />
+        <>
+          <p className="op-subtle" aria-live="polite" style={{ margin: 0 }}>
+            {t('auditLog.count', { count: page.total })}
+          </p>
+          {page.data.length === 0 ? (
+            <p>
+              {t('auditLog.noMatch')}{' '}
+              <button type="button" className="op-btn" onClick={reset}>
+                {t('auditLog.reset')}
+              </button>
+            </p>
+          ) : (
+            <div
+              tabIndex={0}
+              role="region"
+              aria-label={t('auditLog.title')}
+              aria-busy={state.status === 'loading' || undefined}
+              className="op-table-wrap"
+            >
+              <table className="op-table w860 top">
+                <thead>
+                  <tr>
+                    <th scope="col" aria-sort="descending">
+                      {t('auditLog.colTime')} <span aria-hidden="true">↓</span>
+                    </th>
+                    <th scope="col">{t('auditLog.who')}</th>
+                    <th scope="col">{t('auditLog.tenant')}</th>
+                    <th scope="col">{t('auditLog.action')}</th>
+                    <th scope="col">{t('auditLog.colReason')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {page.data.map((e) => (
+                    <tr key={e.task}>
+                      <td className="nowrap">{`${dayMonth(e.at, f)} ${clock(e.at, f)}`}</td>
+                      <td className="nowrap">{whoOf(e)}</td>
+                      <td>
+                        {/\d{9}/.test(e.tenant) ? (
+                          <a href={orgHref(e.tenant, 'log')}>{tenantOf(e)}</a>
+                        ) : (
+                          tenantOf(e)
+                        )}
+                      </td>
+                      <td>
+                        {handling(e)}
+                        {e.outcome === 'rejected' ? (
+                          <>
+                            {' '}
+                            <Chip tone="danger">{t('audit.rejected')}</Chip>
+                          </>
+                        ) : null}
+                      </td>
+                      <td>{e.reason || '–'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {page.data.length < page.total ? (
+            <button
+              type="button"
+              className="op-btn"
+              style={{ alignSelf: 'flex-start' }}
+              aria-disabled={state.status === 'loading' || undefined}
+              onClick={() => {
+                if (state.status !== 'loading') setLimit((n) => n + pageSize);
+              }}
+            >
+              {t('auditLog.more')}
+            </button>
+          ) : null}
+        </>
       )}
-    </>
+    </div>
   );
 };

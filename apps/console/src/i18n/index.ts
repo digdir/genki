@@ -49,6 +49,11 @@ import { tenantServices as enTenantServices } from './en/tenantServices';
 import { tenants as enTenants } from './en/tenants';
 import { tracing as enTracing } from './en/tracing';
 import { transfer as enTransfer } from './en/transfer';
+import { auditLog as enAuditLog } from './en/auditLog';
+import { contentView as enContentView } from './en/contentView';
+import { operating as enOperating } from './en/operating';
+import { orgList as enOrgList } from './en/orgList';
+import { run as enRun } from './en/run';
 import { api } from './nb/api';
 import { atlas } from './nb/atlas';
 import { audit } from './nb/audit';
@@ -91,6 +96,11 @@ import { tenantServices } from './nb/tenantServices';
 import { tenants } from './nb/tenants';
 import { tracing } from './nb/tracing';
 import { transfer } from './nb/transfer';
+import { auditLog } from './nb/auditLog';
+import { contentView } from './nb/contentView';
+import { operating } from './nb/operating';
+import { orgList } from './nb/orgList';
+import { run } from './nb/run';
 
 export const nb = defineCatalogue({
   api,
@@ -135,6 +145,11 @@ export const nb = defineCatalogue({
   tenants,
   tracing,
   transfer,
+  auditLog,
+  contentView,
+  operating,
+  orgList,
+  run,
 });
 
 export const en = {
@@ -180,6 +195,11 @@ export const en = {
   tenants: enTenants,
   tracing: enTracing,
   transfer: enTransfer,
+  auditLog: enAuditLog,
+  contentView: enContentView,
+  operating: enOperating,
+  orgList: enOrgList,
+  run: enRun,
 } satisfies Translation<typeof nb>;
 
 export const { useT, translator } = defineTranslations({ nb, en });

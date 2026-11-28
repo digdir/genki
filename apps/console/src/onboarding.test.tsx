@@ -104,9 +104,7 @@ describe('oppstart', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Registrer' }));
 
     expect(
-      await screen.findByText(
-        'Brønnøysundregistrene er registrert. Beslutningen er logget i Logg.',
-      ),
+      await screen.findByText('Brønnøysundregistrene er registrert. Beslutningen står i Logg.'),
     ).toBeTruthy();
     const post = calls.find((c) => c.method === 'POST' && c.path === '/api/operator/tenants');
     expect(post?.body).toEqual({ orgNumber: '974760673', name: 'Brønnøysundregistrene' });

@@ -1,0 +1,31 @@
+import type { Translation } from '@genai/i18n';
+import type { auditLog as source } from '../nb/auditLog';
+
+export const auditLog = {
+  title: 'Log',
+  export: 'Export',
+  tenant: 'Organisation',
+  tenantPlaceholder: 'All organisations',
+  unknownTenant: 'No organisation has that name.',
+  action: 'Action',
+  all: 'All',
+  actionLimit: 'Changed limit',
+  actionContent: 'Viewed content',
+  actionFlag: 'Feature flag',
+  actionPublish: 'Published service',
+  who: 'Who',
+  whoDigdir: 'Digdir',
+  whoTenants: 'The organisations',
+  period: 'Period',
+  from: 'From',
+  to: 'To',
+  count: { one: '{count} event', other: '{count} events' },
+  colTime: 'Time',
+  colReason: 'Reason',
+  digdirPerson: '{name}, Digdir',
+  actionWithTarget: '{action}: {target}',
+  more: 'Show more',
+  noMatch: 'No events match the filters.',
+  reset: 'Clear the filters',
+  loading: 'Loading the log',
+} satisfies Translation<typeof source>;

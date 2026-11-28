@@ -15,7 +15,6 @@ export const transfer = {
   conflictOverwrite: 'Conflict: overwritten',
   conflictSkip: 'Conflict: skipped',
   whereService: 'Service',
-  whereTenant: 'Organisation',
   pickSomething: 'Choose at least one thing to include.',
   pickFile: 'Choose an export file from the platform.',
   pickTwo: 'Choose two different organisations.',

@@ -48,7 +48,7 @@ export const formatValue = (s: GridSetting, v: unknown, t: T, f: Format): string
           : formatValue({ ...s, type: 'enum' }, v[l], t, f),
       )
       .join(' / ');
-    return `${t('settings.perRiskLevel', { values })}${s.floorText ? ` ${t('settings.floorInline', { floor: s.floorText })}` : ''}`;
+    return t('settings.perRiskLevel', { values });
   }
   if (typeof v === 'boolean') return v ? t('settings.on') : t('settings.off');
   if (s.type === 'enum' && s.options)
@@ -220,15 +220,6 @@ export const parseDraft = (
   }
   if (s.type === 'risk') {
     const value = Object.fromEntries(riskLevels.map((l) => [l, risk[l] === 'true']));
-    for (const level of riskLevels) {
-      const floor = s.floor?.[level];
-      if (floor !== undefined && value[level] !== floor)
-        return {
-          error:
-            s.rule ??
-            t('settings.errFloor', { level: t(riskLabel[level]), floor: onOff(t, floor) }),
-        };
-    }
     return { value };
   }
   return raw.trim() ? { value: raw.trim() } : { error: t('settings.errValue') };

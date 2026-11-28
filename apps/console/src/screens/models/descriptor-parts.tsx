@@ -43,6 +43,7 @@ import type {
   OperatorModel,
 } from '../../types';
 import {} from '../../ui';
+import { ReasonField } from '../../components/ReasonField';
 
 const problemOf: Record<FieldProblem, PlainKey> = {
   required: 'modelOperations.fieldRequired',
@@ -98,21 +99,7 @@ const ReasonInput = ({
   error?: string | undefined;
   onChange: (value: string) => void;
 }) => {
-  const t = useT();
-  const id = useId();
-  return (
-    <div className="field">
-      <Label htmlFor={id}>{t('common.reason')}</Label>
-      <Textarea
-        id={id}
-        rows={2}
-        value={value}
-        aria-invalid={error ? true : undefined}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      {error ? <ValidationMessage>{error}</ValidationMessage> : null}
-    </div>
-  );
+  return <ReasonField value={value} error={error} onChange={onChange} />;
 };
 
 const reasonProblem = (reason: string, t: ReturnType<typeof useT>) =>

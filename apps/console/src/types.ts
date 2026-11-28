@@ -20,6 +20,7 @@ export interface Tenant {
   tokensMillions?: number;
   quotaMillions?: number;
   costNok?: number | null;
+  waiting?: { count: number; blocks: boolean; types: string[] };
 }
 
 export interface Problem {
@@ -484,9 +485,7 @@ export interface MatrixEstimate {
 }
 
 export interface QualityHistory {
-  weeks: string[];
-  series: { name: string; kind: string; scores: number[] }[];
-  events: { week: number; text: string }[];
+  series: { name: string; tenant?: string; now: number; before: number }[];
 }
 
 export interface QualityOverview {
@@ -685,11 +684,6 @@ export interface GridSetting {
   version: number;
   tenants: Record<string, unknown>;
   services: Record<string, unknown>;
-  pins?: Record<string, { version: number; value: unknown }>;
-  needs?: Record<string, number>;
-  rule?: string;
-  floor?: Partial<Record<RiskLevel, unknown>>;
-  floorText?: string;
 }
 
 export interface SettingsGrid {
@@ -1149,6 +1143,8 @@ export interface OperatorFlag {
     byName?: string;
     at: string;
     reason: string;
+    expiresAt?: string;
+    expired?: boolean;
   }[];
 }
 
@@ -1156,6 +1152,7 @@ export interface FlagChange {
   tenant: string;
   person?: { issuer: string; subject: string };
   on: boolean | null;
+  expiresAt?: string;
 }
 
 export type QuotaRequestState = 'pending' | 'approved' | 'rejected';

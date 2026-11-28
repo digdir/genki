@@ -188,7 +188,7 @@ describe('signing in through the platform login', () => {
       active ? signedIn({ operator: true, expiresAt: ends }) : signedOut(),
     );
     open(p);
-    const search = await screen.findByLabelText('Søk etter navn eller org.nr.');
+    const search = await screen.findByRole('searchbox', { name: 'Søk' });
     fireEvent.change(search, { target: { value: 'Brønnøysund' } });
     active = false;
 

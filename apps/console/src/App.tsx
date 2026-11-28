@@ -9,6 +9,7 @@ import { Audit } from './screens/Audit';
 import { Catalog } from './screens/Catalog';
 import { BuildingBlocks } from './screens/BuildingBlocks';
 import { Diagnostics } from './screens/Diagnostics';
+import { Run } from './screens/operate/Run';
 import { Forward, Models } from './screens/Models';
 import { BlockReviews } from './screens/BlockReviews';
 import { Onboarding } from './screens/Onboarding';
@@ -337,14 +338,17 @@ export const App = ({ auth, fetch: send, baseUrl = '/api' }: Props) => {
       </Suspense>
     ),
     '/tracing': () => <Tracing api={api} />,
-    '/operations': () => <Operations api={api} />,
-    '/diagnostics': () => (
-      <Diagnostics
-        api={api}
-        tenant={params.get('tenant') ?? undefined}
-        kind={params.get('kind') === 'service' ? 'service' : 'run'}
-      />
-    ),
+    '/operations': () => <Operations api={api} tab={params.get('tab') ?? undefined} />,
+    '/diagnostics': () =>
+      params.get('task') && params.get('tenant') ? (
+        <Run api={api} tenant={params.get('tenant') ?? ''} task={params.get('task') ?? ''} />
+      ) : (
+        <Diagnostics
+          api={api}
+          tenant={params.get('tenant') ?? undefined}
+          kind={params.get('kind') === 'service' ? 'service' : 'run'}
+        />
+      ),
     '/support-access': () => (
       <OrgPage
         api={api}
@@ -364,6 +368,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api' }: Props) => {
         <Shell
           session={session}
           path={current}
+          tab={params.get('tab') ?? undefined}
           badges={{
             ...(queued === undefined ? {} : { queue: queued }),
             ...(quotaPending === undefined ? {} : { quotaRequests: quotaPending }),

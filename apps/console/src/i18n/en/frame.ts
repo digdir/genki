@@ -24,6 +24,7 @@ export const frame = {
   pageTenantsAll: 'All',
   pageTenantsOnboarding: 'Onboarding',
   pageModelsModels: 'Models',
+  pageModelsConnections: 'Connections',
   pageModelsEndpoints: 'Endpoints and prices',
   pageModelsEngines: 'Search engines',
   pageCatalogAll: 'All',

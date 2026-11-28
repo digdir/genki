@@ -14,7 +14,6 @@ export const transfer = defineNamespace({
   conflictOverwrite: 'Konflikt: overskrives',
   conflictSkip: 'Konflikt: hoppes over',
   whereService: 'Tjeneste',
-  whereTenant: 'Virksomhet',
   pickSomething: 'Velg minst én ting å ta med.',
   pickFile: 'Velg en eksportfil fra plattformen.',
   pickTwo: 'Velg to forskjellige virksomheter.',

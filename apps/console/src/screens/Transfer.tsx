@@ -16,7 +16,6 @@ import {
   TableHeaderCell,
   TableRow,
   Tag,
-  Textarea,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
 import { useRef, useState } from 'react';
@@ -27,6 +26,7 @@ import { ErrorState, Loading } from '../states';
 import type { ImportPlanItem, SettingsGrid } from '../types';
 import { TableRegion } from '../ui';
 import { reasonProblem } from '../reason';
+import { ReasonField } from '../components/ReasonField';
 
 type Mode = 'export' | 'import' | 'clone';
 type Policy = 'skip' | 'overwrite';
@@ -384,20 +384,12 @@ export const Transfer = ({
             />
           </Fieldset>
           {errors.items ? <ValidationMessage>{errors.items}</ValidationMessage> : null}
-          <div className="field">
-            <Label htmlFor="x-grunn">{t('common.reason')}</Label>
-            <Paragraph data-size="sm" className="meta">
-              {t('transfer.reasonHelp')}
-            </Paragraph>
-            <Textarea
-              id="x-grunn"
-              rows={2}
-              value={reason}
-              aria-invalid={errors.reason ? true : undefined}
-              onChange={(e) => setReason(e.target.value)}
-            />
-            {errors.reason ? <ValidationMessage>{errors.reason}</ValidationMessage> : null}
-          </div>
+          <ReasonField
+            description={t('transfer.reasonHelp')}
+            value={reason}
+            error={errors.reason}
+            onChange={setReason}
+          />
         </div>
       ) : null}
 

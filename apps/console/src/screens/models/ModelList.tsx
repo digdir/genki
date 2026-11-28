@@ -1,39 +1,17 @@
-import {
-  Alert,
-  Button,
-  Heading,
-  Label,
-  Link,
-  Paragraph,
-  Select,
-  SelectOption,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeaderCell,
-  TableRow,
-  Tag,
-  Textfield,
-} from '@digdir/designsystemet-react';
+import { Alert, Paragraph, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useState } from 'react';
+import type { Format, PlainKey, T } from '../../i18n';
 import { useT } from '../../i18n';
 import { operationName } from '../../model-operations';
 import { EmptyState } from '../../states';
 import type { OperatorModel, RefreshResult } from '../../types';
-import { ReasonDialog, TableRegion } from '../../ui';
-import { priceText } from './prices';
-import {
-  allModels,
-  boundOf,
-  filterModels,
-  isUnconfirmed,
-  modelsHref,
-  type AreaProps,
-  type ModelFilter,
-} from './area-data';
-import { ModelForm, residencyLabel } from './Endpoints';
+import { ReasonDialog } from '../../ui';
+import { perMillion } from './prices';
+import { boundOf, isUnconfirmed, modelsHref, type AreaProps } from './area-data';
+import { residencyLabel } from './Endpoints';
+import '../platform.css';
+import { PageTabs } from '../../page-tabs';
 
 export const KindTags = ({ model }: { model: OperatorModel }) => {
   const t = useT();
@@ -77,46 +55,46 @@ export const ModelStatus = ({ model }: { model: OperatorModel }) => {
   );
 };
 
+const money = (value: number, f: Format) => f.number(value, { maximumFractionDigits: 4 });
+
+const listPrice = (model: OperatorModel, f: Format, t: T) => {
+  if (!model.price) return t('models.priceNotSet');
+  const { input, output } = perMillion(model.price);
+  return output === 0
+    ? t('models.priceInputOnly', { input: money(input, f) })
+    : t('models.priceText', { input: money(input, f), output: money(output, f) });
+};
+
+const callTypes = (model: OperatorModel, t: T) => {
+  const kinds = Object.keys(boundOf(model));
+  const names = kinds.map((k) => (k === 'chat' ? t('models.callText') : operationName(k, t)));
+  if (kinds.includes('chat') && model.capabilities.includes('tools'))
+    names.push(t('models.callTools'));
+  return names.length ? names.join(', ') : t('models.noKinds');
+};
+
+const statusOf = (model: OperatorModel): [PlainKey, string] =>
+  isUnconfirmed(model)
+    ? ['models.statusReview', 'info']
+    : model.enabled
+      ? ['models.statusAllowed', 'ok']
+      : ['models.disabled', 'neutral'];
+
 export const ModelList = ({ api, data, done }: AreaProps) => {
   const t = useT();
   const f = useFormat();
-  const [filter, setFilter] = useState<ModelFilter>(allModels);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshed, setRefreshed] = useState<RefreshResult | undefined>();
-  const [adding, setAdding] = useState(false);
-  const set = (change: Partial<ModelFilter>) => setFilter((all) => ({ ...all, ...change }));
-  const connections = [
-    ...new Set([
-      ...(data.connections ?? []).map((c) => c.id),
-      ...data.models.map((m) => m.endpoint),
-    ]),
-  ].sort();
-  const kinds = [...new Set(data.models.flatMap((m) => Object.keys(boundOf(m))))].sort();
-  const shown = filterModels(data.models, filter);
 
   return (
-    <section className="stack" aria-labelledby="models-h">
-      <div className="card-head">
-        <Heading level={2} data-size="xs" id="models-h">
-          {t('models.tabModels')}
-        </Heading>
-        <span className="row-actions">
-          <Button variant="secondary" data-size="sm" onClick={() => setRefreshing(true)}>
-            {t('models.refresh')}
-          </Button>
-          <Button
-            variant="secondary"
-            data-size="sm"
-            disabled={!data.connections?.length}
-            onClick={() => setAdding(true)}
-          >
-            {t('endpoints.addModel')}
-          </Button>
-        </span>
+    <>
+      <div className="pf-head">
+        <h1 className="pf-title">{t('models.title')}</h1>
+        <button type="button" className="pf-button" onClick={() => setRefreshing(true)}>
+          {t('models.refresh')}
+        </button>
       </div>
-      <Paragraph data-size="sm">
-        {t.rich('models.discoveredNote', { strong: (c) => <strong>{c}</strong> })}
-      </Paragraph>
+      <PageTabs />
       {refreshed ? (
         <Alert data-color={refreshed.failed.length > 0 ? 'warning' : 'success'} role="status">
           <Paragraph>{t('models.discovered', { count: refreshed.discovered })}</Paragraph>
@@ -145,106 +123,57 @@ export const ModelList = ({ api, data, done }: AreaProps) => {
       {data.models.length === 0 ? (
         <EmptyState title={t('models.noneTitle')}>
           <Paragraph>{t('models.noneText')}</Paragraph>
+          <a className="pf-link" href={modelsHref({ tab: 'connections' })}>
+            {t('models.tabConnections')}
+          </a>
         </EmptyState>
       ) : (
-        <>
-          <div className="filters">
-            <Textfield
-              label={t('models.search')}
-              type="search"
-              value={filter.text}
-              onChange={(e) => set({ text: e.target.value })}
-            />
-            <div className="field">
-              <Label htmlFor="models-connection">{t('models.filterConnection')}</Label>
-              <Select
-                id="models-connection"
-                value={filter.connection}
-                onChange={(e) => set({ connection: e.target.value })}
-              >
-                <SelectOption value="">{t('models.filterAll')}</SelectOption>
-                {connections.map((c) => (
-                  <SelectOption key={c} value={c}>
-                    {c}
-                  </SelectOption>
-                ))}
-              </Select>
-            </div>
-            <div className="field">
-              <Label htmlFor="models-kind">{t('models.filterKind')}</Label>
-              <Select
-                id="models-kind"
-                value={filter.kind}
-                onChange={(e) => set({ kind: e.target.value })}
-              >
-                <SelectOption value="">{t('models.filterAll')}</SelectOption>
-                {kinds.map((k) => (
-                  <SelectOption key={k} value={k}>
-                    {operationName(k, t)}
-                  </SelectOption>
-                ))}
-              </Select>
-            </div>
-            <div className="field">
-              <Label htmlFor="models-confirmed">{t('models.filterConfirmed')}</Label>
-              <Select
-                id="models-confirmed"
-                value={filter.confirmed}
-                onChange={(e) => set({ confirmed: e.target.value as ModelFilter['confirmed'] })}
-              >
-                <SelectOption value="all">{t('models.filterAll')}</SelectOption>
-                <SelectOption value="confirmed">{t('models.filterConfirmedOnly')}</SelectOption>
-                <SelectOption value="unconfirmed">{t('models.unconfirmed')}</SelectOption>
-              </Select>
-            </div>
-          </div>
-          <Paragraph data-size="sm" aria-live="polite">
-            {t('models.shown', { count: shown.length, total: data.models.length })}
-          </Paragraph>
-          <TableRegion label={t('models.tableLabel')}>
-            <Table className="models-table">
-              <TableHead>
-                <TableRow>
-                  <TableHeaderCell scope="col">{t('models.colModel')}</TableHeaderCell>
-                  <TableHeaderCell scope="col">{t('models.colConnection')}</TableHeaderCell>
-                  <TableHeaderCell scope="col">{t('models.colResidency')}</TableHeaderCell>
-                  <TableHeaderCell scope="col">{t('models.colPrice')}</TableHeaderCell>
-                  <TableHeaderCell scope="col">{t('models.colKinds')}</TableHeaderCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {shown.map((m) => (
-                  <TableRow key={m.id}>
-                    <TableHeaderCell scope="row">
-                      <span className="two-line">
-                        <Link href={modelsHref({ model: m.id })}>
-                          <strong>{m.deployment}</strong>
-                        </Link>
-                        <span className="meta model-id">{m.id}</span>
-                        <ModelStatus model={m} />
-                      </span>
-                    </TableHeaderCell>
-                    <TableCell>
-                      <span className="two-line">
-                        <Link href={modelsHref({ connection: m.endpoint })}>{m.endpoint}</Link>
-                        <span className="meta">
-                          {m.origin === 'discovered'
-                            ? t('models.discoveredAuto')
-                            : t('models.fromCatalog')}
+        <div className="pf-region" tabIndex={0} role="region" aria-label={t('models.title')}>
+          <table className="pf-table pf-min-900">
+            <thead>
+              <tr>
+                <th scope="col">{t('models.colModel')}</th>
+                <th scope="col">{t('models.colResidency')}</th>
+                <th scope="col">{t('models.colPrice')}</th>
+                <th scope="col">{t('models.kind')}</th>
+                <th scope="col">{t('models.colStatus')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.models.map((m) => {
+                const [status, tone] = statusOf(m);
+                return (
+                  <tr key={m.id}>
+                    <td>
+                      <a className="name" href={modelsHref({ model: m.id })}>
+                        {m.deployment}
+                      </a>
+                      <span className="pf-sub">{m.endpoint}</span>
+                    </td>
+                    <td>
+                      {isUnconfirmed(m) ? (
+                        <span className="pf-chip" data-tone="warn">
+                          {t('models.residencyUnconfirmed', {
+                            residency: t(residencyLabel[m.residency]),
+                          })}
                         </span>
+                      ) : (
+                        t(residencyLabel[m.residency])
+                      )}
+                    </td>
+                    <td>{listPrice(m, f, t)}</td>
+                    <td>{callTypes(m, t)}</td>
+                    <td>
+                      <span className="pf-chip" data-tone={tone}>
+                        {t(status)}
                       </span>
-                    </TableCell>
-                    <TableCell>{t(residencyLabel[m.residency])}</TableCell>
-                    <TableCell className="nowrap">{priceText(m.price, f, t)}</TableCell>
-                    <TableCell>
-                      <KindTags model={m} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableRegion>
-        </>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
       <ReasonDialog
         open={refreshing}
@@ -257,18 +186,6 @@ export const ModelList = ({ api, data, done }: AreaProps) => {
           done(t('models.refreshed'));
         }}
       />
-      {adding && data.connections ? (
-        <ModelForm
-          api={api}
-          endpoints={data.connections}
-          apis={data.apis}
-          onClose={() => setAdding(false)}
-          onSaved={(saved) => {
-            setAdding(false);
-            done(t('models.saved', { model: saved.deployment }));
-          }}
-        />
-      ) : null}
-    </section>
+    </>
   );
 };

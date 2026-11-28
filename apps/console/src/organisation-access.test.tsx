@@ -85,16 +85,14 @@ describe('content of an organisation', () => {
     await open('#/diagnostics?tenant=999888777', fetch);
     await lookUpRun();
 
-    const dialog = await screen.findByRole('dialog', { name: 'Grunn for å se innhold' });
+    const dialog = await screen.findByRole('dialog', { name: 'Se innhold fra Testetaten' });
     expect(
-      within(dialog).getByText(
-        'Innholdet til Testetaten kan inneholde personopplysninger. Skriv hvorfor du trenger å se det.',
-      ),
+      within(dialog).getByText('Kan inneholde personopplysninger. Gjelder resten av dagen.'),
     ).toBeTruthy();
     fireEvent.change(within(dialog).getByLabelText('Begrunnelse'), {
       target: { value: 'Kunden melder feil svar, sak DIG-4412' },
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Se innhold' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Se innholdet' }));
 
     expect(await screen.findByRole('heading', { name: 'opg_7f2kq9d1' })).toBeTruthy();
     const after = calls.filter((c) => c.path === timeline || c.path.endsWith('/content-reason'));
@@ -110,17 +108,17 @@ describe('content of an organisation', () => {
     const { calls, fetch } = recording();
     await open('#/diagnostics?tenant=999888777', fetch);
     await lookUpRun();
-    const dialog = await screen.findByRole('dialog', { name: 'Grunn for å se innhold' });
+    const dialog = await screen.findByRole('dialog', { name: /^Se innhold fra / });
     fireEvent.change(within(dialog).getByLabelText('Begrunnelse'), {
       target: { value: 'Kunden melder feil svar, sak DIG-4412' },
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Se innhold' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Se innholdet' }));
     await screen.findByRole('heading', { name: 'opg_7f2kq9d1' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Slå opp' }));
 
     await waitFor(() => expect(calls.filter((c) => c.path === timeline)).toHaveLength(3));
-    expect(screen.queryByRole('dialog', { name: 'Grunn for å se innhold' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /^Se innhold fra / })).toBeNull();
     expect(calls.filter((c) => c.path.endsWith('/content-reason'))).toHaveLength(1);
   });
 
@@ -129,7 +127,7 @@ describe('content of an organisation', () => {
     await open('#/diagnostics?tenant=999888777', fetch);
     await lookUpRun();
 
-    const dialog = await screen.findByRole('dialog', { name: 'Grunn for å se innhold' });
+    const dialog = await screen.findByRole('dialog', { name: /^Se innhold fra / });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Avbryt' }));
 
     expect(await screen.findByText('Kunne ikke slå opp. Prøv igjen om litt.')).toBeTruthy();
@@ -216,11 +214,11 @@ describe('an organisation in the console', () => {
     const { fetch } = recording();
     await open('#/diagnostics?tenant=999888777', fetch);
     await lookUpRun();
-    const dialog = await screen.findByRole('dialog', { name: 'Grunn for å se innhold' });
+    const dialog = await screen.findByRole('dialog', { name: /^Se innhold fra / });
     fireEvent.change(within(dialog).getByLabelText('Begrunnelse'), {
       target: { value: 'Kunden melder feil svar, sak DIG-4412' },
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Se innhold' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Se innholdet' }));
     await screen.findByRole('heading', { name: 'opg_7f2kq9d1' });
 
     window.location.hash = '#/support-access?tenant=999888777&tab=log';

@@ -3,7 +3,6 @@ import type { modelParameters as source } from '../nb/modelParameters';
 
 export const modelParameters = {
   open: 'Parameters',
-  openFor: 'Parameters for {model}',
   title: 'Parameters for {model}',
   text: 'Some models reject parameters that services send. Here you decide what the platform sends to this model, regardless of what the services have set.',
   save: 'Save parameters',

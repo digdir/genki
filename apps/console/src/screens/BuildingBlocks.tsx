@@ -1,17 +1,8 @@
 import {
   Button,
-  Chip,
-  Details,
-  DetailsContent,
-  DetailsSummary,
-  Dialog,
-  Fieldset,
-  FieldsetLegend,
   Heading,
-  Label,
   Link,
   Paragraph,
-  Select,
   Spinner,
   Table,
   TableBody,
@@ -24,28 +15,28 @@ import {
   TabsPanel,
   TabsTab,
   Tag,
-  Textarea,
-  Textfield,
-  ValidationMessage,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useRef, useState } from 'react';
-import { ApiError, type ApiClient } from '../api';
+import { useEffect, useRef, useState } from 'react';
+import type { ApiClient } from '../api';
 import { useT, type Format, type PlainKey, type T } from '../i18n';
-import { parse as parseYaml } from 'yaml';
 import { useTenantNames } from '../tenant-names';
 import { useAsync } from '../hooks';
-import { EmptyState, ErrorState, Loading } from '../states';
+import { ErrorState, Loading } from '../states';
 import type {
   Availability,
   BlockType,
   BuildingBlock,
+  BlockApprovalRequest,
   BuildingBlocks as Blocks,
   PluginSummary,
   RegistryBlock,
+  SkillShareRequest,
 } from '../types';
 import { toYaml } from '../yaml';
-import { Flash, Kpis, PageHeader, TableRegion, useFlash } from '../ui';
+import { Flash, TableRegion, useFlash } from '../ui';
+import './platform.css';
+import { PageTabs } from '../page-tabs';
 
 const availabilityLabel: Record<Availability, [PlainKey, 'success' | 'info' | 'neutral']> = {
   all: ['buildingBlocks.availabilityAll', 'success'],
@@ -181,15 +172,6 @@ export const normalizeBlocks = (data: Blocks, t: T, f: Format) => {
   };
 };
 
-const isNew = (b: RegistryBlock) => Boolean(b.badge && /^Ny/.test(b.badge));
-const usage = (b: RegistryBlock, t: T) =>
-  b.serviceCount
-    ? t('buildingBlocks.usageLine', {
-        organisations: t('buildingBlocks.organisationCount', { count: b.agencies?.length ?? 0 }),
-        services: t('buildingBlocks.serviceCount', { count: b.serviceCount }),
-      })
-    : t('buildingBlocks.notInUse');
-
 const TestTag = ({ b, prefixed = false }: { b: RegistryBlock; prefixed?: boolean }) => {
   const t = useT();
   return b.testPassed === undefined ? (
@@ -216,324 +198,230 @@ const TestTag = ({ b, prefixed = false }: { b: RegistryBlock; prefixed?: boolean
   );
 };
 
-const locations: Record<string, [PlainKey, 'success' | 'info' | 'danger']> = {
-  norway: ['buildingBlocks.locationNorway', 'success'],
-  eu: ['buildingBlocks.locationEu', 'info'],
-  global: ['buildingBlocks.locationGlobal', 'danger'],
+type Kind = 'designElement' | 'tool' | 'workInstruction';
+
+const kindLabel: Record<Kind, PlainKey> = {
+  designElement: 'buildingBlocks.kindDesignElement',
+  tool: 'buildingBlocks.kindTool',
+  workInstruction: 'buildingBlocks.kindWorkInstruction',
 };
 
-const locationTag = (location: string, t: T): [string, 'success' | 'info' | 'danger'] => {
-  const found = locations[location];
-  return found ? [t(found[0]), found[1]] : [location, 'info'];
+const kinds = Object.keys(kindLabel) as Kind[];
+
+type Status = 'review' | 'everyone' | 'selected' | 'none';
+
+const statusChip: Record<Status, [PlainKey, string]> = {
+  review: ['buildingBlocks.statusReview', 'warn'],
+  everyone: ['buildingBlocks.statusEveryone', 'ok'],
+  selected: ['buildingBlocks.availabilitySelected', 'info'],
+  none: ['buildingBlocks.availabilityNone', 'neutral'],
 };
 
-const exampleManifest = `kind: tool-source
-id: lovdata-pro
-version: 2.0.0
-contract: tool-source@1
-title: Lovdata Pro
-publisher: Lovdata
-dataLocation: norway
-`;
+interface CatalogRow {
+  key: string;
+  name: string;
+  kind: Kind;
+  from: string;
+  version: string;
+  usedBy: number | undefined;
+  status: Status;
+  open?: string;
+  review?: string;
+}
 
-const problemErrors = (error: unknown, t: T) => {
-  if (!(error instanceof ApiError)) return [t('buildingBlocks.registerFailed')];
-  const listed = (error.problem?.errors ?? []).map((e) =>
-    e.path ? `${e.path}: ${e.message}` : e.message,
-  );
-  return listed.length ? listed : [error.problem?.title ?? t('buildingBlocks.registerFailedShort')];
-};
+interface ShareReview {
+  id: string;
+  tenant: string;
+  tenantName?: string;
+  block: string;
+  version: number;
+  status: string;
+  title: { nb?: string; en?: string };
+}
 
-const RegisterDialog = ({
-  api,
-  open,
-  onClose,
-  onRegistered,
-}: {
-  api: ApiClient;
-  open: boolean;
-  onClose: () => void;
-  onRegistered: (message: string) => void;
-}) => {
-  const t = useT();
-  const tRef = useRef(t);
-  tRef.current = t;
-  const [text, setText] = useState(exampleManifest);
-  const [errors, setErrors] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
-  const register = async () => {
-    let manifest: unknown;
-    try {
-      manifest = parseYaml(text);
-    } catch {
-      setErrors([t('buildingBlocks.invalidYaml')]);
-      return;
-    }
-    if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
-      setErrors([t('buildingBlocks.yamlObject')]);
-      return;
-    }
-    const m = manifest as Record<string, unknown>;
-    setBusy(true);
-    setErrors([]);
-    try {
-      await api.registerPlugin(m);
-      const name = [m.title ?? m.id ?? tRef.current('buildingBlocks.defaultBlockName'), m.version]
-        .filter(Boolean)
-        .map(String);
-      onRegistered(tRef.current('buildingBlocks.registered', { name: name.join(' ') }));
-    } catch (e) {
-      setErrors(problemErrors(e, tRef.current));
-    } finally {
-      setBusy(false);
-    }
+interface CatalogReviews {
+  designElements: ShareReview[];
+  tools: BlockApprovalRequest[];
+  workInstructions: SkillShareRequest[];
+}
+
+const isPending = (state: string | undefined) => Boolean(state?.startsWith('pending'));
+
+const settled = <T,>(promise: Promise<T[]>) => promise.catch((): T[] => []);
+
+const loadReviews = async (api: ApiClient, signal?: AbortSignal): Promise<CatalogReviews> => {
+  const [designElements, tools, workInstructions] = await Promise.all([
+    settled(
+      api
+        .getJson('/operator/block-share-requests?status=pending', signal)
+        .then((r) => (r as { data: ShareReview[] }).data),
+    ),
+    settled(api.blockApprovalRequests(signal)),
+    settled(api.skillShares(signal)),
+  ]);
+  return {
+    designElements: designElements.filter((r) => isPending(r.status)),
+    tools: tools.filter((r) => r.block.kind === 'tool' && isPending(r.status ?? r.state)),
+    workInstructions: workInstructions.filter((r) => isPending(r.state)),
   };
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      closeButton={t('common.close')}
-      aria-labelledby="rg-h"
-      className="reason-dialog"
-    >
-      {open ? (
-        <div className="stack">
-          <Heading level={2} data-size="xs" id="rg-h">
-            {t('buildingBlocks.registerTitle')}
-          </Heading>
-          <div className="field">
-            <Label htmlFor="rg-m">{t('buildingBlocks.manifestYaml')}</Label>
-            <Textarea
-              id="rg-m"
-              rows={9}
-              value={text}
-              aria-invalid={errors.length ? true : undefined}
-              onChange={(e) => setText(e.target.value)}
-            />
-            {errors.map((e) => (
-              <ValidationMessage key={e}>{e}</ValidationMessage>
-            ))}
-          </div>
-          <Paragraph data-size="sm">{t('buildingBlocks.registerNote')}</Paragraph>
-          <Details>
-            <DetailsSummary>{t('common.showApiCall')}</DetailsSummary>
-            <DetailsContent>
-              <div className="stack">
-                <code>POST /operator/plugins</code>
-                <pre className="code">{JSON.stringify({ manifest: '…' }, null, 2)}</pre>
-              </div>
-            </DetailsContent>
-          </Details>
-          <div className="actions-row">
-            <Button loading={busy} onClick={() => void register()}>
-              {t('buildingBlocks.registerAndTest')}
-            </Button>
-            <Button variant="secondary" onClick={onClose}>
-              {t('common.cancel')}
-            </Button>
-          </div>
-        </div>
-      ) : null}
-    </Dialog>
-  );
 };
 
-type StatusFilter = 'all' | 'failing' | 'new' | 'limited';
+const catalogRows = (
+  blocks: RegistryBlock[],
+  reviews: CatalogReviews,
+  tenantName: (orgNumber: string) => string,
+): CatalogRow[] => [
+  ...reviews.designElements.map((r): CatalogRow => ({
+    key: `design/${r.id}`,
+    name: r.title.nb ?? r.title.en ?? r.block,
+    kind: 'designElement',
+    from: r.tenantName ?? tenantName(r.tenant),
+    version: String(r.version),
+    usedBy: undefined,
+    status: 'review',
+    review: '#/block-reviews',
+  })),
+  ...blocks
+    .filter((b) => b.type === 'verktoy' || b.type === 'tool-source')
+    .map((b): CatalogRow => ({
+      key: `tool/${b.id}`,
+      name: b.name,
+      kind: 'tool',
+      from: b.provider ?? 'genki',
+      version: b.version,
+      usedBy: b.agencies?.filter(Boolean).length ?? 0,
+      status:
+        b.availability === 'selected'
+          ? 'selected'
+          : b.availability === 'none'
+            ? 'none'
+            : 'everyone',
+      open: b.id,
+    })),
+  ...reviews.tools.map((r): CatalogRow => ({
+    key: `tool-request/${r.id}`,
+    name: r.block.name ?? r.block.id,
+    kind: 'tool',
+    from: r.tenantName ?? tenantName(r.tenant),
+    version: r.block.version,
+    usedBy: undefined,
+    status: 'review',
+    review: '#/queue',
+  })),
+  ...reviews.workInstructions.map((r): CatalogRow => ({
+    key: `skill/${r.id}`,
+    name: r.skillName ?? r.skill,
+    kind: 'workInstruction',
+    from: r.tenantName ?? tenantName(r.tenant),
+    version: String(r.version),
+    usedBy: undefined,
+    status: 'review',
+    review: '#/queue',
+  })),
+];
 
-const List = ({
-  types,
-  blocks,
+const CatalogList = ({
+  rows,
+  kind,
+  setKind,
   onOpen,
-  onRegister,
 }: {
-  types: BlockType[];
-  blocks: RegistryBlock[];
+  rows: CatalogRow[];
+  kind: Kind | 'all';
+  setKind: (kind: Kind | 'all') => void;
   onOpen: (id: string) => void;
-  onRegister: () => void;
 }) => {
   const t = useT();
-  const [query, setQuery] = useState('');
-  const [type, setType] = useState('all');
-  const [status, setStatus] = useState<StatusFilter>('all');
-  const q = query.trim().toLowerCase();
-  const hits = blocks.filter(
-    (b) =>
-      (type === 'all' || b.type === type) &&
-      (!q || `${b.name} ${b.id}`.toLowerCase().includes(q)) &&
-      (status === 'all' ||
-        (status === 'failing' && b.testPassed === false) ||
-        (status === 'new' && isNew(b)) ||
-        (status === 'limited' && b.availability !== undefined && b.availability !== 'all')),
-  );
-  const newest = blocks.find((b) => b.id === 'a2a');
+  const shown = rows.filter((r) => kind === 'all' || r.kind === kind);
   return (
     <>
-      <div className="page-head-row">
-        <PageHeader
-          eyebrow={t('shell.groupPlatform')}
-          title={t('buildingBlocks.title')}
-          intro={t('buildingBlocks.intro')}
-        />
-        <Button variant="secondary" onClick={onRegister}>
-          {t('buildingBlocks.registerTitle')}
-        </Button>
-      </div>
-      <div className="callout">
-        <span className="two-line">
-          <span className="label-strong">{t('buildingBlocks.calloutTitle')}</span>
-          <span>
-            {t('buildingBlocks.calloutText')}
-            {newest ? (
-              <>
-                {' '}
-                {t.rich('buildingBlocks.latestAdded', {
-                  name: newest.name,
-                  strong: (c) => <strong>{c}</strong>,
-                })}
-              </>
-            ) : null}
-          </span>
-        </span>
-        {newest ? (
-          <Button variant="secondary" data-size="sm" onClick={() => onOpen(newest.id)}>
-            {t('buildingBlocks.seeA2a')}
-          </Button>
-        ) : null}
-      </div>
-      <Kpis
-        items={[
-          { label: t('buildingBlocks.kpiBlocks'), value: String(blocks.length) },
-          { label: t('buildingBlocks.kpiTypes'), value: String(types.length) },
-          {
-            label: t('buildingBlocks.kpiFailing'),
-            value: String(blocks.filter((b) => b.testPassed === false).length),
-          },
-          { label: t('buildingBlocks.kpiNew'), value: String(blocks.filter(isNew).length) },
-        ]}
-      />
-      <div className="filters">
-        <Textfield
-          className="search-field"
-          label={t('buildingBlocks.search')}
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <div className="field">
-          <Label htmlFor="block-type">{t('buildingBlocks.type')}</Label>
-          <Select id="block-type" value={type} onChange={(e) => setType(e.target.value)}>
-            <Select.Option value="all">{t('buildingBlocks.allTypes')}</Select.Option>
-            {types.map((type) => (
-              <Select.Option key={type.id} value={type.id}>
-                {type.name} ({blocks.filter((b) => b.type === type.id).length})
-              </Select.Option>
-            ))}
-          </Select>
-        </div>
-        <Fieldset>
-          <FieldsetLegend>{t('buildingBlocks.show')}</FieldsetLegend>
-          <div className="chips">
-            {(
-              [
-                ['all', t('buildingBlocks.filterAll')],
-                ['failing', t('buildingBlocks.filterFailing')],
-                ['new', t('buildingBlocks.filterNew')],
-                ['limited', t('buildingBlocks.filterLimited')],
-              ] as const
-            ).map(([value, label]) => (
-              <Chip.Radio
-                key={value}
-                name="block-status"
-                checked={status === value}
-                onChange={() => setStatus(value)}
-              >
-                {label}
-              </Chip.Radio>
-            ))}
-          </div>
-        </Fieldset>
-      </div>
-      {types
-        .map((type) => ({ type, items: hits.filter((b) => b.type === type.id) }))
-        .filter((g) => g.items.length)
-        .map(({ type, items }) => (
-          <section key={type.id} className="group-card" aria-labelledby={`type-${type.id}`}>
-            <div className="group-head">
-              <h2 id={`type-${type.id}`}>{type.name}</h2>
-              <span className="meta">
-                {t('buildingBlocks.groupLine', {
-                  blocks: t('buildingBlocks.blockCount', { count: items.length }),
-                  description: type.description,
-                })}
-              </span>
-            </div>
-            <ul className="plain">
-              {items.map((b) => (
-                <li key={b.id}>
-                  <button type="button" className="row-button" onClick={() => onOpen(b.id)}>
-                    <span className="two-line grow">
-                      <span className="name-line">
-                        <span className="label-strong">{b.name}</span>
-                        {b.badge ? (
-                          <Tag data-size="sm" data-color="info">
-                            {b.badge}
-                          </Tag>
-                        ) : null}
-                      </span>
-                      <span className="meta">
-                        {t('buildingBlocks.versionLine', { id: b.id, version: b.version })}
-                      </span>
-                    </span>
-                    <span className="two-line">
-                      <TestTag b={b} />
-                      {b.testedAt ? (
-                        <span className="meta">
-                          {t('buildingBlocks.contractTestAt', { when: b.testedAt })}
-                        </span>
-                      ) : null}
-                    </span>
-                    {b.origin ? (
-                      <span className="two-line">
-                        <span className="sm">
-                          {b.origin === 'external'
-                            ? t('buildingBlocks.external')
-                            : t('buildingBlocks.builtin')}
-                        </span>
-                        {b.dataLocation ? (
-                          <Tag data-size="sm" data-color={locationTag(b.dataLocation, t)[1]}>
-                            {locationTag(b.dataLocation, t)[0]}
-                          </Tag>
-                        ) : null}
-                      </span>
-                    ) : null}
-                    <span className="sm">{usage(b, t)}</span>
-                    {b.availability ? (
-                      <Tag data-size="sm" data-color={availabilityLabel[b.availability][1]}>
-                        {t(availabilityLabel[b.availability][0])}
-                      </Tag>
-                    ) : null}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      {hits.length === 0 ? (
-        <Paragraph>
-          {t('buildingBlocks.noMatch')}{' '}
-          <Button
-            variant="tertiary"
-            data-size="sm"
-            onClick={() => {
-              setQuery('');
-              setType('all');
-              setStatus('all');
-            }}
+      <h1 className="pf-title">{t('buildingBlocks.title')}</h1>
+      <PageTabs />
+      <div role="group" aria-label={t('buildingBlocks.type')} className="pf-pills">
+        {(['all', ...kinds] as const).map((k) => (
+          <button
+            key={k}
+            type="button"
+            className="pf-pill"
+            aria-pressed={kind === k}
+            onClick={() => setKind(k)}
           >
-            {t('buildingBlocks.reset')}
-          </Button>
-        </Paragraph>
-      ) : null}
+            {k === 'all' ? t('buildingBlocks.filterAll') : t(kindLabel[k])}
+          </button>
+        ))}
+      </div>
+      {shown.length === 0 ? (
+        <Paragraph>{t('buildingBlocks.noMatch')}</Paragraph>
+      ) : (
+        <div
+          className="pf-region"
+          tabIndex={0}
+          role="region"
+          aria-label={t('buildingBlocks.title')}
+        >
+          <table className="pf-table pf-min-860">
+            <thead>
+              <tr>
+                <th scope="col">{t('buildingBlocks.colName')}</th>
+                <th scope="col">{t('buildingBlocks.type')}</th>
+                <th scope="col">{t('buildingBlocks.colFrom')}</th>
+                <th scope="col">{t('buildingBlocks.colEdition')}</th>
+                <th scope="col">{t('buildingBlocks.colUsedBy')}</th>
+                <th scope="col">{t('buildingBlocks.colStatus')}</th>
+                <th scope="col">
+                  <span className="visually-hidden">{t('buildingBlocks.colAction')}</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((r) => (
+                <tr key={r.key}>
+                  <td className="name">
+                    {r.open ? (
+                      <a
+                        className="name"
+                        href={`#/building-blocks?block=${encodeURIComponent(r.open)}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          if (r.open) onOpen(r.open);
+                        }}
+                      >
+                        {r.name}
+                      </a>
+                    ) : (
+                      r.name
+                    )}
+                  </td>
+                  <td>{t(kindLabel[r.kind])}</td>
+                  <td className="muted">{r.from}</td>
+                  <td>{r.version}</td>
+                  <td>
+                    {r.usedBy === undefined
+                      ? t('buildingBlocks.usedByUnknown')
+                      : t('buildingBlocks.organisationCount', { count: r.usedBy })}
+                  </td>
+                  <td>
+                    <span className="pf-chip" data-tone={statusChip[r.status][1]}>
+                      {t(statusChip[r.status][0])}
+                    </span>
+                  </td>
+                  <td className="end">
+                    {r.review ? (
+                      <a
+                        className="action"
+                        href={r.review}
+                        aria-label={t('buildingBlocks.reviewFor', { name: r.name })}
+                      >
+                        {t('buildingBlocks.review')}
+                      </a>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   );
 };
@@ -840,26 +728,34 @@ export const BuildingBlocks = ({
 }) => {
   const t = useT();
   const f = useFormat();
-  const [state, retry] = useAsync((signal) => api.buildingBlocks(signal), [api]);
+  const tenantName = useTenantNames(api);
+  const [state, retry] = useAsync(
+    async (signal) => {
+      const [blocks, reviews] = await Promise.all([
+        api.buildingBlocks(signal),
+        loadReviews(api, signal),
+      ]);
+      return { blocks, reviews };
+    },
+    [api],
+  );
   const [selected, setSelected] = useState<string | undefined>(initial);
-  const [registering, setRegistering] = useState(false);
+  const [kind, setKind] = useState<Kind | 'all'>('all');
+  const [data, setData] = useState<{ blocks: Blocks; reviews: CatalogReviews }>();
+  useEffect(() => {
+    if (state.status === 'ready') setData(state.data);
+  }, [state]);
   const flash = useFlash();
-  if (state.status === 'loading') return <Loading label={t('buildingBlocks.loading')} />;
-  if (state.status === 'error')
+  if (!data && state.status === 'error')
     return (
       <>
-        <PageHeader title={t('buildingBlocks.title')} />
+        <h1 className="pf-title">{t('buildingBlocks.title')}</h1>
+        <PageTabs />
         <ErrorState error={state.error} onRetry={retry} />
       </>
     );
-  const { types, blocks } = normalizeBlocks(state.data, t, f);
-  if (blocks.length === 0)
-    return (
-      <>
-        <PageHeader title={t('buildingBlocks.title')} />
-        <EmptyState title={t('buildingBlocks.empty')} />
-      </>
-    );
+  if (!data) return <Loading label={t('buildingBlocks.loading')} />;
+  const { types, blocks } = normalizeBlocks(data.blocks, t, f);
   const block = blocks.find((b) => b.id === selected);
   return (
     <>
@@ -877,29 +773,16 @@ export const BuildingBlocks = ({
           }}
         />
       ) : (
-        <List
-          types={types}
-          blocks={blocks}
+        <CatalogList
+          rows={catalogRows(blocks, data.reviews, tenantName)}
+          kind={kind}
+          setKind={setKind}
           onOpen={(id) => {
             flash.clear();
             setSelected(id);
           }}
-          onRegister={() => {
-            flash.clear();
-            setRegistering(true);
-          }}
         />
       )}
-      <RegisterDialog
-        api={api}
-        open={registering}
-        onClose={() => setRegistering(false)}
-        onRegistered={(message) => {
-          setRegistering(false);
-          flash.show(message);
-          retry();
-        }}
-      />
     </>
   );
 };

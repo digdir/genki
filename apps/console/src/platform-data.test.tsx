@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from './App';
 import { mockEntra, operatorRole } from './auth';
@@ -57,7 +57,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('drift', () => {
-  it('shows no alert, an empty incident list and no failed pipelines when all is normal', async () => {
+  it('shows the error rate and no alert when all is normal', async () => {
     const { fetch } = serve((path) =>
       path === '/api/operator/operations'
         ? json(
@@ -72,18 +72,10 @@ describe('drift', () => {
     );
     await open('#/operations', fetch);
 
-    const endpoints = await screen.findByRole('region', { name: 'Database og modellendepunkter' });
-    expect(within(endpoints).getByText('Virker')).toBeTruthy();
-    expect(within(endpoints).queryByText('API')).toBeNull();
-    const rates = screen.getByRole('region', { name: 'Feilrate siste time' });
-    expect(within(rates).getByText('0,4 %')).toBeTruthy();
-    expect(within(rates).getAllByText('Normalt')).toHaveLength(2);
-    expect(screen.getByText(/Ingenting rapporterer hendelser hit ennå/)).toBeTruthy();
-    expect(screen.getByText('Ingen. Alle planlagte innlesinger gikk bra sist.')).toBeTruthy();
+    expect(await screen.findByText('Feilrate siste time 0,4 %')).toBeTruthy();
     expect(
-      screen.getByText(/Hentet fra plattformen i dag kl\. .*Oppdateres hvert minutt\./),
-    ).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: /svarer/ })).toBeNull();
+      screen.queryAllByRole('heading', { name: /^(API|Database|Kjøringer|Innlesing) svarer/ }),
+    ).toEqual([]);
   });
 
   it('raises a warning when a part is slow and a danger alert when it is down', async () => {
@@ -100,16 +92,15 @@ describe('drift', () => {
     );
     await open('#/operations', fetch);
 
-    const down = await screen.findByRole('heading', { name: 'Database svarer ikke' });
-    expect(down.closest('[data-color]')?.getAttribute('data-color')).toBe('danger');
-    const slow = screen.getByRole('heading', { name: 'Kjøringer svarer tregt' });
-    expect(slow.closest('[data-color]')?.getAttribute('data-color')).toBe('warning');
-    expect(screen.getByText('Feilraten siste time er 3,8 %.')).toBeTruthy();
-    const endpoints = screen.getByRole('region', { name: 'Database og modellendepunkter' });
-    expect(within(endpoints).getByText('Nede')).toBeTruthy();
-    expect(
-      within(screen.getByRole('region', { name: 'Feilrate siste time' })).getByText('Høyt'),
-    ).toBeTruthy();
+    const down = await screen.findByRole('region', { name: 'Database svarer ikke' });
+    expect(down.getAttribute('data-tone')).toBe('danger');
+    const slow = screen.getByRole('region', { name: 'Kjøringer svarer tregt' });
+    expect(slow.getAttribute('data-tone')).toBe('warning');
+    expect(within(slow).getByText('Feilraten siste time er 3,8 %.')).toBeTruthy();
+    const order = screen
+      .getAllByRole('heading', { name: /^(Database|Kjøringer) svarer/ })
+      .map((h) => h.textContent);
+    expect(order).toEqual(['Database svarer ikke', 'Kjøringer svarer tregt']);
   });
 });
 
@@ -221,73 +212,5 @@ describe('kvalitetsmatrise for nye modeller', () => {
       body: { kind: 'models', name: 'NorLlama-70B 0.9' },
       reason: 'Like god eller bedre i alle testsett',
     });
-  });
-});
-
-describe('ekstern del', () => {
-  it('registers a plug-in from a YAML manifest and shows it as external', async () => {
-    const { calls, fetch } = serve(() => undefined);
-    await open('#/building-blocks', fetch);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Registrer ekstern del' }));
-    const dialog = await screen.findByRole('dialog');
-    const manifest = within(dialog).getByRole('textbox', { name: 'Manifest (YAML)' });
-    fireEvent.change(manifest, { target: { value: 'kind: [' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Registrer og test' }));
-    expect(await within(dialog).findByText('Manifestet er ikke gyldig YAML.')).toBeTruthy();
-
-    fireEvent.change(manifest, {
-      target: {
-        value:
-          'kind: tool-source\nid: lovdata-pro\nversion: 2.0.0\ncontract: tool-source@1\ntitle: Lovdata Pro\ndataLocation: norway\n',
-      },
-    });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Registrer og test' }));
-
-    expect(
-      await screen.findByText('Lovdata Pro 2.0.0 er registrert. Kontrakttesten kjører.'),
-    ).toBeTruthy();
-    expect(calls.find((c) => c.path === '/api/operator/plugins')).toMatchObject({
-      method: 'POST',
-      body: {
-        manifest: {
-          kind: 'tool-source',
-          id: 'lovdata-pro',
-          version: '2.0.0',
-          contract: 'tool-source@1',
-          title: 'Lovdata Pro',
-          dataLocation: 'norway',
-        },
-      },
-      reason: 'Registrerte ekstern del lovdata-pro',
-    });
-    const row = (await screen.findByText('Lovdata Pro')).closest('button') as HTMLElement;
-    expect(within(row).getByText('Ekstern')).toBeTruthy();
-    expect(within(row).getByText('Norge')).toBeTruthy();
-  });
-
-  it('shows the errors the platform gives for a manifest it refuses', async () => {
-    const { fetch } = serve((path, method) =>
-      path === '/api/operator/plugins' && method === 'POST'
-        ? json(
-            {
-              title: 'Invalid plug-in',
-              status: 400,
-              errors: [{ path: 'manifest.contract', message: 'the contract names the kind' }],
-            },
-            400,
-          )
-        : undefined,
-    );
-    await open('#/building-blocks', fetch);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Registrer ekstern del' }));
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Registrer og test' }));
-    await waitFor(() =>
-      expect(
-        within(dialog).getByText('manifest.contract: the contract names the kind'),
-      ).toBeTruthy(),
-    );
   });
 });

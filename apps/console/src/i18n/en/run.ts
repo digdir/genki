@@ -1,0 +1,30 @@
+import type { Translation } from '@genai/i18n';
+import type { run as source } from '../nb/run';
+
+export const run = {
+  title: 'Run {task}',
+  crumbs: 'Breadcrumbs',
+  crumbTenants: 'Organisations',
+  crumbLog: 'Log',
+  reason: 'Content view: {reason}',
+  service: 'Service',
+  serviceEdition: '{service}, edition {version}',
+  started: 'Started',
+  todayAt: 'Today {time}',
+  duration: 'Duration',
+  seconds: '{seconds} s',
+  model: 'Model',
+  tokens: 'Tokens',
+  statusFailed: 'Failed',
+  statusCompleted: 'Completed',
+  statusRunning: 'Running',
+  statusInterrupted: 'Interrupted',
+  statusCancelled: 'Stopped',
+  steps: 'Steps',
+  input: 'Input',
+  output: 'Output',
+  noOutputFailed: 'No answer. The run failed before the model answered.',
+  noOutput: 'No answer.',
+  noInput: 'No input.',
+  loading: 'Loading the run',
+} satisfies Translation<typeof source>;
