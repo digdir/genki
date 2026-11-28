@@ -516,7 +516,11 @@ export const ApiGuide = ({
             {t(stepLabel[current])}
           </Heading>
           {detailState.status === 'loading' && listed ? (
-            <Loading label={t('modelOperations.loadingOne')} />
+            <Loading
+              label={t('modelOperations.loadingOne')}
+              shape="detail"
+              onRetry={reloadDetail}
+            />
           ) : null}
           {detailState.status === 'error' ? (
             <ErrorState error={detailState.error} onRetry={reloadDetail} />

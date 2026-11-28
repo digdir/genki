@@ -288,6 +288,8 @@ export interface BootOptions {
   fakeKey?: string;
   demoRecorderKeyDigest?: string;
   demoRecorder?: 'scheduled';
+  demoRecorderTrust?: Parameters<typeof createPlatform>[0]['demoRecorderTrust'];
+  demoRecorderJob?: (recording: string) => Promise<void>;
   configEntries?: InMemoryConfigEntryStore;
   blockOrigin?: string;
   envFlags?: FlagKey[];
@@ -343,6 +345,8 @@ export const bootPlatform = async (options: BootOptions = {}) => {
       ? { demoRecorderKeyDigest: options.demoRecorderKeyDigest }
       : {}),
     ...(options.demoRecorder ? { demoRecorder: options.demoRecorder } : {}),
+    ...(options.demoRecorderTrust ? { demoRecorderTrust: options.demoRecorderTrust } : {}),
+    ...(options.demoRecorderJob ? { demoRecorderJob: options.demoRecorderJob } : {}),
     modules: options.modules ?? [...platformModules, maskinportenClientsModule],
     policy: (options.policy ?? ((inner) => inner))(
       altinnPolicy({

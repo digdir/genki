@@ -17,7 +17,6 @@ import {
   Paragraph,
   Select,
   SelectOption,
-  Spinner,
   Switch,
   Tag,
   ValidationMessage,
@@ -472,6 +471,7 @@ export const EndpointEditor = ({
           <Button
             variant="secondary"
             aria-disabled={testing || undefined}
+            loading={testing}
             onClick={() => {
               if (!testing) void runTest();
             }}
@@ -479,12 +479,7 @@ export const EndpointEditor = ({
             {t('searchEngines.testConnection')}
           </Button>
           <span role="status" className="test-status">
-            {testing ? (
-              <>
-                <Spinner aria-hidden data-size="xs" />
-                {t('searchEngines.connecting')}
-              </>
-            ) : null}
+            {testing ? t('searchEngines.connecting') : null}
             {test ? (
               <>
                 <Tag data-size="sm" data-color={test.ok ? 'success' : 'danger'}>

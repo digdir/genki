@@ -7,7 +7,8 @@ import {
 } from './bff/index.js';
 import { remoteFileOriginsFrom } from '@genai/adapter-rest';
 import { platformLoginFrom } from './platform-login.js';
-import { binderTrustFrom } from './binder-token.js';
+import { binderTrustFrom, recorderTrustFrom } from './binder-token.js';
+import { recorderJobFrom } from './demo-recorder-job.js';
 import { hostnameSetupFrom } from './hostname-claims.js';
 import {
   assistantHostnameFrom,
@@ -556,6 +557,23 @@ const hosting = {
 const blockOrigin = blockOriginFrom(process.env);
 const hostnames = hostnameSetupFrom(process.env, hostnameClaims, hosting);
 const binder = binderTrustFrom(process.env);
+const recorderTrust = recorderTrustFrom(process.env);
+const recorderJob = recorderJobFrom(
+  process.env,
+  managedIdentityTokenSource(process.env.AZURE_CLIENT_ID),
+);
+const startRecorderJob =
+  recorderJob &&
+  ((recording: string) =>
+    recorderJob(recording).catch((error: unknown) => {
+      log('demo recorder job did not start', { recording, error: String(error) });
+      throw error;
+    }));
+log('demo recorder', {
+  mode: process.env.GENAI_DEMO_RECORDER ?? null,
+  job: recorderJob !== undefined,
+  identity: recorderTrust !== undefined,
+});
 log('hostname claims', {
   zone: hostnames.zone ?? null,
   target: Object.keys(hostnames.target),
@@ -575,6 +593,8 @@ const platform = await createPlatform({
   ...(process.env.GENAI_DEMO_RECORDER === 'scheduled'
     ? { demoRecorder: 'scheduled' as const }
     : {}),
+  ...(recorderTrust ? { demoRecorderTrust: recorderTrust } : {}),
+  ...(startRecorderJob ? { demoRecorderJob: startRecorderJob } : {}),
   tracing: {
     ...(process.env.LANGFUSE_BASE_URL ? { instance: process.env.LANGFUSE_BASE_URL } : {}),
     instanceReceivesContent: process.env.LANGFUSE_INSTANCE_RECEIVES_CONTENT === 'true',

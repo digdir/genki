@@ -445,7 +445,7 @@ const FlagCard = ({
 
 export const Flags = ({ api, now = () => new Date() }: { api: ApiClient; now?: () => Date }) => {
   const t = useT();
-  const [state, retry] = useAsync((signal) => api.flags(signal), [api]);
+  const [state, retry, refreshing] = useAsync((signal) => api.flags(signal), [api]);
   const [tenantState] = useAsync((signal) => api.listTenants(signal), [api]);
   const [flags, setFlags] = useState<OperatorFlag[] | undefined>();
   const flash = useFlash();
@@ -489,30 +489,32 @@ export const Flags = ({ api, now = () => new Date() }: { api: ApiClient; now?: (
       {!flags && state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : !flags ? (
-        <Loading label={t('flags.loading')} />
+        <Loading label={t('flags.loading')} shape="cards" rows={3} onRetry={retry} />
       ) : flags.length === 0 ? (
         <EmptyState title={t('flags.noneTitle')}>
           <Paragraph>{t('flags.noneText')}</Paragraph>
         </EmptyState>
       ) : (
-        flags.map((flag) => (
-          <FlagCard
-            key={flag.key}
-            api={api}
-            flag={flag}
-            tenants={tenants}
-            tenantsFailed={tenantState.status === 'error'}
-            now={now}
-            onSaved={(message) => {
-              flash.show(message);
-              retry();
-            }}
-            onClear={(row) => {
-              flash.clear();
-              setClearing({ flag, row });
-            }}
-          />
-        ))
+        <div className="stack refreshing" aria-busy={refreshing || undefined}>
+          {flags.map((flag) => (
+            <FlagCard
+              key={flag.key}
+              api={api}
+              flag={flag}
+              tenants={tenants}
+              tenantsFailed={tenantState.status === 'error'}
+              now={now}
+              onSaved={(message) => {
+                flash.show(message);
+                retry();
+              }}
+              onClear={(row) => {
+                flash.clear();
+                setClearing({ flag, row });
+              }}
+            />
+          ))}
+        </div>
       )}
       <ReasonDialog
         open={clearing !== undefined}

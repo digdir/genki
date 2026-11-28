@@ -133,7 +133,8 @@ export const LimitsTab = ({
   const [saved, setSaved] = useState<{ limit: Limit; value: unknown; reason: string }>();
   const [logged, setLogged] = useState<string[]>([]);
 
-  if (state.status === 'loading') return <Loading label={t('org.loading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('org.loading')} shape="cards" rows={3} onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const { catalog, effective } = state.data;
   const known = new Set(catalog.map((s) => s.key));

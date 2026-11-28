@@ -55,7 +55,13 @@ const VersionYaml = ({
     [api, tenant, kind, id, version],
   );
   if (state.status === 'loading')
-    return <Loading label={t('tenantServices.loadingVersion', { version })} />;
+    return (
+      <Loading
+        label={t('tenantServices.loadingVersion', { version })}
+        shape="detail"
+        onRetry={retry}
+      />
+    );
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   return (
     <pre
@@ -86,7 +92,10 @@ const Detail = ({
     [api, tenant, kind, id],
   );
   const [open, setOpen] = useState<number>();
-  if (state.status === 'loading') return <Loading label={t('tenantServices.loadingVersions')} />;
+  if (state.status === 'loading')
+    return (
+      <Loading label={t('tenantServices.loadingVersions')} shape="list" rows={3} onRetry={retry} />
+    );
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const current = state.data.latest.version;
   const shown = open ?? current;
@@ -189,7 +198,7 @@ export const TenantServices = ({
         <a href="#/tenants">{t('tenantServices.back')}</a>
       </p>
       {state.status === 'loading' ? (
-        <Loading label={t('tenantServices.loadingDefinitions')} />
+        <Loading label={t('tenantServices.loadingDefinitions')} shape="table" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : state.data.length === 0 ? (

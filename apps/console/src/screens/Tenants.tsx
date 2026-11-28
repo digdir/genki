@@ -74,7 +74,7 @@ export const Tenants = ({ api, now = () => new Date() }: { api: ApiClient; now?:
     return (
       <div className="op-page">
         {header}
-        <Loading label={t('orgList.loading')} />
+        <Loading label={t('orgList.loading')} shape="table" rows={6} onRetry={retry} />
       </div>
     );
   if (state.status === 'error')

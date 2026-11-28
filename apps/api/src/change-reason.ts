@@ -63,7 +63,12 @@ export const bodyReasonWrites = new Set([
 
 export const writeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-export const selfAuthenticatedWrites = new Set(['POST /internal/hostnames/:id/result']);
+export const selfAuthenticatedWrites = new Set([
+  'POST /internal/hostnames/:id/result',
+  'POST /recorder/demos/:id/recordings',
+  'PUT /recorder/recordings/:id/files/:name',
+  'POST /recorder/recordings/:id/finish',
+]);
 
 export const routeOf = (c: Context) => {
   const method = c.req.method === 'HEAD' ? 'GET' : c.req.method;

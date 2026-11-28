@@ -117,6 +117,14 @@ jobs:
       KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
       ALERT_EMAILS: ${{ vars.ALERT_EMAILS }}
       DEMO_RECORDER_KEY_SHA256: ${{ vars.DEMO_RECORDER_KEY_SHA256 }}
+      DEMO_RECORDER_MODE: ${{ vars.DEMO_RECORDER_MODE }}
+      DEMO_RECORDER_JOB_ENABLED: ${{ vars.DEMO_RECORDER_JOB_ENABLED }}
+      DEMO_RECORDER_AUDIENCE: ${{ vars.DEMO_RECORDER_AUDIENCE }}
+      DEMO_SPEECH_ENDPOINT: ${{ vars.DEMO_SPEECH_ENDPOINT }}
+      DEMO_AUDIO_ENDPOINT: ${{ vars.DEMO_AUDIO_ENDPOINT }}
+      DEMO_DIRECTOR_MODEL: ${{ vars.DEMO_DIRECTOR_MODEL }}
+      DEMO_ELEVENLABS_KEY_SECRET_NAME: ${{ vars.DEMO_ELEVENLABS_KEY_SECRET_NAME }}
+      DEMO_SIGN_IN_KEY_SECRET_NAME: ${{ vars.DEMO_SIGN_IN_KEY_SECRET_NAME }}
       HOSTNAME_BINDER_AUDIENCE: ${{ vars.HOSTNAME_BINDER_AUDIENCE }}
       HOSTNAME_BINDER_ENABLED: ${{ vars.HOSTNAME_BINDER_ENABLED }}
     steps:
@@ -135,6 +143,11 @@ jobs:
           field() { jq -r --arg suffix "-$1" "first(.[] | select(.name | endswith(\$suffix)) | $2) // empty" apps.json; }
           version_of() { field "$1" '.properties.template.containers[0].env[]? | select(.name == "APP_VERSION") | .value'; }
           image_of() { local found; found=$(field "$1" '.properties.template.containers[0].image'); echo "${found:-$placeholder}"; }
+          recorder_image() {
+            local found
+            found=$(az containerapp job list -g "$rg" --query "[?ends_with(name, '-demo-recorder')].properties.template.containers[0].image | [0]" -o tsv)
+            echo "${found:-$placeholder}"
+          }
           app=$(field api .name)
           image=$placeholder version=bootstrap suffix="" live="" previous=""
           if [ -n "$app" ]; then
@@ -162,6 +175,7 @@ jobs:
             echo "worker=$(image_of worker)"
             echo "apps=$(image_of portal)"
             echo "docling=$(image_of docling)"
+            echo "recorder=$(recorder_image)"
           } >> "$GITHUB_OUTPUT"
       - id: infra
         if: env.ANSATTPORTEN_ISSUER != ''
@@ -191,7 +205,7 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "genki-${{ github.run_id }}-${{ github.run_attempt }}-candidate" \
             --parameters infra/env/test.bicepparam \
-            --parameters apiImage="${{ steps.plan.outputs.image }}" apiRevisionSuffix="${{ steps.plan.outputs.suffix }}" apiLiveRevision="${{ steps.plan.outputs.live }}" apiPreviousRevision="" workerImage="${{ steps.plan.outputs.worker }}" appsImage="${{ steps.plan.outputs.apps }}" doclingImage="${{ steps.plan.outputs.docling }}" appVersion="${{ steps.plan.outputs.version }}" workerVersion="${{ steps.plan.outputs.worker_version }}" \
+            --parameters apiImage="${{ steps.plan.outputs.image }}" apiRevisionSuffix="${{ steps.plan.outputs.suffix }}" apiLiveRevision="${{ steps.plan.outputs.live }}" apiPreviousRevision="" workerImage="${{ steps.plan.outputs.worker }}" appsImage="${{ steps.plan.outputs.apps }}" doclingImage="${{ steps.plan.outputs.docling }}" recorderImage="${{ steps.plan.outputs.recorder }}" appVersion="${{ steps.plan.outputs.version }}" workerVersion="${{ steps.plan.outputs.worker_version }}" \
               deployInfrastructure="${{ steps.infra.outputs.infrastructure }}" infraFingerprint="${{ steps.infra.outputs.fingerprint }}" \
             --query properties.outputs > outputs.json
           {
@@ -378,6 +392,14 @@ jobs:
           KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
           ALERT_EMAILS: ${{ vars.ALERT_EMAILS }}
           DEMO_RECORDER_KEY_SHA256: ${{ vars.DEMO_RECORDER_KEY_SHA256 }}
+          DEMO_RECORDER_MODE: ${{ vars.DEMO_RECORDER_MODE }}
+          DEMO_RECORDER_JOB_ENABLED: ${{ vars.DEMO_RECORDER_JOB_ENABLED }}
+          DEMO_RECORDER_AUDIENCE: ${{ vars.DEMO_RECORDER_AUDIENCE }}
+          DEMO_SPEECH_ENDPOINT: ${{ vars.DEMO_SPEECH_ENDPOINT }}
+          DEMO_AUDIO_ENDPOINT: ${{ vars.DEMO_AUDIO_ENDPOINT }}
+          DEMO_DIRECTOR_MODEL: ${{ vars.DEMO_DIRECTOR_MODEL }}
+          DEMO_ELEVENLABS_KEY_SECRET_NAME: ${{ vars.DEMO_ELEVENLABS_KEY_SECRET_NAME }}
+          DEMO_SIGN_IN_KEY_SECRET_NAME: ${{ vars.DEMO_SIGN_IN_KEY_SECRET_NAME }}
           HOSTNAME_BINDER_AUDIENCE: ${{ vars.HOSTNAME_BINDER_AUDIENCE }}
           HOSTNAME_BINDER_ENABLED: ${{ vars.HOSTNAME_BINDER_ENABLED }}
         run: |
@@ -390,7 +412,7 @@ jobs:
             --name "genki-${{ github.run_id }}-${{ github.run_attempt }}" \
             --parameters infra/env/test.bicepparam \
             --parameters deployInfrastructure="$infrastructure" infraFingerprint="$fingerprint" \
-            --parameters apiImage="${{ needs.candidate.outputs.image }}" apiRevisionSuffix="${{ needs.candidate.outputs.suffix }}" apiLiveRevision="${{ steps.api.outputs.live }}" apiPreviousRevision="${{ steps.api.outputs.previous }}" workerImage="${{ needs.build.outputs.worker }}" appsImage="${{ needs.build.outputs.apps }}" doclingImage="${{ needs.build.outputs.docling }}" appVersion="${{ needs.candidate.outputs.version }}" \
+            --parameters apiImage="${{ needs.candidate.outputs.image }}" apiRevisionSuffix="${{ needs.candidate.outputs.suffix }}" apiLiveRevision="${{ steps.api.outputs.live }}" apiPreviousRevision="${{ steps.api.outputs.previous }}" workerImage="${{ needs.build.outputs.worker }}" appsImage="${{ needs.build.outputs.apps }}" doclingImage="${{ needs.build.outputs.docling }}" recorderImage="${{ needs.build.outputs.recorder }}" appVersion="${{ needs.candidate.outputs.version }}" \
             --query properties.outputs.apiUrl.value -o tsv)
           echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: start the worker's newest revision

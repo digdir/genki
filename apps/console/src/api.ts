@@ -19,6 +19,7 @@ import type {
   TenantUsage,
 } from './operator-types';
 import { tenantLabel } from './tenant-names';
+import { createResponseCache } from './response-cache';
 import type {
   AuditEntry,
   DatasetSearchAnswer,
@@ -265,6 +266,8 @@ export interface OrganizationLookup {
 export type ApiClient = ReturnType<typeof createApiClient>;
 
 const usageFreshMs = 30_000;
+const tenantScoped = /\/tenants\/[^/?]+/;
+const liveStatus = /^\/(health|operator\/(operations|incidents|running-tasks|tasks))(\/|\?|$)/;
 
 const encodeReason = (headers: Record<string, string>) =>
   headers['change-reason'] === undefined
@@ -401,7 +404,7 @@ export const createApiClient = ({
     givingReason.set(tenant, giving);
     return giving;
   };
-  const call = async <T>(
+  const reasoned = async <T>(
     method: string,
     path: string,
     options?: Parameters<typeof request>[2],
@@ -414,6 +417,31 @@ export const createApiClient = ({
       if (!tenant || !ask) throw e;
       await giveReasonFor(tenant, e as ApiError, ask);
       return request<T>(method, path, options);
+    }
+  };
+  const cache = createResponseCache();
+  const call = async <T>(
+    method: string,
+    path: string,
+    options?: Parameters<typeof request>[2],
+  ): Promise<T> => {
+    if (method === 'GET' && !tenantScoped.test(path) && !liveStatus.test(path))
+      return cache.load(
+        [
+          actorName?.() ?? '',
+          locale?.() ?? '',
+          options?.headers?.['accept-language'] ?? '',
+          path,
+        ].join('\u0000'),
+        (signal) => reasoned<T>(method, path, { ...options, signal }),
+        options?.signal,
+      );
+    if (method === 'GET') return reasoned<T>(method, path, options);
+    cache.clear();
+    try {
+      return await reasoned<T>(method, path, options);
+    } finally {
+      cache.clear();
     }
   };
   let usageCache: { key: string; at: number; data: Map<string, MonthUsage['usage']> } | undefined;
@@ -442,6 +470,7 @@ export const createApiClient = ({
       headers: { 'change-reason': reason },
     });
   return {
+    forgetResponses: () => cache.clear(),
     getJson: (path: string, signal?: AbortSignal, language?: Locale) =>
       call<unknown>('GET', path, {
         signal,

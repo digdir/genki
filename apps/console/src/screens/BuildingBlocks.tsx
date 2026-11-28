@@ -3,7 +3,6 @@ import {
   Heading,
   Link,
   Paragraph,
-  Spinner,
   Table,
   TableBody,
   TableCell,
@@ -609,18 +608,13 @@ const Detail = ({
                   variant="secondary"
                   data-size="sm"
                   aria-disabled={testing || undefined}
+                  loading={testing}
                   onClick={() => void (testing ? undefined : rerun())}
                 >
                   {t('buildingBlocks.rerun')}
                 </Button>
               ) : null}
-              <span role="status">
-                {testing ? (
-                  <>
-                    <Spinner aria-hidden data-size="xs" /> {t('buildingBlocks.running')}
-                  </>
-                ) : null}
-              </span>
+              <span role="status">{testing ? t('buildingBlocks.running') : null}</span>
             </div>
             {block.tests?.length ? (
               <ul className="plain test-list">
@@ -754,7 +748,7 @@ export const BuildingBlocks = ({
         <ErrorState error={state.error} onRetry={retry} />
       </>
     );
-  if (!data) return <Loading label={t('buildingBlocks.loading')} />;
+  if (!data) return <Loading label={t('buildingBlocks.loading')} shape="table" onRetry={retry} />;
   const { types, blocks } = normalizeBlocks(data.blocks, t, f);
   const block = blocks.find((b) => b.id === selected);
   return (

@@ -448,6 +448,16 @@ The self-service side of hosted hostnames ([ADR 0062](../docs/adr/0062-a-service
 
 `hostnameBinderAudience` (GitHub variable `HOSTNAME_BINDER_AUDIENCE`) is `api://<client id>` of an Entra app registration for genki's API, which the binder asks a token for. The binder's role and fences are not in `main.bicep`, since the deploy identity may not write roles or policies: an owner applies `infra/hostname-binder-access.bicep` once, as in [docs/runbook.md](../docs/runbook.md#hostname-binder).
 
+### Demo recorder job
+
+The recorder in genki's own environment ([ADR 0059](../docs/adr/0059-demos-are-records-in-the-api.md)), test only. `demoRecorderEnabled` (GitHub variable `DEMO_RECORDER_JOB_ENABLED=true`) adds the identity `<name>-recorder-id`, and once `demoRecorderAudience` is set (`DEMO_RECORDER_AUDIENCE`, else `HOSTNAME_BINDER_AUDIENCE`) the template adds:
+
+- the job `<name>-demo-recorder` in `<name>-env`: the `genai-recorder` image (Chrome by agent-browser, ffmpeg and `scripts/demo.ts`, built and attested by the images workflow), started by hand only, one replica, at most an hour, never retried, 2 CPU and 4 GiB, with no ingress, no secret and only the recorder identity. Each run lists the queue, voices its lines and records every queued recording in turn; in `job` mode the API queues one recording at a time, so two runs never voice the same one
+- AcrPull for that identity on genki's registry, and Key Vault Secrets User on each secret `demoRecorderSettings` names (`elevenLabsKeySecret`, `signInKeySecret`), not on the vault. A named secret must exist before the deploy
+- `GENAI_DEMO_RECORDER_PRINCIPAL_ID`, `_AUDIENCE`, `_TENANT_ID` and `GENAI_DEMO_RECORDER_JOB` on the API: it accepts the recorder identity's Entra token on `/recorder/*` and, with `GENAI_DEMO_RECORDER=job` (`DEMO_RECORDER_MODE=job`), starts the job when a recording is queued
+
+`demoRecorderSettings` also takes `speechEndpoint`, `audioEndpoint` and `directorModel` (`DEMO_SPEECH_ENDPOINT`, `DEMO_AUDIO_ENDPOINT`, `DEMO_DIRECTOR_MODEL`); the recorder identity needs Cognitive Services User on those resources, granted by hand. The API's right to start the job is a custom role with only `Microsoft.App/jobs/start/action`, on that one job, which the deploy identity may not create: an owner applies `infra/demo-recorder-access.bicep` once, as in [docs/runbook.md](../docs/runbook.md#demo-recorder-job). The job leaves through the environment's default outbound path, like the apps: it reaches genki's API, portal and console, `altinncdn.no` for fonts, Key Vault, the speech and AI endpoints and `api.elevenlabs.io`.
+
 ## Login registrations
 
 The portal and console have no Ansattporten client of their own: they sign in through the platform login client (see "Platform login"), one per environment, in Ansattporten's test environment for genki-test and in production Ansattporten (`https://ansattporten.no`) for prod. `<zone>` is `genki-test.digdir.cloud` or `genki.digdir.cloud`:

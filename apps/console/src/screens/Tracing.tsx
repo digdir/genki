@@ -84,7 +84,7 @@ export const Tracing = ({ api }: { api: ApiClient }) => {
         </span>
       </div>
       {state.status === 'loading' ? (
-        <Loading label={t('tracing.loading')} />
+        <Loading label={t('tracing.loading')} shape="detail" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : (

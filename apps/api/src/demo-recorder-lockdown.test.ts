@@ -20,7 +20,6 @@ import { createApp } from './app.js';
 import { createPlatform, platformCaller } from './composition.js';
 import { InMemoryConfigEntryStore, platformScope } from './config-store.js';
 import { demoKind, latestRecordings, readDemo, recorderKeyDigest } from './demos.js';
-import { lockedEnvironmentType } from './lockdown.js';
 import { operatorDirectory, splitOperators } from './operators.js';
 import { InMemoryTenantApiKeys } from './routes/portal-routes.js';
 import { digdir } from './testkit.js';
@@ -203,8 +202,8 @@ describe('the recorder routes in the locked test environment', () => {
     const response = await start({ ...bearer, 'change-reason': 'tar opp demoen for hånd' });
 
     expect(library.status).toBe(200);
-    expect(response.status).toBe(403);
-    expect(await response.json()).toMatchObject({ type: lockedEnvironmentType });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ type: 'urn:genai:problem:recorder-key' });
     expect(await recordings()).toBe(0);
   });
 });

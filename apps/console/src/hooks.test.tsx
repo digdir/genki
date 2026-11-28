@@ -18,14 +18,20 @@ describe('useAsync', () => {
   });
 
   it('shows loading again when its inputs change', async () => {
-    const { result, rerender } = renderHook(({ id }) => useAsync(async () => id, [id]), {
-      initialProps: { id: 'a' },
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
     });
+    const { result, rerender } = renderHook(
+      ({ id }) => useAsync(async () => (id === 'a' ? id : held.then(() => id)), [id]),
+      { initialProps: { id: 'a' } },
+    );
     await waitFor(() => expect(result.current[0]).toEqual({ status: 'ready', data: 'a' }));
 
     rerender({ id: 'b' });
 
-    expect(result.current[0]).toEqual({ status: 'loading' });
+    await waitFor(() => expect(result.current[0]).toEqual({ status: 'loading' }));
+    release();
     await waitFor(() => expect(result.current[0]).toEqual({ status: 'ready', data: 'b' }));
   });
 });

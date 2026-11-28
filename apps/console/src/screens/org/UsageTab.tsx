@@ -71,7 +71,8 @@ export const UsageTab = ({ api, tenant }: { api: ApiClient; tenant: string; name
   ];
 
   const body = () => {
-    if (state.status === 'loading') return <Loading label={t('org.loading')} />;
+    if (state.status === 'loading')
+      return <Loading label={t('org.loading')} shape="table" onRetry={retry} />;
     if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
     const usage = state.data;
     const services = [...usage.byService]

@@ -16,6 +16,8 @@ on:
         value: ${{ jobs.build.outputs.apps }}
       docling:
         value: ${{ jobs.build.outputs.docling }}
+      recorder:
+        value: ${{ jobs.build.outputs.recorder }}
 
 permissions:
   contents: read
@@ -35,6 +37,7 @@ jobs:
       worker: ${{ steps.image.outputs.worker }}
       apps: ${{ steps.image.outputs.apps }}
       docling: ${{ steps.image.outputs.docling }}
+      recorder: ${{ steps.image.outputs.recorder }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -84,15 +87,17 @@ jobs:
           reuse "genai-api:$SHA" --source-digest "$SHA" && api=$reused
           reuse "genai-worker:$SHA" --source-digest "$SHA" && worker=$reused
           reuse "genai-apps:$SHA" --source-digest "$SHA" && apps=$reused
+          reuse "genai-recorder:$SHA" --source-digest "$SHA" && recorder=$reused
           reuse "genai-docling:$docling_tag" && docling=$reused
           {
             echo "api=$api"
             echo "worker=$worker"
             echo "apps=$apps"
+            echo "recorder=$recorder"
             echo "docling_tag=$docling_tag"
             echo "docling=$docling"
           } >> "$GITHUB_OUTPUT"
-      - if: steps.have.outputs.api == '' || steps.have.outputs.worker == '' || steps.have.outputs.apps == '' || steps.have.outputs.docling == ''
+      - if: steps.have.outputs.api == '' || steps.have.outputs.worker == '' || steps.have.outputs.apps == '' || steps.have.outputs.recorder == '' || steps.have.outputs.docling == ''
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
           driver-opts: image=moby/buildkit:v0.34.1@sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c
@@ -142,6 +147,21 @@ jobs:
         with:
           subject-name: ${{ steps.registry.outputs.server }}/genai-apps
           subject-digest: ${{ steps.apps.outputs.digest }}
+      - id: recorder
+        if: steps.have.outputs.recorder == ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: recorder
+          outputs: type=image,push=true,oci-mediatypes=true,rewrite-timestamp=true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.registry.outputs.server }}/genai-recorder:${{ github.sha }}
+      - if: steps.recorder.outputs.digest != ''
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.registry.outputs.server }}/genai-recorder
+          subject-digest: ${{ steps.recorder.outputs.digest }}
       # The Docling server (docker/docling): the parser benchmark winner's Docling and Tesseract on Debian, packages locked.
       - id: docling
         if: steps.have.outputs.docling == ''
@@ -164,10 +184,12 @@ jobs:
           WORKER_DIGEST: ${{ steps.worker.outputs.digest || steps.have.outputs.worker }}
           APPS_DIGEST: ${{ steps.apps.outputs.digest || steps.have.outputs.apps }}
           DOCLING_DIGEST: ${{ steps.docling.outputs.digest || steps.have.outputs.docling }}
+          RECORDER_DIGEST: ${{ steps.recorder.outputs.digest || steps.have.outputs.recorder }}
           API_BUILT: ${{ steps.api.outputs.digest != '' }}
           WORKER_BUILT: ${{ steps.worker.outputs.digest != '' }}
           APPS_BUILT: ${{ steps.apps.outputs.digest != '' }}
           DOCLING_BUILT: ${{ steps.docling.outputs.digest != '' }}
+          RECORDER_BUILT: ${{ steps.recorder.outputs.digest != '' }}
           DOCLING_TAG: ${{ steps.have.outputs.docling_tag }}
         run: |
           {
@@ -175,6 +197,7 @@ jobs:
             echo "worker=$SERVER/genai-worker@$WORKER_DIGEST"
             echo "apps=$SERVER/genai-apps@$APPS_DIGEST"
             echo "docling=$SERVER/genai-docling@$DOCLING_DIGEST"
+            echo "recorder=$SERVER/genai-recorder@$RECORDER_DIGEST"
           } >> "$GITHUB_OUTPUT"
           row() {
             platform=$(docker buildx imagetools inspect --raw "$SERVER/genai-$1@$2" |
@@ -193,4 +216,5 @@ jobs:
             row worker "$WORKER_DIGEST" "$WORKER_BUILT"
             row apps "$APPS_DIGEST" "$APPS_BUILT"
             row docling "$DOCLING_DIGEST" "$DOCLING_BUILT"
+            row recorder "$RECORDER_DIGEST" "$RECORDER_BUILT"
           } >> "$GITHUB_STEP_SUMMARY"

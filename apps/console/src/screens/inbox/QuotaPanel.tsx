@@ -110,7 +110,8 @@ export const QuotaPanel = ({
   );
 
   const content = () => {
-    if (state.status === 'loading') return <Loading label={t('inbox.loading')} />;
+    if (state.status === 'loading')
+      return <Loading label={t('inbox.loading')} shape="detail" onRetry={retry} />;
     if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
     const { request, overview, standard } = state.data;
     if (!request)

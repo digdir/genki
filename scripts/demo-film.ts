@@ -23,6 +23,7 @@ export const aiToken = async (env: NodeJS.ProcessEnv = process.env) => {
     const url = new URL(env.IDENTITY_ENDPOINT);
     url.searchParams.set('resource', 'https://cognitiveservices.azure.com');
     url.searchParams.set('api-version', '2019-08-01');
+    if (env.AZURE_CLIENT_ID) url.searchParams.set('client_id', env.AZURE_CLIENT_ID);
     const res = await fetch(url, { headers: { 'x-identity-header': env.IDENTITY_HEADER ?? '' } });
     if (!res.ok) throw new Error(`The managed identity answered ${res.status}`);
     return ((await res.json()) as { access_token: string }).access_token;

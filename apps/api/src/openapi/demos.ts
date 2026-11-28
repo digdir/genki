@@ -25,11 +25,20 @@ const viewerOnly = {
 } as const;
 
 const recorderOnly = {
-  401: problem('urn:genai:problem:recorder-key: no valid recorder key in x-recorder-key'),
+  401: problem(
+    "urn:genai:problem:recorder-key: no valid recorder key in x-recorder-key and no Entra token of the recorder's workload identity",
+  ),
 } as const;
 
 const recorderKey = z.object({
-  'x-recorder-key': z.string().openapi({ description: "The recorder's key" }),
+  'x-recorder-key': z
+    .string()
+    .optional()
+    .openapi({ description: "The recorder's key, or instead an authorization header" }),
+  authorization: z.string().optional().openapi({
+    description:
+      "Bearer and an Entra application token of the recorder's workload identity for GENAI_DEMO_RECORDER_AUDIENCE",
+  }),
 });
 
 const idParam = z.object({

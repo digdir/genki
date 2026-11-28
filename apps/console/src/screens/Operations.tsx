@@ -65,7 +65,7 @@ const Running = ({ api, refresh }: { api: ApiClient; refresh: number }) => {
   const [service, setService] = useState('');
   const [status, setStatus] = useState<TaskFilter>('running');
   const running = status === 'running';
-  const [state, retry] = useAsync(
+  const [state, retry, refreshing] = useAsync(
     async (signal) => ({
       status,
       list: running
@@ -153,7 +153,11 @@ const Running = ({ api, refresh }: { api: ApiClient; refresh: number }) => {
         </Alert>
       ) : null}
       {state.status === 'loading' || (state.status === 'ready' && loaded?.status !== status) ? (
-        <Loading label={running ? t('operations.loadingRunning') : t('operations.loadingTasks')} />
+        <Loading
+          label={running ? t('operations.loadingRunning') : t('operations.loadingTasks')}
+          shape="table"
+          onRetry={retry}
+        />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : tasks.length === 0 ? (
@@ -167,7 +171,10 @@ const Running = ({ api, refresh }: { api: ApiClient; refresh: number }) => {
           <EmptyState title={t('operations.noTasksTitle')} />
         )
       ) : (
-        <TableRegion label={running ? t('operations.runningLabel') : t('operations.tasksLabel')}>
+        <TableRegion
+          label={running ? t('operations.runningLabel') : t('operations.tasksLabel')}
+          busy={refreshing}
+        >
           <Table>
             <TableHead>
               <TableRow>
@@ -231,7 +238,10 @@ const kindLabel: Record<string, PlainKey> = {
 const Quarantine = ({ api }: { api: ApiClient }) => {
   const t = useT();
   const f = useFormat();
-  const [state, retry] = useAsync((signal) => api.quarantinedDefinitions(signal), [api]);
+  const [state, retry, refreshing] = useAsync(
+    (signal) => api.quarantinedDefinitions(signal),
+    [api],
+  );
   const tenantName = useTenantNames(api);
   return (
     <section className="stack" aria-labelledby="karantene-h">
@@ -240,13 +250,13 @@ const Quarantine = ({ api }: { api: ApiClient }) => {
       </Heading>
       <Paragraph data-size="sm">{t('operations.quarantineText')}</Paragraph>
       {state.status === 'loading' ? (
-        <Loading label={t('operations.loadingQuarantine')} />
+        <Loading label={t('operations.loadingQuarantine')} shape="table" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : state.data.length === 0 ? (
         <Paragraph>{t('operations.noQuarantine')}</Paragraph>
       ) : (
-        <TableRegion label={t('operations.quarantineLabel')}>
+        <TableRegion label={t('operations.quarantineLabel')} busy={refreshing}>
           <Table>
             <TableHead>
               <TableRow>

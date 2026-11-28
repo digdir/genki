@@ -82,7 +82,7 @@ export const QuotaRequests = ({
 }) => {
   const t = useT();
   const f = useFormat();
-  const [state, retry] = useAsync((signal) => api.quotaRequests(signal), [api]);
+  const [state, retry, refreshing] = useAsync((signal) => api.quotaRequests(signal), [api]);
   const flash = useFlash();
   const [deciding, setDeciding] = useState<{ row: QuotaRequestRow; decision: Decision }>();
 
@@ -115,7 +115,7 @@ export const QuotaRequests = ({
     return (
       <>
         {header}
-        <Loading label={t('quotaRequests.loading')} />
+        <Loading label={t('quotaRequests.loading')} shape="table" onRetry={retry} />
       </>
     );
   if (state.status === 'error')
@@ -139,7 +139,7 @@ export const QuotaRequests = ({
       {rows.length === 0 ? (
         <EmptyState title={t('quotaRequests.noneTitle')} />
       ) : (
-        <TableRegion label={t('quotaRequests.title')}>
+        <TableRegion label={t('quotaRequests.title')} busy={refreshing}>
           <Table data-size="sm" className="wide-900">
             <TableHead>
               <TableRow>

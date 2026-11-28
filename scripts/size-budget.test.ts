@@ -61,7 +61,7 @@ describe('first-load size budget', () => {
   });
 
   it('passes an app within its budget', () => {
-    expect(overBudget([load('portal', 365_500), load('console', 385_000)])).toEqual([]);
+    expect(overBudget([load('portal', 365_500), load('console', 200_000)])).toEqual([]);
   });
 
   it('refuses a manifest without an entry instead of counting nothing', () => {

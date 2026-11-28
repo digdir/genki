@@ -159,7 +159,7 @@ export const Quality = ({ api }: { api: ApiClient }) => {
       <h1 className="pf-title">{t('quality.title')}</h1>
       <PageTabs />
       {state.status === 'loading' ? (
-        <Loading label={t('quality.loading')} />
+        <Loading label={t('quality.loading')} shape="table" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : (

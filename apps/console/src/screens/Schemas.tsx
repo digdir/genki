@@ -31,7 +31,7 @@ const Generated = ({ api, chosen }: { api: ApiClient; chosen: SchemaRef }) => {
   const loaded = useSchema(api.getJson, chosen.href ?? chosen.kind, chosen.version);
   const [value, setValue] = useState<Value>({});
   const [attempt, setAttempt] = useState(0);
-  if (loaded.status === 'loading') return <Loading label={t('schemas.loading')} />;
+  if (loaded.status === 'loading') return <Loading label={t('schemas.loading')} shape="form" />;
   if (loaded.status === 'failed') return <ErrorState error={loaded.error} />;
   const schema = loaded.data;
   const fine =
@@ -100,7 +100,7 @@ export const Schemas = ({ api, initial }: { api: ApiClient; initial?: string | u
     return (
       <>
         {header}
-        <Loading label={t('schemas.loading')} />
+        <Loading label={t('schemas.loading')} shape="list" />
       </>
     );
   if (list.status === 'failed')

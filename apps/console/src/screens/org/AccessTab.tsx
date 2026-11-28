@@ -55,7 +55,7 @@ const Keys = ({ api, tenant }: { api: ApiClient; tenant: string }) => {
     <section aria-labelledby={`${id}-h`} className="org-section">
       <h2 id={`${id}-h`}>{t('org.keysTitle')}</h2>
       {state.status === 'loading' ? (
-        <Loading label={t('org.loading')} />
+        <Loading label={t('org.loading')} shape="table" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : keys.length === 0 ? (
@@ -168,7 +168,7 @@ const PeopleList = ({ api, tenant }: { api: ApiClient; tenant: string }) => {
   return (
     <>
       {state.status === 'loading' ? (
-        <Loading label={t('org.loading')} />
+        <Loading label={t('org.loading')} shape="table" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : state.data.length === 0 ? (
@@ -224,7 +224,7 @@ const Addresses = ({ api, tenant }: { api: ApiClient; tenant: string }) => {
     <section aria-labelledby={`${id}-h`} className="org-section">
       <h2 id={`${id}-h`}>{t('org.networkTitle')}</h2>
       {state.status === 'loading' ? (
-        <Loading label={t('org.loading')} />
+        <Loading label={t('org.loading')} shape="list" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : state.data.hosts.length + state.data.networks.length === 0 ? (
