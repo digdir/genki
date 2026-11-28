@@ -80,7 +80,7 @@ param appEnv = {
   // The sites whose cited PDFs the API serves in Dokumentvisning (ADR 0066, infra/README.md).
   GENAI_DOCUMENT_FILE_ORIGINS: 'https://kudos.dfo.no'
   // The demo-recorder workflow records what the console queues (ADR 0059).
-  GENAI_DEMO_RECORDER: 'scheduled'
+  GENAI_DEMO_RECORDER: readEnvironmentVariable('DEMO_RECORDER_MODE', '') == 'job' ? 'job' : 'scheduled'
   DEMO_RECORDER_KEY_SHA256: readEnvironmentVariable('DEMO_RECORDER_KEY_SHA256', '')
 }
 
@@ -142,6 +142,17 @@ param platformLoginSecretName = productionLogin ? 'platform-login-client-secret-
 param platformLoginStage = hostnamesStage
 param hostnameBinderEnabled = readEnvironmentVariable('HOSTNAME_BINDER_ENABLED', 'true') != 'false'
 param hostnameBinderAudience = readEnvironmentVariable('HOSTNAME_BINDER_AUDIENCE', '')
+
+var recorderAudience = readEnvironmentVariable('DEMO_RECORDER_AUDIENCE', '')
+param demoRecorderEnabled = readEnvironmentVariable('DEMO_RECORDER_JOB_ENABLED', '') == 'true'
+param demoRecorderAudience = empty(recorderAudience) ? hostnameBinderAudience : recorderAudience
+param demoRecorderSettings = {
+  speechEndpoint: readEnvironmentVariable('DEMO_SPEECH_ENDPOINT', '')
+  audioEndpoint: readEnvironmentVariable('DEMO_AUDIO_ENDPOINT', '')
+  directorModel: readEnvironmentVariable('DEMO_DIRECTOR_MODEL', '')
+  elevenLabsKeySecret: readEnvironmentVariable('DEMO_ELEVENLABS_KEY_SECRET_NAME', '')
+  signInKeySecret: readEnvironmentVariable('DEMO_SIGN_IN_KEY_SECRET_NAME', '')
+}
 
 param alertsEnabled = true
 param alertEmails = readEnvironmentVariable('ALERT_EMAILS', '')

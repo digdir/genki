@@ -359,7 +359,7 @@ import {
   type HostnameSetup,
   wantsAutoAddress,
 } from './hostname-claims.js';
-import type { BinderTrust } from './binder-token.js';
+import type { WorkloadTrust } from './binder-token.js';
 import { InMemoryHostnameClaims, type HostnameClaimStore } from '@genai/kernel';
 import {
   blockRefProblems,
@@ -569,6 +569,8 @@ export interface PlatformInput {
   appVersion?: string;
   demoRecorderKeyDigest?: string;
   demoRecorder?: 'scheduled';
+  demoRecorderTrust?: WorkloadTrust;
+  demoRecorderJob?: (recording: string) => Promise<void>;
   /** Tenants' Langfuse connections: Digdir's instance and whether it may receive content. */
   tracing?: TracingOptions;
   /** Every trace sent to a tenant's sink, until its delete is confirmed. */
@@ -590,7 +592,7 @@ export interface PlatformInput {
   hosting?: HostingRules;
   blockOrigin?: string | undefined;
   hostnames?: Omit<HostnameSetup, 'claims'> & { claims?: HostnameClaimStore };
-  binder?: BinderTrust;
+  binder?: WorkloadTrust;
   documentFileOrigins?: readonly string[];
   platformLogin?: { clientId: string; audience: string };
   webhookDeliveries?: WebhookDeliveryStore;
@@ -2336,6 +2338,8 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.appVersion ? { appVersion: input.appVersion } : {}),
     ...(input.demoRecorderKeyDigest ? { demoRecorderKeyDigest: input.demoRecorderKeyDigest } : {}),
     ...(input.demoRecorder ? { demoRecorder: input.demoRecorder } : {}),
+    ...(input.demoRecorderTrust ? { demoRecorderTrust: input.demoRecorderTrust } : {}),
+    ...(input.demoRecorderJob ? { demoRecorderJob: input.demoRecorderJob } : {}),
     tenantSecrets,
     traceSinks,
     sinkLabels: sinkLabelService,

@@ -59,6 +59,14 @@ jobs:
       KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
       ALERT_EMAILS: ${{ vars.ALERT_EMAILS }}
       DEMO_RECORDER_KEY_SHA256: ${{ vars.DEMO_RECORDER_KEY_SHA256 }}
+      DEMO_RECORDER_MODE: ${{ vars.DEMO_RECORDER_MODE }}
+      DEMO_RECORDER_JOB_ENABLED: ${{ vars.DEMO_RECORDER_JOB_ENABLED }}
+      DEMO_RECORDER_AUDIENCE: ${{ vars.DEMO_RECORDER_AUDIENCE }}
+      DEMO_SPEECH_ENDPOINT: ${{ vars.DEMO_SPEECH_ENDPOINT }}
+      DEMO_AUDIO_ENDPOINT: ${{ vars.DEMO_AUDIO_ENDPOINT }}
+      DEMO_DIRECTOR_MODEL: ${{ vars.DEMO_DIRECTOR_MODEL }}
+      DEMO_ELEVENLABS_KEY_SECRET_NAME: ${{ vars.DEMO_ELEVENLABS_KEY_SECRET_NAME }}
+      DEMO_SIGN_IN_KEY_SECRET_NAME: ${{ vars.DEMO_SIGN_IN_KEY_SECRET_NAME }}
       HOSTNAME_BINDER_AUDIENCE: ${{ vars.HOSTNAME_BINDER_AUDIENCE }}
       HOSTNAME_BINDER_ENABLED: ${{ vars.HOSTNAME_BINDER_ENABLED }}
     steps:
@@ -89,6 +97,7 @@ jobs:
             echo "worker=$(image_of worker)"
             echo "apps=$(image_of portal)"
             echo "docling=$(image_of docling)"
+            echo "recorder=$(az containerapp job list -g "$rg" --query "[?ends_with(name, '-demo-recorder')].properties.template.containers[0].image | [0]" -o tsv | grep . || echo "$placeholder")"
           } >> "$GITHUB_OUTPUT"
           api=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-api')].name | [0]" -o tsv)
           if [ -n "$api" ]; then
@@ -118,7 +127,7 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "infra-${{ github.run_id }}-${{ github.run_attempt }}" \
             --parameters infra/env/${{ inputs.environment }}.bicepparam \
-            --parameters apiImage="${{ steps.current.outputs.api }}" workerImage="${{ steps.current.outputs.worker }}" appsImage="${{ steps.current.outputs.apps }}" doclingImage="${{ steps.current.outputs.docling }}" appVersion="${{ steps.current.outputs.version }}" workerVersion="${{ steps.current.outputs.worker_version }}" apiRevisionSuffix="${{ steps.current.outputs.suffix }}" apiLiveRevision="${{ steps.current.outputs.live }}" apiPreviousRevision="${{ steps.current.outputs.previous }}" infraFingerprint="${{ steps.fingerprint.outputs.fingerprint }}"
+            --parameters apiImage="${{ steps.current.outputs.api }}" workerImage="${{ steps.current.outputs.worker }}" appsImage="${{ steps.current.outputs.apps }}" doclingImage="${{ steps.current.outputs.docling }}" recorderImage="${{ steps.current.outputs.recorder }}" appVersion="${{ steps.current.outputs.version }}" workerVersion="${{ steps.current.outputs.worker_version }}" apiRevisionSuffix="${{ steps.current.outputs.suffix }}" apiLiveRevision="${{ steps.current.outputs.live }}" apiPreviousRevision="${{ steps.current.outputs.previous }}" infraFingerprint="${{ steps.fingerprint.outputs.fingerprint }}"
       - name: start the worker's newest revision
         if: ${{ always() && !inputs.what-if }}
         env:

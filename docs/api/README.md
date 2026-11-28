@@ -75,6 +75,10 @@ To announce one, add a line to a new dated entry below that names the operation 
 
 `npm run definitions:compat` checks every YAML or JSON file in the repository that is a service, step flow, skill or block definition (seeds, examples and fixtures) against the current schema, including the strategy, tool and guardrail settings. Models, datasets, rerankers, tools and blocks are not looked up, since each environment has its own. Give it the path to a tenant export (`GET /tenants/{tenant}/export`) or a folder of definitions to check those instead.
 
+### 2026-11-28: the recorder signs in with its workload identity
+
+- `POST /recorder/demos/{id}/recordings`, `PUT /recorder/recordings/{id}/files/{name}`, `POST /recorder/recordings/{id}/finish` and the recorder's reads take, besides `x-recorder-key`, an Entra token in `authorization` whose `oid` is the recorder job's identity (`GENAI_DEMO_RECORDER_PRINCIPAL_ID`). Any other bearer gets `401` `urn:genai:problem:recorder-key`, also in lockdown, where it got `403` before. These writes take no change reason.
+
 ### 2026-11-27: a new service never takes another service's id
 
 - `POST /definitions` takes an optional `newService: true` in its JSON body. The API then publishes only a version 1, and answers `409` `urn:genai:problem:service-id-taken` with the taken `id` when another service, archived ones too, already has the definition's id. A publish without it stays the next version of that id. A caller who cannot see an internal service with the id gets the `422` on `metadata.id` it got before, not the `409`.

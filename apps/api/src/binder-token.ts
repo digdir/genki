@@ -3,7 +3,7 @@ import { remoteJwks } from '@genai/identity';
 import { guidPattern } from '@genai/kernel';
 import { jwtVerify, type JWTVerifyGetKey } from 'jose';
 
-export interface BinderTrust {
+export interface WorkloadTrust {
   principalId: string;
   tenantId: string;
   audience: string;
@@ -11,13 +11,14 @@ export interface BinderTrust {
   now?: () => Date;
 }
 
-export const binderTrustFrom = (
+const workloadTrustFrom = (
   env: NodeJS.ProcessEnv,
-  fetchFn: typeof fetch = fetch,
-): BinderTrust | undefined => {
-  const principalId = env.GENAI_HOSTNAME_BINDER_PRINCIPAL_ID?.trim().toLowerCase();
-  const tenantId = env.GENAI_HOSTNAME_BINDER_TENANT_ID?.trim().toLowerCase();
-  const audience = env.GENAI_HOSTNAME_BINDER_AUDIENCE?.trim();
+  prefix: string,
+  fetchFn: typeof fetch,
+): WorkloadTrust | undefined => {
+  const principalId = env[`${prefix}_PRINCIPAL_ID`]?.trim().toLowerCase();
+  const tenantId = env[`${prefix}_TENANT_ID`]?.trim().toLowerCase();
+  const audience = env[`${prefix}_AUDIENCE`]?.trim();
   if (!principalId || !tenantId || !audience) return undefined;
   if (!guidPattern.test(principalId) || !guidPattern.test(tenantId)) return undefined;
   return {
@@ -28,13 +29,19 @@ export const binderTrustFrom = (
   };
 };
 
+export const binderTrustFrom = (env: NodeJS.ProcessEnv, fetchFn: typeof fetch = fetch) =>
+  workloadTrustFrom(env, 'GENAI_HOSTNAME_BINDER', fetchFn);
+
+export const recorderTrustFrom = (env: NodeJS.ProcessEnv, fetchFn: typeof fetch = fetch) =>
+  workloadTrustFrom(env, 'GENAI_DEMO_RECORDER', fetchFn);
+
 const sameValue = (a: string, b: string) => {
   const digest = (v: string) => createHash('sha256').update(v).digest();
   return timingSafeEqual(digest(a), digest(b));
 };
 
-export const isBinder = async (
-  trust: BinderTrust | undefined,
+export const isWorkload = async (
+  trust: WorkloadTrust | undefined,
   authorization: string | undefined,
 ): Promise<boolean> => {
   if (!trust || !authorization?.startsWith('Bearer ')) return false;

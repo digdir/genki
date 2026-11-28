@@ -75,6 +75,7 @@ import {
   type ColorScheme,
   type DemoScene,
 } from '../packages/contracts/src/demo-scenes.ts';
+import { identityTokenUrl, recorderAuthOf, signInKeyOf, type RecorderAuth } from './demo-auth.ts';
 import { elevenLabsKeyOf, elevenLabsRead } from './demo-elevenlabs.ts';
 import { musicBeds, type MusicBed, type SoundReport } from './demo-sound.ts';
 import {
@@ -656,12 +657,8 @@ export const canVoice = (voice: string, spend: Spend, env: NodeJS.ProcessEnv) =>
   speechConfigured(voice, env) &&
   (Boolean(placeholderVoiceOf(env)) || !voiceNeedsApproval(voice) || approved(spend));
 
-export const managedIdentityTokenUrl = (endpoint: string) => {
-  const url = new URL(endpoint);
-  url.searchParams.set('resource', 'https://cognitiveservices.azure.com');
-  url.searchParams.set('api-version', '2019-08-01');
-  return url.toString();
-};
+export const managedIdentityTokenUrl = (endpoint: string, clientId?: string) =>
+  identityTokenUrl(endpoint, 'https://cognitiveservices.azure.com', clientId).toString();
 
 const speechEndpoint = async () => {
   const {
@@ -670,7 +667,7 @@ const speechEndpoint = async () => {
     IDENTITY_HEADER: secret,
   } = process.env;
   if (direct && identity) {
-    const res = await fetch(managedIdentityTokenUrl(identity), {
+    const res = await fetch(managedIdentityTokenUrl(identity, process.env.AZURE_CLIENT_ID), {
       headers: { 'x-identity-header': secret ?? '' },
     });
     if (!res.ok) throw new Error(`The managed identity answered ${res.status}`);
@@ -1085,18 +1082,17 @@ const recordingId = /^[0-9a-f-]{36}$/;
 
 export const queuedOf = async (
   api: string,
-  key: string,
+  auth: RecorderAuth,
   send: typeof fetch = fetch,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<QueuedNarration[]> => {
   const base = api.replace(/\/$/, '');
-  const headers = { 'x-recorder-key': key };
-  const res = await send(`${base}/recorder/recordings?status=queued`, { headers });
+  const res = await send(`${base}/recorder/recordings?status=queued`, { headers: await auth() });
   if (!res.ok) throw new Error(`The queued recordings answered ${res.status}`);
   const { data } = (await res.json()) as { data: { id: string }[] };
   const queued: QueuedNarration[] = [];
   for (const { id } of data.filter((r) => recordingId.test(r.id))) {
-    const one = await send(`${base}/recorder/recordings/${id}`, { headers });
+    const one = await send(`${base}/recorder/recordings/${id}`, { headers: await auth() });
     if (!one.ok) {
       console.error(`The recording ${id} answered ${one.status}, so it is left for the next run`);
       continue;
@@ -1222,7 +1218,7 @@ export interface Library {
 
 export const libraryOf = (
   api: string,
-  key: string,
+  auth: RecorderAuth,
   send: typeof fetch = fetch,
   read: (file: string) => Buffer = readFileSync,
 ): Library => {
@@ -1235,7 +1231,7 @@ export const libraryOf = (
   const call = async (method: string, path: string, body?: BodyInit, type?: string) => {
     const res = await send(`${base}${path}`, {
       method,
-      headers: { 'x-recorder-key': key, ...(type ? { 'content-type': type } : {}) },
+      headers: { ...(await auth()), ...(type ? { 'content-type': type } : {}) },
       ...(body === undefined ? {} : { body }),
     });
     if (res.status === 409) {
@@ -1280,10 +1276,12 @@ export const libraryOf = (
   };
 };
 
+const recorderAuth = recorderAuthOf(process.env);
+
 const libraryFromEnv = (env: NodeJS.ProcessEnv) =>
-  env.DEMO_RECORDER_KEY && env.DEMO_API_URL
-    ? libraryOf(env.DEMO_API_URL, env.DEMO_RECORDER_KEY)
-    : undefined;
+  recorderAuth && env.DEMO_API_URL ? libraryOf(env.DEMO_API_URL, recorderAuth) : undefined;
+
+const signInKey = signInKeyOf(process.env);
 
 export const exampleBases = (env: NodeJS.ProcessEnv) => ({
   portal: env.DEMO_EXAMPLE_PORTAL_URL || 'http://portal.localhost:5173',
@@ -1421,11 +1419,13 @@ async function record(path: string, silent: boolean): Promise<DemoResult> {
 async function recordStored(id: string, silent: boolean): Promise<DemoResult> {
   const env = process.env;
   const library = libraryFromEnv(env);
-  if (!library || !env.DEMO_API_URL || !env.DEMO_RECORDER_KEY)
-    throw new Error('Set DEMO_API_URL and DEMO_RECORDER_KEY to record a queued recording');
+  if (!library || !env.DEMO_API_URL || !recorderAuth)
+    throw new Error(
+      'Set DEMO_API_URL and DEMO_RECORDER_KEY or DEMO_RECORDER_AUDIENCE to record a queued recording',
+    );
   const res = await fetch(
     `${env.DEMO_API_URL.replace(/\/$/, '')}/recorder/recordings/${encodeURIComponent(id)}`,
-    { headers: { 'x-recorder-key': env.DEMO_RECORDER_KEY } },
+    { headers: await recorderAuth() },
   );
   if (!res.ok) throw new Error(`The recording ${id} answered ${res.status}`);
   const stored = (await res.json()) as StoredRecording;
@@ -1436,7 +1436,7 @@ async function recordStored(id: string, silent: boolean): Promise<DemoResult> {
       stored.editOf,
       stored.instruction,
       library,
-      { api: env.DEMO_API_URL, key: env.DEMO_RECORDER_KEY },
+      { api: env.DEMO_API_URL, auth: recorderAuth },
       spend,
     );
   const problem = storedProblem(stored, env);
@@ -1467,15 +1467,14 @@ const editSourceMaxBytes = (name: string) =>
 
 export const downloadEditSource = async (
   api: string,
-  key: string,
+  auth: RecorderAuth,
   source: string,
   out: string,
   voices: string,
   send: typeof fetch = fetch,
 ) => {
   const base = `${api.replace(/\/$/, '')}/recorder/recordings/${encodeURIComponent(source)}`;
-  const headers = { 'x-recorder-key': key };
-  const res = await send(base, { headers });
+  const res = await send(base, { headers: await auth() });
   if (!res.ok) throw new Error(`The recording ${source} answered ${res.status}`);
   const names =
     ((await res.json()) as StoredRecording).files
@@ -1484,7 +1483,9 @@ export const downloadEditSource = async (
   const missing = ['capture.mp4', 'events.json', 'edl.json'].filter((n) => !names.includes(n));
   if (missing.length) throw new Error(`The recording ${source} has no ${missing.join(', ')}`);
   for (const name of names) {
-    const file = await send(`${base}/files/${encodeURIComponent(name)}`, { headers });
+    const file = await send(`${base}/files/${encodeURIComponent(name)}`, {
+      headers: await auth(),
+    });
     if (!file.ok) throw new Error(`${name} of ${source} answered ${file.status}`);
     const max = editSourceMaxBytes(name);
     if (Number(file.headers.get('content-length') ?? 0) > max)
@@ -1501,7 +1502,7 @@ async function editStored(
   source: string,
   instruction: string,
   library: Library,
-  from: { api: string; key: string },
+  from: { api: string; auth: RecorderAuth },
   spend: Spend,
 ): Promise<DemoResult> {
   const name = stored.demo;
@@ -1522,7 +1523,7 @@ async function editStored(
     rmSync(out, { recursive: true, force: true });
     mkdirSync(out, { recursive: true });
     mkdirSync(cache, { recursive: true });
-    const downloaded = await downloadEditSource(from.api, from.key, source, out, cache);
+    const downloaded = await downloadEditSource(from.api, from.auth, source, out, cache);
     const film = await editFilm(out, name, cache, instruction, spend);
     await library.upload(recording, 'demo.mp4', film.mp4);
     await library.upload(recording, 'demo.srt', film.srt);
@@ -1572,9 +1573,19 @@ export async function recordDemo(
   spend: Spend = spendOf(),
 ): Promise<DemoResult> {
   const env = process.env;
-  const key = env.DEMO_API_KEY || undefined;
-  if (demo.signedIn && !key && !demo.exampleData) {
-    const why = 'needs DEMO_API_KEY to sign in';
+  const needsKey = Boolean(demo.signedIn && !demo.exampleData);
+  const read = needsKey
+    ? await signInKey().then(
+        (found) => ({ key: found || undefined, why: 'needs DEMO_API_KEY to sign in' }),
+        (error: unknown) => ({
+          key: undefined,
+          why: `could not read its sign-in key: ${error instanceof Error ? error.message : String(error)}`,
+        }),
+      )
+    : { key: undefined, why: '' };
+  const key = read.key;
+  if (needsKey && !key) {
+    const why = read.why;
     if (reporting?.recording) {
       const { library } = reporting;
       const started = await library.start(name, false, reporting.recording).catch(() => undefined);
@@ -1971,9 +1982,12 @@ export const parseArgs = (argv: string[]) => {
 async function main(argv: string[]) {
   const { mode, silent, queued, only, files } = parseArgs(argv);
   if (mode === 'queued') {
-    const { DEMO_API_URL: api, DEMO_RECORDER_KEY: key } = process.env;
-    if (!api || !key) throw new Error('Set DEMO_API_URL and DEMO_RECORDER_KEY to list the queue');
-    const found = await queuedOf(api, key);
+    const api = process.env.DEMO_API_URL;
+    if (!api || !recorderAuth)
+      throw new Error(
+        'Set DEMO_API_URL and DEMO_RECORDER_KEY or DEMO_RECORDER_AUDIENCE to list the queue',
+      );
+    const found = await queuedOf(api, recorderAuth);
     mkdirSync(resolve('demos/out'), { recursive: true });
     writeRunJson(dirname(queuedFile()), basename(queuedFile()), found);
     console.log(`${found.length} queued: ${found.map((q) => q.demo).join(', ') || 'none'}`);

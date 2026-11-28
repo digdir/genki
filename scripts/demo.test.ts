@@ -69,6 +69,7 @@ import {
   StepFailure,
   subtitles,
 } from './demo.ts';
+import { keyAuth } from './demo-auth.ts';
 import { spendOf } from './demo-voice.ts';
 
 const demosDir = join(import.meta.dirname, '../demos');
@@ -939,7 +940,9 @@ describe('reporting to the demo library', () => {
 
   it('starts a recording on the version the API runs, with the recorder key', async () => {
     const { calls, send } = fake();
-    const library = libraryOf('https://api.example/', 'nøkkel', send, () => Buffer.from('x'));
+    const library = libraryOf('https://api.example/', keyAuth('nøkkel'), send, () =>
+      Buffer.from('x'),
+    );
 
     const id = await library.start('playground', true, 'q1');
 
@@ -956,7 +959,7 @@ describe('reporting to the demo library', () => {
 
   it('stops as cancelled when the API says the recording has ended', async () => {
     const { send, fail } = fake();
-    const library = libraryOf('https://api.example', 'k', send, () => Buffer.from('x'));
+    const library = libraryOf('https://api.example', keyAuth('k'), send, () => Buffer.from('x'));
     fail(409);
 
     await expect(library.upload('r1', 'step-1.png', 'f')).rejects.toBeInstanceOf(Cancelled);
@@ -970,7 +973,7 @@ describe('reporting to the demo library', () => {
             { type: 'urn:genai:problem:recording-open' },
             { status: 409 },
           )) as typeof fetch;
-    const library = libraryOf('https://api.example', 'k', send, () => Buffer.from('x'));
+    const library = libraryOf('https://api.example', keyAuth('k'), send, () => Buffer.from('x'));
 
     await expect(library.start('playground', true)).rejects.toBeInstanceOf(RecordingOpen);
   });
@@ -1105,7 +1108,7 @@ describe('reporting to the demo library', () => {
       });
     }) as typeof fetch;
 
-    const queued = await queuedOf('https://api.example/', 'nøkkel', send);
+    const queued = await queuedOf('https://api.example/', keyAuth('nøkkel'), send);
 
     expect(queued).toEqual([
       {
@@ -1145,7 +1148,7 @@ describe('reporting to the demo library', () => {
       });
     }) as typeof fetch;
 
-    const queued = await queuedOf('https://api.example', 'k', send);
+    const queued = await queuedOf('https://api.example', keyAuth('k'), send);
 
     expect(queued.map((q) => q.id)).toEqual([ok]);
   });
@@ -1222,7 +1225,7 @@ describe('reporting to the demo library', () => {
             costCapUsd: 3,
           })) as typeof fetch;
 
-    const queued = await queuedOf('https://api.example', 'k', send, {});
+    const queued = await queuedOf('https://api.example', keyAuth('k'), send, {});
 
     expect(queued).toEqual([{ id, demo: 'tour', voice: 'cedar', language: 'nb-NO', lines: [] }]);
   });
@@ -1263,7 +1266,7 @@ describe('reporting to the demo library', () => {
       });
     }) as typeof fetch;
 
-    const queued = await queuedOf('https://api.example', 'k', send);
+    const queued = await queuedOf('https://api.example', keyAuth('k'), send);
 
     expect(queued.map((q) => [q.id, q.lines, q.costCapUsd])).toEqual([
       [edit, [], 3],
@@ -1292,7 +1295,9 @@ describe('reporting to the demo library', () => {
   it('stops when the queue answers with an error, so nothing is recorded from a half list', async () => {
     const send = (async () => new Response('{}', { status: 401 })) as typeof fetch;
 
-    await expect(queuedOf('https://api.example', 'k', send)).rejects.toThrow(/answered 401/);
+    await expect(queuedOf('https://api.example', keyAuth('k'), send)).rejects.toThrow(
+      /answered 401/,
+    );
   });
 
   it('downloads the capture, events, edit list, stills and voice clips of the film it edits, the clips into the voice folder, and nothing else', async () => {
@@ -1323,7 +1328,7 @@ describe('reporting to the demo library', () => {
 
     const names = await downloadEditSource(
       'https://api.example/',
-      'nøkkel',
+      keyAuth('nøkkel'),
       source,
       out,
       voices,
@@ -1361,7 +1366,7 @@ describe('reporting to the demo library', () => {
       Response.json({ files: [{ name: 'events.json' }, { name: 'edl.json' }] })) as typeof fetch;
 
     await expect(
-      downloadEditSource('https://api.example', 'k', 's', out, out, send),
+      downloadEditSource('https://api.example', keyAuth('k'), 's', out, out, send),
     ).rejects.toThrow(/no capture\.mp4/);
     expect(readdirSync(out)).toEqual([]);
   });
@@ -1381,10 +1386,10 @@ describe('reporting to the demo library', () => {
           })) as typeof fetch;
 
     await expect(
-      downloadEditSource('https://api.example', 'k', 's', out, out, huge),
+      downloadEditSource('https://api.example', keyAuth('k'), 's', out, out, huge),
     ).rejects.toThrow(/events\.json is \d+ bytes, more than/);
     await expect(
-      downloadEditSource('https://api.example', 'k', 's', out, out, claims),
+      downloadEditSource('https://api.example', keyAuth('k'), 's', out, out, claims),
     ).rejects.toThrow(/capture\.mp4 of s is more than/);
     expect(readdirSync(out)).not.toContain('events.json');
   });

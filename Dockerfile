@@ -46,6 +46,25 @@ COPY docker/apps/headers.conf /etc/nginx/genki-headers.conf
 COPY --chmod=755 docker/apps/30-genki-config.sh /docker-entrypoint.d/30-genki-config.sh
 EXPOSE 8080
 
+FROM build AS recorder-files
+RUN for path in $(cat docker/recorder-files); do \
+      mkdir -p "/recorder/$(dirname "$path")" && cp -r "$path" "/recorder/$path" || exit 1; \
+    done
+
+FROM ${NODE_IMAGE} AS recorder
+ENV NODE_ENV=production
+RUN apt-get update && \
+    apt-get install --yes --no-install-recommends ffmpeg && \
+    npm install --global --no-audit --no-fund agent-browser@0.42.0 && \
+    agent-browser install --with-deps && \
+    rm -rf /root/.agent-browser /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=recorder-files --chown=node:node /recorder/ ./
+RUN mkdir -p demos/out && chown node:node demos/out
+USER node
+RUN agent-browser install
+CMD ["sh", "-c", "node scripts/demo.ts queued && { node scripts/demo.ts voice --queued || true; exec node scripts/demo.ts recording --queued; }"]
+
 FROM node-runtime AS worker
 CMD ["node", "apps/worker/dist/main.js"]
 
