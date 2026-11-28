@@ -51,17 +51,18 @@ export const stopDecision = (state: TreeState, stopHookActive: boolean): Decisio
   return { code: 2, stderr: staleMessage };
 };
 
-const gitSubcommand = (words: string[]) => {
-  let at = 1;
+const gitSubcommand = (words: string[], start: number) => {
+  let at = start + 1;
   while (words[at]?.startsWith('-')) at += words[at] === '-C' || words[at] === '-c' ? 2 : 1;
   return words[at];
 };
 
 const pushesOrOpensPr = (segment: string) => {
   const words = segment.trim().split(/\s+/);
-  while (words[0] !== undefined && /^\w+=/.test(words[0])) words.shift();
-  if (words[0] === 'git') return gitSubcommand(words) === 'push';
-  return words[0] === 'gh' && words[1] === 'pr' && words[2] === 'create';
+  let at = 0;
+  while (words[at] !== undefined && /^\w+=/.test(words[at] ?? '')) at += 1;
+  if (words[at] === 'git') return gitSubcommand(words, at) === 'push';
+  return words[at] === 'gh' && words[at + 1] === 'pr' && words[at + 2] === 'create';
 };
 
 export const isPushCommand = (command: string) => command.split(/[;&|(\n]/).some(pushesOrOpensPr);
@@ -114,14 +115,19 @@ const repoOf = (dir: string): string | undefined => {
 
 const formatFile = async (root: string, file: string) => {
   const path = isAbsolute(file) ? file : resolve(root, file);
-  if (relative(root, path).startsWith('..') || !existsSync(path)) return;
-  const prettier = await import('prettier');
-  const info = await prettier.getFileInfo(path, {
-    ignorePath: [join(root, '.gitignore'), join(root, '.prettierignore')],
-  });
-  if (info.ignored || !info.inferredParser) return;
-  const fd = openSync(path, 'r+');
+  if (relative(root, path).startsWith('..')) return;
+  let fd: number;
   try {
+    fd = openSync(path, 'r+');
+  } catch {
+    return;
+  }
+  try {
+    const prettier = await import('prettier');
+    const info = await prettier.getFileInfo(path, {
+      ignorePath: [join(root, '.gitignore'), join(root, '.prettierignore')],
+    });
+    if (info.ignored || !info.inferredParser) return;
     const source = readFileSync(fd, 'utf8');
     const options = await prettier.resolveConfig(path);
     const formatted = await prettier.format(source, { ...options, filepath: path });
