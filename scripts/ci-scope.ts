@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-export type TestScope = 'none' | 'changed' | 'all';
+export type TestScope = 'none' | 'all';
 
 export interface Scope {
   static: boolean;
@@ -26,15 +26,6 @@ export const isDocsOnly = (c: Change) =>
   (/^[^/]+\.md$/.test(c.path) || /^docs\/.+\.md$/.test(c.path)) &&
   !c.path.startsWith('docs/adr/0017-');
 
-const sourceDirs = /^(apps|packages|scripts|examples)\//;
-const configDirs = /^apps\/[^/]+\/config\//;
-
-export const isSource = (c: Change) =>
-  isEdit(c) &&
-  sourceDirs.test(c.path) &&
-  !configDirs.test(c.path) &&
-  /\.(ts|tsx|js|mjs|css)$/.test(c.path);
-
 export const isTest = (c: Change) =>
   /\.test\.tsx?$/.test(c.path) || /\.test-utils\.ts$/.test(c.path);
 
@@ -44,11 +35,10 @@ export const scopeOf = (changes: Change[]): Scope => {
   const code = changes.filter((c) => !isDocsOnly(c));
   if (code.length === 0) return { static: false, tests: 'none', size: false, image: false };
   if (code.some((c) => c.path.startsWith('.github/workflows/'))) return everything;
-  const tests: TestScope = code.every(isSource) ? 'changed' : 'all';
   const shipped = code.filter((c) => !isTest(c));
   const size = shipped.some((c) => !serverOnly.test(c.path));
   const image = shipped.some((c) => !/^(infra\/|\.github\/)/.test(c.path));
-  return { static: true, tests, size, image };
+  return { static: true, tests: 'all', size, image };
 };
 
 export const parseNameStatus = (output: string): Change[] =>

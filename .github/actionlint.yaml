@@ -1,0 +1,7 @@
+paths:
+  .github/workflows/scorecard.yml:
+    ignore:
+      - 'unexpected key "cache-mode" for "workflow" section'
+  .github/workflows/deploy.yml:
+    ignore:
+      - 'SC2016:'

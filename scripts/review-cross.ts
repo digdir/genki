@@ -595,29 +595,20 @@ export const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const git = (...args: string[]) =>
   execFileSync('git', args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
 
-const github = async (path: string, init: RequestInit = {}) => {
-  const res = await fetch(`https://api.github.com${path}`, {
-    ...init,
-    headers: {
-      authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-      accept: 'application/vnd.github+json',
-      'content-type': 'application/json',
-    },
-  });
-  if (!res.ok) throw new Error(`${init.method ?? 'GET'} ${path}: ${res.status}`);
-  return res.json();
-};
-
 async function earlierFindings(repo: string, pr: number): Promise<Earlier[]> {
   const [owner, name] = repo.split('/');
   const query = `query($o:String!,$n:String!,$pr:Int!,$after:String){repository(owner:$o,name:$n){pullRequest(number:$pr){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{path line startLine comments(first:1){nodes{author{login} body}}}}}}}`;
   const out: Earlier[] = [];
   let after: string | null = null;
   do {
-    const res = (await github('/graphql', {
-      method: 'POST',
-      body: JSON.stringify({ query, variables: { o: owner, n: name, pr, after } }),
-    })) as { data: { repository: { pullRequest: { reviewThreads: unknown } } } };
+    const res = (await github(
+      '/graphql',
+      {
+        method: 'POST',
+        body: JSON.stringify({ query, variables: { o: owner, n: name, pr, after } }),
+      },
+      { retry: true },
+    )) as { data: { repository: { pullRequest: { reviewThreads: unknown } } } };
     const page = res.data.repository.pullRequest.reviewThreads as {
       pageInfo: { hasNextPage: boolean; endCursor: string | null };
       nodes: {
@@ -749,6 +740,55 @@ export function responsesClient(
     }
   };
 }
+
+export const GITHUB_ATTEMPTS = 4;
+
+export function githubClient(
+  token: string,
+  deps: {
+    fetch?: typeof fetch;
+    sleep?: (ms: number) => Promise<void>;
+    log?: (line: string) => void;
+  } = {},
+) {
+  const send = deps.fetch ?? fetch;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const log = deps.log ?? ((line: string) => process.stderr.write(`${line}\n`));
+  return async (path: string, init: RequestInit = {}, { retry = false } = {}) => {
+    const what = `${init.method ?? 'GET'} ${path}`;
+    for (let attempt = 0; ; attempt++) {
+      let res: Response | undefined;
+      let failure: unknown;
+      try {
+        res = await send(`https://api.github.com${path}`, {
+          ...init,
+          headers: {
+            authorization: `Bearer ${token}`,
+            accept: 'application/vnd.github+json',
+            'content-type': 'application/json',
+          },
+        });
+      } catch (error) {
+        failure = error;
+      }
+      if (res?.ok) return res.json();
+      const transient = !res || RETRYABLE.has(res.status);
+      if (!retry || !transient || attempt >= GITHUB_ATTEMPTS - 1) {
+        if (!res) throw failure;
+        throw new Error(`${what}: ${res.status}`);
+      }
+      await res?.body?.cancel().catch(() => undefined);
+      const wait = retryWaitMs(res?.headers ?? new Headers(), attempt);
+      log(
+        `${what} ${res ? res.status : 'network error'}, retrying in ${Math.round(wait / 1000)}s (attempt ${attempt + 1} of ${GITHUB_ATTEMPTS})`,
+      );
+      await sleep(wait);
+    }
+  };
+}
+
+const github = (path: string, init: RequestInit = {}, opts: { retry?: boolean } = {}) =>
+  githubClient(process.env.GITHUB_TOKEN ?? '')(path, init, opts);
 
 export const foundryToken = () =>
   execFileSync(

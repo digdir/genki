@@ -10,6 +10,8 @@ import {
   costUsd,
   diskWorkspace,
   foundryError,
+  GITHUB_ATTEMPTS,
+  githubClient,
   isSensitive,
   LIMITS,
   MARKER,
@@ -749,6 +751,66 @@ describe('the Foundry Responses client', () => {
     });
     foundryError(400, { error: { message: `bearer ${' '.repeat(200_000)}x` } });
     expect(performance.now() - start).toBeLessThan(500);
+  });
+});
+
+describe('the GitHub client', () => {
+  const setup = (answers: (() => Response)[]) => {
+    const waits: number[] = [];
+    const lines: string[] = [];
+    const seen: string[] = [];
+    let calls = 0;
+    const client = githubClient('gh-tok', {
+      fetch: (async (_url: string, init: RequestInit) => {
+        seen.push(new Headers(init.headers).get('authorization') ?? '');
+        const answer = answers[Math.min(calls, answers.length - 1)];
+        calls++;
+        return answer?.() ?? Response.json({});
+      }) as typeof fetch,
+      sleep: async (ms) => {
+        waits.push(ms);
+      },
+      log: (line) => lines.push(line),
+    });
+    return { client, waits, lines, seen, calls: () => calls };
+  };
+  const query = { method: 'POST', body: '{}' };
+
+  it('retries a GraphQL 502, a 429 and a network error with backoff, then succeeds', async () => {
+    const t = setup([
+      () => new Response('<html>bad gateway</html>', { status: 502 }),
+      () => Response.json({}, { status: 429, headers: { 'retry-after': '3' } }),
+      () => {
+        throw new TypeError('fetch failed');
+      },
+      () => Response.json({ data: 1 }),
+    ]);
+    await expect(t.client('/graphql', query, { retry: true })).resolves.toEqual({ data: 1 });
+    expect(t.waits).toEqual([RETRY.baseMs, 3_000, RETRY.baseMs * 4]);
+    expect(t.lines[0]).toBe('POST /graphql 502, retrying in 4s (attempt 1 of 4)');
+    expect(t.seen).toEqual(Array(4).fill('Bearer gh-tok'));
+    expect(t.lines.join()).not.toContain('gh-tok');
+  });
+
+  it('gives up after the last attempt with the status', async () => {
+    const t = setup([() => new Response('', { status: 503 })]);
+    await expect(t.client('/graphql', query, { retry: true })).rejects.toThrow(
+      'POST /graphql: 503',
+    );
+    expect(t.calls()).toBe(GITHUB_ATTEMPTS);
+  });
+
+  it('does not retry a 4xx other than 429', async () => {
+    const t = setup([() => new Response('', { status: 404 })]);
+    await expect(t.client('/graphql', query, { retry: true })).rejects.toThrow('404');
+    expect(t.calls()).toBe(1);
+  });
+
+  it('sends a write once, so a 502 that still posted the review cannot post it twice', async () => {
+    const t = setup([() => new Response('', { status: 502 })]);
+    await expect(t.client('/repos/o/r/pulls/1/reviews', query)).rejects.toThrow('502');
+    expect(t.calls()).toBe(1);
+    expect(t.waits).toEqual([]);
   });
 });
 

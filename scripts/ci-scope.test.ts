@@ -28,13 +28,13 @@ describe('the CI scope of a pull request', () => {
     expect(scopeOf(parseNameStatus('R100\tdocs/old.md\tdocs/new.md')).tests).toBe('all');
   });
 
-  it('runs only the affected tests when every change is TypeScript, JavaScript or CSS source', () => {
+  it('runs every test when only TypeScript source changes, so a green pull request means a green merge queue', () => {
     expect(
       scopeOf([
         m('apps/console/src/screens/SupportAccess.tsx'),
         m('packages/identity/src/claims.ts'),
       ]).tests,
-    ).toBe('changed');
+    ).toBe('all');
   });
 
   it('runs every test when a file outside the module graph changes, such as config, prompts or test data', () => {
@@ -62,7 +62,7 @@ describe('the CI scope of a pull request', () => {
   it('skips the size budget and the image when only tests change', () => {
     expect(scopeOf([m('apps/console/src/support.test.tsx')])).toEqual({
       static: true,
-      tests: 'changed',
+      tests: 'all',
       size: false,
       image: false,
     });
@@ -94,11 +94,19 @@ interface Step {
   with?: Record<string, string | number>;
   env?: Record<string, string>;
   run?: string;
+  if?: string;
+}
+
+interface Job {
+  needs?: string | string[];
+  if?: string;
+  strategy?: { matrix: { shard: number[] } };
+  steps: Step[];
 }
 
 const workflow = parse(
   readFileSync(join(import.meta.dirname, '../.github/workflows/ci.yml'), 'utf8'),
-) as { on: Record<string, unknown>; jobs: Record<string, { steps: Step[] }> };
+) as { on: Record<string, unknown>; jobs: Record<string, Job> };
 const steps = (job: string) => workflow.jobs[job]?.steps ?? [];
 const env = (job: string, name: string) =>
   steps(job)
@@ -112,7 +120,6 @@ describe('the CI workflow in the merge queue', () => {
 
   it('runs every check in full for a merge group, since a deploy reuses its result for the commit', () => {
     expect(env('scope', 'BASE')).toBe("${{ github.event.pull_request.base.sha || '' }}");
-    expect(env('test', 'BASE')).toBe('${{ github.event.pull_request.base.sha }}');
     const scope = execFileSync(process.execPath, [join(import.meta.dirname, 'ci-scope.ts')], {
       encoding: 'utf8',
       env: { ...process.env, GITHUB_OUTPUT: '' },
@@ -121,29 +128,138 @@ describe('the CI workflow in the merge queue', () => {
   });
 });
 
-describe('the test job when only the affected tests run', () => {
-  const checkout = steps('test').find((s) => s.uses?.startsWith('actions/checkout@'));
-  const fetchDepth = String(checkout?.with?.['fetch-depth']);
+describe('the test job', () => {
+  const job = workflow.jobs.test as Job;
+  const vitest = () => steps('test').find((s) => s.run?.includes('vitest'));
 
-  it('fetches the whole history, because vitest diffs the base against HEAD and 0 is falsy in a workflow expression', () => {
-    expect(fetchDepth).toContain('needs.scope.outputs.tests');
-    expect(fetchDepth).not.toMatch(/&&\s*0\s*\|\|/);
+  it('runs every test file on every pull request, never only the affected ones', () => {
+    expect(vitest()?.run).not.toContain('--changed');
+    expect(steps('test').some((s) => s.env?.BASE || s.env?.CHANGED)).toBe(false);
   });
 
-  it('runs every test when the base is not an ancestor of HEAD, instead of failing', () => {
-    const guard = steps('test').find((s) => s.env?.BASE);
-    expect(guard?.run).toContain('git merge-base --is-ancestor "$BASE" HEAD');
-    const vitest = steps('test').find((s) => s.run?.includes('vitest'));
-    expect(vitest?.run).toContain('${CHANGED:+--changed "$CHANGED"}');
-    expect(vitest?.env?.CHANGED).toBe('${{ steps.changed.outputs.since }}');
+  it('splits the tests over as many shards as the matrix has runners', () => {
+    const shards = job.strategy?.matrix.shard ?? [];
+    expect(shards).toEqual(Array.from({ length: shards.length }, (_, i) => i + 1));
+    expect(vitest()?.run).toContain(`--shard=\${{ matrix.shard }}/${shards.length} `);
+  });
+});
+
+describe('the static jobs', () => {
+  const runs = (job: string) => steps(job).map((s) => s.run ?? '');
+
+  it('typechecks in its own job, so format and lint do not wait for it', () => {
+    expect(runs('typecheck')).toContain('npm run typecheck');
+    expect(runs('static')).not.toContain('npm run typecheck');
+    expect(workflow.jobs.typecheck?.if).toBe("needs.scope.outputs.static == 'true'");
+  });
+
+  it('checks the System Atlas and the workflows, and runs the quarantine check when the script exists', () => {
+    expect(runs('static')).toContain('npm run atlas:build -- --check');
+    expect(runs('static')).toContain('npm run quarantine:check --if-present');
+    expect(runs('static').find((r) => r.includes('rhysd/actionlint'))).toMatch(
+      /rhysd\/actionlint:[\d.]+@sha256:[0-9a-f]{64}/,
+    );
+  });
+
+  it('keys every cache it restores on the lockfile and falls back only to the same lockfile', () => {
+    for (const job of ['static', 'typecheck'])
+      for (const s of steps(job).filter((s) => s.with?.['restore-keys'])) {
+        const key = String(s.with?.key);
+        expect(key).toContain("hashFiles('package-lock.json'");
+        expect(key.endsWith('-${{ github.sha }}')).toBe(true);
+        expect(`${s.with?.['restore-keys']}\${{ github.sha }}`).toBe(key);
+      }
+  });
+
+  it('lints without a cache, because a cached file passes a type-aware rule that a change elsewhere broke', () => {
+    const lint = steps('static').find((s) => s.run?.startsWith('npm run lint'));
+    expect(lint?.run).toBe('npm run lint');
+  });
+
+  it('builds the typecheck cold when a source file is added, deleted or renamed, so a stale declaration in dist cannot pass it', () => {
+    const cache = steps('typecheck').find((s) => s.with?.['restore-keys']);
+    expect(cache?.with?.['restore-keys']).toContain('-${{ steps.sources.outputs.hash }}-');
+    expect(cache?.with?.path).toContain('packages/*/dist');
+    const list = steps('typecheck').find((s) => s.run?.includes('git ls-files'))?.run ?? '';
+    const command = /\$\((git ls-files .*?) \| sha256sum/.exec(list)?.[1] ?? 'false';
+    const files = execFileSync('bash', ['-c', command], {
+      cwd: join(import.meta.dirname, '..'),
+      encoding: 'utf8',
+    })
+      .trim()
+      .split('\n');
+    expect(files).toContain('packages/kernel/src/index.ts');
+    expect(files.some((f) => f.includes('/src/screens/'))).toBe(true);
+    expect(files.some((f) => /\.test\.tsx?$/.test(f))).toBe(false);
+  });
+});
+
+describe('the check every pull request needs', () => {
+  const check = workflow.jobs.check as Job;
+  const step = check.steps[0] as Step;
+  const verdict = (results: Record<string, string>) => {
+    try {
+      execFileSync('bash', ['-c', step.run ?? ''], {
+        env: {
+          PATH: process.env.PATH,
+          SCOPE: 'success',
+          STATIC: 'success',
+          TYPECHECK: 'success',
+          TYPECHECK_IN_SCOPE: 'true',
+          TEST: 'success',
+          TESTS_IN_SCOPE: 'true',
+          SIZE: 'success',
+          SIZE_IN_SCOPE: 'true',
+          DOCLING: 'success',
+          ...results,
+        },
+      });
+      return 'pass';
+    } catch {
+      return 'fail';
+    }
+  };
+
+  it('waits for every job but the secret scan and the image, which are required on their own', () => {
+    const jobs = Object.keys(workflow.jobs).filter(
+      (j) => !['check', 'secrets', 'image'].includes(j),
+    );
+    expect([check.needs].flat().sort()).toEqual(jobs.sort());
+    for (const job of jobs)
+      expect(Object.values(step.env ?? {})).toContain(`\${{ needs.${job}.result }}`);
+  });
+
+  it('passes only when every job in scope succeeded', () => {
+    expect(verdict({})).toBe('pass');
+    expect(verdict({ TYPECHECK: 'failure' })).toBe('fail');
+    expect(verdict({ TYPECHECK: 'cancelled' })).toBe('fail');
+    expect(verdict({ TYPECHECK: 'skipped' })).toBe('fail');
+    expect(verdict({ TYPECHECK: 'skipped', TYPECHECK_IN_SCOPE: 'false' })).toBe('pass');
+    expect(verdict({ STATIC: 'skipped' })).toBe('fail');
+    expect(verdict({ TEST: 'failure' })).toBe('fail');
+    expect(verdict({ TEST: 'skipped', TESTS_IN_SCOPE: 'false' })).toBe('pass');
+    expect(verdict({ DOCLING: 'failure' })).toBe('fail');
+  });
+
+  it('skips the typecheck exactly when the scope leaves out the static checks', () => {
+    expect(step.env?.TYPECHECK_IN_SCOPE).toBe('${{ needs.scope.outputs.static }}');
+    expect(workflow.jobs.typecheck?.if).toBe("needs.scope.outputs.static == 'true'");
   });
 });
 
 describe('the secret scan', () => {
-  const gitleaks = () => steps('secrets').find((s) => s.run?.includes('gitleaks'))?.run ?? '';
+  const gitleaks = () => steps('secrets').find((s) => s.run?.includes('gitleaks'));
 
-  it('scans only the history of the commit under test, so a line on another branch cannot fail every pull request', () => {
-    expect(gitleaks()).toMatch(/ git \/repo --log-opts=HEAD /);
+  it('scans only the pull request’s own commits on a pull request, and the whole history of HEAD otherwise', () => {
+    expect(gitleaks()?.env?.RANGE).toBe(
+      "${{ github.event_name == 'pull_request' && format('{0}..HEAD', github.event.pull_request.base.sha) || 'HEAD' }}",
+    );
+    expect(gitleaks()?.run).toMatch(/ git \/repo --log-opts="\$RANGE" /);
+  });
+
+  it('names the file, line and rule of a leak, with the secret redacted', () => {
+    expect(gitleaks()?.run).toContain(' --verbose ');
+    expect(gitleaks()?.run).toContain(' --redact ');
   });
 
   it('still reads the whole history of that commit', () => {

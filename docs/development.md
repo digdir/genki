@@ -287,7 +287,7 @@ Vendor SDKs live only in `packages/providers-*`, and only composition roots may 
 npm run check   # prettier, eslint, typecheck, dependency boundaries, size budgets, all tests
 ```
 
-Tests use Vitest; the database suites start containers with Testcontainers, so Docker must be running. CI (`.github/workflows/ci.yml`) runs the same steps as `npm run check`, with the tests split over four runners, plus a gitleaks scan and a Docker image build, without pushing.
+Tests use Vitest; the database suites start containers with Testcontainers, so Docker must be running. CI (`.github/workflows/ci.yml`) runs the steps of `npm run check` plus the System Atlas check (`npm run atlas:build -- --check`) and actionlint, with the typecheck in its own job and, unless a pull request changes only docs, every test split over six runners, plus a gitleaks scan (of the pull request's own commits on a pull request, of all of HEAD's history in the merge queue) and a Docker image build, without pushing.
 
 Quality of answers is measured, not assumed: `packages/eval` runs test sets with judges and publishing gates, and `apps/parity` compares the platform with headless-rag on the same questions ([apps/parity/README.md](../apps/parity/README.md)). Components behind a port, such as a document converter, an embedding model or a search engine, are compared with a candidate in `benchmarks/`, against a reference and a margin set beforehand ([benchmarks/README.md](../benchmarks/README.md), ADR 0003).
 
