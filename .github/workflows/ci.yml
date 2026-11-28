@@ -31,7 +31,7 @@ jobs:
       - id: scope
         env:
           BASE: ${{ github.event.pull_request.base.sha || '' }}
-        run: node scripts/ci-scope.ts $BASE
+        run: node scripts/ci-scope.ts ${BASE:+"$BASE"}
 
   static:
     needs: scope
@@ -45,23 +45,59 @@ jobs:
           path: ~/.npm
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npm ci --no-audit --no-fund
-      - run: npm run format:check
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: node_modules/.cache/prettier
+          key: prettier-${{ runner.os }}-${{ hashFiles('package-lock.json', '.prettierrc.json', '.prettierignore', '.editorconfig') }}-${{ github.sha }}
+          restore-keys: prettier-${{ runner.os }}-${{ hashFiles('package-lock.json', '.prettierrc.json', '.prettierignore', '.editorconfig') }}-
+      - run: npm run format:check -- --cache --cache-strategy content
+      - run: >-
+          docker run --rm -v "$PWD:/repo" --workdir /repo
+          rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+      - run: npm run quarantine:check
       - run: npm run flags:expired
         continue-on-error: true
       - if: needs.scope.outputs.static == 'true'
         run: npm run lint
       - if: needs.scope.outputs.static == 'true'
-        run: npm run typecheck
-      - if: needs.scope.outputs.static == 'true'
         run: npm run boundaries
       - if: needs.scope.outputs.static == 'true'
         run: npm run definitions:compat
+      - if: needs.scope.outputs.static == 'true'
+        run: npm run atlas:build -- --check
       - if: needs.scope.outputs.static == 'true' && (github.event.pull_request.base.sha || github.event.merge_group.base_sha)
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           git fetch --no-tags --depth=1 origin "$BASE"
           npm run api:compat -- "$BASE"
+
+  typecheck:
+    needs: scope
+    if: needs.scope.outputs.static == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npm ci --no-audit --no-fund
+      - id: sources
+        run: echo "hash=$(git ls-files -- 'packages/*/src/*' 'apps/*/src/*' | grep -Ev '\.test\.tsx?$' | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            *.tsbuildinfo
+            packages/*/*.tsbuildinfo
+            apps/*/*.tsbuildinfo
+            packages/*/dist
+            apps/*/dist
+          key: tsc-${{ runner.os }}-${{ hashFiles('package-lock.json', 'tsconfig*.json', 'packages/*/tsconfig.json', 'apps/*/tsconfig.json') }}-${{ steps.sources.outputs.hash }}-${{ github.sha }}
+          restore-keys: tsc-${{ runner.os }}-${{ hashFiles('package-lock.json', 'tsconfig*.json', 'packages/*/tsconfig.json', 'apps/*/tsconfig.json') }}-${{ steps.sources.outputs.hash }}-
+      - run: npm run typecheck
 
   test:
     needs: scope
@@ -71,32 +107,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: ${{ needs.scope.outputs.tests == 'all' && 1 || 0 }}
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.npm
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npm ci --no-audit --no-fund
-      - id: changed
-        if: needs.scope.outputs.tests == 'changed'
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-        run: |
-          if git merge-base --is-ancestor "$BASE" HEAD; then
-            echo "since=$BASE" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::Base $BASE is not an ancestor of HEAD, running every test"
-          fi
-      - run: npx vitest run --shard=${{ matrix.shard }}/4 --passWithNoTests ${CHANGED:+--changed "$CHANGED"}
+      - run: npx vitest run --shard=${{ matrix.shard }}/6 --passWithNoTests
         env:
           TESTCONTAINERS_RYUK_DISABLED: 'false'
           DEBUG_PRINT_LIMIT: '200000'
-          CHANGED: ${{ steps.changed.outputs.since }}
 
   size:
     needs: scope
@@ -128,7 +151,7 @@ jobs:
         run: '"$RUNNER_TEMP/venv/bin/python" -m unittest test_busy'
 
   check:
-    needs: [scope, static, test, size, docling]
+    needs: [scope, static, typecheck, test, size, docling]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -136,6 +159,8 @@ jobs:
       - env:
           SCOPE: ${{ needs.scope.result }}
           STATIC: ${{ needs.static.result }}
+          TYPECHECK: ${{ needs.typecheck.result }}
+          TYPECHECK_IN_SCOPE: ${{ needs.scope.outputs.static }}
           TEST: ${{ needs.test.result }}
           TESTS_IN_SCOPE: ${{ needs.scope.outputs.tests != 'none' }}
           SIZE: ${{ needs.size.result }}
@@ -143,7 +168,7 @@ jobs:
           DOCLING: ${{ needs.docling.result }}
         run: |
           passed() { [ "$1" = success ] || { [ "$1" = skipped ] && [ "$2" = false ]; }; }
-          test "$SCOPE" = success && test "$STATIC" = success && passed "$TEST" "$TESTS_IN_SCOPE" && passed "$SIZE" "$SIZE_IN_SCOPE" && test "$DOCLING" = success
+          test "$SCOPE" = success && test "$STATIC" = success && passed "$TYPECHECK" "$TYPECHECK_IN_SCOPE" && passed "$TEST" "$TESTS_IN_SCOPE" && passed "$SIZE" "$SIZE_IN_SCOPE" && test "$DOCLING" = success
 
   secrets:
     runs-on: ubuntu-latest
@@ -154,9 +179,11 @@ jobs:
           fetch-depth: 0
       # Only HEAD's history: the full fetch brings every branch, and one false positive there failed every pull request.
       - name: gitleaks
+        env:
+          RANGE: ${{ github.event_name == 'pull_request' && format('{0}..HEAD', github.event.pull_request.base.sha) || 'HEAD' }}
         run: >-
           docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.28.0
-          git /repo --log-opts=HEAD --redact --no-banner --exit-code 1
+          git /repo --log-opts="$RANGE" --redact --verbose --no-banner --exit-code 1
 
   image:
     needs: scope
