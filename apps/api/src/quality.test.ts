@@ -3522,7 +3522,9 @@ describe('test-set runs on a shared instance', () => {
         { tenant: other, input: o1 },
       ]),
     );
-    expect(await read(env, second)).toMatchObject({ status: 'running', queuePlace: 1 });
+    await vi.waitFor(async () =>
+      expect(await read(env, second)).toMatchObject({ status: 'running', queuePlace: 1 }),
+    );
     await cases.release(o1, other);
     await cases.release(o1);
     await vi.waitFor(() => expect(cases.started).toHaveLength(4));

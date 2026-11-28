@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { timeGrowth } from '../test/linear-time.ts';
 import {
   commentBody,
   costUsd,
@@ -98,9 +99,8 @@ describe('which pull requests get the cross-model review', () => {
   });
 
   it('decides on a long adversarial path in linear time', () => {
-    const start = performance.now();
-    isSensitive(`${'a/'.repeat(50_000)}${'auth'.repeat(50_000)}x`);
-    expect(performance.now() - start).toBeLessThan(500);
+    const growth = timeGrowth((n) => isSensitive(`${'a/'.repeat(n)}${'auth'.repeat(n)}x`), 25_000);
+    expect(growth).toBeLessThan(32);
   });
 });
 
@@ -743,12 +743,11 @@ describe('the Foundry Responses client', () => {
   });
 
   it('cleans a long adversarial error message in linear time', () => {
-    const start = performance.now();
-    foundryError(400, {
-      error: { message: `${'a'.repeat(31)} `.repeat(50_000) + 'b'.repeat(200_000) },
-    });
-    foundryError(400, { error: { message: `bearer ${' '.repeat(200_000)}x` } });
-    expect(performance.now() - start).toBeLessThan(500);
+    const growth = timeGrowth((n) => {
+      foundryError(400, { error: { message: `${'a'.repeat(31)} `.repeat(n) + 'b'.repeat(4 * n) } });
+      foundryError(400, { error: { message: `bearer ${' '.repeat(4 * n)}x` } });
+    }, 6_250);
+    expect(growth).toBeLessThan(32);
   });
 });
 
