@@ -6,12 +6,12 @@ import { maxClipBytes, mp3Clip } from './demo-voice.ts';
 
 const vaultResource = 'https://vault.azure.net';
 
-export const keyVaultSecretUrl = (reference: string) => {
+export const keyVaultSecretUrl = (reference: string, setting = 'DEMO_ELEVENLABS_KEY_SECRET') => {
   let url: URL;
   try {
     url = new URL(reference);
   } catch {
-    throw new Error('DEMO_ELEVENLABS_KEY_SECRET must be a Key Vault secret URL');
+    throw new Error(`${setting} must be a Key Vault secret URL`);
   }
   if (
     url.protocol !== 'https:' ||
@@ -22,9 +22,7 @@ export const keyVaultSecretUrl = (reference: string) => {
     url.hash !== '' ||
     !/^\/secrets\/[A-Za-z0-9-]{1,127}(\/[0-9a-f]{32})?$/.test(url.pathname)
   )
-    throw new Error(
-      'DEMO_ELEVENLABS_KEY_SECRET must be https://<vault>.vault.azure.net/secrets/<name>',
-    );
+    throw new Error(`${setting} must be https://<vault>.vault.azure.net/secrets/<name>`);
   return `${url.origin}${url.pathname}?api-version=7.4`;
 };
 
@@ -33,6 +31,7 @@ export const vaultToken = async (env: NodeJS.ProcessEnv, send: typeof fetch = fe
     const url = new URL(env.IDENTITY_ENDPOINT);
     url.searchParams.set('resource', vaultResource);
     url.searchParams.set('api-version', '2019-08-01');
+    if (env.AZURE_CLIENT_ID) url.searchParams.set('client_id', env.AZURE_CLIENT_ID);
     const res = await send(url, { headers: { 'x-identity-header': env.IDENTITY_HEADER ?? '' } });
     if (!res.ok) throw new Error(`The managed identity answered ${res.status}`);
     return z.object({ access_token: z.string().min(1).max(8192) }).parse(await res.json())
@@ -58,16 +57,20 @@ export const secretFromKeyVault = async (
   reference: string,
   token: () => Promise<string>,
   send: typeof fetch = fetch,
+  names: { setting: string; what: string } = {
+    setting: 'DEMO_ELEVENLABS_KEY_SECRET',
+    what: 'the ElevenLabs key',
+  },
 ) => {
-  const url = keyVaultSecretUrl(reference);
+  const url = keyVaultSecretUrl(reference, names.setting);
   const res = await send(url, {
     headers: { authorization: `Bearer ${await token()}` },
     signal: AbortSignal.timeout(30_000),
   });
-  if (!res.ok) throw new Error(`Key Vault answered ${res.status} for the ElevenLabs key`);
+  if (!res.ok) throw new Error(`Key Vault answered ${res.status} for ${names.what}`);
   const read = z.object({ value: z.string().max(512) }).safeParse(await res.json());
   if (!read.success || !read.data.value.trim())
-    throw new Error('The ElevenLabs key in Key Vault is empty');
+    throw new Error(`${names.what[0]?.toUpperCase()}${names.what.slice(1)} in Key Vault is empty`);
   return read.data.value.trim();
 };
 

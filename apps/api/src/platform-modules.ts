@@ -23,6 +23,7 @@ import type { ConnectionRegistry } from '@genai/providers-mcp-client';
 import type { Env, Hono, Schema } from 'hono';
 import type { Access } from './access.js';
 import type { Admin, AdminHandler } from './admin.js';
+import type { WorkloadTrust } from './binder-token.js';
 import type { CatalogRegistry } from './catalog-registry.js';
 import type { ChangeTopic } from './change-feed.js';
 import type { ConfigEntryStore } from './config-store.js';
@@ -87,6 +88,8 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   appVersion?: string;
   demoRecorderKeyDigest?: string;
   demoRecorder?: 'scheduled';
+  demoRecorderTrust?: WorkloadTrust;
+  demoRecorderJob?: (recording: string) => Promise<void>;
   /** Resolves a tenant's secret references, only for the hosts each secret is set for. */
   tenantSecrets?: TenantSecrets;
   /** The egress rules every outbound call to a tenant's own endpoint follows (ADR 0015). */

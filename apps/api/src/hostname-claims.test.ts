@@ -8,7 +8,7 @@ import { envSecrets, InMemoryHostnameClaims, type HostnameClaim } from '@genai/k
 import { tenantAccess } from './access.js';
 import { actorNames } from './actor-names.js';
 import { createAdmin } from './admin.js';
-import type { BinderTrust } from './binder-token.js';
+import type { WorkloadTrust } from './binder-token.js';
 import { createPlatform } from './composition.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { defaultReservedLabels } from './hostname-claims.js';
@@ -94,7 +94,7 @@ const boot = async (
 ) => {
   let clock = start;
   const key = await createSigningKey();
-  const binder: BinderTrust = {
+  const binder: WorkloadTrust = {
     principalId: binderId,
     tenantId: entraTenant,
     audience,

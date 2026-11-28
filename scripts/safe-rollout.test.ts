@@ -397,7 +397,7 @@ describe('a deploy that takes minutes, not half an hour', () => {
 
   it('builds only the images it cannot reuse', () => {
     const steps = workflow('images.yml').jobs.build?.steps ?? [];
-    for (const image of ['api', 'worker', 'apps', 'docling'])
+    for (const image of ['api', 'worker', 'apps', 'docling', 'recorder'])
       expect(steps.find((s) => s.id === image)?.if, image).toBe(
         `steps.have.outputs.${image} == ''`,
       );
@@ -412,7 +412,7 @@ describe('a deploy that takes minutes, not half an hour', () => {
     });
     expect(job('build').permissions).toEqual(images?.permissions);
     const steps = images?.steps ?? [];
-    for (const image of ['api', 'worker', 'apps', 'docling']) {
+    for (const image of ['api', 'worker', 'apps', 'docling', 'recorder']) {
       const at = steps.findIndex((s) => s.id === image);
       const attest = steps[at + 1];
       expect(attest?.uses, image).toMatch(/^actions\/attest-build-provenance@[0-9a-f]{40}$/);
@@ -857,20 +857,30 @@ describe.skipIf(!hasAz && !process.env.CI)('API revisions in the template', () =
       'assistant-host-infra',
     ];
     expect(Object.keys(conditions).sort()).toEqual(
-      [...infrastructure, 'containerapps', 'assistant-host', 'hostname-binder'].sort(),
+      [
+        ...infrastructure,
+        'containerapps',
+        'assistant-host',
+        'hostname-binder',
+        'demo-recorder',
+      ].sort(),
     );
     for (const name of infrastructure)
       expect(conditions[name], name).toContain("variables('infra')");
     expect(conditions.containerapps).toBe('');
     expect(conditions['assistant-host']).toBe("[parameters('assistantHostEnabled')]");
     expect(conditions['hostname-binder']).toBe("[variables('binderJobOn')]");
+    expect(conditions['demo-recorder']).toBe("[variables('recorderJobOn')]");
   });
 
   it('reads no infrastructure module’s outputs unless it deploys the infrastructure', () => {
     // Azure evaluates the references of a module it does not deploy, and the record of an old one can be gone.
     const reads = expressions.filter((e) =>
       Object.keys(conditions)
-        .filter((name) => !['containerapps', 'assistant-host', 'hostname-binder'].includes(name))
+        .filter(
+          (name) =>
+            !['containerapps', 'assistant-host', 'hostname-binder', 'demo-recorder'].includes(name),
+        )
         .some((name) => e.includes(`resourceId('Microsoft.Resources/deployments', '${name}')`)),
     );
     expect(reads.length).toBeGreaterThan(10);

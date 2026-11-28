@@ -2,6 +2,7 @@ import { voiceNeedsApproval, type Principal } from '@genai/contracts';
 import type { Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { actorOf, AdminRefused, routeOnlyActions } from './admin.js';
+import { isWorkload } from './binder-token.js';
 import {
   appendVersion,
   platformScope,
@@ -140,7 +141,8 @@ export const createDemosModule =
     const store = deps.configEntries;
     const tenant = deps.platformTenant;
     const one = serialized();
-    const mode = recorderModeOf(options.sendRecording, deps);
+    const sendRecording = options.sendRecording ?? deps.demoRecorderJob;
+    const mode = recorderModeOf(sendRecording, deps);
 
     const viewer = async (c: Context, mounted: MountDeps, edit = false) => {
       const principal = await mounted.authenticate(c.req.raw);
@@ -150,8 +152,9 @@ export const createDemosModule =
       return { principal };
     };
 
-    const recorder = (c: Context) =>
-      isRecorderKey(c.req.header('x-recorder-key'), deps.demoRecorderKeyDigest)
+    const recorder = async (c: Context) =>
+      isRecorderKey(c.req.header('x-recorder-key'), deps.demoRecorderKeyDigest) ||
+      (await isWorkload(deps.demoRecorderTrust, c.req.header('authorization')))
         ? recorderPrincipal(tenant)
         : undefined;
 
@@ -172,7 +175,7 @@ export const createDemosModule =
         ifVersion: current.version,
       });
 
-    const refuseOpen = async (demo: string, except?: string) => {
+    const refuseOpen = async (demo: string | undefined, except?: string) => {
       const open = (await recordingsOf(store, demo)).find((r) => r.id !== except && isOpen(r.spec));
       if (open) throw new DemoRefused('recording', `recording ${open.id} has not finished`);
     };
@@ -370,7 +373,7 @@ export const createDemosModule =
               `demo-recording:${id}`,
               () =>
                 one(async () => {
-                  await refuseOpen(demo.id);
+                  await refuseOpen(mode === 'job' ? undefined : demo.id);
                   const settings = await settingsOf(store);
                   const base: RecordingSpec = {
                     demo: demo.id,
@@ -409,7 +412,7 @@ export const createDemosModule =
                 }),
             );
             try {
-              await options.sendRecording?.(id);
+              await sendRecording?.(id);
             } catch {
               await one(async () => {
                 const current = await latestRecording(store, id);
@@ -550,7 +553,7 @@ export const createDemosModule =
         });
 
         app.get('/recorder/recordings', async (c) => {
-          const principal = recorder(c);
+          const principal = await recorder(c);
           if (!principal) return problem(c, 401, [], recorderKeyType);
           if (c.req.query('status') !== 'queued')
             return problem(c, 400, [{ path: 'status', message: 'status must be queued' }]);
@@ -568,7 +571,7 @@ export const createDemosModule =
         });
 
         app.get('/recorder/recordings/:id', async (c) => {
-          const principal = recorder(c);
+          const principal = await recorder(c);
           if (!principal) return problem(c, 401, [], recorderKeyType);
           const found = await latestRecording(store, c.req.param('id') ?? '');
           if (!found) return problem(c, 404);
@@ -590,7 +593,7 @@ export const createDemosModule =
         });
 
         app.get('/recorder/recordings/:id/files/:name', async (c) => {
-          const principal = recorder(c);
+          const principal = await recorder(c);
           if (!principal) return problem(c, 401, [], recorderKeyType);
           const id = c.req.param('id') ?? '';
           const found = await latestRecording(store, id);
@@ -612,7 +615,7 @@ export const createDemosModule =
         });
 
         app.post('/recorder/demos/:id/recordings', async (c) => {
-          const principal = recorder(c);
+          const principal = await recorder(c);
           if (!principal) return problem(c, 401, [], recorderKeyType);
           const demo = await latestDemo(store, c.req.param('id') ?? '');
           if (!demo) return problem(c, 404);
@@ -656,10 +659,10 @@ export const createDemosModule =
                     const current = (await latestRecording(store, id)) ?? claimed;
                     if (current.spec.status !== 'queued')
                       throw new DemoRefused('status', 'the recording has finished');
-                    await refuseOpen(demo.id, id);
+                    await refuseOpen(mode === 'job' ? undefined : demo.id, id);
                     return update(current, spec, `platform:${principal.subject}`, 'started');
                   }
-                  await refuseOpen(demo.id);
+                  await refuseOpen(mode === 'job' ? undefined : demo.id);
                   return appendVersion<RecordingSpec>(store, {
                     kind: recordingKind,
                     scope: platformScope,
@@ -687,7 +690,7 @@ export const createDemosModule =
         });
 
         app.put('/recorder/recordings/:id/files/:name', async (c) => {
-          const principal = recorder(c);
+          const principal = await recorder(c);
           if (!principal) return problem(c, 401, [], recorderKeyType);
           const name = c.req.param('name') ?? '';
           const type = recordingFileType(name);
@@ -741,7 +744,7 @@ export const createDemosModule =
         });
 
         app.post('/recorder/recordings/:id/finish', async (c) => {
-          const principal = recorder(c);
+          const principal = await recorder(c);
           if (!principal) return problem(c, 401, [], recorderKeyType);
           const g = await running(c);
           if ('response' in g) return g.response;

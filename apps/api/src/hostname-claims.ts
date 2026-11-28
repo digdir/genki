@@ -20,7 +20,7 @@ import type { ConfigEntryStore } from './config-store.js';
 import { saveClient, type FrontendDeps } from './frontends.js';
 import { hostnameNotAllowed, openedTo, type HostingRules } from './hosts.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
-import { isBinder, type BinderTrust } from './binder-token.js';
+import { isWorkload, type WorkloadTrust } from './binder-token.js';
 import { isHiddenService } from './internal-services.js';
 import { isOperator, rightRefused, type Right } from './rights.js';
 import { environmentsOf, pointerOf, productionEnvironment } from './service-environments.js';
@@ -672,7 +672,7 @@ export const hostnameAdminHandlers = (deps: ClaimDeps): Record<string, AdminHand
 export interface ClaimRouteDeps extends ClaimDeps {
   admin: Admin;
   authenticate(request: Request): Promise<Principal | undefined>;
-  binder?: BinderTrust | undefined;
+  binder?: WorkloadTrust | undefined;
 }
 
 const problem = (
@@ -877,13 +877,13 @@ export const registerHostnameRoutes = <E extends Env, S extends Schema, B extend
     });
 
   app.get('/internal/hostnames/work', async (c) => {
-    if (!(await isBinder(deps.binder, c.req.header('authorization')))) return notFound(c);
+    if (!(await isWorkload(deps.binder, c.req.header('authorization')))) return notFound(c);
     const items = await deps.setup.claims.inStates(['binding', 'removing'], deps.setup.limit);
     return c.json({ items: items.map(workItem) }, 200, { 'cache-control': 'no-store' });
   });
 
   app.post('/internal/hostnames/:id/result', async (c) => {
-    if (!(await isBinder(deps.binder, c.req.header('authorization')))) return notFound(c);
+    if (!(await isWorkload(deps.binder, c.req.header('authorization')))) return notFound(c);
     const claim = await deps.setup.claims.find(c.req.param('id') ?? '');
     if (!claim || (claim.state !== 'binding' && claim.state !== 'removing')) return notFound(c);
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;

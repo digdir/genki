@@ -11,6 +11,7 @@ param apiImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param workerImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param appsImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param doclingImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
+param recorderImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param appVersion string = 'bootstrap'
 @description('The worker\'s APP_VERSION; empty means appVersion.')
 param workerVersion string = ''
@@ -237,6 +238,15 @@ param keepBoundDomains bool = hostnameBinderEnabled
 @description('The most hostnames the assistant host app takes from self-service claims. 0 leaves the API\'s default.')
 param hostnameLimit int = 0
 
+@description('The demo recorder job in genki\'s environment, its identity, and the API\'s trust in that identity (ADR 0059). The job is deployed once demoRecorderAudience is set; the API starts it only with GENAI_DEMO_RECORDER=job and the start role from infra/demo-recorder-access.bicep, applied by an owner.')
+param demoRecorderEnabled bool = false
+
+@description('The Entra audience the recorder asks a token for and the API accepts from it, api://<client id> of genki\'s API app registration.')
+param demoRecorderAudience string = ''
+
+@description('The recorder\'s speechEndpoint, audioEndpoint and directorModel, and the names of the Key Vault secrets it may read: elevenLabsKeySecret and signInKeySecret. Each must exist before the deploy that names it. Empty values leave each off.')
+param demoRecorderSettings object = {}
+
 param minReplicas int = 1
 param maxReplicas int = 3
 @description('Most connections each of an API replica\'s two pools opens to the platform database (DATABASE_POOL_MAX).')
@@ -314,6 +324,9 @@ var allServedNames = concat(servedNames, map(previousServed, h => { hostname: h.
 var binderOn = assistantHostEnabled && hostnameBinderEnabled
 var keptOn = assistantHostEnabled && keepBoundDomains
 var binderJobOn = binderOn && !empty(hostnameBinderAudience)
+var recorderOn = demoRecorderEnabled
+var recorderJobOn = recorderOn && !empty(demoRecorderAudience)
+var recorderJobId = resourceId('Microsoft.App/jobs', '${baseName}-demo-recorder')
 var suffix = uniqueString(resourceGroup().id)
 var allTags = union(tags, { system: 'genki', environment: environmentName })
 var postgresServerName = '${baseName}-pg-${suffix}'
@@ -347,6 +360,12 @@ resource appIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-3
 
 resource binderIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (binderOn) {
   name: '${baseName}-binder-id'
+  location: location
+  tags: allTags
+}
+
+resource recorderIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (recorderOn) {
+  name: '${baseName}-recorder-id'
   location: location
   tags: allTags
 }
@@ -650,6 +669,10 @@ module apps 'modules/containerapps.bicep' = {
         : ''
       GENAI_ASSISTANT_HOST_STATIC_IP: binderOn ? existingHostedEnv.properties.staticIp : ''
       GENAI_HOSTNAME_LIMIT: binderOn && hostnameLimit > 0 ? string(hostnameLimit) : ''
+      GENAI_DEMO_RECORDER_PRINCIPAL_ID: recorderJobOn ? recorderIdentity!.properties.principalId : ''
+      GENAI_DEMO_RECORDER_AUDIENCE: recorderJobOn ? demoRecorderAudience : ''
+      GENAI_DEMO_RECORDER_TENANT_ID: recorderJobOn ? tenant().tenantId : ''
+      GENAI_DEMO_RECORDER_JOB: recorderJobOn ? recorderJobId : ''
     }
     webSettings: {
       apiAudience: apiAudience
@@ -755,6 +778,36 @@ module hostnameBinder 'modules/hostname-binder.bicep' = if (binderJobOn) {
     reservedHostnames: map(concat(servedNames, loginNames, previousHosted), h => h.hostname)
     actionGroupId: alertsEnabled && infra ? alerts!.outputs.actionGroupId : ''
     mailWrites: 2 <= alertMailMaxSeverity
+  }
+}
+
+var boundApps = filter(
+  ['api', 'portal', 'console'],
+  app => !empty(liveHostnames[?app] ?? '') && (customDomainsStage == 'certificates' || contains(previousHostnames, app))
+)
+var recorderUrls = toObject(
+  ['api', 'portal', 'console'],
+  app => app,
+  app => 'https://${contains(boundApps, app) ? liveHostnames[app] : apps.outputs.defaultFqdns[app]}'
+)
+
+module demoRecorder 'modules/demo-recorder.bicep' = if (recorderJobOn) {
+  name: 'demo-recorder'
+  params: {
+    name: baseName
+    location: location
+    tags: allTags
+    registryName: registryName
+    vaultName: vaultName
+    recorderImage: recorderImage
+    identityId: recorderOn ? recorderIdentity!.id : ''
+    identityClientId: recorderOn ? recorderIdentity!.properties.clientId : ''
+    identityPrincipalId: recorderOn ? recorderIdentity!.properties.principalId : ''
+    apiUrl: recorderUrls.api
+    portalUrl: recorderUrls.portal
+    consoleUrl: recorderUrls.console
+    audience: demoRecorderAudience
+    settings: demoRecorderSettings
   }
 }
 
@@ -918,6 +971,14 @@ output hostnameBinder object = binderOn
       jobName: binderJobOn ? hostnameBinder!.outputs.jobName : ''
       identityName: binderIdentity!.name
       principalId: binderIdentity!.properties.principalId
+    }
+  : {}
+output demoRecorder object = recorderOn
+  ? {
+      jobName: recorderJobOn ? demoRecorder!.outputs.jobName : ''
+      jobId: recorderJobOn ? recorderJobId : ''
+      identityName: recorderIdentity!.name
+      principalId: recorderIdentity!.properties.principalId
     }
   : {}
 @description('Whether this deploy applied the infrastructure, and the fingerprint it applied: deploy.yml compares the last full deploy\'s fingerprint with its own.')

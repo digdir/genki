@@ -432,6 +432,42 @@ A deploy that ran while the binder removed a name can bind it again: the deploy 
 
 At once: `az containerapp job stop -g rg-genki-test-weu -n genai-test-hostname-binder` ends a running execution, and removing the binder's role assignments (`az role assignment list --assignee <principal id> --all`, then `az role assignment delete --ids ...`) takes its rights. Emptying `HOSTNAME_BINDER_AUDIENCE` and a deploy leaves the job as it is, since the template then no longer manages it; delete it with `az containerapp job delete`. Keep `keepBoundDomains = true` in the parameter file when turning `hostnameBinderEnabled` off: the next deploy otherwise drops every domain the binder bound from the host app. Rotate `genai-proxy-key` in both vaults, and remove by hand what it bound, if the binder's identity may have been used by someone else.
 
+## Demo recorder job
+
+The job `genai-test-demo-recorder` records what is queued in the console's Demoer, started by the API when a recording is queued ([ADR 0059](adr/0059-demos-are-records-in-the-api.md), [infra/README.md](../infra/README.md#demo-recorder-job)). The `demo-recorder` workflow is the fallback.
+
+### Turning it on
+
+1. **The secrets** (someone with Key Vault Secrets Officer on `genai-test-kv`): the ElevenLabs key and the test runner's sign-in key as two secrets, for example `demo-elevenlabs-key` and `demo-sign-in-key`. Set the GitHub variables `DEMO_ELEVENLABS_KEY_SECRET_NAME` and `DEMO_SIGN_IN_KEY_SECRET_NAME` in `test` to their names, and `DEMO_SPEECH_ENDPOINT`, `DEMO_AUDIO_ENDPOINT` and `DEMO_DIRECTOR_MODEL` to what the workflow uses.
+2. **The job**: set `DEMO_RECORDER_JOB_ENABLED=true` in `test` (the audience is `HOSTNAME_BINDER_AUDIENCE` unless `DEMO_RECORDER_AUDIENCE` is set) and run **deploy**. Mode stays `scheduled`.
+3. **Speech and AI** (an owner of those resources): Cognitive Services User for the principal id in the deploy's `demoRecorder` output on the speech and AI resources.
+4. **The start role** (an owner of the subscription, or one with User Access Administrator on it), after the job exists:
+
+   ```sh
+   az deployment sub create -l westeurope -n genki-demo-recorder-access -f infra/demo-recorder-access.bicep \
+     -p environmentName=test resourceGroupName=rg-genki-test-weu
+   ```
+
+5. **A trial**: queue a silent trial in the console while the mode is still `scheduled`, then `az containerapp job start -g rg-genki-test-weu -n genai-test-demo-recorder` and watch it record.
+6. **The switch**: set `DEMO_RECORDER_MODE=job` in `test` and deploy. The console then shows `job`, and the API starts the job on every queued recording, one at a time: while a recording is queued or running, queuing another answers 409. Turn off the `demo-recorder` workflow's schedule (`gh workflow disable demo-recorder.yml`), or both take recordings; a recording taken twice gets a 409, so no film is recorded twice.
+
+### Switching back to the workflow
+
+Delete `DEMO_RECORDER_MODE` (or set it to anything but `job`), deploy and `gh workflow enable demo-recorder.yml`. The job stays and can be started by hand.
+
+### A failed job
+
+```sh
+az containerapp job execution list -g rg-genki-test-weu -n genai-test-demo-recorder -o table
+az containerapp job logs show -g rg-genki-test-weu -n genai-test-demo-recorder --container recorder --execution <name>
+```
+
+A recording the job could not start is failed by the API ("the recording could not be handed to the job") and queuing answers 503: the API logs `demo recorder job did not start` with the status Azure gave; a 403 means the start role (step 4) is missing. A recording that fails inside the job carries its reason in the console. An execution that ends at the hour leaves its recording running: cancel it in the console and queue it again. Nothing is retried on its own.
+
+### Stopping it
+
+`az containerapp job stop -g rg-genki-test-weu -n genai-test-demo-recorder` ends a running execution; delete the start role's assignment (`az role assignment list --assignee <api principal id> --all`) to keep the API from starting it. Removing `DEMO_RECORDER_JOB_ENABLED` and a deploy takes the API's trust in the recorder away; delete the job with `az containerapp job delete`.
+
 ## Hostname claims
 
 A service owner's address is a claim (ADR 0062). Read it with `GET /tenants/{tenant}/services/{service}/hostnames`; every change is in the audit log under `platform.client.hostnames.*` and `platform.service.address`.
