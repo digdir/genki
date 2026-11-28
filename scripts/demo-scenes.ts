@@ -1,5 +1,5 @@
 // Draws the film look's scenes: brand backgrounds, screen frame, title, chapter card, board, code and close.
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import type { Image, SKRSContext2D } from '@napi-rs/canvas';
 import {
   definitionIdPattern,
@@ -675,9 +675,10 @@ export const exampleExists = (id: string) => {
 export const definitionExcerpt = (id: string, lines = 13) => {
   const file = exampleFile(id);
   if (!file) throw new Error(`${id} is not an example definition`);
-  if (statSync(file).size > maxDefinitionBytes)
+  const text = readFileSync(file, 'utf8');
+  if (Buffer.byteLength(text) > maxDefinitionBytes)
     throw new Error(`The example ${id} is more than ${maxDefinitionBytes} bytes`);
-  return readFileSync(file, 'utf8')
+  return text
     .split('\n')
     .filter((l) => l.trim() && !l.trimStart().startsWith('#'))
     .slice(0, lines)

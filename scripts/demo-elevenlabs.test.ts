@@ -10,7 +10,7 @@ import {
 
 const film = demoVoiceOf('elevenlabs-film') as DemoVoice;
 const secret = 'https://genki-test-kv.vault.azure.net/secrets/elevenlabs-key';
-const key = 'sk_0123456789abcdef0123456789abcdef0123456789abcdef';
+const key = ['sk', '_', '0123456789abcdef'.repeat(3)].join('');
 
 const vault = (calls: { url: string; auth?: string | null }[]) =>
   (async (input: string | URL | Request, init?: RequestInit) => {

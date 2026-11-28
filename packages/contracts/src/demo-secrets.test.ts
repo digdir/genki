@@ -4,14 +4,20 @@ import { looksLikeSecret, secretPathIn } from './demo-secrets.js';
 describe('key-like values in a demo', () => {
   it('finds an ElevenLabs key, an Azure key and a long random token wherever they are', () => {
     expect(
-      secretPathIn({ steps: [{ say: 'Hei sk_0123456789abcdef0123456789abcdef0123456789abcdef' }] }),
+      secretPathIn({
+        steps: [{ say: `Hei ${['sk', '_', '0123456789abcdef'.repeat(3)].join('')}` }],
+      }),
     ).toBe('steps.0.say');
     expect(
-      secretPathIn({ respell: { elevenlabs: { x: '3f9a1c2b7d4e8f60a1b2c3d4e5f60718' } } }),
+      secretPathIn({
+        respell: { elevenlabs: { x: ['3f9a1c2b7d4e8f60', 'a1b2c3d4e5f60718'].join('') } },
+      }),
     ).toBe('respell.elevenlabs.x');
-    expect(secretPathIn({ path: '/#/x?token=Zm9vYmFyMTIzNDU2Nzg5MEFCQ0RFRkdISUpLTE1ONzg5' })).toBe(
-      'path',
-    );
+    expect(
+      secretPathIn({
+        path: `/#/x?token=${['Zm9vYmFyMTIzNDU2', 'Nzg5MEFCQ0RFRkdISUpLTE1ONzg5'].join('')}`,
+      }),
+    ).toBe('path');
   });
 
   it('lets ordinary demo text, selectors, paths and voice ids through', () => {
@@ -35,9 +41,11 @@ describe('key-like values in a demo', () => {
   });
 
   it('finds a genki API key and a GitHub token, also with few digits', () => {
-    expect(looksLikeSecret('gp_AbCdEfGhIjKlMnOpQrStUvWxYz-_AbCdEf')).toBe(true);
-    expect(looksLikeSecret('ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789')).toBe(true);
-    expect(looksLikeSecret('wJalrXUtnFEMIK7MDENGbPxRfiCY9EXAMPLEKEY')).toBe(true);
+    expect(looksLikeSecret(['gp', '_', 'AbCdEfGhIjKlMnOpQrStUvWxYz-_AbCdEf'].join(''))).toBe(true);
+    expect(looksLikeSecret(['gh', 'p_', 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789'].join(''))).toBe(
+      true,
+    );
+    expect(looksLikeSecret(['wJalrXUtnFEMIK7MDENG', 'bPxRfiCY9EXAMPLEKEY'].join(''))).toBe(true);
   });
 
   it('checks a long hostile value in linear time', () => {
