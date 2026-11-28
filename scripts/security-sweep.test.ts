@@ -450,7 +450,7 @@ describe('the verdict at the end of the job', () => {
     expect(verdict(complete)).toEqual({
       ok: true,
       summary:
-        '4 of 4 steps finished; findings sealed for the maintainers. See the security sweep section in CONTRIBUTING.md to open them.',
+        '4 of 4 steps finished; findings sealed for the maintainers. See the security sweep section in docs/review.md to open them.',
     });
     expect(verdict(complete.replace('coordinate=success', 'coordinate=skipped')).ok).toBe(true);
   });
