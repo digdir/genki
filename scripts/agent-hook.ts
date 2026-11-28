@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, ftruncateSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -51,10 +51,20 @@ export const stopDecision = (state: TreeState, stopHookActive: boolean): Decisio
   return { code: 2, stderr: staleMessage };
 };
 
-const pushCommand =
-  /(?:^|[;&|(]\s*)(?:\w+=\S*\s+)*(?:git\s+(?:-[Cc]\s+\S+\s+|-\S+\s+)*push\b|gh\s+pr\s+create\b)/;
+const gitSubcommand = (words: string[]) => {
+  let at = 1;
+  while (words[at]?.startsWith('-')) at += words[at] === '-C' || words[at] === '-c' ? 2 : 1;
+  return words[at];
+};
 
-export const isPushCommand = (command: string) => pushCommand.test(command);
+const pushesOrOpensPr = (segment: string) => {
+  const words = segment.trim().split(/\s+/);
+  while (words[0] !== undefined && /^\w+=/.test(words[0])) words.shift();
+  if (words[0] === 'git') return gitSubcommand(words) === 'push';
+  return words[0] === 'gh' && words[1] === 'pr' && words[2] === 'create';
+};
+
+export const isPushCommand = (command: string) => command.split(/[;&|(\n]/).some(pushesOrOpensPr);
 
 export const bashDecision = (command: string, state: TreeState): Decision =>
   isPushCommand(command) && state.ownChanges && !state.fresh
@@ -110,10 +120,17 @@ const formatFile = async (root: string, file: string) => {
     ignorePath: [join(root, '.gitignore'), join(root, '.prettierignore')],
   });
   if (info.ignored || !info.inferredParser) return;
-  const source = readFileSync(path, 'utf8');
-  const options = await prettier.resolveConfig(path);
-  const formatted = await prettier.format(source, { ...options, filepath: path });
-  if (formatted !== source) writeFileSync(path, formatted);
+  const fd = openSync(path, 'r+');
+  try {
+    const source = readFileSync(fd, 'utf8');
+    const options = await prettier.resolveConfig(path);
+    const formatted = await prettier.format(source, { ...options, filepath: path });
+    if (formatted === source) return;
+    ftruncateSync(fd);
+    writeSync(fd, formatted, 0);
+  } finally {
+    closeSync(fd);
+  }
 };
 
 const prePush = (root: string, stdin: string): number => {

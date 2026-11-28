@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -47,6 +47,8 @@ describe('the Bash hook', () => {
       'gh pr create --fill',
       'cd ../genki-x && git push',
       'GIT_SSH_COMMAND=ssh git push',
+      'git status\ngit push',
+      'git -c core.x=1 -C ../genki-x push origin HEAD',
     ])
       expect(isPushCommand(command), command).toBe(true);
     for (const command of [
@@ -63,6 +65,7 @@ describe('the Bash hook', () => {
   it('matches commands in linear time', () => {
     const started = performance.now();
     isPushCommand(`${'a=b '.repeat(20_000)}git ${'-x '.repeat(20_000)}`);
+    isPushCommand(`&git\t${'-c '.repeat(20_000)}`);
     expect(performance.now() - started).toBeLessThan(500);
   });
 
@@ -122,9 +125,13 @@ describe('the pre-push hook', () => {
   });
 
   it('runs the hook script', () => {
-    const hook = join(repoRoot, hooksPathArgs[2] ?? '', 'pre-push');
-    expect(statSync(hook).mode & 0o111).not.toBe(0);
-    expect(readFileSync(hook, 'utf8')).toContain('scripts/agent-hook.ts pre-push');
+    const fd = openSync(join(repoRoot, hooksPathArgs[2] ?? '', 'pre-push'), 'r');
+    try {
+      expect(fstatSync(fd).mode & 0o111).not.toBe(0);
+      expect(readFileSync(fd, 'utf8')).toContain('scripts/agent-hook.ts pre-push');
+    } finally {
+      closeSync(fd);
+    }
   });
 });
 
