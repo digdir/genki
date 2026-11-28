@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { citationPdfUrl } from './kudos.js';
+import { headingLevels } from './heading-levels.js';
 import { extractMainContent, htmlToMarkdown } from './html.js';
 import { ingestDocuments, type DocumentLoopOptions } from './pipeline.js';
 import { parseFrontmatter, parseSitemapXml } from './website.js';
@@ -17,6 +18,23 @@ const quicklyAsync = async (run: () => Promise<unknown>) => {
 };
 
 describe('ingestion parsers on adversarial input', () => {
+  it('matches headings to an outline in linear time on long numbers, spaces and titles', () => {
+    const texts = [
+      `${' '.repeat(50_000)}1`,
+      `${'1.'.repeat(50_000)}x`,
+      `${'#'.repeat(50_000)}i`,
+      'å'.repeat(100_000),
+    ];
+    const headings = texts.map((text) => ({
+      text,
+      page: 1,
+      box: [0, 0, 1, 0.1] as [number, number, number, number],
+      pageHeight: 800,
+    }));
+    const outline = texts.map((title) => ({ title: `${title}ø`, level: 1, page: 1 }));
+    expect(quickly(() => headingLevels(headings, { outline, runs: [] }))).toBeLessThan(1000);
+  });
+
   it('removes comments and scripts in linear time and drops an unclosed script', () => {
     expect(quickly(() => extractMainContent('<!--'.repeat(50_000)))).toBeLessThan(1000);
     expect(quickly(() => extractMainContent('<script'.repeat(50_000)))).toBeLessThan(1000);

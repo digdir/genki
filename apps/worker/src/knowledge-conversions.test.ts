@@ -18,6 +18,7 @@ import {
   pipelineSpec,
   ResponseTooLarge,
   type DocumentConverter,
+  type PdfLayout,
   type PipelineSpec,
 } from '@genai/ingest';
 import {
@@ -45,6 +46,7 @@ import {
   conversionKey,
   doclingPagesDerivation,
   doclingPartsDerivation,
+  doclingPartsLevelledDerivation,
   textLayerDerivation,
   textLayerPartsDerivation,
   type AcceptedConverter,
@@ -232,6 +234,8 @@ interface ScenarioOptions {
   chunking?: Record<string, unknown>;
   /** Whether the chunk columns of parts can be added; they can when left out (issue 635). */
   chunkColumns?: () => Promise<boolean>;
+  /** Reads a PDF's outline and text sizes for Docling's parts (issue 516). */
+  pdfLayout?: (bytes: Uint8Array) => Promise<PdfLayout>;
 }
 
 /** A folder dataset on the knowledge database whose worker stores conversions. */
@@ -291,6 +295,7 @@ const scenario = async (options: ScenarioOptions = {}) => {
     conversions,
     converter,
     ...(options.nativeOutputs ? { nativeOutputs: options.nativeOutputs } : {}),
+    ...(options.pdfLayout ? { pdfLayout: options.pdfLayout } : {}),
     ...(options.log ? { log: options.log } : {}),
     ...(options.bound ? { bound: options.bound } : {}),
     chunkColumns: options.chunkColumns ?? (() => addChunkColumns(owner())),
@@ -1587,8 +1592,8 @@ const seedBatch = (prefix: string) => ({
   settings: settingsHash(docling.settings),
 });
 
-/** A DoclingDocument with one body paragraph per page. */
-const doclingJson = (pages: string[]) => ({
+/** A DoclingDocument with one body paragraph per page, or one item of each of `labels`. */
+const doclingJson = (pages: string[], labels: string[] = []) => ({
   schema_name: 'DoclingDocument',
   version: '1.10.0',
   body: { self_ref: '#/body', children: pages.map((_, i) => ({ $ref: `#/texts/${i}` })) },
@@ -1597,7 +1602,7 @@ const doclingJson = (pages: string[]) => ({
     parent: { $ref: '#/body' },
     children: [],
     content_layer: 'body',
-    label: 'text',
+    label: labels[i] ?? 'text',
     prov: [
       {
         page_no: i + 1,
@@ -3517,6 +3522,85 @@ describe('conversion parts', () => {
     expect(parts?.outputPath).toBe((await conversions.find(file, acceptedConverters))?.outputPath);
   }, 60_000);
 
+  /** Docling's answer with a heading a page: an unnumbered chapter, a heading under it, and its section 3.2. */
+  const headed = () => ({
+    status: 200,
+    body: JSON.stringify({
+      status: 'success',
+      errors: [],
+      document: {
+        filename: 'document.pdf',
+        json_content: doclingJson(
+          ['Tildeling', 'Hvem kan søke', '3.2 Søknad'],
+          ['section_header', 'section_header', 'section_header'],
+        ),
+      },
+    }),
+  });
+  const outline = {
+    outline: [
+      { title: 'Tildeling', level: 1, page: 1 },
+      { title: '3.2 Søknad', level: 2, page: 3 },
+    ],
+    runs: [],
+  };
+  const levelled: AcceptedConverter[] = [
+    { converter: 'docling', derivation: doclingPartsLevelledDerivation, kept: true },
+  ];
+
+  it("a Docling convert job stores docling-parts 2, with heading levels from the PDF's outline", async () => {
+    await clearConvertJobs();
+    const server = await doclingServer(headed);
+    const read: Uint8Array[] = [];
+    const s = await scenario({
+      docling: { current: doclingFor(server.url) },
+      nativeOutputs: seedContainer().store,
+      pdfLayout: async (bytes) => {
+        read.push(bytes);
+        return outline;
+      },
+    });
+    const pdf = reportOf('niva');
+    const file = await sha(pdf);
+    await s.file('niva.pdf', pdf);
+
+    await ingest(s);
+    await drain(s);
+
+    expect(read.map((bytes) => Buffer.from(bytes).equals(Buffer.from(pdf)))).toEqual([true]);
+    const parts = (await conversions.find(file, levelled))?.units?.flatMap((u) => u.parts);
+    expect(parts?.map((p) => [p.level, p.headingPath])).toEqual([
+      [1, []],
+      [2, ['Tildeling']],
+      [2, ['Tildeling']],
+    ]);
+    expect(await conversions.find(file, doclingPartsOnly)).toBeUndefined();
+  }, 60_000);
+
+  it('a Docling convert job whose PDF layout cannot be read stores docling-parts 1', async () => {
+    await clearConvertJobs();
+    const server = await doclingServer(headed);
+    const logged: string[] = [];
+    const s = await scenario({
+      docling: { current: doclingFor(server.url) },
+      nativeOutputs: seedContainer().store,
+      pdfLayout: async () => {
+        throw new TypeError('broken outline');
+      },
+      log: (msg) => logged.push(msg),
+    });
+    const pdf = reportOf('uten-niva');
+    const file = await sha(pdf);
+    await s.file('uten-niva.pdf', pdf);
+
+    await ingest(s);
+    await drain(s);
+
+    expect(await conversions.find(file, levelled)).toBeUndefined();
+    expect((await conversions.find(file, doclingPartsOnly))?.units).toHaveLength(3);
+    expect(logged).toContain('pdf layout could not be read');
+  }, 60_000);
+
   it('text-layer-parts gives parts to PDFs only', async () => {
     await clearConvertJobs();
     const s = await scenario({ include: ['**/*.pdf', '**/*.docx'] });
@@ -4356,6 +4440,42 @@ describe('parts chunking (issue 635)', () => {
     expect((await partsChunks(s.generation)).map((c) => c.text)).toEqual(pages);
   }, 60_000);
 
+  it('a parts pipeline reads docling-parts 2 before docling-parts 1 of the same file, also in a generation that recorded only version 1', async () => {
+    await clearConvertJobs();
+    const s = await scenario({ chunking: partsChunking });
+    const report = reportOf('begge-versjoner');
+    const file = await sha(report);
+    await conversions.store(partsConversion(file, ['Versjon én.']), noIndex);
+    await conversions.store(
+      { ...partsConversion(file, ['Versjon to.']), derivation: doclingPartsLevelledDerivation },
+      noIndex,
+    );
+    const levelledParts = await conversions.find(file, [
+      { converter: 'docling', derivation: doclingPartsLevelledDerivation, kept: true },
+    ]);
+    await s.file('rapport.pdf', report);
+
+    await ingest(s);
+    // A generation made before version 2: its recipe reads version 1 and the text layer's parts.
+    await admin.query(
+      `update kn_generations
+          set recipe = jsonb_set(recipe, '{chunking,docs,reads}', $2::jsonb)
+        where generation = $1`,
+      [
+        s.generation,
+        JSON.stringify([
+          { converter: 'docling', derivation: 'docling-parts', version: 1 },
+          { converter: 'text-layer', derivation: 'text-layer-parts', version: 1 },
+        ]),
+      ],
+    );
+    await drain(s);
+
+    expect((await partsChunks(s.generation)).map((c) => [c.text, c.conversion])).toEqual([
+      ['Versjon to.', levelledParts?.id],
+    ]);
+  }, 60_000);
+
   it('the recipe records the derivations a parts chunking reads', async () => {
     await clearConvertJobs();
     const s = await scenario({ chunking: partsChunking });
@@ -4369,6 +4489,7 @@ describe('parts chunking (issue 635)', () => {
     expect(rows[0]?.chunking).toMatchObject({
       strategy: { kind: 'parts-unit', splitMaxLength: 4000 },
       reads: [
+        { converter: 'docling', derivation: 'docling-parts', version: 2 },
         { converter: 'docling', derivation: 'docling-parts', version: 1 },
         { converter: 'text-layer', derivation: 'text-layer-parts', version: 1 },
       ],

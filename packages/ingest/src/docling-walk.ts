@@ -66,7 +66,7 @@ const pageEdge = 0.1;
 export const textOf = (node: DoclingNode) => (node.text ?? '').replace(/\s+/g, ' ').trim();
 
 /** The depth of a leading section number ("2.1" = 2), or undefined when there is none. */
-const numberDepth = (heading: string) => {
+export const numberDepth = (heading: string) => {
   const match = sectionNumber.exec(heading.normalize('NFKC'));
   if (!match?.[1]) return undefined;
   const parts = match[1].split('.');

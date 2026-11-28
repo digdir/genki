@@ -28,6 +28,7 @@ import {
   type DocumentRecords,
   type KnowledgeListingScope,
   type Listing,
+  type PdfLayout,
   type PipelineSpec,
   type RecordTransaction,
 } from '@genai/ingest';
@@ -53,6 +54,7 @@ import {
   conversionKey,
   doclingPagesDerivation,
   doclingPartsDerivation,
+  doclingPartsLevelledDerivation,
   isPartsKey,
   GenerationBusy,
   textLayerDerivation,
@@ -100,6 +102,12 @@ export interface KnowledgeHandlerDeps {
    * file it refuses, a file that is not a PDF among them, goes to the text layer in the same job.
    */
   docling?: DocumentConverter;
+  /**
+   * Reads a PDF's outline and text sizes, so a convert job that has a PDF's bytes stores Docling's
+   * parts as `docling-parts` 2, with heading levels (issue 516). Without it, or when it fails, the
+   * parts are version 1.
+   */
+  pdfLayout?: (bytes: Uint8Array) => Promise<PdfLayout>;
   /**
    * The Blob container for converters' native output (#473), keyed by file sha256; the text layer
    * has none, so nothing is written there until Docling.
@@ -919,6 +927,20 @@ export const knowledgeWork = (
   }
 
   /**
+   * A PDF's outline and text sizes for its heading levels (issue 516), or undefined for a file that
+   * is no PDF or that the reader fails on: its parts are then version 1, and the job goes on.
+   */
+  async function layoutOf(file: DocumentFile) {
+    if (!deps.pdfLayout || !looksLikePdf(file.bytes)) return undefined;
+    try {
+      return await deps.pdfLayout(file.bytes);
+    } catch (error) {
+      deps.log?.('pdf layout could not be read', { error: (error as Error).name });
+      return undefined;
+    }
+  }
+
+  /**
    * A file's parts beside its pages (ADR 0055, issue 634), stored before them, so an index job their
    * pages send finds both. Output that is not a `DoclingDocument` is stored as a refusal; a bug in the
    * derivation stores no parts and is logged, and the pages are stored all the same.
@@ -1051,11 +1073,13 @@ export const knowledgeWork = (
           ...(conversion.output ? { output: conversion.output } : {}),
         };
         const output = conversion.output;
-        if (made.name === doclingIdentity.name && output)
+        if (made.name === doclingIdentity.name && output) {
+          const layout = await layoutOf(file);
           parts = {
-            derivation: doclingPartsDerivation,
-            derive: () => doclingParts(readDoclingOutput(output)).units,
+            derivation: layout ? doclingPartsLevelledDerivation : doclingPartsDerivation,
+            derive: () => doclingParts(readDoclingOutput(output), layout ? { layout } : {}).units,
           };
+        }
         // By its bytes, not its name or media type: a source can pass on a server's Content-Type,
         // such as application/octet-stream for a PDF.
         else if (made.name === textLayer.name && looksLikePdf(file.bytes))
