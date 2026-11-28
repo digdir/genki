@@ -25,9 +25,13 @@ export const FlagsTab = ({
 }) => {
   const t = useT();
   const f = useFormat();
-  const [state, retry] = useAsync((signal) => api.tenantFlags(tenant, signal), [api, tenant]);
+  const [state, retry, refreshing] = useAsync(
+    (signal) => api.tenantFlags(tenant, signal),
+    [api, tenant],
+  );
   const [asking, setAsking] = useState<Asking | undefined>();
-  if (state.status === 'loading') return <Loading label={t('org.loading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('org.loading')} shape="table" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const changed = (row: FlagRowView | null) =>
     row ? t('org.byAt', { name: row.byName ?? personOf(row.by), date: shortDay(row.at, f) }) : '';
@@ -137,7 +141,7 @@ export const FlagsTab = ({
         aria-label={t('org.flagsTable', { tenant: name })}
         className="org-table-wrap"
       >
-        <table className="org-table mid">
+        <table className="org-table mid" aria-busy={refreshing || undefined}>
           <thead>
             <tr>
               <th scope="col">{t('org.colFlag')}</th>

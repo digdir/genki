@@ -4,7 +4,7 @@ import type { ApiClient } from '../../api';
 import { navigate, useAsync } from '../../hooks';
 import { useT, type PlainKey } from '../../i18n';
 import type { InboxItem, TenantOverview } from '../../operator-types';
-import { ErrorState, Loading } from '../../states';
+import { ErrorState, PageLoading } from '../../states';
 import { Flash, useFlash } from '../../ui';
 import { formatOrgNumber } from '../Tenants';
 import { SettingsTab } from '../OrgSettings';
@@ -216,7 +216,8 @@ export const OrgPage = ({
     if (!tenant) navigate('/tenants');
   }, [tenant]);
   if (!tenant) return null;
-  if (state.status === 'loading' && !shown.current) return <Loading label={t('org.loading')} />;
+  if (state.status === 'loading' && !shown.current)
+    return <PageLoading label={t('org.loading')} shape="detail" onRetry={retry} />;
   if (state.status === 'error' && !shown.current)
     return <ErrorState error={state.error} onRetry={retry} />;
   const overview = shown.current;

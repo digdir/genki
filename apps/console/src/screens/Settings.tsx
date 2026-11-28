@@ -531,7 +531,7 @@ export const Settings = ({ api }: { api: ApiClient }) => {
       {!grid && state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : !grid ? (
-        <Loading label={t('settings.loading')} />
+        <Loading label={t('settings.loading')} shape="table" onRetry={retry} />
       ) : grid.settings.length === 0 ? (
         <EmptyState title={t('settings.emptyTitle')}>
           <Paragraph>{t('settings.emptyText')}</Paragraph>

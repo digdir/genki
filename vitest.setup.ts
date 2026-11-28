@@ -3,8 +3,14 @@ import { expect } from 'vitest';
 
 configure({ asyncUtilTimeout: 12_000 });
 
-if (/[\\/]apps[\\/]portal[\\/]/.test(expect.getState().testPath ?? '')) {
-  await (await import('./apps/portal/src/i18n/areas')).loadAllTexts();
+const app = /[\\/]apps[\\/](portal|console)[\\/]/.exec(expect.getState().testPath ?? '')?.[1];
+
+if (app) {
+  await (
+    app === 'portal'
+      ? await import('./apps/portal/src/i18n/areas')
+      : await import('./apps/console/src/i18n/areas')
+  ).loadAllTexts();
   await import('@testing-library/react');
   const { asyncWrapper } = getConfig();
   const loading = () =>

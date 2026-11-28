@@ -73,16 +73,19 @@ export const Kpis = ({
 export const TableRegion = ({
   label,
   labelledBy,
+  busy = false,
   children,
 }: {
   label?: string;
   labelledBy?: string;
+  busy?: boolean;
   children: ReactNode;
 }) => (
   <div
-    className="table-region"
+    className={busy ? 'table-region refreshing' : 'table-region'}
     tabIndex={0}
     role="region"
+    aria-busy={busy || undefined}
     {...(labelledBy ? { 'aria-labelledby': labelledBy } : { 'aria-label': label })}
   >
     {children}

@@ -65,7 +65,8 @@ export const LogTab = ({ api, tenant }: { api: ApiClient; tenant: string; name: 
   );
 
   const list = () => {
-    if (state.status === 'loading') return <Loading label={t('org.loading')} />;
+    if (state.status === 'loading')
+      return <Loading label={t('org.loading')} shape="list" onRetry={retry} />;
     if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
     if (state.data.length === 0) return <p className="org-subtle">{t('org.noEntries')}</p>;
     return (

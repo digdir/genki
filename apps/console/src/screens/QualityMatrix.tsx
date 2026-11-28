@@ -1024,7 +1024,7 @@ const Rate = ({
       </div>
       <Paragraph>{t('qualityMatrix.rateIntro')}</Paragraph>
       {state.status === 'loading' ? (
-        <Loading label={t('qualityMatrix.loadingSamples')} />
+        <Loading label={t('qualityMatrix.loadingSamples')} shape="list" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : !sample ? (
@@ -1134,7 +1134,7 @@ export const QualityMatrix = ({ api, tab: initial }: { api: ApiClient; tab: stri
     <>
       <PageHeader title={t(title)} intro={t(intro)} />
       {state.status === 'loading' ? (
-        <Loading label={t('qualityMatrix.loading')} />
+        <Loading label={t('qualityMatrix.loading')} shape="table" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : (

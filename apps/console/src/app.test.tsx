@@ -164,7 +164,7 @@ describe('operator shell', () => {
   it('shows only a replacement notice on the old platform defaults page', async () => {
     await signedIn('#/platform-defaults');
 
-    expect(screen.getByRole('heading', { name: 'Denne siden er erstattet' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Denne siden er erstattet' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Åpne Innstillinger' }).getAttribute('href')).toBe(
       '#/settings',
     );

@@ -49,7 +49,7 @@ export const StateRegister = ({ api }: { api: ApiClient }) => {
         intro={t('stateRegister.intro')}
       />
       {state.status === 'loading' ? (
-        <Loading label={t('stateRegister.loading')} />
+        <Loading label={t('stateRegister.loading')} shape="table" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : (

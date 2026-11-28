@@ -97,7 +97,7 @@ const Batch = ({
  */
 export const SinkLabels = ({ api }: { api: ApiClient }) => {
   const t = useT();
-  const [state, retry] = useAsync((signal) => api.sinkLabels(signal), [api]);
+  const [state, retry, refreshing] = useAsync((signal) => api.sinkLabels(signal), [api]);
   const flash = useFlash();
   const [deciding, setDeciding] = useState<
     { batch: SinkLabelBatch; decision: 'accept' | 'reject' } | undefined
@@ -120,7 +120,8 @@ export const SinkLabels = ({ api }: { api: ApiClient }) => {
       flash.show(t('qualityMatrix.sinkFetchFailed', { connection }), 'danger');
     }
   };
-  if (state.status === 'loading') return <Loading label={t('qualityMatrix.sinkLoading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('qualityMatrix.sinkLoading')} shape="table" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const { connections, batches } = state.data;
   return (
@@ -128,7 +129,7 @@ export const SinkLabels = ({ api }: { api: ApiClient }) => {
       <Paragraph>{t('qualityMatrix.sinkIntro')}</Paragraph>
       <Flash message={flash.message} />
       {connections.length > 0 ? (
-        <Table data-size="sm">
+        <Table data-size="sm" aria-busy={refreshing || undefined}>
           <TableHead>
             <TableRow>
               <TableHeaderCell scope="col">{t('qualityMatrix.sinkTenant')}</TableHeaderCell>

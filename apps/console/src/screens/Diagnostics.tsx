@@ -317,8 +317,17 @@ export const Diagnostics = ({
     | undefined
   >();
 
-  if (tenants.status === 'loading') return <Loading label={t('diagnostics.loadingTenants')} />;
-  if (tenants.status === 'error') return <ErrorState error={tenants.error} onRetry={retry} />;
+  if (tenants.status !== 'ready')
+    return (
+      <>
+        <PageHeader title={t('diagnostics.title')} intro={t('diagnostics.intro')} />
+        {tenants.status === 'loading' ? (
+          <Loading label={t('diagnostics.loadingTenants')} shape="form" onRetry={retry} />
+        ) : (
+          <ErrorState error={tenants.error} onRetry={retry} />
+        )}
+      </>
+    );
   const list = tenants.data;
   const selected = list.find((x) => x.orgNumber === (tenant || list[0]?.orgNumber));
 

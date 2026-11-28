@@ -1,38 +1,18 @@
 import { Alert, Button, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { resolveLocale } from '@genai/i18n';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createApiClient } from './api';
 import { useT } from './i18n';
 import { LoginError, operatorRole, type AuthClient } from './auth';
-import { navigate, splitRoute, useHashRoute } from './hooks';
-import { Audit } from './screens/Audit';
-import { Catalog } from './screens/Catalog';
-import { BuildingBlocks } from './screens/BuildingBlocks';
-import { Diagnostics } from './screens/Diagnostics';
-import { Run } from './screens/operate/Run';
-import { Forward, Models } from './screens/Models';
-import { BlockReviews } from './screens/BlockReviews';
-import { Onboarding } from './screens/Onboarding';
-import { Operations } from './screens/Operations';
-import { PlatformDefaults } from './screens/PlatformDefaults';
-import { PlatformSecrets } from './screens/PlatformSecrets';
+import { Forward, navigate, splitRoute, useDelayed, useNavigation } from './hooks';
+import * as Screen from './lazy-screens';
+import { pendingCount } from './screens/queue/lanes';
 import { FlagsProvider, WhenFlag } from './flags';
-import { Policies } from './screens/Policies';
-import { pendingCount, Queue } from './screens/Queue';
-import { QuotaRequests } from './screens/QuotaRequests';
-import { Quality } from './screens/Quality';
-import { Settings } from './screens/Settings';
-import { SharedServices } from './screens/SharedServices';
-import { OrgPage } from './screens/org/OrgPage';
-import { Inbox } from './screens/inbox/Inbox';
-import { StateRegister } from './screens/StateRegister';
-import { TenantServices } from './screens/TenantServices';
-import { Tenants } from './screens/Tenants';
-import { SearchEngines } from './screens/SearchEngines';
-import { Schemas } from './screens/Schemas';
-import { Tracing } from './screens/Tracing';
 import { Shell } from './Shell';
-import { EmptyState, Loading } from './states';
+import { EmptyState, Loading, NavigationProgress, PageLoading, ScreenBoundary } from './states';
+import { menuItemFor } from './menu';
+import { PageTabs } from './page-tabs';
+import { prefetchCode, prefetchOnIntent, prefetchPath } from './prefetch';
 import { ContentReasonProvider } from './content-reason';
 import { definitionKindOfParam } from './definition-kinds';
 import { useSessionRenewal } from './session-renewal';
@@ -43,15 +23,39 @@ import {
   saveUnsavedInput,
 } from './unsaved-input';
 
+import type { OperatorSession } from './types';
+
 const apisTab = { tab: 'apis' };
 
-const Atlas = lazy(() => import('./screens/Atlas').then((m) => ({ default: m.Atlas })));
-const QualityMatrix = lazy(() =>
-  import('./screens/QualityMatrix').then((m) => ({ default: m.QualityMatrix })),
-);
-const Demos = lazy(() => import('./screens/Demos').then((m) => ({ default: m.Demos })));
-const Flags = lazy(() => import('./screens/Flags').then((m) => ({ default: m.Flags })));
-import type { OperatorSession } from './types';
+const routeOf = (hash: string) => {
+  const { path } = splitRoute(hash);
+  return path === '/' ? '/tenants' : path;
+};
+
+const ScreenLoading = ({ path }: { path: string }) => {
+  const t = useT();
+  const item = menuItemFor(path);
+  const label =
+    item?.pages?.find((page) => page.path === path && !page.tab)?.label ??
+    (item?.path === path ? item.label : undefined);
+  return (
+    <div className="screen-loading">
+      {label ? (
+        <>
+          <div className="page-header">
+            <Heading level={1} data-size="lg">
+              {t(label)}
+            </Heading>
+          </div>
+          <PageTabs />
+          <Loading label={t('common.loading')} shape="list" />
+        </>
+      ) : (
+        <PageLoading label={t('common.loading')} shape="detail" />
+      )}
+    </div>
+  );
+};
 
 const inputStore = (): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> => {
   try {
@@ -84,7 +88,8 @@ export const App = ({ auth, fetch: send, baseUrl = '/api' }: Props) => {
   const [quotaPending, setQuotaPending] = useState<number | undefined>();
   const [quotaDecided, setQuotaDecided] = useState(0);
   const [expired, setExpired] = useState(false);
-  const hash = useHashRoute();
+  const [hash, navigating] = useNavigation();
+  const slowNavigation = useDelayed(navigating, 200);
   const endSession = useCallback(() => {
     saveUnsavedInput(inputStore());
     auth.expire();
@@ -112,6 +117,22 @@ export const App = ({ auth, fetch: send, baseUrl = '/api' }: Props) => {
   const authorized = Boolean(session?.roles.includes(operatorRole));
   const signedIn = Boolean(session);
   useSessionRenewal(auth, session, setSession, endSession);
+  const route = routeOf(hash);
+
+  useEffect(() => {
+    if (!signedIn) api.forgetResponses();
+  }, [api, signedIn]);
+
+  useEffect(() => {
+    const target = splitRoute(hash).path === '/' ? route : hash;
+    if (authorized) prefetchPath(target, api);
+    else prefetchCode(target);
+  }, [api, authorized, route, hash]);
+
+  useEffect(() => {
+    if (!authorized) return;
+    return prefetchOnIntent(document, (path) => prefetchPath(path, api));
+  }, [api, authorized]);
 
   useEffect(() => {
     if (!signedIn) return;
@@ -193,7 +214,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api' }: Props) => {
   if (restoring)
     return (
       <main className="login" id="hovedinnhold">
-        <Loading label={t('shell.checkingLogin')} />
+        <Loading label={t('shell.checkingLogin')} shape="form" rows={1} />
       </main>
     );
 
@@ -255,12 +276,12 @@ export const App = ({ auth, fetch: send, baseUrl = '/api' }: Props) => {
 
   if (!authorized) return refusal(t('shell.refusedText', { name: session.name }));
 
-  const { path, params } = splitRoute(hash);
-  const current = path === '/' ? '/tenants' : path;
+  const { params } = splitRoute(hash);
+  const current = route;
   if (current === '/atlas')
     return (
       <Suspense fallback={null}>
-        <Atlas api={api} />
+        <Screen.Atlas api={api} />
       </Suspense>
     );
   const notFound = (
@@ -269,16 +290,16 @@ export const App = ({ auth, fetch: send, baseUrl = '/api' }: Props) => {
     </EmptyState>
   );
   const screens: Record<string, () => React.ReactNode> = {
-    '/tenants': () => <Tenants api={api} />,
+    '/tenants': () => <Screen.Tenants api={api} />,
     '/queue': () =>
       params.get('tab') ? (
-        <Queue
+        <Screen.Queue
           api={api}
           tab={params.get('tab') ?? undefined}
           onDecided={() => setDecided((n) => n + 1)}
         />
       ) : (
-        <Inbox
+        <Screen.Inbox
           api={api}
           type={params.get('type') ?? undefined}
           request={params.get('request') ?? undefined}
@@ -289,77 +310,65 @@ export const App = ({ auth, fetch: send, baseUrl = '/api' }: Props) => {
         />
       ),
     '/quota-requests': () => (
-      <QuotaRequests
+      <Screen.QuotaRequests
         api={api}
         tenant={params.get('tenant') ?? undefined}
         onDecided={() => setQuotaDecided((n) => n + 1)}
       />
     ),
     '/tenants/services': () => (
-      <TenantServices
+      <Screen.TenantServices
         api={api}
         tenant={params.get('tenant') ?? undefined}
         kind={definitionKindOfParam(params.get('kind'))}
         id={params.get('id') ?? undefined}
       />
     ),
-    '/onboarding': () => <Onboarding api={api} />,
-    '/models': () => <Models api={api} params={params} />,
-    '/platform-secrets': () => <PlatformSecrets api={api} />,
-    '/flags': () => (
-      <Suspense fallback={null}>
-        <Flags api={api} />
-      </Suspense>
-    ),
+    '/onboarding': () => <Screen.Onboarding api={api} />,
+    '/models': () => <Screen.Models api={api} params={params} />,
+    '/platform-secrets': () => <Screen.PlatformSecrets api={api} />,
+    '/flags': () => <Screen.Flags api={api} />,
     '/model-operations': () => <Forward to="/models" params={apisTab} />,
-    '/catalog': () => <Catalog api={api} tab={params.get('tab') ?? undefined} />,
-    '/policies': () => <Policies api={api} tab={params.get('tab') ?? undefined} />,
+    '/catalog': () => <Screen.Catalog api={api} tab={params.get('tab') ?? undefined} />,
+    '/policies': () => <Screen.Policies api={api} tab={params.get('tab') ?? undefined} />,
     '/building-blocks': () => (
-      <BuildingBlocks api={api} initial={params.get('block') ?? undefined} />
+      <Screen.BuildingBlocks api={api} initial={params.get('block') ?? undefined} />
     ),
     '/block-reviews': () => (
       <WhenFlag flag="blockStudio" otherwise={notFound}>
-        <BlockReviews api={api} />
+        <Screen.BlockReviews api={api} />
       </WhenFlag>
     ),
-    '/shared-services': () => <SharedServices api={api} />,
-    '/demos': () => (
-      <Suspense fallback={null}>
-        <Demos api={api} params={params} />
-      </Suspense>
-    ),
-    '/settings': () => <Settings api={api} />,
-    '/quality': () => <Quality api={api} />,
-    '/search-engines': () => <SearchEngines api={api} />,
-    '/state-register': () => <StateRegister api={api} />,
-    '/quality-matrix': () => (
-      <Suspense fallback={null}>
-        <QualityMatrix api={api} tab={params.get('tab') ?? 'matrix'} />
-      </Suspense>
-    ),
-    '/tracing': () => <Tracing api={api} />,
-    '/operations': () => <Operations api={api} tab={params.get('tab') ?? undefined} />,
+    '/shared-services': () => <Screen.SharedServices api={api} />,
+    '/demos': () => <Screen.Demos api={api} params={params} />,
+    '/settings': () => <Screen.Settings api={api} />,
+    '/quality': () => <Screen.Quality api={api} />,
+    '/search-engines': () => <Screen.SearchEngines api={api} />,
+    '/state-register': () => <Screen.StateRegister api={api} />,
+    '/quality-matrix': () => <Screen.QualityMatrix api={api} tab={params.get('tab') ?? 'matrix'} />,
+    '/tracing': () => <Screen.Tracing api={api} />,
+    '/operations': () => <Screen.Operations api={api} tab={params.get('tab') ?? undefined} />,
     '/diagnostics': () =>
       params.get('task') && params.get('tenant') ? (
-        <Run api={api} tenant={params.get('tenant') ?? ''} task={params.get('task') ?? ''} />
+        <Screen.Run api={api} tenant={params.get('tenant') ?? ''} task={params.get('task') ?? ''} />
       ) : (
-        <Diagnostics
+        <Screen.Diagnostics
           api={api}
           tenant={params.get('tenant') ?? undefined}
           kind={params.get('kind') === 'service' ? 'service' : 'run'}
         />
       ),
     '/support-access': () => (
-      <OrgPage
+      <Screen.OrgPage
         api={api}
         tenant={params.get('tenant') ?? undefined}
         tab={params.get('tab') ?? undefined}
         setting={params.get('setting') ?? undefined}
       />
     ),
-    '/audit': () => <Audit api={api} />,
-    '/platform-defaults': () => <PlatformDefaults />,
-    '/schemas': () => <Schemas api={api} initial={params.get('kind') ?? undefined} />,
+    '/audit': () => <Screen.Audit api={api} />,
+    '/platform-defaults': () => <Screen.PlatformDefaults />,
+    '/schemas': () => <Screen.Schemas api={api} initial={params.get('kind') ?? undefined} />,
   };
   const render = Object.hasOwn(screens, current) ? screens[current] : undefined;
   return (
@@ -378,13 +387,12 @@ export const App = ({ auth, fetch: send, baseUrl = '/api' }: Props) => {
           health={api.health}
           readOnlyInLockdown={api.readOnlyInLockdown}
         >
-          {render ? (
-            render()
-          ) : (
-            <EmptyState title={t('shell.notFound')}>
-              <Paragraph>{t('shell.notFoundHelp')}</Paragraph>
-            </EmptyState>
-          )}
+          {slowNavigation ? <NavigationProgress label={t('common.loading')} /> : null}
+          <ScreenBoundary path={hash} onRetry={() => window.location.reload()}>
+            <Suspense fallback={<ScreenLoading path={current} />}>
+              {render ? render() : notFound}
+            </Suspense>
+          </ScreenBoundary>
         </Shell>
       </FlagsProvider>
     </ContentReasonProvider>

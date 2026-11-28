@@ -85,7 +85,7 @@ export const SharedServices = ({ api }: { api: ApiClient }) => {
       {!services && state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : !services ? (
-        <Loading label={t('sharedServices.loading')} />
+        <Loading label={t('sharedServices.loading')} shape="table" onRetry={retry} />
       ) : services.length === 0 ? (
         <EmptyState title={t('sharedServices.noneTitle')}>
           <Paragraph>{t('sharedServices.noneText')}</Paragraph>

@@ -127,7 +127,8 @@ export const Transfer = ({
   const [perRow, setPerRow] = useState<Record<string, Policy>>({});
   const [done, setDone] = useState<string | undefined>();
 
-  if (tenants.status === 'loading') return <Loading label={t('transfer.loadingTenants')} />;
+  if (tenants.status === 'loading')
+    return <Loading label={t('transfer.loadingTenants')} shape="form" onRetry={retry} />;
   if (tenants.status === 'error') return <ErrorState error={tenants.error} onRetry={retry} />;
   const list = tenants.data.filter((x) => x.status !== 'onboarding' || mode !== 'export');
   const target = tenant || list[0]?.orgNumber || '';

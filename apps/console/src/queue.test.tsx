@@ -45,7 +45,7 @@ const done = () => screen.getAllByRole('region', { name: 'Behandlet' })[0] as HT
 
 const openRow = async (title: string) => {
   const table = await screen.findByRole('region', { name: /^Venter/ });
-  fireEvent.click(within(table).getByRole('button', { name: title }));
+  fireEvent.click(await within(table).findByRole('button', { name: title }));
   return screen.getByRole('dialog', { name: title });
 };
 
