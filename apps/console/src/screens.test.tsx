@@ -43,11 +43,11 @@ const recording = (fetch = mockFetch()) => {
 };
 
 const giveContentReason = async () => {
-  const dialog = await screen.findByRole('dialog', { name: 'Grunn for å se innhold' });
+  const dialog = await screen.findByRole('dialog', { name: /^Se innhold fra / });
   fireEvent.change(within(dialog).getByLabelText('Begrunnelse'), {
     target: { value: 'Kunden melder feil svar, sak DIG-4412' },
   });
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Se innhold' }));
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Se innholdet' }));
 };
 
 beforeEach(() => {
@@ -63,20 +63,79 @@ describe('oppstart', () => {
   });
 });
 
-describe('byggeklosser', () => {
-  it('groups the registry by type with contract test, usage and availability as text', async () => {
+describe('katalog', () => {
+  it('lists design elements, tools and work instructions with the drawn columns', async () => {
     await open('#/building-blocks');
 
-    const models = await screen.findByRole('region', { name: 'Modeller' });
-    const borealis = within(models).getByRole('button', { name: /Borealis-27B/ });
-    expect(borealis.textContent).toMatch(/Bestått/);
-    expect(borealis.textContent).toMatch(/Alle virksomheter/);
+    expect(await screen.findByRole('heading', { level: 1, name: 'Katalog' })).toBeTruthy();
+    const table = await screen.findByRole('region', { name: 'Katalog' });
     expect(
-      screen.getByRole('button', { name: /Klarspråk \(fellestjeneste\)/ }).textContent,
-    ).toMatch(/Ikke bestått/);
+      within(table)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent),
+    ).toEqual(['Navn', 'Type', 'Fra', 'Utgave', 'Brukes av', 'Status', 'Handling']);
+    const figure = (await within(table).findByText('Figur')).closest('tr') as HTMLElement;
+    expect(within(figure).getByText('Designelement')).toBeTruthy();
+    expect(within(figure).getByText('Til gjennomgang')).toBeTruthy();
+    expect(within(figure).getByRole('link', { name: 'Gjennomgå Figur' }).getAttribute('href')).toBe(
+      '#/block-reviews',
+    );
+    const skill = within(table).getByText('Klarspråk').closest('tr') as HTMLElement;
+    expect(within(skill).getByText('Arbeidsinstruks')).toBeTruthy();
+    expect(within(skill).getByRole('link', { name: 'Gjennomgå Klarspråk' })).toBeTruthy();
+    expect(within(table).queryByRole('button', { name: /Fjern|Gjør til felles/ })).toBeNull();
+  });
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Ikke bestått' }));
-    expect(screen.queryByRole('button', { name: /Borealis-27B/ })).toBeNull();
+  it('filters the list by type and shows the pressed filter', async () => {
+    await open('#/building-blocks');
+    const table = await screen.findByRole('region', { name: 'Katalog' });
+    await within(table).findByText('Figur');
+
+    const tools = screen.getByRole('button', { name: 'Verktøy' });
+    fireEvent.click(tools);
+    expect(tools.getAttribute('aria-pressed')).toBe('true');
+    expect(within(table).queryByText('Figur')).toBeNull();
+    const types = within(table)
+      .getAllByRole('row')
+      .slice(1)
+      .map((r) => r.querySelectorAll('td')[1]?.textContent);
+    expect(types.length).toBeGreaterThan(0);
+    expect(new Set(types)).toEqual(new Set(['Verktøy']));
+  });
+
+  it('shows a tool open to selected organisations as such, not as open to everyone', async () => {
+    const base = mockFetch();
+    const selected: typeof fetch = async (input, init) => {
+      const response = await base(input, init);
+      if (!String(input).endsWith('/operator/building-blocks')) return response;
+      const body = (await response.json()) as {
+        registry: { id: string; availability?: string }[];
+      };
+      for (const b of body.registry) if (b.id === 'lovdata') b.availability = 'selected';
+      return Response.json(body);
+    };
+    await open('#/building-blocks', selected);
+
+    const table = await screen.findByRole('region', { name: 'Katalog' });
+    const lovdata = within(table)
+      .getByRole('link', { name: 'Lovdata' })
+      .closest('tr') as HTMLElement;
+    expect(within(lovdata).getByText('Utvalgte virksomheter')).toBeTruthy();
+    expect(within(lovdata).queryByText('For alle')).toBeNull();
+  });
+
+  it('still lists the catalogue when one source of reviews fails', async () => {
+    const base = mockFetch();
+    const failing: typeof fetch = async (input, init) =>
+      String(input).includes('/operator/block-share-requests')
+        ? new Response('{}', { status: 500 })
+        : base(input, init);
+    await open('#/building-blocks', failing);
+
+    const table = await screen.findByRole('region', { name: 'Katalog' });
+    expect(within(table).getByRole('link', { name: 'Lovdata' })).toBeTruthy();
+    expect(within(table).queryByText('Figur')).toBeNull();
+    expect(within(table).getByText('Klarspråk', { selector: 'td' })).toBeTruthy();
   });
 
   it('offers no availability, release or disable action, since the API has none', async () => {
@@ -86,30 +145,14 @@ describe('byggeklosser', () => {
     expect(screen.queryByRole('button', { name: /tilgjengelig|Deaktiver|Forhåndsvis/ })).toBeNull();
     expect(screen.queryByRole('radio', { name: 'Utvalgte virksomheter' })).toBeNull();
   });
-
-  it('falls back to the live registry shape when types are missing', async () => {
-    const base = mockFetch();
-    const live: typeof fetch = async (input, init) => {
-      const response = await base(input, init);
-      if (!String(input).endsWith('/operator/building-blocks')) return response;
-      const { strategies, blocks, tools } = (await response.json()) as Record<string, unknown>;
-      return new Response(JSON.stringify({ strategies, blocks, tools }), { status: 200 });
-    };
-    await open('#/building-blocks', live);
-
-    const strategies = await screen.findByRole('region', { name: 'Arbeidsmåter' });
-    expect(within(strategies).getByRole('button', { name: /single-call/ }).textContent).toMatch(
-      /Ikke målt/,
-    );
-  });
 });
 
 describe('byggeklosser fra manifestene', () => {
   const plugin = (passed: boolean) => ({
-    kind: 'model',
+    kind: 'tool-source',
     id: 'model.openai-chat',
     version: '1',
-    contract: 'model@1',
+    contract: 'tool-source@1',
     title: 'OpenAI-kompatibel chat',
     description: '',
     publisher: 'digdir',
@@ -137,7 +180,7 @@ describe('byggeklosser fra manifestene', () => {
     history: [],
   });
 
-  it('shows real manifests and contract results, and reruns the suite', async () => {
+  it('shows real manifests and contract results, reruns the suite and keeps the chosen filter', async () => {
     const base = mockFetch();
     let passed = false;
     const posted: string[] = [];
@@ -161,13 +204,14 @@ describe('byggeklosser fra manifestene', () => {
     window.location.hash = '#/building-blocks';
     render(<App auth={auth} fetch={live} />);
 
-    const models = await screen.findByRole('region', { name: 'Modellprotokoller' });
-    fireEvent.click(within(models).getByRole('button', { name: /OpenAI-kompatibel chat/ }));
+    const table = await screen.findByRole('region', { name: 'Katalog' });
+    fireEvent.click(screen.getByRole('button', { name: 'Verktøy' }));
+    fireEvent.click(within(table).getByRole('link', { name: 'OpenAI-kompatibel chat' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Kontrakttester' }));
     expect(screen.getByText('content: expected "Hei"')).toBeTruthy();
     expect(screen.getByText('Ikke relevant')).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'Manifest' }));
-    expect(screen.getByText(/contract: model@1/)).toBeTruthy();
+    expect(screen.getByText(/contract: tool-source@1/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Kontrakttester' }));
     fireEvent.click(screen.getByRole('button', { name: 'Kjør på nytt' }));
@@ -175,6 +219,12 @@ describe('byggeklosser fra manifestene', () => {
       await screen.findByText(/Kontrakttestene for OpenAI-kompatibel chat 1 er bestått/),
     ).toBeTruthy();
     expect(posted).toEqual(['/api/operator/building-blocks/model.openai-chat/contract-tests']);
+    expect(screen.getByRole('heading', { level: 1, name: /OpenAI-kompatibel chat/ })).toBeTruthy();
+
+    fireEvent.click(within(screen.getByRole('main')).getByRole('link', { name: 'Katalog' }));
+    expect(
+      (await screen.findByRole('button', { name: 'Verktøy' })).getAttribute('aria-pressed'),
+    ).toBe('true');
   });
 });
 
@@ -183,75 +233,75 @@ describe('innstillinger', () => {
     const { calls, fetch } = recording();
     await open('#/settings', fetch);
 
-    await screen.findByRole('region', { name: 'Innstillinger per lag' });
+    await screen.findByRole('region', { name: 'Standardverdier' });
     expect(calls.some((c) => c.path.endsWith('/operator/settings/overrides'))).toBe(true);
     expect(calls.some((c) => c.path.includes('/settings/grid'))).toBe(false);
   });
 
-  it('shows the layered grid with the effective value marked and its source', async () => {
+  it('shows each setting by name with its default and how many organisations have their own', async () => {
     await open('#/settings');
 
-    const grid = await screen.findByRole('region', { name: 'Innstillinger per lag' });
-    const row = within(grid)
-      .getByRole('button', { name: 'search.top_k' })
+    const table = await screen.findByRole('region', { name: 'Standardverdier' });
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent),
+    ).toEqual(['Innstilling', 'Standard', 'Egen verdi hos', 'Handling']);
+    const tokens = within(table).getByText('Tokens per måned').closest('tr') as HTMLElement;
+    expect(within(tokens).getByText('20 mill.')).toBeTruthy();
+    expect(within(tokens).getByText('3 virksomheter')).toBeTruthy();
+    const calls = within(table)
+      .getByText('Kall per minutt for virksomheten')
       .closest('tr') as HTMLElement;
-    expect(within(row).getByText('Satt på tjenesten')).toBeTruthy();
-    expect(within(row).getByText('(gjelder)')).toBeTruthy();
+    expect(within(calls).getByText('1 virksomhet')).toBeTruthy();
+    const assistant = within(table)
+      .getByText('Tokens per dag for assistenten')
+      .closest('tr') as HTMLElement;
+    expect(within(assistant).getByText('200 000')).toBeTruthy();
+    expect(within(assistant).getByText('Ingen')).toBeTruthy();
   });
 
-  it('switches to all agencies and filters to overridden settings', async () => {
-    await open('#/settings');
-    await screen.findByRole('region', { name: 'Innstillinger per lag' });
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Alle virksomheter' }));
-    fireEvent.click(screen.getByRole('switch', { name: 'Bare de som er overstyrt' }));
-    const grid = screen.getByRole('region', { name: 'Innstillinger per lag' });
-    expect(within(grid).getByRole('columnheader', { name: 'Kontrollrådet' })).toBeTruthy();
-    expect(within(grid).queryByRole('button', { name: 'Kildehenvisning' })).toBeNull();
-  });
-
-  it('previews a platform default with who keeps their own value, and needs a reason to save', async () => {
+  it('checks a new default, shows who keeps their own value, and needs a reason to save', async () => {
     const { calls, fetch } = recording();
     await open('#/settings', fetch);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'limits.max_tokens_run' }));
-    const panel = screen.getByRole('dialog', { name: 'limits.max_tokens_run' });
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Endre kall per minutt for virksomheten' }),
+    );
+    const panel = screen.getByRole('dialog', { name: 'Kall per minutt for virksomheten' });
     expect(panel.getAttribute('aria-modal')).toBe('false');
     fireEvent.change(within(panel).getByRole('textbox', { name: /Verdi/ }), {
-      target: { value: '64000' },
+      target: { value: '90' },
     });
-    fireEvent.click(within(panel).getByRole('button', { name: 'Forhåndsvis endring' }));
-    expect(await within(panel).findByText('Beholder egen verdi')).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Sjekk endringen' }));
+    expect(await within(panel).findByText('Endringen gjelder med en gang.')).toBeTruthy();
+    expect(within(panel).getByText('Beholder egen verdi')).toBeTruthy();
     fireEvent.click(within(panel).getByRole('button', { name: 'Lagre' }));
     expect(await within(panel).findByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
+    expect(calls.filter((c) => c.method === 'PUT' && !c.path.includes('dryRun'))).toEqual([]);
 
     fireEvent.change(within(panel).getByRole('textbox', { name: 'Begrunnelse' }), {
-      target: { value: 'Lange høringer' },
+      target: { value: 'Flere kall i pilotene' },
     });
     fireEvent.click(within(panel).getByRole('button', { name: 'Lagre' }));
-    expect(await screen.findByText(/limits\.max_tokens_run er lagret/)).toBeTruthy();
+    expect(await screen.findByText(/Kall per minutt for virksomheten er lagret/)).toBeTruthy();
     expect(calls.find((c) => c.method === 'PUT' && !c.path.includes('dryRun'))).toMatchObject({
-      body: { value: 64000 },
-      reason: 'Lange høringer',
+      body: { value: 90 },
+      reason: 'Flere kall i pilotene',
     });
+    expect(screen.getByRole('dialog', { name: 'Kall per minutt for virksomheten' })).toBeTruthy();
   });
 
   it('closes the side panel with Escape', async () => {
     await open('#/settings');
-    fireEvent.click(await screen.findByRole('button', { name: 'answer.language' }));
-    expect(screen.getByRole('dialog', { name: 'answer.language' })).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre målform i svar' }));
+    expect(screen.getByRole('dialog', { name: 'Målform i svar' })).toBeTruthy();
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(screen.queryByRole('dialog', { name: 'answer.language' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Målform i svar' })).toBeNull();
   });
 
-  it('formats and validates risk-level defaults with a floor', () => {
-    const s = {
-      key: 'guard.x',
-      type: 'risk',
-      floor: { high: true },
-      floorText: 'på for høy',
-      rule: 'Kan ikke slås av for høy risiko.',
-    } as unknown as GridSetting;
+  it('formats risk-level defaults per level', () => {
+    const s = { key: 'guard.x', type: 'risk' } as unknown as GridSetting;
     expect(
       formatValue(
         s,
@@ -259,7 +309,7 @@ describe('innstillinger', () => {
         translator('nb'),
         createFormat('nb'),
       ),
-    ).toBe('Per risikonivå: av / på / på (gulv: på for høy)');
+    ).toBe('Per risikonivå: av / på / på');
     expect(
       parseDraft(
         s,
@@ -268,16 +318,14 @@ describe('innstillinger', () => {
         translator('nb'),
         createFormat('nb'),
       ),
-    ).toEqual({
-      error: 'Kan ikke slås av for høy risiko.',
-    });
+    ).toEqual({ value: { minimal: true, limited: true, high: false } });
   });
 
   it('runs an import dry run through a support session and applies only chosen conflicts', async () => {
     const { calls, fetch } = recording();
     await open('#/settings', fetch);
 
-    fireEvent.click(await screen.findByRole('tab', { name: 'Eksporter, importer og klon' }));
+    fireEvent.click(await screen.findByText('Eksporter, importer og klon'));
     fireEvent.click(await screen.findByRole('radio', { name: 'Klon fra en annen virksomhet' }));
     fireEvent.change(screen.getByRole('combobox', { name: 'Til' }), {
       target: { value: '910111222' },
@@ -309,13 +357,20 @@ describe('innstillinger', () => {
 });
 
 describe('kvalitet', () => {
-  it('shows regressions, a chart with a legend and a table', async () => {
+  it('shows the services that dropped, largest drop first, and the automatic evaluation', async () => {
     await open('#/quality');
 
-    expect(await screen.findByText(/tilbakeganger etter/)).toBeTruthy();
-    expect(screen.getByRole('img', { name: /Poeng på testsett per uke/ })).toBeTruthy();
-    const table = screen.getByRole('region', { name: 'Kvalitet per tjeneste' });
-    expect(within(table).getByText('Tilbakegang -8')).toBeTruthy();
+    const table = await screen.findByRole('region', { name: 'Kvalitet per tjeneste' });
+    const rows = within(table).getAllByRole('row').slice(1);
+    expect(rows.map((r) => r.querySelector('td')?.textContent)).toEqual([
+      'Klarspråk',
+      'Spør regelverket',
+      'Rapportassistenten',
+      'Innbyggerspørsmål',
+      'Oppsummering',
+    ]);
+    expect(within(rows[0] as HTMLElement).getByText('ned 8')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Automatisk vurdering' })).toBeTruthy();
   });
 });
 
@@ -339,7 +394,16 @@ describe('kvalitetsmatrise og dommere', () => {
     fireEvent.click(
       within(matrix).getByRole('button', { name: 'Gjør tilgjengelig: Borealis-27B 2.2' }),
     );
+    const box = await screen.findByRole('dialog', { name: 'Gjør tilgjengelig: Borealis-27B 2.2' });
+    fireEvent.click(within(box).getByRole('button', { name: 'Gjør tilgjengelig' }));
+    expect(await within(box).findByText(/minst 10 tegn/)).toBeTruthy();
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([]);
+    fireEvent.change(within(box).getByRole('textbox', { name: 'Begrunnelse' }), {
+      target: { value: 'Testsettene er grønne' },
+    });
+    fireEvent.click(within(box).getByRole('button', { name: 'Gjør tilgjengelig' }));
     expect(await screen.findByText(/Ingen tjenester bytter av seg selv/)).toBeTruthy();
+    expect(calls.find((c) => c.method === 'POST')?.reason).toBe('Testsettene er grønne');
   });
 
   it('shows the estimated cost and starts the quality matrix only after it is confirmed', async () => {
@@ -413,7 +477,14 @@ describe('kvalitetsmatrise og dommere', () => {
     fireEvent.click(
       within(matrix).getByRole('button', { name: 'Gjør tilgjengelig: Borealis-27B 2.2' }),
     );
-    expect(await screen.findByText('Kvalitetsmatrisen er ikke kjørt for modellen')).toBeTruthy();
+    const box = await screen.findByRole('dialog', { name: 'Gjør tilgjengelig: Borealis-27B 2.2' });
+    fireEvent.change(within(box).getByRole('textbox', { name: 'Begrunnelse' }), {
+      target: { value: 'Testsettene er grønne' },
+    });
+    fireEvent.click(within(box).getByRole('button', { name: 'Gjør tilgjengelig' }));
+    expect(
+      await within(box).findByText('Kvalitetsmatrisen er ikke kjørt for modellen'),
+    ).toBeTruthy();
   });
 
   it('shows kappa per language and job type, and moves judges with the threshold', async () => {
@@ -537,16 +608,9 @@ describe('sporing og evaluering', () => {
 });
 
 describe('drift', () => {
-  it('shows incidents, component health, queues, failing triggers and running tasks', async () => {
+  it('cancels a running task only with a reason of at least 10 characters', async () => {
     await open('#/operations');
 
-    expect(
-      await screen.findByRole('heading', { name: 'AIVAR (norske modeller) svarer tregt' }),
-    ).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Redusert ytelse hos AIVAR' })).toBeTruthy();
-    const endpoints = screen.getByRole('region', { name: 'Database og modellendepunkter' });
-    expect(within(endpoints).getByText('Tregt')).toBeTruthy();
-    expect(screen.getByText('Tilgangsnøkkelen er utløpt')).toBeTruthy();
     const running = await screen.findByRole('region', { name: 'Pågående kjøringer' });
     fireEvent.click(within(running).getByRole('button', { name: 'Avbryt kjøringen t-101' }));
     expect(await screen.findByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
@@ -667,22 +731,57 @@ describe('diagnostikk', () => {
 });
 
 describe('fellestjenester', () => {
-  it('shares a service with all agencies after a reason', async () => {
+  it('shows who owns each service and who it is shared with, with the drawn columns', async () => {
     await open('#/shared-services');
 
-    const table = await screen.findByRole('region', { name: 'Tjenester og deling' });
-    fireEvent.click(
-      within(table).getByRole('button', { name: 'Del Kunnskapsassistenten med alle virksomheter' }),
-    );
-    expect(await screen.findByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Begrunnelse', { exact: false }), {
+    const table = await screen.findByRole('region', { name: 'Delte tjenester' });
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent),
+    ).toEqual(['Tjeneste', 'Eier', 'Utgave', 'Delt med', 'Endre']);
+    const ka = within(table).getByText('Kunnskapsassistenten').closest('tr') as HTMLElement;
+    expect(within(ka).getByText('Bare eieren')).toBeTruthy();
+  });
+
+  it('refuses to save the sharing that already applies, and says when a service goes back to its owner', async () => {
+    await open('#/shared-services');
+
+    const table = await screen.findByRole('region', { name: 'Delte tjenester' });
+    fireEvent.click(within(table).getByRole('button', { name: 'Endre Klarspråk' }));
+    const box = await screen.findByRole('dialog', { name: /Klarspråk/ });
+    fireEvent.change(within(box).getByRole('textbox', { name: 'Begrunnelse' }), {
+      target: { value: 'Bare eieren skal bruke den' },
+    });
+    fireEvent.click(within(box).getByRole('button', { name: 'Lagre' }));
+    expect(await within(box).findByText(/en annen deling enn den som gjelder/)).toBeTruthy();
+
+    fireEvent.click(within(box).getByRole('radio', { name: 'Bare eieren' }));
+    fireEvent.click(within(box).getByRole('button', { name: 'Lagre' }));
+    expect(await screen.findByText('Klarspråk er nå bare tilgjengelig for eieren.')).toBeTruthy();
+  });
+
+  it('shares a service with all organisations only after a reason', async () => {
+    const { calls, fetch } = recording();
+    await open('#/shared-services', fetch);
+
+    const table = await screen.findByRole('region', { name: 'Delte tjenester' });
+    fireEvent.click(within(table).getByRole('button', { name: 'Endre Kunnskapsassistenten' }));
+    const box = await screen.findByRole('dialog', { name: /Kunnskapsassistenten/ });
+    fireEvent.click(within(box).getByRole('radio', { name: 'Alle virksomheter' }));
+    fireEvent.click(within(box).getByRole('button', { name: 'Lagre' }));
+    expect(await within(box).findByText(/minst 10 tegn/)).toBeTruthy();
+    expect(calls.filter((c) => c.method !== 'GET')).toEqual([]);
+
+    fireEvent.change(within(box).getByRole('textbox', { name: 'Begrunnelse' }), {
       target: { value: 'Felles for alle virksomheter' },
     });
-    fireEvent.click(
-      within(table).getByRole('button', { name: 'Del Kunnskapsassistenten med alle virksomheter' }),
-    );
+    fireEvent.click(within(box).getByRole('button', { name: 'Lagre' }));
     expect(
       await screen.findByText('Kunnskapsassistenten er nå delt med alle virksomheter.'),
     ).toBeTruthy();
+    const ka = within(table).getByText('Kunnskapsassistenten').closest('tr') as HTMLElement;
+    expect(within(ka).getByText('Alle')).toBeTruthy();
+    expect(calls.find((c) => c.method !== 'GET')?.reason).toBe('Felles for alle virksomheter');
   });
 });

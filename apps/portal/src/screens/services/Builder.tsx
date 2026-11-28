@@ -64,7 +64,7 @@ import { useFormat, useLocale } from '@genai/i18n/react';
 import { actorLabel, formatDateTime, notPricedLabel } from '../../format';
 import { useT, type PlainKey } from '../../i18n';
 import { rightLabel, useRights, useUserName } from '../../Shell';
-import { navigate, useAsync, useNarrow, type Route } from '../../hooks';
+import { navigate, redirectFrom, useAsync, useNarrow, type Route } from '../../hooks';
 import { toYaml } from '../../yaml';
 import { AssistantPanel } from './AssistantPanel';
 import { ImproveInstructions } from './assistant/ImproveInstructions';
@@ -602,8 +602,8 @@ export const Builder = ({
   useEffect(() => {
     if (!addressed || (addressed === section && !unshownArea)) return;
     const alias = section === routeSection && detail && !unshownArea ? `/${detail}` : '';
-    window.location.replace(`#${servicePath(routeId, section, alias)}`);
-  }, [addressed, section, routeSection, routeId, detail, unshownArea]);
+    redirectFrom(route, `#${servicePath(routeId, section, alias)}`);
+  }, [addressed, section, routeSection, routeId, detail, unshownArea, route]);
 
   useEffect(() => {
     const target: SectionId | undefined =

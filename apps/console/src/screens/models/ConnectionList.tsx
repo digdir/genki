@@ -23,7 +23,7 @@ import {
   type AreaProps,
   type RecordStatus,
 } from './area-data';
-import { EndpointForm } from './Endpoints';
+import { EndpointForm, ModelForm } from './Endpoints';
 
 export const RecordTag = ({ status }: { status: RecordStatus }) => {
   const t = useT();
@@ -38,6 +38,7 @@ export const RecordTag = ({ status }: { status: RecordStatus }) => {
 export const ConnectionList = ({ api, data, done }: AreaProps) => {
   const t = useT();
   const [adding, setAdding] = useState(false);
+  const [addingModel, setAddingModel] = useState(false);
   const connections = data.connections ?? [];
   const missing = connections.filter((c) => recordStatus(data.records, c.id) === 'missing');
   const add = (
@@ -51,7 +52,17 @@ export const ConnectionList = ({ api, data, done }: AreaProps) => {
         <Heading level={2} data-size="xs" id="connections-h">
           {t('models.tabConnections')}
         </Heading>
-        {add}
+        <span className="row-actions">
+          {add}
+          <Button
+            variant="secondary"
+            data-size="sm"
+            disabled={!connections.length}
+            onClick={() => setAddingModel(true)}
+          >
+            {t('endpoints.addModel')}
+          </Button>
+        </span>
       </div>
       <Paragraph data-size="sm">{t('connections.intro')}</Paragraph>
       {missing.map((c) => (
@@ -116,6 +127,18 @@ export const ConnectionList = ({ api, data, done }: AreaProps) => {
           onSaved={(id) => {
             setAdding(false);
             done(t('connections.added', { id }));
+          }}
+        />
+      ) : null}
+      {addingModel && data.connections ? (
+        <ModelForm
+          api={api}
+          endpoints={data.connections}
+          apis={data.apis}
+          onClose={() => setAddingModel(false)}
+          onSaved={(saved) => {
+            setAddingModel(false);
+            done(t('models.saved', { model: saved.deployment }));
           }}
         />
       ) : null}

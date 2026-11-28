@@ -43,5 +43,5 @@ The platform's promise is configuration and API first (ADR 0023): a new service,
 ## Consequences
 
 - Labels and help texts for configuration move from the portal and console catalogues to the schema metadata, in one catalogue per package next to the schemas. The apps keep catalogues only for their own chrome.
-- A new strategy, block or plug-in kind shows up in the portal and console when its schema has metadata, without a UI change.
+- A new strategy, block or plug-in kind shows up in the portal when its schema has metadata, without a UI change. The console's Katalog lists tools and the design elements and work instructions waiting for review.
 - Schema versions follow the definition versions (`genai/v1`). A breaking change to a schema is a new version, and both are served while clients move.

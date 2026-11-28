@@ -20,7 +20,6 @@ import {
   Spinner,
   Switch,
   Tag,
-  Textarea,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
@@ -47,6 +46,7 @@ import {
   type FormValues,
 } from './schema-form';
 import { reasonProblem } from '../../reason';
+import { ReasonField } from '../../components/ReasonField';
 
 interface Props {
   api: ApiClient;
@@ -503,19 +503,15 @@ export const EndpointEditor = ({
             ? t('searchEngines.impactNew')
             : t('searchEngines.impactExisting', { count: endpoint.datasetCount })}
         </p>
-        <Field className="endpoint-reason">
-          <Label>{t('common.reason')}</Label>
-          <Textarea
-            rows={2}
-            value={reason}
-            aria-invalid={reasonError ? true : undefined}
-            onChange={(e) => {
-              setReason(e.target.value);
-              setReasonError('');
-            }}
-          />
-          {reasonError ? <ValidationMessage>{reasonError}</ValidationMessage> : null}
-        </Field>
+        <ReasonField
+          className="endpoint-reason"
+          value={reason}
+          error={reasonError || undefined}
+          onChange={(value) => {
+            setReason(value);
+            setReasonError('');
+          }}
+        />
         {problem ? (
           <Alert data-color="danger" data-size="sm">
             {problem}

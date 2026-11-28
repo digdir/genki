@@ -1,35 +1,28 @@
 import {
-  Alert,
   Button,
   Chip,
+  Details,
+  DetailsContent,
+  DetailsSummary,
   Fieldset,
   FieldsetLegend,
   Heading,
   Label,
   Paragraph,
   Select,
-  Switch,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeaderCell,
-  TableRow,
-  Tabs,
-  TabsList,
-  TabsPanel,
-  TabsTab,
   Tag,
   Textarea,
   Textfield,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
+import type { Format } from '@genai/i18n';
+import { intlLocale } from '@genai/i18n';
 import { useFormat } from '@genai/i18n/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, type ApiClient } from '../api';
 import { useAsync } from '../hooks';
-import { useT, type PlainKey, type T } from '../i18n';
-import { useTenantNames } from '../tenant-names';
+import { useT, type T } from '../i18n';
+import { reasonProblem } from '../reason';
 import {
   draftOf,
   formatValue,
@@ -38,11 +31,10 @@ import {
   parseDraft,
   riskLabel,
   riskLevels,
-  sensitivityLabel,
   settingErrorText,
-  suggestionOf,
 } from '../settings-model';
 import { EmptyState, ErrorState, Loading } from '../states';
+import { useTenantNames } from '../tenant-names';
 import type {
   DefaultVersion,
   GridSetting,
@@ -51,66 +43,26 @@ import type {
   SettingsGrid,
   ValidationProblem,
 } from '../types';
-import { Flash, formatWhen, SidePanel, TableRegion, useFlash, VisuallyHidden } from '../ui';
+import { Flash, formatWhen, SidePanel, useFlash } from '../ui';
 import { Transfer } from './Transfer';
-import { reasonProblem } from '../reason';
-import type { Format } from '@genai/i18n';
-
-type Mode = 'one' | 'all';
-
-interface Selection {
-  tenant: string;
-  service: string;
-}
-
-interface Effective {
-  value: unknown;
-  layer: 'P' | 'V' | 'T' | 'pin';
-  source: string;
-  color: 'neutral' | 'warning' | 'accent';
-}
-
-const serviceKey = (sel: Selection) => `${sel.tenant}/${sel.service}`;
-
-export const effectiveOf = (s: GridSetting, sel: Selection, version: number, t: T): Effective => {
-  const pin = s.pins?.[serviceKey(sel)];
-  if (pin)
-    return {
-      value: pin.value,
-      layer: 'pin',
-      source: t('settings.sourcePinned', { version: pin.version }),
-      color: 'warning',
-    };
-  const svc = s.scope.includes('service') ? s.services[serviceKey(sel)] : undefined;
-  if (svc !== undefined)
-    return { value: svc, layer: 'T', source: t('settings.sourceService'), color: 'accent' };
-  const ten = s.scope.includes('tenant') ? s.tenants[sel.tenant] : undefined;
-  if (ten !== undefined)
-    return { value: ten, layer: 'V', source: t('settings.sourceTenant'), color: 'warning' };
-  return {
-    value: s.platform,
-    layer: 'P',
-    source: t('settings.sourceInherited', { version }),
-    color: 'neutral',
-  };
-};
+import './platform.css';
+import { ReasonField } from '../components/ReasonField';
+import { PageTabs } from '../page-tabs';
 
 const impactGroups = (
   impacts: ServiceImpact[],
   s: GridSetting,
-  after: unknown,
   tenantName: (tenant: string) => string,
   t: T,
   f: Format,
 ) => {
-  const changes = impacts.filter((i) => i.status === 'changes');
   const name = (i: ServiceImpact) => `${i.service} · ${tenantName(i.tenant)}`;
-  const groups: {
-    title: string;
-    color: 'warning' | 'neutral' | 'info' | 'danger';
-    items: string[];
-  }[] = [
-    { title: t('settings.impactChanges'), color: 'warning', items: changes.map(name) },
+  const groups: { title: string; color: 'warning' | 'neutral' | 'info'; items: string[] }[] = [
+    {
+      title: t('settings.impactChanges'),
+      color: 'warning',
+      items: impacts.filter((i) => i.status === 'changes').map(name),
+    },
     {
       title: t('settings.impactKeeps'),
       color: 'neutral',
@@ -122,25 +74,7 @@ const impactGroups = (
   const pinned = impacts.filter((i) => i.status === 'pinned');
   if (pinned.length)
     groups.push({ title: t('settings.impactPinned'), color: 'info', items: pinned.map(name) });
-  const breaks =
-    typeof after === 'number' && s.needs
-      ? changes.filter((i) => (s.needs?.[`${i.tenant}/${i.service}`] ?? 0) > after)
-      : [];
-  if (breaks.length)
-    groups.push({
-      title: t('settings.impactBreaks'),
-      color: 'danger',
-      items: breaks.map((i) =>
-        t('settings.needsAtLeast', {
-          service: i.service,
-          value: formatValue(s, s.needs?.[`${i.tenant}/${i.service}`], t, f),
-        }),
-      ),
-    });
-  const blocked = breaks.length
-    ? t('settings.blocked', { services: f.list(breaks.map((i) => i.service)) })
-    : undefined;
-  return { groups, blocked };
+  return groups;
 };
 
 const errorText = (error: unknown, t: T) => {
@@ -153,69 +87,36 @@ const errorText = (error: unknown, t: T) => {
   return t('settings.wentWrong');
 };
 
-const typeText: Record<GridSetting['type'], PlainKey> = {
-  int: 'settings.typeInt',
-  float: 'settings.typeFloat',
-  enum: 'settings.typeEnum',
-  bool: 'settings.typeBool',
-  list: 'settings.typeList',
-  secret: 'settings.typeSecret',
-  risk: 'settings.typeRisk',
-  text: 'settings.typeText',
-  json: 'settings.typeJson',
-};
-
 const allowedText = (s: GridSetting, t: T, f: Format) => {
   if (s.type === 'enum' && s.options) return s.options.map((o) => o.label).join(', ');
   if ((s.type === 'int' || s.type === 'float') && s.min !== undefined && s.max !== undefined)
     return `${t('settings.allowedRange', { min: f.number(s.min), max: f.number(s.max) })}${s.step ? t('settings.allowedStep', { step: f.number(s.step) }) : ''}${s.unit ? ` ${s.unit}` : ''}`;
   if (s.type === 'bool') return t('settings.allowedBool');
-  if (s.type === 'risk')
-    return `${t('settings.allowedRisk')}${s.floorText ? t('settings.allowedFloor', { floor: s.floorText }) : ''}`;
+  if (s.type === 'risk') return t('settings.allowedRisk');
   if (s.type === 'list') return t('settings.allowedList');
-  if (s.type === 'secret') return t('settings.allowedSecret');
-  return t('settings.allowedSee');
+  return undefined;
 };
-
-const scopeText = (s: GridSetting, t: T) =>
-  [
-    t('settings.layerPlatform'),
-    ...s.scope.map((x) =>
-      x === 'tenant'
-        ? t('settings.layerTenant')
-        : x === 'service'
-          ? t('settings.layerService')
-          : t('settings.layerDataset'),
-    ),
-  ].join(', ');
 
 const capitalised = (text: string) => `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 
-interface LogEntry {
-  key: string;
-  when: string;
-  what: string;
-  reason: string;
-}
+const defaultText = (s: GridSetting, t: T, f: Format) =>
+  typeof s.platform === 'number' && s.platform >= 1_000_000 && !s.unit
+    ? new Intl.NumberFormat(intlLocale(f.locale), {
+        notation: 'compact',
+        compactDisplay: 'short',
+      }).format(s.platform)
+    : formatValue(s, s.platform, t, f);
 
 const Panel = ({
   api,
-  grid,
   setting: s,
-  selection,
-  mode,
-  log,
   onClose,
   onSaved,
 }: {
   api: ApiClient;
-  grid: SettingsGrid;
   setting: GridSetting;
-  selection: Selection;
-  mode: Mode;
-  log: LogEntry[];
   onClose: () => void;
-  onSaved: (entry: LogEntry, flash: string) => void;
+  onSaved: (flash: string) => void;
 }) => {
   const t = useT();
   const tRef = useRef(t);
@@ -237,45 +138,25 @@ const Panel = ({
   const [busy, setBusy] = useState(false);
   const [history] = useAsync((signal) => api.changelog(s.key, signal), [api, s.key]);
   const tenantName = useTenantNames(api);
-  const eff = effectiveOf(s, selection, s.version, t);
-  const suggestion = suggestionOf(s, grid.tenants);
   const canEdit = s.type !== 'secret';
-  const chain =
-    mode === 'all'
-      ? [{ layer: t('settings.layerPlatform'), value: s.platform, effective: true }]
-      : [
-          { layer: t('settings.layerPlatform'), value: s.platform, effective: eff.layer === 'P' },
-          {
-            layer: t('settings.layerTenant'),
-            value: s.scope.includes('tenant') ? s.tenants[selection.tenant] : undefined,
-            effective: eff.layer === 'V',
-          },
-          {
-            layer: t('settings.layerService'),
-            value: s.scope.includes('service') ? s.services[serviceKey(selection)] : undefined,
-            effective: eff.layer === 'T',
-          },
-          ...(eff.layer === 'pin'
-            ? [{ layer: t('settings.layerPinned'), value: eff.value, effective: true }]
-            : []),
-        ];
+  const own = Object.entries(s.tenants);
+  const changed = () => {
+    setError(undefined);
+    setPreview(undefined);
+  };
 
-  const runPreview = async (value?: unknown) => {
-    let next = value;
-    if (next === undefined) {
-      const parsed = parseDraft(s, draft, risk, t, f);
-      if ('error' in parsed) {
-        setError(parsed.error);
-        setPreview(undefined);
-        return;
-      }
-      next = parsed.value;
+  const check = async () => {
+    const parsed = parseDraft(s, draft, risk, t, f);
+    if ('error' in parsed) {
+      setError(parsed.error);
+      setPreview(undefined);
+      return;
     }
     setError(undefined);
     setBusy(true);
     try {
-      const impacts = await api.previewDefault(s.key, next, t('settings.previewReason'));
-      setPreview({ value: next, impacts });
+      const impacts = await api.previewDefault(s.key, parsed.value, t('settings.previewReason'));
+      setPreview({ value: parsed.value, impacts });
       setReason('');
       setReasonError(undefined);
     } catch (e) {
@@ -285,12 +166,8 @@ const Panel = ({
     }
   };
 
-  const pv = preview
-    ? impactGroups(preview.impacts, s, preview.value, tenantName, t, f)
-    : undefined;
-
   const save = async () => {
-    if (!preview || pv?.blocked) return;
+    if (!preview || busy) return;
     const tooShort = reasonProblem(t, reason);
     if (tooShort) {
       setReasonError(tooShort);
@@ -299,16 +176,11 @@ const Panel = ({
     setBusy(true);
     try {
       await api.setDefault(s.key, preview.value, reason.trim());
-      const now = tRef.current;
-      const what = formatValue(s, preview.value, now, f);
       onSaved(
-        {
-          key: s.key,
-          when: formatWhen(new Date().toISOString(), f, now),
-          what: `${s.label}: ${what}`,
-          reason: reason.trim(),
-        },
-        now('settings.saved', { label: s.label, value: what }),
+        tRef.current('settings.saved', {
+          label: s.label,
+          value: formatValue(s, preview.value, tRef.current, f),
+        }),
       );
       setPreview(undefined);
     } catch (e) {
@@ -318,77 +190,35 @@ const Panel = ({
     }
   };
 
-  const mine = log.filter((l) => l.key === s.key);
+  const groups = preview ? impactGroups(preview.impacts, s, tenantName, t, f) : [];
   return (
     <SidePanel labelledBy="panel-h" onClose={onClose}>
       <div className="panel-head">
-        <span className="eyebrow">
-          {s.category} · {s.key}
-        </span>
+        <span className="eyebrow">{s.category}</span>
         <Heading level={2} data-size="xs" id="panel-h" tabIndex={-1}>
           {s.label}
         </Heading>
-        <span className="name-line">
-          <Tag data-size="sm" data-color={sensitivityLabel[s.sensitivity][1]}>
-            {t('settings.sensitivityLine', { level: t(sensitivityLabel[s.sensitivity][0]) })}
-          </Tag>
-          <Tag data-size="sm" data-color="neutral">
-            {t('settings.editing', { version: s.version })}
-          </Tag>
-        </span>
       </div>
       <div className="panel-body">
         <Paragraph>{s.description}</Paragraph>
         <dl className="def-list">
-          <dt>{t('settings.dtType')}</dt>
-          <dd>{t(typeText[s.type])}</dd>
-          <dt>{t('settings.dtAllowed')}</dt>
-          <dd>{allowedText(s, t, f)}</dd>
-          <dt>{t('settings.dtScope')}</dt>
-          <dd>{scopeText(s, t)}</dd>
-          {s.rule ? (
-            <>
-              <dt>{t('settings.dtRule')}</dt>
-              <dd>{s.rule}</dd>
-            </>
-          ) : null}
+          <dt>{t('settings.colDefault')}</dt>
+          <dd>{formatValue(s, s.platform, t, f)}</dd>
+          <dt>{t('settings.colOwnValue')}</dt>
+          <dd>
+            {own.length === 0 ? (
+              t('settings.none')
+            ) : (
+              <ul className="plain">
+                {own.map(([tenant, value]) => (
+                  <li key={tenant}>
+                    {tenantName(tenant)}: {formatValue(s, value, t, f)}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </dd>
         </dl>
-        <div className="stack-sm">
-          <span className="label-strong">{t('settings.valuePerLayer')}</span>
-          <ol className="plain chain">
-            {chain.map((c) => (
-              <li key={c.layer} className={c.effective ? 'effective' : undefined}>
-                <span>{c.layer}</span>
-                <span className={c.value === undefined ? 'inherited' : undefined}>
-                  {c.value === undefined ? t('settings.inherited') : formatValue(s, c.value, t, f)}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </div>
-        {suggestion ? (
-          <div className="suggest">
-            <span className="label-strong">{t('settings.suggestedDefault')}</span>
-            <span>
-              {t('settings.suggestion', {
-                n: suggestion.n,
-                total: grid.tenants.length,
-                value: formatValue(s, suggestion.value, t, f),
-                platform: formatValue(s, s.platform, t, f),
-              })}
-            </span>
-            <Button
-              variant="secondary"
-              data-size="sm"
-              onClick={() => {
-                setDraft(draftOf(s, suggestion.value));
-                void runPreview(suggestion.value);
-              }}
-            >
-              {t('settings.useAsNewDefault')}
-            </Button>
-          </div>
-        ) : null}
         <section aria-labelledby="ny-h" className="stack-sm">
           <h3 id="ny-h">{canEdit ? t('settings.newDefault') : t('settings.cannotSetHere')}</h3>
           {canEdit && s.type === 'enum' && s.options ? (
@@ -399,7 +229,7 @@ const Panel = ({
                 value={draft}
                 onChange={(e) => {
                   setDraft(e.target.value);
-                  setPreview(undefined);
+                  changed();
                 }}
               >
                 {s.options.map((o) => (
@@ -410,21 +240,26 @@ const Panel = ({
               </Select>
             </div>
           ) : null}
-          {canEdit && s.type === 'text' && s.multiline ? (
+          {canEdit &&
+          (s.type === 'list' || s.type === 'json' || (s.type === 'text' && s.multiline)) ? (
             <div className="field">
-              <Label htmlFor="ed">{t('settings.value')}</Label>
+              <Label htmlFor="ed">
+                {s.type === 'list'
+                  ? t('settings.valueOnePerLine')
+                  : s.type === 'json'
+                    ? t('settings.valueJson')
+                    : t('settings.value')}
+              </Label>
               <Textarea
                 id="ed"
-                rows={8}
+                rows={s.type === 'text' ? 8 : 4}
                 value={draft}
                 aria-invalid={error ? true : undefined}
                 onChange={(e) => {
                   setDraft(e.target.value);
-                  setError(undefined);
-                  setPreview(undefined);
+                  changed();
                 }}
               />
-              {error ? <ValidationMessage>{error}</ValidationMessage> : null}
             </div>
           ) : null}
           {canEdit &&
@@ -438,8 +273,7 @@ const Panel = ({
               error={error}
               onChange={(e) => {
                 setDraft(e.target.value);
-                setError(undefined);
-                setPreview(undefined);
+                changed();
               }}
             />
           ) : null}
@@ -459,7 +293,7 @@ const Panel = ({
                     checked={draft === v}
                     onChange={() => {
                       setDraft(v);
-                      setPreview(undefined);
+                      changed();
                     }}
                   >
                     {l}
@@ -472,12 +306,7 @@ const Panel = ({
             <div className="stack-sm">
               {riskLevels.map((level) => (
                 <Fieldset key={level} data-size="sm">
-                  <FieldsetLegend>
-                    {capitalised(t(riskLabel[level]))}
-                    {s.floor?.[level] !== undefined
-                      ? ` ${t('settings.floorInline', { floor: s.floor[level] ? t('settings.onLower') : t('settings.offLower') })}`
-                      : ''}
-                  </FieldsetLegend>
+                  <FieldsetLegend>{capitalised(t(riskLabel[level]))}</FieldsetLegend>
                   <div className="chips">
                     {(
                       [
@@ -491,8 +320,7 @@ const Panel = ({
                         checked={risk[level] === v}
                         onChange={() => {
                           setRisk((r) => ({ ...r, [level]: v }));
-                          setError(undefined);
-                          setPreview(undefined);
+                          changed();
                         }}
                       >
                         {l}
@@ -501,22 +329,6 @@ const Panel = ({
                   </div>
                 </Fieldset>
               ))}
-            </div>
-          ) : null}
-          {canEdit && (s.type === 'list' || s.type === 'json') ? (
-            <div className="field">
-              <Label htmlFor="ed">
-                {s.type === 'list' ? t('settings.valueOnePerLine') : t('settings.valueJson')}
-              </Label>
-              <Textarea
-                id="ed"
-                rows={4}
-                value={draft}
-                onChange={(e) => {
-                  setDraft(e.target.value);
-                  setPreview(undefined);
-                }}
-              />
             </div>
           ) : null}
           {s.type === 'secret' ? (
@@ -531,23 +343,30 @@ const Panel = ({
                 variant="secondary"
                 data-size="sm"
                 loading={busy && !preview}
-                onClick={() => void runPreview()}
+                onClick={() => void check()}
               >
                 {t('settings.previewButton')}
+              </Button>
+              <Button
+                variant="tertiary"
+                data-size="sm"
+                onClick={() => {
+                  setDraft(draftOf(s, s.platform));
+                  changed();
+                }}
+              >
+                {t('common.cancel')}
               </Button>
             </div>
           ) : null}
         </section>
-        {preview && pv ? (
+        {preview ? (
           <section aria-labelledby="pv-h" className="preview">
             <h3 id="pv-h">{t('settings.preview')}</h3>
             <div className="before-after">
               <span>
                 <span className="meta">{t('settings.before')}</span>
-                {t('settings.beforeValue', {
-                  value: formatValue(s, s.platform, t, f),
-                  version: s.version,
-                })}
+                {formatValue(s, s.platform, t, f)}
               </span>
               <span aria-hidden="true">→</span>
               <span>
@@ -555,7 +374,8 @@ const Panel = ({
                 {formatValue(s, preview.value, t, f)}
               </span>
             </div>
-            {pv.groups.map((g) => (
+            <Paragraph data-size="sm">{t('settings.appliesAtOnce')}</Paragraph>
+            {groups.map((g) => (
               <div key={g.title} className="stack-sm">
                 <span className="name-line">
                   <Tag data-size="sm" data-color={g.color}>
@@ -563,41 +383,27 @@ const Panel = ({
                   </Tag>
                   {g.title}
                 </span>
-                <ul>
-                  {(g.items.length ? g.items : [t('settings.none')]).map((i) => (
-                    <li key={i}>{i}</li>
-                  ))}
-                </ul>
+                {g.items.length ? (
+                  <ul>
+                    {g.items.map((i) => (
+                      <li key={i}>{i}</li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
             ))}
-            {pv.blocked ? (
-              <Alert data-color="danger" data-size="sm">
-                {pv.blocked}
-              </Alert>
-            ) : null}
-            <div className="field">
-              <Label htmlFor="grunn">{t('common.reason')}</Label>
-              <Paragraph data-size="sm" className="meta">
-                {t('settings.savedToAudit')}
-              </Paragraph>
-              <Textarea
-                id="grunn"
-                rows={2}
-                value={reason}
-                aria-invalid={reasonError ? true : undefined}
-                onChange={(e) => {
-                  setReason(e.target.value);
-                  setReasonError(undefined);
-                }}
-              />
-              {reasonError ? <ValidationMessage>{reasonError}</ValidationMessage> : null}
-            </div>
+            <ReasonField
+              id="grunn"
+              description={t('settings.savedToAudit')}
+              value={reason}
+              error={reasonError}
+              onChange={(value) => {
+                setReason(value);
+                setReasonError(undefined);
+              }}
+            />
             <div className="actions-row">
-              <Button
-                aria-disabled={pv.blocked ? true : undefined}
-                loading={busy}
-                onClick={() => void save()}
-              >
+              <Button loading={busy} onClick={() => void save()}>
                 {t('settings.save')}
               </Button>
               <Button variant="secondary" onClick={() => setPreview(undefined)}>
@@ -613,9 +419,7 @@ const Panel = ({
               {history.data.map((h: DefaultVersion) => (
                 <li key={h.version}>
                   <span>
-                    <strong>
-                      v{h.version} · {formatValue(s, h.value, t, f)}
-                    </strong>
+                    <strong>{formatValue(s, h.value, t, f)}</strong>
                     {h.changedAt ? (
                       <span className="meta"> {formatWhen(h.changedAt, f, t)}</span>
                     ) : null}
@@ -626,403 +430,70 @@ const Panel = ({
             </ol>
           </section>
         ) : null}
-        {mine.length ? (
-          <section aria-labelledby="log-h" className="stack-sm">
-            <h3 id="log-h">{t('settings.changesHere')}</h3>
-            <ul className="plain">
-              {mine.map((l) => (
-                <li key={`${l.when}-${l.what}`}>
-                  <strong>{l.when}</strong> · {l.what}
-                  <span className="meta"> «{l.reason}»</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
       </div>
     </SidePanel>
   );
 };
 
-const Cell = ({
-  s,
-  value,
-  applicable,
-  effective,
-  inherited,
-  pinned,
-}: {
-  s: GridSetting;
-  value: unknown;
-  applicable: boolean;
-  effective: boolean;
-  inherited: string;
-  pinned?: string;
-}) => {
+const lowerFirst = (text: string) => `${text.charAt(0).toLowerCase()}${text.slice(1)}`;
+
+const Table = ({ grid, onOpen }: { grid: SettingsGrid; onOpen: (key: string) => void }) => {
   const t = useT();
   const f = useFormat();
-  if (!applicable) return <TableCell className="cell-na">{t('settings.cannotSet')}</TableCell>;
-  if (pinned)
-    return (
-      <TableCell className="cell-pinned">
-        <span className="two-line">
-          <span>{pinned}</span>
-          <span className="meta">{t('settings.pinnedLower')}</span>
-          <VisuallyHidden>{t('settings.applies')}</VisuallyHidden>
-        </span>
-      </TableCell>
-    );
-  if (value === undefined || value === null)
-    return (
-      <TableCell className="cell-inherited">
-        <span className="two-line">
-          <span>{inherited}</span>
-          <span className="meta">{t('settings.inherited')}</span>
-        </span>
-      </TableCell>
-    );
   return (
-    <TableCell className={effective ? 'cell-effective' : undefined}>
-      <span className="two-line">
-        <span>{formatValue(s, value, t, f)}</span>
-        {s.type === 'secret' && value === 'set' ? (
-          <span className="meta">{t('settings.replaceInPanel')}</span>
-        ) : null}
-        {effective ? <VisuallyHidden>{t('settings.applies')}</VisuallyHidden> : null}
-      </span>
-    </TableCell>
-  );
-};
-
-const Grid = ({
-  api,
-  grid,
-  log,
-  onSaved,
-}: {
-  api: ApiClient;
-  grid: SettingsGrid;
-  log: LogEntry[];
-  onSaved: (entry: LogEntry, flash: string) => void;
-}) => {
-  const t = useT();
-  const f = useFormat();
-  const [mode, setMode] = useState<Mode>('one');
-  const [tenant, setTenant] = useState(grid.tenants[0] ?? '');
-  const tenantServices = grid.services.filter((s) => s.tenant === tenant);
-  const [service, setService] = useState(tenantServices[0]?.name ?? '');
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('all');
-  const [onlyOverridden, setOnlyOverridden] = useState(false);
-  const [open, setOpen] = useState<string | undefined>();
-  const selection = { tenant, service };
-  const close = useCallback(() => setOpen(undefined), []);
-  const tenantName = useTenantNames(api);
-
-  useEffect(() => {
-    setService(grid.services.find((s) => s.tenant === tenant)?.name ?? '');
-  }, [grid.services, tenant]);
-
-  const categories = [...new Set(grid.settings.map((s) => s.category))];
-  const q = query.trim().toLowerCase();
-  const overridden = (s: GridSetting) =>
-    mode === 'all'
-      ? Object.keys(s.tenants).length > 0
-      : s.tenants[tenant] !== undefined ||
-        s.services[serviceKey(selection)] !== undefined ||
-        Boolean(s.pins?.[serviceKey(selection)]);
-  const rows = grid.settings.filter(
-    (s) =>
-      (category === 'all' || s.category === category) &&
-      (!q || `${s.label} ${s.key} ${s.description}`.toLowerCase().includes(q)) &&
-      (!onlyOverridden || overridden(s)),
-  );
-  const serviceRisk = grid.services.find((s) => s.tenant === tenant && s.name === service)?.risk;
-  const effText = (s: GridSetting, e: Effective) =>
-    isRiskValue(e.value) && serviceRisk
-      ? t('settings.effRisk', {
-          state: e.value[serviceRisk] ? t('settings.on') : t('settings.off'),
-          level: t(riskLabel[serviceRisk]),
-        })
-      : formatValue(s, e.value, t, f);
-  const platformSub = grid.platformDate
-    ? t('settings.platformVersionDated', { version: grid.platformVersion, date: grid.platformDate })
-    : t('settings.platformVersion', { version: grid.platformVersion });
-  const columns =
-    mode === 'all'
-      ? [
-          {
-            label: t('settings.layerPlatform'),
-            sub: platformSub,
-          },
-          ...grid.tenants.map((org) => ({ label: tenantName(org), sub: '' })),
-        ]
-      : [
-          {
-            label: t('settings.layerPlatform'),
-            sub: platformSub,
-          },
-          {
-            label: tenant ? tenantName(tenant) : t('settings.layerTenant'),
-            sub: t('settings.layerTenant'),
-          },
-          { label: service || t('settings.layerService'), sub: t('settings.layerService') },
-        ];
-  const current = grid.settings.find((s) => s.key === open);
-
-  return (
-    <div className="stack">
-      <div className="toolbar">
-        {mode === 'one' && grid.tenants.length ? (
-          <>
-            <div className="field">
-              <Label htmlFor="grid-tenant">{t('settings.layerTenant')}</Label>
-              <Select id="grid-tenant" value={tenant} onChange={(e) => setTenant(e.target.value)}>
-                {grid.tenants.map((org) => (
-                  <Select.Option key={org} value={org}>
-                    {tenantName(org)}
-                  </Select.Option>
-                ))}
-              </Select>
-            </div>
-            {tenantServices.length ? (
-              <div className="field">
-                <Label htmlFor="mal">{t('settings.layerService')}</Label>
-                <Select id="mal" value={service} onChange={(e) => setService(e.target.value)}>
-                  {tenantServices.map((s) => (
-                    <Select.Option key={s.name} value={s.name}>
-                      {s.name}
-                    </Select.Option>
-                  ))}
-                </Select>
-              </div>
-            ) : null}
-          </>
-        ) : null}
-        <Fieldset>
-          <FieldsetLegend>{t('settings.view')}</FieldsetLegend>
-          <div className="chips">
-            <Chip.Radio name="opmode" checked={mode === 'one'} onChange={() => setMode('one')}>
-              {t('settings.oneTenant')}
-            </Chip.Radio>
-            <Chip.Radio name="opmode" checked={mode === 'all'} onChange={() => setMode('all')}>
-              {t('common.allTenants')}
-            </Chip.Radio>
-          </div>
-        </Fieldset>
-      </div>
-      {!grid.tenants.length ? (
-        <Alert data-color="info" data-size="sm">
-          {t('settings.onlyDefaults')}
-        </Alert>
-      ) : null}
-      <div className="filters">
-        <Textfield
-          className="search-field"
-          label={t('settings.search')}
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <Fieldset>
-          <FieldsetLegend>{t('settings.category')}</FieldsetLegend>
-          <div className="chips">
-            {['all', ...categories].map((c) => (
-              <Chip.Radio
-                key={c}
-                name="kat"
-                checked={category === c}
-                onChange={() => setCategory(c)}
-              >
-                {c === 'all' ? t('settings.categoryAll') : c}
-              </Chip.Radio>
-            ))}
-          </div>
-        </Fieldset>
-        <Switch
-          label={mode === 'all' ? t('settings.onlyOverriddenAll') : t('settings.onlyOverriddenOne')}
-          checked={onlyOverridden}
-          onChange={() => setOnlyOverridden((v) => !v)}
-        />
-      </div>
-      <div className="legend-row">
-        <span aria-live="polite">
-          {t('settings.showing', { shown: rows.length, total: grid.settings.length })}
-        </span>
-        <span className="legend-item">
-          <span className="swatch effective" aria-hidden="true" />
-          {t('settings.effectiveValue')}
-        </span>
-        <span className="legend-item">
-          <span className="inherited-sample">8</span> {t('settings.inheritedHelp')}
-        </span>
-      </div>
-      <TableRegion label={t('settings.tableLabel')}>
-        <Table
-          data-size="sm"
-          className={mode === 'all' ? 'settings-grid wide-1700' : 'settings-grid wide-820'}
-        >
-          <TableHead>
-            <TableRow>
-              <TableHeaderCell scope="col" className="sticky-col">
-                {t('settings.colSetting')}
-              </TableHeaderCell>
-              {columns.map((c) => (
-                <TableHeaderCell scope="col" key={c.label}>
-                  <span className="two-line">
-                    <span>{c.label}</span>
-                    {c.sub ? <span className="meta">{c.sub}</span> : null}
-                  </span>
-                </TableHeaderCell>
-              ))}
-              {mode === 'one' ? (
-                <TableHeaderCell scope="col">{t('settings.colApplies')}</TableHeaderCell>
-              ) : null}
-            </TableRow>
-          </TableHead>
-          {categories
-            .map((cat) => ({ cat, items: rows.filter((s) => s.category === cat) }))
-            .filter((g) => g.items.length)
-            .map(({ cat, items }) => (
-              <TableBody key={cat}>
-                <TableRow className="group-row">
-                  <TableHeaderCell
-                    scope="rowgroup"
-                    colSpan={columns.length + (mode === 'one' ? 2 : 1)}
-                  >
-                    {cat} <span className="meta">({items.length})</span>
-                  </TableHeaderCell>
-                </TableRow>
-                {items.map((s) => {
-                  const e = effectiveOf(s, selection, s.version, t);
-                  const sens = sensitivityLabel[s.sensitivity];
-                  const suggestion = suggestionOf(s, grid.tenants);
-                  const tenantValue = s.scope.includes('tenant') ? s.tenants[tenant] : undefined;
-                  return (
-                    <TableRow key={s.key} className={open === s.key ? 'selected' : undefined}>
-                      <TableHeaderCell scope="row" className="sticky-col row-head">
-                        <span className="two-line">
-                          <button
-                            type="button"
-                            className="link-button"
-                            onClick={() => setOpen(s.key)}
-                          >
-                            {s.label}
-                          </button>
-                          <span className="meta">{s.key}</span>
-                          <span className="name-line">
-                            {s.sensitivity !== 'low' ? (
-                              <Tag data-size="sm" data-color={sens[1]}>
-                                {t(sens[0])}
-                              </Tag>
-                            ) : null}
-                            {suggestion ? (
-                              <Tag data-size="sm" data-color="info">
-                                {t('settings.suggestedDefault')}
-                              </Tag>
-                            ) : null}
-                          </span>
-                        </span>
-                      </TableHeaderCell>
-                      {mode === 'all' ? (
-                        <>
-                          <Cell
-                            s={s}
-                            value={s.platform}
-                            applicable
-                            effective={false}
-                            inherited=""
-                          />
-                          {grid.tenants.map((org) => (
-                            <Cell
-                              key={org}
-                              s={s}
-                              value={s.tenants[org]}
-                              applicable={s.scope.includes('tenant')}
-                              effective={false}
-                              inherited={formatValue(s, s.platform, t, f)}
-                            />
-                          ))}
-                        </>
-                      ) : (
-                        <>
-                          <Cell
-                            s={s}
-                            value={s.platform}
-                            applicable
-                            effective={e.layer === 'P'}
-                            inherited="–"
-                          />
-                          <Cell
-                            s={s}
-                            value={tenantValue}
-                            applicable={s.scope.includes('tenant')}
-                            effective={e.layer === 'V'}
-                            inherited={formatValue(s, s.platform, t, f)}
-                          />
-                          <Cell
-                            s={s}
-                            value={
-                              s.scope.includes('service')
-                                ? s.services[serviceKey(selection)]
-                                : undefined
-                            }
-                            applicable={s.scope.includes('service')}
-                            effective={e.layer === 'T'}
-                            inherited={formatValue(s, tenantValue ?? s.platform, t, f)}
-                            {...(e.layer === 'pin'
-                              ? { pinned: formatValue(s, e.value, t, f) }
-                              : {})}
-                          />
-                          <TableCell>
-                            <span className="two-line">
-                              <span className="label-strong">{effText(s, e)}</span>
-                              <Tag data-size="sm" data-color={e.color}>
-                                {e.source}
-                              </Tag>
-                            </span>
-                          </TableCell>
-                        </>
-                      )}
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            ))}
-        </Table>
-      </TableRegion>
-      {rows.length === 0 ? (
-        <Paragraph>
-          {t('settings.noMatch')}{' '}
-          <Button
-            variant="tertiary"
-            data-size="sm"
-            onClick={() => {
-              setQuery('');
-              setCategory('all');
-              setOnlyOverridden(false);
-            }}
-          >
-            {t('settings.reset')}
-          </Button>
-        </Paragraph>
-      ) : null}
-      <Paragraph data-size="sm" className="meta">
-        {t('settings.footnote')}
-      </Paragraph>
-      {current ? (
-        <Panel
-          key={current.key}
-          api={api}
-          grid={grid}
-          setting={current}
-          selection={selection}
-          mode={mode}
-          log={log}
-          onClose={close}
-          onSaved={onSaved}
-        />
-      ) : null}
+    <div className="pf-region" tabIndex={0} role="region" aria-label={t('settings.tabDefaults')}>
+      <table className="pf-table pf-min-720 pf-tall">
+        <thead>
+          <tr>
+            <th scope="col">{t('settings.colSetting')}</th>
+            <th scope="col">{t('settings.colDefault')}</th>
+            <th scope="col">{t('settings.colOwnValue')}</th>
+            <th scope="col">
+              <span className="visually-hidden">{t('settings.colAction')}</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {grid.settings.map((s) => {
+            const own = Object.keys(s.tenants).length;
+            return (
+              <tr key={s.key}>
+                <td>{s.label}</td>
+                <td className="strong">{defaultText(s, t, f)}</td>
+                <td className={own ? undefined : 'muted'}>
+                  {own ? (
+                    <button
+                      type="button"
+                      className="pf-link"
+                      aria-label={t('settings.ownValueFor', {
+                        count: own,
+                        label: lowerFirst(s.label),
+                      })}
+                      onClick={() => onOpen(s.key)}
+                    >
+                      {t('settings.tenantCount', { count: own })}
+                    </button>
+                  ) : (
+                    t('settings.none')
+                  )}
+                </td>
+                <td className="end">
+                  {s.type === 'secret' ? null : (
+                    <button
+                      type="button"
+                      className="pf-link"
+                      aria-label={t('settings.changeFor', { label: lowerFirst(s.label) })}
+                      onClick={() => onOpen(s.key)}
+                    >
+                      {t('settings.change')}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 };
@@ -1042,66 +513,56 @@ export const Settings = ({ api }: { api: ApiClient }) => {
     },
     [api],
   );
-  const [tab, setTab] = useState('grid');
-  const [log, setLog] = useState<LogEntry[]>([]);
   const flash = useFlash();
   const [grid, setGrid] = useState<SettingsGrid | undefined>();
+  const [open, setOpen] = useState<string | undefined>();
+  const close = useCallback(() => setOpen(undefined), []);
 
   useEffect(() => {
     if (state.status === 'ready') setGrid(state.data);
   }, [state]);
 
+  const current = grid?.settings.find((s) => s.key === open);
   return (
     <>
-      <nav aria-label={t('settings.breadcrumbs')} className="crumbs">
-        <a href="#/tenants">{t('shell.title')}</a>
-        <span aria-hidden="true">/</span>
-        <span>{t('shell.pageSettings')}</span>
-      </nav>
-      <div className="page-header">
-        <Heading level={1} data-size="md">
-          {t('settings.title')}
-        </Heading>
-        <p className="intro">{t('settings.intro')}</p>
-      </div>
-      <Tabs
-        value={tab}
-        onChange={(v) => {
-          setTab(v);
-          flash.clear();
-        }}
-      >
-        <TabsList>
-          <TabsTab value="grid">{t('shell.pageSettings')}</TabsTab>
-          <TabsTab value="transfer">{t('settings.tabTransfer')}</TabsTab>
-        </TabsList>
-        <Flash message={flash.message} />
-        <TabsPanel value="grid">
-          {state.status === 'loading' ? (
-            <Loading label={t('settings.loading')} />
-          ) : state.status === 'error' ? (
-            <ErrorState error={state.error} onRetry={retry} />
-          ) : !grid || grid.settings.length === 0 ? (
-            <EmptyState title={t('settings.emptyTitle')}>
-              <Paragraph>{t('settings.emptyText')}</Paragraph>
-            </EmptyState>
-          ) : (
-            <Grid
-              api={api}
-              grid={grid}
-              log={log}
-              onSaved={(entry, message) => {
-                setLog((l) => [entry, ...l]);
-                flash.show(message);
-                retry();
-              }}
-            />
-          )}
-        </TabsPanel>
-        <TabsPanel value="transfer">
+      <h1 className="pf-title">{t('settings.title')}</h1>
+      <PageTabs />
+      <Flash message={flash.message} />
+      {!grid && state.status === 'error' ? (
+        <ErrorState error={state.error} onRetry={retry} />
+      ) : !grid ? (
+        <Loading label={t('settings.loading')} />
+      ) : grid.settings.length === 0 ? (
+        <EmptyState title={t('settings.emptyTitle')}>
+          <Paragraph>{t('settings.emptyText')}</Paragraph>
+        </EmptyState>
+      ) : (
+        <Table
+          grid={grid}
+          onOpen={(key) => {
+            flash.clear();
+            setOpen(key);
+          }}
+        />
+      )}
+      <Details>
+        <DetailsSummary>{t('settings.tabTransfer')}</DetailsSummary>
+        <DetailsContent>
           <Transfer api={api} grid={grid} onFlash={(text) => flash.show(text)} />
-        </TabsPanel>
-      </Tabs>
+        </DetailsContent>
+      </Details>
+      {current ? (
+        <Panel
+          key={current.key}
+          api={api}
+          setting={current}
+          onClose={close}
+          onSaved={(message) => {
+            flash.show(message);
+            retry();
+          }}
+        />
+      ) : null}
     </>
   );
 };

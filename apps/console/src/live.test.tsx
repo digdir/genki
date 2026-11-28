@@ -138,26 +138,25 @@ describe('live mode without invented data', () => {
     const row = (await screen.findByText('Digitaliseringsdirektoratet')).closest(
       'tr',
     ) as HTMLElement;
-    expect(within(row).getByText(/3,41 kr/)).toBeTruthy();
-    expect(within(row).getByText(/1,8 mill\./)).toBeTruthy();
-    expect(within(row).queryByText('Ikke tilgjengelig')).toBeNull();
+    expect(within(row).getByText('3,41 kr')).toBeTruthy();
   });
 
-  it('says Ikke tilgjengelig for usage the API does not report, and names the month', async () => {
+  it('says Ikke tilgjengelig for cost the API does not report, and names the month', async () => {
     await openLive('#/tenants');
 
     const row = (await screen.findByText('Digitaliseringsdirektoratet')).closest(
       'tr',
     ) as HTMLElement;
-    expect(within(row).getAllByText('Ikke tilgjengelig')).toHaveLength(2);
-    expect(within(row).queryByText(/0 % av kvoten|0 kr/)).toBeNull();
+    expect(within(row).getAllByText('Ikke tilgjengelig').length).toBeGreaterThan(0);
+    expect(within(row).queryByText(/^0 kr$/)).toBeNull();
     const month = new Intl.DateTimeFormat('nb-NO', {
-      month: 'long',
+      day: 'numeric',
+      month: 'short',
       timeZone: 'Europe/Oslo',
-    }).format(new Date());
-    const tokens = screen.getByText(`Tokens i ${month}`, { selector: ':not(th)' });
-    expect(tokens.parentElement?.textContent).toContain('Ikke tilgjengelig');
-    expect(screen.queryByText(/0,0 mill\./)).toBeNull();
+    })
+      .formatToParts(new Date())
+      .find((part) => part.type === 'month')?.value;
+    expect(screen.getByRole('columnheader', { name: `Kostnad i ${month}` })).toBeTruthy();
   });
 
   it('registers a tenant through the platform without onboarding requests', async () => {
@@ -298,7 +297,7 @@ describe('live mode without invented data', () => {
     expect(api.calls.some((c) => c.path === '/api/operator/operations')).toBe(true);
   });
 
-  it('shows the operations overview from the API, with a dash where it reports no number', async () => {
+  it('warns about a slow part of the platform from the operations overview', async () => {
     await openLive('#/operations', (path) =>
       path === '/api/operator/operations'
         ? json({
@@ -307,35 +306,16 @@ describe('live mode without invented data', () => {
               { name: 'API', status: 'normal' },
               { name: 'Innlesing', status: 'degraded', errorRate: '50 %' },
             ],
-            queueStats: [{ label: 'Innlesinger som kjører', value: '1' }],
-            queue: [
-              {
-                type: 'Innlesing',
-                what: 'Nettsider · nettsider · Digitaliseringsdirektoratet',
-                status: 'running',
-                age: '3 min',
-                at: '2026-10-08T10:00:00Z',
-              },
-            ],
-            triggers: [
-              {
-                tenant: 'Digitaliseringsdirektoratet',
-                what: 'Planlagt innlesing: Nettsider · nettsider',
-                error: 'sitemap svarte 503',
-                failedAt: '2026-10-08T03:00:00Z',
-              },
-            ],
+            queueStats: [],
+            queue: [],
+            triggers: [],
           })
         : undefined,
     );
 
-    const rates = await screen.findByRole('region', { name: 'Feilrate siste time' });
-    expect(within(rates).getByText('50 %')).toBeTruthy();
-    expect(within(rates).getByText('Høyt')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Innlesing svarer tregt' })).toBeTruthy();
-    expect(screen.getByText('Nettsider · nettsider · Digitaliseringsdirektoratet')).toBeTruthy();
-    expect(screen.getByText('sitemap svarte 503')).toBeTruthy();
-    expect(screen.getByText(/Siste vellykkede: aldri/)).toBeTruthy();
+    const alert = await screen.findByRole('region', { name: 'Innlesing svarer tregt' });
+    expect(alert.textContent).toMatch(/50 %/);
+    expect(screen.getByText('Ingen kjøringer siste time')).toBeTruthy();
     expect(screen.queryByText(/API-et svarer/)).toBeNull();
   });
 

@@ -53,7 +53,6 @@ export const searchEngines = {
   capabilityMissing: 'no {name}',
   locationNorway: 'Norway',
   locationEu: 'EU/EEA',
-  locationGlobal: 'Outside the EU/EEA',
   dataIn: 'Data in {place}',
   dataOutside: 'Data outside the EU/EEA',
   ruleRequired: 'required',

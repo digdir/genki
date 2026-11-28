@@ -1,18 +1,11 @@
-import {
-  Alert,
-  Button,
-  Dialog,
-  Heading,
-  Paragraph,
-  Textarea,
-  Label,
-  ValidationMessage,
-} from '@digdir/designsystemet-react';
+import { Alert, Button, Dialog, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { intlLocale, type Format } from '@genai/i18n';
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { ApiError } from './api';
 import { useT, type T } from './i18n';
 import { minimumReasonLength } from './reason';
+import { ReasonField } from './components/ReasonField';
+import { PageTabs } from './page-tabs';
 
 export const PageHeader = ({
   title,
@@ -25,13 +18,16 @@ export const PageHeader = ({
 }) => {
   const t = useT();
   return (
-    <div className="page-header">
-      <span className="eyebrow">{eyebrow ?? t('common.allTenants')}</span>
-      <Heading level={1} data-size="lg">
-        {title}
-      </Heading>
-      {intro ? <p className="intro">{intro}</p> : null}
-    </div>
+    <>
+      <div className="page-header">
+        <span className="eyebrow">{eyebrow ?? t('common.allTenants')}</span>
+        <Heading level={1} data-size="lg">
+          {title}
+        </Heading>
+        {intro ? <p className="intro">{intro}</p> : null}
+      </div>
+      <PageTabs />
+    </>
   );
 };
 
@@ -215,20 +211,14 @@ export const ReasonDialog = ({
           {text ? <Paragraph>{text}</Paragraph> : null}
           {children}
           {info ? null : (
-            <div className="field">
-              <Label htmlFor={`${id}-reason`}>{t('common.reason')}</Label>
-              <Textarea
-                id={`${id}-reason`}
-                rows={2}
-                value={reason}
-                aria-invalid={error ? true : undefined}
-                onChange={(e) => {
-                  setReason(e.target.value);
-                  setError(undefined);
-                }}
-              />
-              {error ? <ValidationMessage>{error}</ValidationMessage> : null}
-            </div>
+            <ReasonField
+              value={reason}
+              error={error}
+              onChange={(value) => {
+                setReason(value);
+                setError(undefined);
+              }}
+            />
           )}
           <div className="actions-row">
             <Button onClick={() => void confirm()} loading={busy}>

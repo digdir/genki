@@ -2,7 +2,6 @@ import { defineNamespace } from '@genai/i18n';
 
 export const modelParameters = defineNamespace({
   open: 'Parametere',
-  openFor: 'Parametere for {model}',
   title: 'Parametere for {model}',
   text: 'Noen modeller avviser parametere som tjenestene sender. Her bestemmer du hva plattformen sender til denne modellen, uavhengig av hva tjenestene har satt.',
   save: 'Lagre parametere',

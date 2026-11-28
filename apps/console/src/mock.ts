@@ -23,6 +23,7 @@ import type { demosMock } from './screens/demos/mock';
 import { flagsMock } from './screens/flags/mock';
 import { queueMock } from './screens/queue/mock';
 import { orgMock, type OrgMockContext } from './screens/org/mock';
+import { operateMock } from './screens/operate/mock';
 import { quotaRequestsMock } from './screens/quota-requests/mock';
 import { searchEnginesMock } from './screens/search-engines/mock';
 import { translator } from './i18n';
@@ -208,7 +209,7 @@ export const exampleBlocks: BuildingBlocks = {
       description: 'Klassifiser tekst',
       usedBy: ['999888777/postsortering-flyt'],
     },
-    { ref: 'retrieve@1', description: 'Søk i datasett', usedBy: [] },
+    { ref: 'retrieve@1', description: 'Søk i dokumentsamlinger', usedBy: [] },
   ],
   tools: [
     { ref: 'rag@1', configSchema: { type: 'object' }, usedBy: ['991825827/kunnskapsassistenten'] },
@@ -456,34 +457,21 @@ export const mockFetch = (
     ];
   };
 
-  const tenantLimits: SettingInfo[] = (
-    [
-      ['usage.monthlyTokens', 'usage', 50_000_000],
-      ['usage.tenantCallsPerMinute', 'usage', 600],
-      ['assistant.dailyTokens', 'assistant', 200_000],
-      ['batch.approvalLimitNok', 'usage', 150],
-    ] as const
-  ).map(([key, category, value]) => ({
-    key,
-    description: key,
-    category,
-    axis: 'service',
-    sensitivity: 'normal',
-    default: value,
-    settableAt: ['platform', 'tenant'],
-  }));
   const catalog = (): SettingInfo[] =>
-    grid.settings
-      .map((s): SettingInfo => ({
-        key: s.key,
-        description: s.description,
-        category: s.category,
-        axis: s.scope.includes('dataset') && !s.scope.includes('service') ? 'dataset' : 'service',
-        sensitivity: s.type === 'secret' ? 'secret' : 'normal',
-        default: s.platform,
-        settableAt: ['platform', ...s.scope],
-      }))
-      .concat(tenantLimits);
+    grid.settings.map((s): SettingInfo => ({
+      key: s.key,
+      description: s.description,
+      category: s.category,
+      axis: s.scope.includes('dataset') && !s.scope.includes('service') ? 'dataset' : 'service',
+      sensitivity: s.type === 'secret' ? 'secret' : 'normal',
+      default: s.platform,
+      settableAt: ['platform', ...s.scope],
+      ...(s.type === 'enum' && s.options
+        ? { schema: { enum: s.options.map((o) => o.value) } }
+        : s.type === 'int'
+          ? { schema: { type: 'integer', ...(s.min === undefined ? {} : { minimum: s.min }) } }
+          : {}),
+    }));
   const defaults = (): DefaultVersion[] =>
     grid.settings
       .filter((s) => s.type !== 'secret')
@@ -800,6 +788,13 @@ export const mockFetch = (
     flagRows: () => flagRoutes.rows(),
     contentRead: (tenant, target) => readContent(tenant, target),
   });
+  const operateRoutes = operateMock(json, {
+    now: () => new Date(),
+    tenants: () => tenantList,
+    log: () => log,
+    recordAction,
+    failedRuns: (now) => orgRoutes.failedRuns(now),
+  });
   const endpointKey = '/operator/catalog/entries?kind=model-endpoint';
   const operations = operationsMock(
     () => current,
@@ -1019,6 +1014,8 @@ export const mockFetch = (
     readContent = contentRead;
     const organisation = orgRoutes(path, method, url.searchParams, body, reason);
     if (organisation) return organisation;
+    const operate = operateRoutes(path, method, url.searchParams, body, reason, contentRead);
+    if (operate) return operate;
     const flagged = flagRoutes(path, method, reason, body);
     if (flagged) return flagged;
     const quota = quotaRoutes(path, method, url.searchParams, reason, body);
@@ -1208,16 +1205,15 @@ export const mockFetch = (
           dryRun: true,
           services: grid.services.map((s) => {
             const id = `${s.tenant}/${s.name}`;
-            const pinned = setting.pins?.[id];
             const own = setting.services[id] ?? setting.tenants[s.tenant];
-            const status = pinned ? 'pinned' : own !== undefined ? 'overridden' : 'changes';
+            const status = own !== undefined ? 'overridden' : 'changes';
             return {
               tenant: s.tenant,
               service: s.name,
               version: 7,
               status,
-              before: pinned?.value ?? own ?? setting.platform,
-              after: status === 'changes' ? value : (pinned?.value ?? own),
+              before: own ?? setting.platform,
+              after: status === 'changes' ? value : own,
             };
           }),
         });

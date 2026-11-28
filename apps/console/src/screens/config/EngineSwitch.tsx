@@ -25,6 +25,7 @@ import type {
   SwitchEstimate,
   ValidationProblem,
 } from '../../types';
+import { ReasonField } from '../../components/ReasonField';
 
 const stateLabels: Record<EngineSwitchState, PlainKey> = {
   running: 'engineSwitch.stateRunning',
@@ -171,12 +172,12 @@ const Loaded = ({
     void act(min, (r) => api.engineSwitchAction(base, sid, name, r));
 
   const reasonField = (
-    <Textfield
+    <ReasonField
+      single
       className="reason"
-      label={t('common.reason')}
       value={reason}
-      onChange={(e) => {
-        setReason(e.target.value);
+      onChange={(value) => {
+        setReason(value);
         setReasonError(undefined);
       }}
       error={reasonError}

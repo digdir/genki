@@ -43,7 +43,8 @@ import type {
   QualityOverview,
   Verdict,
 } from '../types';
-import { Flash, PageHeader, TableRegion, useFlash } from '../ui';
+import { DialogError, Flash, PageHeader, ReasonDialog, TableRegion, useFlash } from '../ui';
+import { ReasonField } from '../components/ReasonField';
 
 const statusTag: Record<MatrixColumnStatus, [PlainKey, 'success' | 'info' | 'neutral']> = {
   in_use: ['qualityMatrix.statusInUse', 'success'],
@@ -145,15 +146,12 @@ const ReleaseModel = ({
         {t('qualityMatrix.releaseTitle')}
       </Heading>
       <Paragraph data-size="sm">{t('qualityMatrix.releaseText')}</Paragraph>
-      <Textfield
-        label={t('common.reason')}
+      <ReasonField
         description={hint}
-        multiline
-        rows={2}
         value={reason}
         error={error}
-        onChange={(e) => {
-          setReason(e.target.value);
+        onChange={(value) => {
+          setReason(value);
           setError(undefined);
         }}
       />
@@ -483,15 +481,12 @@ const RunMatrix = ({
                 ? t('qualityMatrix.missingPrice', { models: estimate.unpriced.join(', ') })
                 : ''}
             </Paragraph>
-            <Textfield
-              label={t('common.reason')}
+            <ReasonField
               description={t('qualityMatrix.reasonHintAudited', { min: runReasonMinimum })}
-              multiline
-              rows={2}
               value={runReason}
               error={runReasonError}
-              onChange={(e) => {
-                setRunReason(e.target.value);
+              onChange={(value) => {
+                setRunReason(value);
                 setRunReasonError(undefined);
               }}
             />
@@ -611,6 +606,7 @@ const MatrixView = ({
   const tRef = useRef(t);
   tRef.current = t;
   const [kind, setKind] = useState<'models' | 'blocks'>('models');
+  const [releasing, setReleasing] = useState<{ name: string; action: string } | undefined>();
   const flash = useFlash();
   const m = quality.matrix?.[kind] ?? fromRuns(quality, t);
   const advisory = (judgeId?: string) => {
@@ -651,20 +647,23 @@ const MatrixView = ({
       bad,
     } as const;
   });
-  const act = async (c: (typeof verdicts)[number]) => {
+  const act = (c: (typeof verdicts)[number]) => {
     if (c.bad) {
       flash.show(t('qualityMatrix.blockedFlash', { name: c.name }), 'danger');
       return;
     }
+    flash.clear();
+    setReleasing({ name: c.name, action: c.action });
+  };
+  const release = async (reason: string) => {
+    if (!releasing) return;
+    const { name } = releasing;
     try {
-      await api.releaseMatrixColumn(kind, c.name);
-      flash.show(tRef.current('qualityMatrix.allowedFlash', { name: c.name }));
+      await api.releaseMatrixColumn(kind, name, reason);
     } catch (e) {
-      flash.show(
-        problemTitle(e) ?? tRef.current('qualityMatrix.allowFailed', { name: c.name }),
-        'danger',
-      );
+      throw new DialogError(problemTitle(e) ?? tRef.current('qualityMatrix.allowFailed', { name }));
     }
+    flash.show(tRef.current('qualityMatrix.allowedFlash', { name }));
   };
   return (
     <div className="stack">
@@ -766,7 +765,7 @@ const MatrixView = ({
                             action: c.action,
                             name: c.name,
                           })}
-                          onClick={() => void act(c)}
+                          onClick={() => act(c)}
                         >
                           {c.action}
                         </Button>
@@ -782,6 +781,13 @@ const MatrixView = ({
       <Paragraph data-size="sm" className="meta">
         {t('qualityMatrix.matrixNote')}
       </Paragraph>
+      <ReasonDialog
+        open={releasing !== undefined}
+        title={releasing ? `${releasing.action}: ${releasing.name}` : ''}
+        confirmLabel={releasing?.action ?? ''}
+        onClose={() => setReleasing(undefined)}
+        onConfirm={release}
+      />
     </div>
   );
 };

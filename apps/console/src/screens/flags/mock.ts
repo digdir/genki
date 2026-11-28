@@ -3,17 +3,44 @@ import type { OperatorFlag } from '../../types';
 
 type Row = OperatorFlag['rows'][number];
 
-export const flagsMock = (json: (body: unknown, status?: number) => Response) => {
+export const flagsMock = (
+  json: (body: unknown, status?: number) => Response,
+  now = () => new Date('2026-11-26T12:00:00Z'),
+) => {
   let rows: (Row & { key: string; expiresAt?: string })[] = [
     {
       key: 'blockStudio',
-      tenant: '991825827',
-      tenantName: 'Digitaliseringsdirektoratet',
+      tenant: '983555666',
+      tenantName: 'Kontrollrådet',
       on: true,
-      by: 'operator:entra:drift',
-      byName: 'Ola Drift',
-      at: '2026-11-24T09:00:00Z',
-      reason: 'Laben prøver ny utforming først',
+      by: 'operator:entra:lise',
+      byName: 'Lise Dahl',
+      at: '2026-11-12T09:00:00Z',
+      reason: 'Pilot for designelementer',
+      expiresAt: '2026-12-31T22:59:59Z',
+    },
+    {
+      key: 'blockStudio',
+      tenant: '983555666',
+      tenantName: 'Kontrollrådet',
+      person: { issuer: 'https://login.example.no', subject: 'marte' },
+      personName: 'Marte Solheim',
+      on: false,
+      by: 'operator:entra:bjorn',
+      byName: 'Bjørn Aas',
+      at: '2026-11-20T10:00:00Z',
+      reason: 'Vil teste uten',
+    },
+    {
+      key: 'blockStudio',
+      tenant: '983888999',
+      tenantName: 'Eksempelhelseforetaket',
+      on: true,
+      by: 'operator:entra:lise',
+      byName: 'Lise Dahl',
+      at: '2026-11-12T09:05:00Z',
+      reason: 'Pilot for designelementer',
+      expiresAt: '2026-11-30T22:59:59Z',
     },
   ];
   const mine: FlagState[] = flagKeys.map((key) => ({
@@ -36,7 +63,13 @@ export const flagsMock = (json: (body: unknown, status?: number) => Response) =>
         data: Object.entries(flags).map(([key, spec]) => ({
           key,
           ...spec,
-          rows: rows.filter((r) => r.key === key).map(({ key: _key, ...row }) => row),
+          rows: rows
+            .filter((r) => r.key === key)
+            .map(({ key: _key, ...row }) =>
+              row.expiresAt
+                ? { ...row, expired: Date.parse(row.expiresAt) <= now().getTime() }
+                : row,
+            ),
         })),
       });
     const match = /^\/operator\/flags\/([^/]+)$/.exec(path);

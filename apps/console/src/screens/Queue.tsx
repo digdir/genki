@@ -20,9 +20,7 @@ import {
   TabsPanel,
   TabsTab,
   Tag,
-  Textarea,
   Textfield,
-  ValidationMessage,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -50,6 +48,7 @@ import {
   type Mode,
   type Row,
 } from './queue/lanes';
+import { ReasonField } from '../components/ReasonField';
 
 export { pendingCount } from './queue/lanes';
 
@@ -716,24 +715,17 @@ const DecisionDialog = ({
             onChange={(e) => setCaseNo(e.target.value)}
           />
         ) : null}
-        <div className="field">
-          <Label htmlFor="queue-reason">{t('common.reason')}</Label>
-          <Paragraph data-size="sm" className="meta" id="queue-reason-h">
-            {t('queue.reasonHint', { min: minimumReasonLength })}
-          </Paragraph>
-          <Textarea
-            id="queue-reason"
-            rows={3}
-            value={reason}
-            aria-describedby="queue-reason-h"
-            aria-invalid={error ? true : undefined}
-            onChange={(e) => {
-              setReason(e.target.value);
-              if (error) setError(reasonError(e.target.value, t));
-            }}
-          />
-          {error ? <ValidationMessage>{error}</ValidationMessage> : null}
-        </div>
+        <ReasonField
+          id="queue-reason"
+          rows={3}
+          description={t('queue.reasonHint', { min: minimumReasonLength })}
+          value={reason}
+          error={error}
+          onChange={(value) => {
+            setReason(value);
+            if (error) setError(reasonError(value, t));
+          }}
+        />
         <p className="info-note">{t('queue.decisionSeen', { org: row.orgName })}</p>
         <span className="tag-line meta">
           <NotDecided />

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ApiClient } from './api';
 import { useT } from './i18n';
-import { SupportDialog } from './support-dialog';
+import { OperateDialog } from './screens/operate/parts';
 import { tenantLabel } from './tenant-names';
 
 interface Asking {
@@ -45,18 +45,13 @@ export const ContentReasonProvider = ({
   return (
     <>
       {children}
-      <SupportDialog
+      <OperateDialog
         open={Boolean(asking)}
-        title={t('support.contentReasonTitle')}
-        lead={asking ? t('support.contentReasonLead', { tenant: asking.name }) : undefined}
-        hint={t('support.contentReasonHint')}
-        sees={t('support.contentReasonSees')}
-        cta={t('support.contentReasonCta')}
-        api={{
-          method: 'POST',
-          path: `/operator/tenants/${asking?.tenant ?? '{tenant}'}/content-reason`,
-          body: (reason) => ({ reason }),
-        }}
+        title={asking ? t('contentView.title', { tenant: asking.name }) : ''}
+        lead={t('contentView.lead')}
+        hint={t('contentView.hint')}
+        cta={t('contentView.cta')}
+        failedText={t('contentView.failed')}
         onClose={() => {
           if (!answered.current) asking?.reject();
           answered.current = false;

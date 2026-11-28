@@ -72,7 +72,7 @@ afterEach(cleanup);
 
 describe('Modeller: connections', () => {
   it('the mock has one foundry connection with two API families, as genki-test does', async () => {
-    await signedIn('#/models');
+    await signedIn('#/models?tab=connections');
 
     const table = await screen.findByRole('region', { name: 'Liste over tilkoblinger' });
     const row = within(table).getByText('foundry').closest('tr') as HTMLElement;
@@ -82,7 +82,7 @@ describe('Modeller: connections', () => {
   });
 
   it('a connection without a processor record is flagged and links to registering it', async () => {
-    await signedIn('#/models');
+    await signedIn('#/models?tab=connections');
 
     const alert = (await screen.findByText('local-model mangler databehandleravtale.')).closest(
       '.ds-alert',
@@ -97,7 +97,7 @@ describe('Modeller: connections', () => {
 
   it('an empty connection list says how to start', async () => {
     const base = mockFetch();
-    await signedIn('#/models', async (input, init) =>
+    await signedIn('#/models?tab=connections', async (input, init) =>
       String(input).includes('kind=model-endpoint')
         ? Response.json({ data: [] })
         : base(input, init),
@@ -313,7 +313,7 @@ describe('Modeller: connections', () => {
 
   it('adds a connection and stores its secret without showing it again', async () => {
     const { calls, fetch } = recorded();
-    await signedIn('#/models', fetch);
+    await signedIn('#/models?tab=connections', fetch);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Ny tilkobling' }));
     const panel = await dialog('Ny tilkobling');
@@ -342,7 +342,7 @@ describe('Modeller: connections', () => {
 
   it("adds a connection that signs in with genki's own identity, with no secret field, marked as the AI gateway", async () => {
     const { calls, fetch } = recorded();
-    await signedIn('#/models', fetch);
+    await signedIn('#/models?tab=connections', fetch);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Ny tilkobling' }));
     const panel = await dialog('Ny tilkobling');
@@ -401,72 +401,54 @@ describe('Modeller: connections', () => {
 
 describe('Modeller: the model list', () => {
   const modelRow = async (name: string) => {
-    const table = await screen.findByRole('region', { name: 'Liste over modeller' });
-    return within(table).getByText(name, { selector: 'strong' }).closest('tr') as HTMLElement;
+    const table = await screen.findByRole('region', { name: 'Modeller' });
+    return within(table).getByRole('link', { name }).closest('tr') as HTMLElement;
   };
 
-  it('the model list shows only the kinds a model serves, without controls', async () => {
-    await signedIn('#/models?tab=models');
+  it('opens on the model list with the drawn columns, also from an old or unknown tab link', async () => {
+    await signedIn('#/models?tab=nonsense');
 
-    const table = await screen.findByRole('region', { name: 'Liste over modeller' });
-    expect(within(table).queryAllByRole('combobox')).toEqual([]);
-    expect(within(table).queryAllByRole('checkbox')).toEqual([]);
-    expect(within(table).queryAllByRole('switch')).toEqual([]);
-    const gpt = await modelRow('gpt-4.1');
-    expect(within(gpt).getByText('Samtale · openai/chat-completions@1')).toBeTruthy();
-    expect(within(gpt).getByText('Avgjørelser · openai/decide@1')).toBeTruthy();
-    const claude = await modelRow('claude-sonnet-5-5');
-    expect(within(claude).getByText('Samtale · anthropic/messages@1')).toBeTruthy();
-    expect(within(claude).queryByText(/Avgjørelser/)).toBeNull();
-    expect(within(table).queryByText('Ikke i bruk ·')).toBeNull();
-    expect(within(await modelRow('gpt-4o-2M-tps')).getByText('Ikke bekreftet')).toBeTruthy();
-  });
-
-  it('a discovered model genki has no API for shows its kind and that it needs a descriptor', async () => {
-    const clef: OperatorModel = {
-      id: 'ai-gateway/sigma2-clef-flash',
-      kind: 'evaluation',
-      kindFrom: 'listing',
-      listedEndpoints: ['/v1/decisions', '/v1/systemone'],
-      endpoint: 'ai-gateway',
-      deployment: 'sigma2:clef-flash',
-      residency: 'norway',
-      capabilities: [],
-      apis: {},
-      enabled: true,
-      origin: 'discovered',
-      classified: false,
-    };
-    await signedIn('#/models?tab=models', mockFetch(undefined, [...exampleModels, clef]));
-
-    const row = await modelRow('sigma2:clef-flash');
-    expect(within(row).getByText('evaluation: ikke koblet til et API')).toBeTruthy();
-    expect(within(row).getByText('Trenger en API-beskrivelse før den kan brukes')).toBeTruthy();
-  });
-
-  it('the model list can be searched and filtered by connection, kind and confirmation', async () => {
-    await signedIn('#/models?tab=models', mockFetch(undefined, [...exampleModels, localModel]));
-    const table = await screen.findByRole('region', { name: 'Liste over modeller' });
-    const names = () =>
+    expect(await screen.findByRole('heading', { level: 1, name: 'Modeller' })).toBeTruthy();
+    const table = await screen.findByRole('region', { name: 'Modeller' });
+    expect(
       within(table)
-        .queryAllByText(/./, { selector: 'strong' })
-        .map((e) => e.textContent);
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent),
+    ).toEqual(['Modell', 'Data behandles', 'Pris per 1M tokens', 'Type kall', 'Status']);
+    expect(within(table).queryAllByRole('combobox')).toEqual([]);
+  });
 
-    typeInto(screen.getByRole('searchbox', { name: 'Søk etter modell' }), 'gpt-4');
-    expect(names()).toEqual(['gpt-4o-2M-tps', 'gpt-4.1']);
-    typeInto(screen.getByRole('searchbox', { name: 'Søk etter modell' }), '');
+  it('shows where data is processed, the price per million tokens, the kinds of call and the status', async () => {
+    await signedIn('#/models', mockFetch(undefined, [...exampleModels, localModel]));
 
-    typeInto(screen.getByLabelText('Tilkobling'), 'local-model');
-    expect(names()).toEqual(['echo']);
-    typeInto(screen.getByLabelText('Tilkobling'), '');
+    const gpt = await modelRow('gpt-4.1');
+    expect(within(gpt).getByText('EU')).toBeTruthy();
+    expect(within(gpt).getByText('20 kr inn, 80 kr ut')).toBeTruthy();
+    expect(within(gpt).getByText('Tekst, Avgjørelser, Klarspråk, verktøy')).toBeTruthy();
+    expect(within(gpt).getByText('Tillatt')).toBeTruthy();
+    const unconfirmed = await modelRow('gpt-4o-2M-tps');
+    expect(within(unconfirmed).getByText('Globalt, ikke bekreftet')).toBeTruthy();
+    expect(within(unconfirmed).getByText('Ikke satt')).toBeTruthy();
+    expect(within(unconfirmed).getByText('Til vurdering')).toBeTruthy();
+    const echo = await modelRow('echo');
+    expect(within(echo).getByText('Norge')).toBeTruthy();
+    expect(within(echo).getByText('Ikke i bruk')).toBeTruthy();
+    expect(within(echo).getByText('local-model')).toBeTruthy();
+  });
 
-    typeInto(screen.getByLabelText('Type kall'), 'decide');
-    expect(names()).toEqual(['gpt-4.1']);
-    typeInto(screen.getByLabelText('Type kall'), '');
+  it('keeps the API list behind its tab link', async () => {
+    await signedIn('#/models?tab=apis');
 
-    typeInto(screen.getByLabelText('Bekreftet'), 'unconfirmed');
-    expect(names()).toEqual(['gpt-4o-2M-tps']);
-    expect(screen.getByText('Viser 1 av 5 modeller.')).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'API-er' })).toBeTruthy();
+  });
+
+  it('keeps the connection list behind its tab link, and links to it when there are no models', async () => {
+    await signedIn('#/models', mockFetch(undefined, []));
+
+    const link = await screen.findByRole('link', { name: 'Tilkoblinger' });
+    expect(link.getAttribute('href')).toBe('#/models?tab=connections');
+    fireEvent.click(link);
+    expect(await screen.findByRole('region', { name: 'Liste over tilkoblinger' })).toBeTruthy();
   });
 
   it('says how many models a refresh found and which providers did not answer, after its own reason', async () => {
@@ -475,7 +457,7 @@ describe('Modeller: the model list', () => {
       failed: [{ endpoint: 'foundry', error: 'listing deployments failed with HTTP 401' }],
     };
     const { changes, fetch } = recorded(mockFetch(undefined, undefined, result));
-    await signedIn('#/models?tab=models', fetch);
+    await signedIn('#/models', fetch);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Hent modeller på nytt' }));
     const box = await dialog('Hent modeller på nytt');
@@ -495,7 +477,7 @@ describe('Modeller: the model list', () => {
       failed: [],
       learned: { checked: [], calls: 12, deferred: 3 },
     };
-    await signedIn('#/models?tab=models', mockFetch(undefined, undefined, result));
+    await signedIn('#/models', mockFetch(undefined, undefined, result));
 
     fireEvent.click(await screen.findByRole('button', { name: 'Hent modeller på nytt' }));
     const box = await dialog('Hent modeller på nytt');
@@ -510,7 +492,7 @@ describe('Modeller: the model list', () => {
 
   it('adds a model on a connection with a chat API from its families', async () => {
     const { calls, fetch } = recorded();
-    await signedIn('#/models?tab=models', fetch);
+    await signedIn('#/models?tab=connections', fetch);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Legg til modell' }));
     const panel = await dialog('Legg til modell');
@@ -536,7 +518,7 @@ describe('Modeller: the model list', () => {
 
   it('derives a valid model id from a deployment with a provider prefix and keeps the deployment as typed', async () => {
     const { calls, fetch } = recorded();
-    await signedIn('#/models?tab=models', fetch);
+    await signedIn('#/models?tab=connections', fetch);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Legg til modell' }));
     const panel = await dialog('Legg til modell');
@@ -554,7 +536,7 @@ describe('Modeller: the model list', () => {
 
   it('refuses a deployment with no letters or digits instead of saving an id that ends in a slash', async () => {
     const { calls, fetch } = recorded();
-    await signedIn('#/models?tab=models', fetch);
+    await signedIn('#/models?tab=connections', fetch);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Legg til modell' }));
     const panel = await dialog('Legg til modell');

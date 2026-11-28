@@ -1,4 +1,4 @@
-import { Textfield } from '@digdir/designsystemet-react';
+import { ReasonField } from './components/ReasonField';
 import { useState } from 'react';
 import { useT, type T } from './i18n';
 
@@ -20,14 +20,14 @@ export const useReason = () => {
     return ok ? reason.trim() : undefined;
   };
   const field = (description: string) => (
-    <Textfield
+    <ReasonField
+      single
       className="reason"
-      label={t('common.reason')}
       description={description}
       value={reason}
-      onChange={(e) => {
-        setReason(e.target.value);
-        if (!reasonTooShort(e.target.value)) setMissing(false);
+      onChange={(value) => {
+        setReason(value);
+        if (!reasonTooShort(value)) setMissing(false);
       }}
       error={missing ? reasonProblem(t, reason) : undefined}
     />

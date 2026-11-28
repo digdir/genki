@@ -85,7 +85,7 @@ describe('keeping the operator signed in', () => {
     await auth.login();
     window.location.hash = '#/tenants';
     render(<App auth={auth} fetch={mockFetch()} />);
-    const search = await screen.findByLabelText('Søk etter navn eller org.nr.');
+    const search = await screen.findByRole('searchbox', { name: 'Søk' });
     fireEvent.change(search, { target: { value: 'Brønnøysund' } });
 
     await vi.advanceTimersByTimeAsync(minutes(6));
@@ -95,9 +95,9 @@ describe('keeping the operator signed in', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Logg inn' }));
 
     await waitFor(() =>
-      expect(
-        (screen.getByLabelText('Søk etter navn eller org.nr.') as HTMLInputElement).value,
-      ).toBe('Brønnøysund'),
+      expect((screen.getByRole('searchbox', { name: 'Søk' }) as HTMLInputElement).value).toBe(
+        'Brønnøysund',
+      ),
     );
     expect(window.location.hash).toBe('#/tenants');
     expect(window.sessionStorage.getItem('genai.unsaved-input')).toBeNull();

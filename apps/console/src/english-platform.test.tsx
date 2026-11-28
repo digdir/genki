@@ -9,6 +9,12 @@ import { PlatformDefaults } from './screens/PlatformDefaults';
 import { SharedServices } from './screens/SharedServices';
 
 document.getAnimations ??= () => [];
+HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+  this.setAttribute('open', '');
+};
+HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+  this.removeAttribute('open');
+};
 afterEach(cleanup);
 
 const apiFor = (routes: Record<string, unknown>) =>
@@ -82,8 +88,8 @@ describe('platform screens in English', () => {
     });
     render(inEnglish(<SharedServices api={api} />));
     expect(await screen.findByText('2 organisations')).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'Share Summary with all organisations' }),
-    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Change Summary' }));
+    expect(screen.getByRole('radio', { name: 'All organisations' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Owner only' })).toBeTruthy();
   });
 });

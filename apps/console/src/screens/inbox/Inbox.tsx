@@ -9,6 +9,7 @@ import { Chip, millions, orgHref, shortDay } from '../org/parts';
 import { ageOf, hrefOf, isQuotaLimit, itemText, typeLabels, verbOf } from './items';
 import { QuotaPanel, type QuotaDone } from './QuotaPanel';
 import '../org/org.css';
+import { PageTabs } from '../../page-tabs';
 
 const isType = (value: string | undefined): value is InboxType =>
   (inboxTypes as readonly string[]).includes(value ?? '');
@@ -94,6 +95,7 @@ export const Inbox = ({
           <span className="org-subtle">{t('inbox.blocking', { count: blocking })}</span>
         ) : null}
       </div>
+      <PageTabs />
       <div aria-live="polite">
         {done ? (
           <p role="status" className="org-status">

@@ -49,10 +49,9 @@ describe('console in English', () => {
 
     expect(await screen.findByRole('heading', { name: 'Organisations' })).toBeTruthy();
     const table = await screen.findByRole('region', { name: 'Organisations' });
-    expect(within(table).getByRole('columnheader', { name: 'Services' })).toBeTruthy();
-    expect(
-      within(table).getAllByRole('button', { name: /^Open organisation / }).length,
-    ).toBeGreaterThan(0);
+    expect(within(table).getByRole('columnheader', { name: 'Organisation' })).toBeTruthy();
+    expect(within(table).getByRole('columnheader', { name: /^Cost in / })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Register organisation' })).toBeTruthy();
     expect(screen.getByRole('navigation', { name: 'Console menu' })).toBeTruthy();
   });
 

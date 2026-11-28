@@ -52,7 +52,6 @@ export const searchEngines = defineNamespace({
   capabilityMissing: 'ikke {name}',
   locationNorway: 'Norge',
   locationEu: 'EU/EØS',
-  locationGlobal: 'Utenfor EU/EØS',
   dataIn: 'Data i {place}',
   dataOutside: 'Data utenfor EU/EØS',
   ruleRequired: 'påkrevd',

@@ -174,38 +174,31 @@ describe('operator shell', () => {
 describe('virksomheter', () => {
   afterEach(() => vi.useRealTimers());
 
-  it('lists tenants with KPIs, status as text and a quota warning', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-10-07T12:00:00+02:00'));
+  it('shows the status as text and the organisation number in groups of three', async () => {
     await signedIn();
 
     const table = await screen.findByRole('table');
-    expect(screen.getByText('Tokens i oktober', { selector: 'dt' })).toBeTruthy();
     const row = within(table)
-      .getByRole('rowheader', { name: /Eksempeldirektoratet/ })
+      .getByRole('link', { name: 'Testetaten' })
       .closest('tr') as HTMLElement;
     expect(within(row).getByText('Aktiv')).toBeTruthy();
-    expect(within(row).getByText('Nær kvoten')).toBeTruthy();
-    expect(within(row).getByText('11 i bruk av 14')).toBeTruthy();
-    expect(within(table).getByText(/999 888 777/)).toBeTruthy();
+    expect(within(row).getByText('999 888 777')).toBeTruthy();
   });
 
-  it('filters by status and search, and blocks opening the organisation for tenants in onboarding', async () => {
+  it('filters by status and search, and offers to reset when nothing matches', async () => {
     await signedIn();
     await screen.findByRole('table');
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Oppstart' }));
-    const table = screen.getByRole('table');
-    expect(within(table).getAllByRole('row')).toHaveLength(4);
-    const blocked = within(table).getByRole('button', {
-      name: 'Åpne virksomheten Eksempel kommune',
+    fireEvent.change(screen.getByRole('combobox', { name: 'Status' }), {
+      target: { value: 'onboarding' },
     });
-    expect(blocked.getAttribute('aria-disabled')).toBe('true');
+    expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(4);
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Søk etter navn eller org.nr.' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Søk' }), {
       target: { value: 'finnes ikke' },
     });
-    expect(screen.getByText(/Ingen virksomheter passer søket/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Nullstill søket' }));
+    expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(12);
   });
 
   it('shows an error with retry when tenants cannot be loaded', async () => {
@@ -219,38 +212,10 @@ describe('virksomheter', () => {
 describe('revisjon', () => {
   afterEach(() => vi.useRealTimers());
 
-  it('lists every action across tenants and filters by Digdir, person and action', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-10-07T12:00:00+02:00'));
-    await signedIn('#/audit');
-
-    const log = await screen.findByRole('region', { name: 'Logg' });
-    expect(screen.getByText('10 hendelser')).toBeTruthy();
-    expect(within(log).getAllByText('Digdir').length).toBeGreaterThan(0);
-
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Bare handlinger fra Digdir' }));
-    expect(screen.getByText('5 hendelser')).toBeTruthy();
-
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Person' }), {
-      target: { value: 'Jon' },
-    });
-    expect(screen.getByText('2 hendelser')).toBeTruthy();
-
-    fireEvent.change(screen.getByRole('combobox', { name: 'Handling' }), {
-      target: { value: 'Satte modell til utfasing' },
-    });
-    expect(within(log).getByText('Microsoft avslutter versjonen')).toBeTruthy();
-
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Person' }), {
-      target: { value: 'ingen slik' },
-    });
-    expect(screen.getByText(/Ingen hendelser passer filteret/)).toBeTruthy();
-  });
-
   it('shows readable actions, tenant names and "Person i" instead of raw ids', async () => {
     const base = mockFetch();
     const raw: typeof fetch = async (input, init) =>
-      String(input).endsWith('/operator/audit')
+      String(input).includes('/operator/audit?')
         ? Response.json({
             data: [
               {
@@ -284,14 +249,14 @@ describe('revisjon', () => {
     expect(within(first).getByText('Person i Digdir')).toBeTruthy();
     expect(first.textContent).not.toMatch(/991825827|7f3c9a|platform\./);
     const second = within(log).getByText('Test').closest('tr') as HTMLElement;
-    expect(within(second).getByText('Annen handling')).toBeTruthy();
+    expect(within(second).getByText(/^Annen handling/)).toBeTruthy();
     expect(await within(second).findByText('Person i Testetaten')).toBeTruthy();
   });
 
   it('names platform actions, like loading the local configuration, as the platform', async () => {
     const base = mockFetch();
     const raw: typeof fetch = async (input, init) =>
-      String(input).endsWith('/operator/audit')
+      String(input).includes('/operator/audit?')
         ? Response.json({
             data: [
               {
@@ -315,10 +280,10 @@ describe('revisjon', () => {
     expect(row.textContent).not.toMatch(/Person i/);
   });
 
-  it('shows the person and the service a publish concerns, with a link to the service', async () => {
+  it('shows the person and the service a publish concerns', async () => {
     const base = mockFetch();
     const raw: typeof fetch = async (input, init) =>
-      String(input).endsWith('/operator/audit')
+      String(input).includes('/operator/audit?')
         ? Response.json({
             data: [
               {
@@ -339,17 +304,15 @@ describe('revisjon', () => {
 
     const log = await screen.findByRole('region', { name: 'Logg' });
     const row = within(log).getByText('Ny versjon av klarspråk').closest('tr') as HTMLElement;
-    expect(within(row).getByText('Kari Testansatt')).toBeTruthy();
-    expect(within(row).getByText('versjon 3')).toBeTruthy();
-    fireEvent.click(within(row).getByRole('button', { name: 'klarsprak' }));
-    expect(window.location.hash).toContain('/tenants/services');
-    expect(window.location.hash).toContain('id=klarsprak');
+    expect(within(row).getByText(/^Kari Testansatt/)).toBeTruthy();
+    expect(row.textContent).toMatch(/klarsprak/);
+    expect(row.textContent).toMatch(/versjon 3/);
   });
 
   it('explains how to see a log when the cross-tenant log is not available', async () => {
     const base = mockFetch();
     const missing: typeof fetch = async (input, init) =>
-      String(input).endsWith('/operator/audit')
+      String(input).includes('/operator/audit?')
         ? new Response('{}', { status: 404 })
         : base(input, init);
     await signedIn('#/audit', [operatorRole], missing);

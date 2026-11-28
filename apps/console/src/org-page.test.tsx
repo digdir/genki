@@ -128,7 +128,7 @@ describe('the organisation page', () => {
       target: { value: 'Sak DIG-4512: nattlige massekjøringer' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Sjekk endringen' }));
-    expect(screen.getByText(/600 → 900\. Gjelder med en gang\./)).toBeTruthy();
+    expect(screen.getByText(/60 → 900\. Gjelder med en gang\./)).toBeTruthy();
     const before = overviews();
     fireEvent.click(screen.getByRole('button', { name: 'Lagre' }));
 
@@ -246,14 +246,18 @@ describe('the organisation page', () => {
     await signedIn(`${page}&tab=access`, fetch);
 
     await screen.findByRole('button', { name: 'Trekk tilbake horingsanalyse-i-bruk' });
-    expect(screen.queryByRole('dialog', { name: 'Grunn for å se innhold' })).toBeNull();
+    expect(
+      screen.queryByRole('dialog', { name: 'Se innhold fra Eksempeldirektoratet' }),
+    ).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Vis personer' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Grunn for å se innhold' });
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Se innhold fra Eksempeldirektoratet',
+    });
     fireEvent.change(within(dialog).getByRole('textbox', { name: /Begrunnelse/ }), {
       target: { value: 'Sak DIG-4520, sjekker hvem som har tilgang' },
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Se innhold' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Se innholdet' }));
 
     const people = await screen.findByRole('region', { name: 'Personer' });
     expect(within(people).getByText('Marte Solheim')).toBeTruthy();

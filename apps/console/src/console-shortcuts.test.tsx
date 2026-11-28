@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { mockEntra, operatorRole } from './auth';
-import { exampleTenants, mockFetch } from './mock';
+import { mockFetch } from './mock';
 import type { EffectiveSettings, SettingInfo } from './types';
 
 document.getAnimations ??= () => [];
@@ -100,34 +100,6 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
-});
-
-describe('near quota on the tenants screen', () => {
-  it('links the near quota tag to the monthly token setting on the organisation page', async () => {
-    await open('#/tenants', mockFetch());
-
-    const link = await screen.findByRole('link', {
-      name: 'Nær kvoten: juster månedlig tokenkvote for Eksempeldirektoratet',
-    });
-    expect(link.getAttribute('href')).toBe(
-      '#/support-access?tenant=974222333&tab=settings&setting=usage.monthlyTokens',
-    );
-  });
-
-  it('explains instead of linking when the tenant is still onboarding', async () => {
-    const tenants = exampleTenants.map((x) =>
-      x.orgNumber === '921444555' ? { ...x, tokensMillions: 19, quotaMillions: 20 } : x,
-    );
-    await open('#/tenants', mockFetch(tenants));
-
-    const row = (await screen.findByRole('rowheader', { name: /Fylkeskommunen i Testfylke/ }))
-      .parentElement as HTMLElement;
-    expect(within(row).getByText('Nær kvoten')).toBeTruthy();
-    expect(
-      within(row).getByText('Kvoten kan endres på virksomhetssiden når oppstarten er ferdig.'),
-    ).toBeTruthy();
-    expect(within(row).queryByRole('link', { name: /Nær kvoten/ })).toBeNull();
-  });
 });
 
 describe('organisation settings', () => {

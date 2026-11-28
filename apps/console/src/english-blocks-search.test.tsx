@@ -44,10 +44,15 @@ describe('search engines in English', () => {
 });
 
 describe('building blocks in English', () => {
-  it('groups the registry with English labels', async () => {
+  it('lists the catalogue with English labels', async () => {
     render(inEnglish(<BuildingBlocks api={api()} />));
     expect(await screen.findByRole('heading', { level: 1, name: 'Catalogue' })).toBeTruthy();
-    expect(screen.getByRole('radio', { name: 'Failed' })).toBeTruthy();
-    expect(screen.getByText('Register an external part')).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Work instruction' })).toBeTruthy();
+    const table = screen.getByRole('region', { name: 'Catalogue' });
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent),
+    ).toEqual(['Name', 'Type', 'From', 'Edition', 'Used by', 'Status', 'Action']);
   });
 });

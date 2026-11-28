@@ -196,19 +196,13 @@ describe('quota requests in the console', () => {
     expect(sent).toEqual([]);
   });
 
-  it('marks an organisation with a pending quota request on the tenants screen and links to it', async () => {
+  it('links an organisation waiting on a quota request to Til behandling', async () => {
     await signedIn('#/tenants');
 
     const link = await screen.findByRole('link', {
-      name: 'Ber om mer kvote: se kvoteforespørselen fra Eksempeldirektoratet',
+      name: 'Til behandling for Eksempeldirektoratet: Kvote',
     });
-
-    expect(link.getAttribute('href')).toBe('#/quota-requests?tenant=974222333');
-    expect(
-      screen.queryByRole('link', {
-        name: 'Ber om mer kvote: se kvoteforespørselen fra Testetaten',
-      }),
-    ).toBeNull();
+    expect(link.getAttribute('href')).toBe('#/queue?type=quota');
   });
 
   it("shows only that organisation's requests when opened from the tenants screen", async () => {
@@ -221,7 +215,7 @@ describe('quota requests in the console', () => {
 });
 
 describe('quota on the tenants screen', () => {
-  it('warns near the quota from the quota and monthly tokens the tenant list returns', async () => {
+  it('shows quota use from the quota and monthly tokens the tenant list returns', async () => {
     const apiShaped = exampleTenants.map(({ tokensMillions: _t, quotaMillions: _q, ...rest }) =>
       rest.orgNumber === '974222333'
         ? { ...rest, usedTokens: 38_600_000, monthlyTokens: 40_000_000 }
@@ -235,11 +229,9 @@ describe('quota on the tenants screen', () => {
     };
     await signedIn('#/tenants', fetch);
 
-    expect(
-      await screen.findByRole('link', {
-        name: 'Nær kvoten: juster månedlig tokenkvote for Eksempeldirektoratet',
-      }),
-    ).toBeTruthy();
-    expect(screen.getByText(/38,6 av 40 mill\. \(97 %\)/)).toBeTruthy();
+    const row = (await screen.findByRole('link', { name: 'Eksempeldirektoratet' })).closest(
+      'tr',
+    ) as HTMLElement;
+    expect(within(row).getByText('97 %')).toBeTruthy();
   });
 });

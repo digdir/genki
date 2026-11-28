@@ -21,13 +21,13 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('quality, tracing and operations in English', () => {
-  it('shows the quality trend with English labels', async () => {
+  it('shows the services that dropped with English labels', async () => {
     await open('#/quality');
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Quality' })).toBeTruthy();
-    expect(await screen.findByText(/regressions after/)).toBeTruthy();
-    const table = screen.getByRole('region', { name: 'Quality per service' });
-    expect(within(table).getByText('Regression -8')).toBeTruthy();
+    const table = await screen.findByRole('region', { name: 'Quality per service' });
+    expect(within(table).getByText('down 8')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Automatic evaluation' })).toBeTruthy();
   });
 
   it('shows the quality matrix tabs and the judges', async () => {
@@ -52,8 +52,9 @@ describe('quality, tracing and operations in English', () => {
     await open('#/operations');
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Operations' })).toBeTruthy();
-    expect(await screen.findByText(/Fetched from the platform/)).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Runs in progress' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: /^Failed runs today/ })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /^Incidents/ })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Runs in progress' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Definitions in quarantine' })).toBeTruthy();
   });
 

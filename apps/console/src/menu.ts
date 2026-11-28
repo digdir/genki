@@ -3,6 +3,7 @@ import type { PlainKey } from './i18n';
 
 export interface MenuPage {
   path: string;
+  tab?: string;
   label: PlainKey;
   flag?: FlagKey;
 }
@@ -74,6 +75,7 @@ export const menu: MenuGroup[] = [
         path: '/models',
         pages: [
           { path: '/models', label: 'frame.pageModelsModels' },
+          { path: '/models', tab: 'connections', label: 'frame.pageModelsConnections' },
           { path: '/catalog', label: 'frame.pageModelsEndpoints' },
           { path: '/search-engines', label: 'frame.pageModelsEngines' },
         ],

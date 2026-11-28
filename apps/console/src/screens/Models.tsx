@@ -1,17 +1,18 @@
-import { Tabs, TabsList, TabsPanel, TabsTab } from '@digdir/designsystemet-react';
 import { useEffect, useState } from 'react';
 import type { ApiClient } from '../api';
 import { navigate, useAsync } from '../hooks';
+import './platform.css';
 import { useT } from '../i18n';
 import { ErrorState, Loading } from '../states';
 import { Flash, PageHeader, useFlash } from '../ui';
 import { ApiGuide } from './models/ApiGuide';
 import { ApiList } from './models/ApiList';
-import { tabOf, type AreaData, type AreaProps, type ModelsTab } from './models/area-data';
+import { tabOf, type AreaData, type AreaProps } from './models/area-data';
 import { ConnectionDetail } from './models/ConnectionDetail';
 import { ConnectionList } from './models/ConnectionList';
 import { ModelDetail } from './models/ModelDetail';
 import { ModelList } from './models/ModelList';
+import { PageTabs } from '../page-tabs';
 
 const settled = <T,>(promise: Promise<T>) => promise.catch(() => undefined);
 
@@ -57,7 +58,8 @@ export const Models = ({ api, params }: { api: ApiClient; params: URLSearchParam
   if (!data)
     return (
       <>
-        <PageHeader eyebrow={t('shell.groupPlatform')} title={t('models.title')} />
+        <h1 className="pf-title">{t('models.title')}</h1>
+        <PageTabs />
         {state.status === 'error' ? (
           <ErrorState error={state.error} onRetry={retry} />
         ) : (
@@ -75,38 +77,26 @@ export const Models = ({ api, params }: { api: ApiClient; params: URLSearchParam
     <ApiGuide {...props} id={apiId} step={params.get('step')} />
   ) : undefined;
 
+  const list =
+    tab === 'connections' ? (
+      <>
+        <h1 className="pf-title">{t('models.title')}</h1>
+        <PageTabs />
+        <ConnectionList {...props} />
+      </>
+    ) : tab === 'apis' ? (
+      <>
+        <PageHeader title={t('models.tabApis')} />
+        <ApiList {...props} />
+      </>
+    ) : (
+      <ModelList {...props} />
+    );
+
   return (
     <>
       <Flash message={flash.message} />
-      {detail ?? (
-        <>
-          <PageHeader
-            eyebrow={t('shell.groupPlatform')}
-            title={t('models.title')}
-            intro={t('models.intro')}
-          />
-          <Tabs
-            value={tab}
-            onChange={(v) => {
-              flash.clear();
-              navigate('/models', { tab: v as ModelsTab });
-            }}
-          >
-            <TabsList aria-label={t('models.title')}>
-              <TabsTab value="connections">{t('models.tabConnections')}</TabsTab>
-              <TabsTab value="models">{t('models.tabModels')}</TabsTab>
-              <TabsTab value="apis">{t('models.tabApis')}</TabsTab>
-            </TabsList>
-            <TabsPanel value="connections">
-              {tab === 'connections' ? <ConnectionList {...props} /> : null}
-            </TabsPanel>
-            <TabsPanel value="models">
-              {tab === 'models' ? <ModelList {...props} /> : null}
-            </TabsPanel>
-            <TabsPanel value="apis">{tab === 'apis' ? <ApiList {...props} /> : null}</TabsPanel>
-          </Tabs>
-        </>
-      )}
+      {detail ?? list}
     </>
   );
 };

@@ -23,6 +23,7 @@ export const frame = defineNamespace({
   pageTenantsAll: 'Alle',
   pageTenantsOnboarding: 'Oppstart',
   pageModelsModels: 'Modeller',
+  pageModelsConnections: 'Tilkoblinger',
   pageModelsEndpoints: 'Endepunkter og priser',
   pageModelsEngines: 'Søkemotorer',
   pageCatalogAll: 'Alle',

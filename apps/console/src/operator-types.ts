@@ -1,4 +1,4 @@
-import type { AuditEntry, TenantStatus } from './types';
+import type { AuditEntry, TaskTimeline, TenantStatus } from './types';
 
 export const inboxTypes = [
   'quota',
@@ -140,4 +140,35 @@ export interface FailedRun {
   serviceName: string | null;
   at: string;
   failure: { code: string; reason: string; step?: string } | null;
+}
+
+export interface Incident {
+  id: string;
+  title: string;
+  text: string;
+  tenants: string[];
+  startedAt: string;
+  resolvedAt?: string;
+}
+
+export interface NewIncident {
+  title: string;
+  text: string;
+  tenants?: string[];
+}
+
+export interface AuditQuery extends AuditFilter {
+  tenant?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface AuditPage {
+  data: AuditEntry[];
+  total: number;
+}
+
+export interface RunTimeline extends Omit<TaskTimeline, 'steps'> {
+  steps: (TaskTimeline['steps'][number] & { state?: string; model?: string })[];
+  stats?: { byModel?: { model: string }[] };
 }

@@ -4,7 +4,11 @@ import { translator, type Locale, type T } from './i18n';
 import { definitionKindSegments } from './definition-kinds';
 import type {
   AuditFilter,
+  AuditPage,
+  AuditQuery,
   FailedRun,
+  Incident,
+  NewIncident,
   InboxItem,
   PrivateNetworks,
   QuotaDecision,
@@ -354,6 +358,7 @@ export const createApiClient = ({
   const say = () => translator(locale?.() ?? 'nb');
   let askContentReason: ContentReasonHandler | undefined;
   const givingReason = new Map<string, Promise<void>>();
+  const givenReasons = new Map<string, GivenContentReason>();
   const request = async <T>(
     method: string,
     path: string,
@@ -656,12 +661,15 @@ export const createApiClient = ({
     onContentReason: (handler: ContentReasonHandler | undefined) => {
       askContentReason = handler;
     },
-    giveContentReason: (tenant: string, reason: string) =>
-      call<GivenContentReason>(
+    giveContentReason: async (tenant: string, reason: string) => {
+      const given = await call<GivenContentReason>(
         'POST',
         `/operator/tenants/${encodeURIComponent(tenant)}/content-reason`,
         { body: { reason } },
-      ),
+      );
+      givenReasons.set(tenant, given);
+      return given;
+    },
     demos: (signal?: AbortSignal) => call<DemoLibrary>('GET', '/operator/demos', { signal }),
     demo: (id: string, signal?: AbortSignal) =>
       call<DemoDetail>('GET', `/operator/demos/${encodeURIComponent(id)}`, { signal }),
@@ -813,8 +821,6 @@ export const createApiClient = ({
           headers: { 'change-reason': reason },
         },
       ),
-    operatorAudit: async (signal?: AbortSignal) =>
-      (await call<{ data: AuditEntry[] }>('GET', '/operator/audit', { signal })).data,
     logAuditExport: (count: number) =>
       call<unknown>('POST', '/operator/audit/exports', {
         body: { count },
@@ -845,6 +851,34 @@ export const createApiClient = ({
       ),
     operations: (signal?: AbortSignal) =>
       call<OperationsOverview>('GET', '/operator/operations', { signal }),
+    incidents: async (signal?: AbortSignal) =>
+      (await call<{ data: Incident[] }>('GET', '/operator/incidents', { signal })).data,
+    createIncident: (incident: NewIncident, reason: string) =>
+      call<Incident>('POST', '/operator/incidents', {
+        body: incident,
+        headers: { 'change-reason': reason },
+      }),
+    resolveIncident: (id: string, reason: string) =>
+      call<Incident>('POST', `/operator/incidents/${encodeURIComponent(id)}/resolve`, {
+        headers: { 'change-reason': reason },
+      }),
+    auditPage: async (query: AuditQuery, signal?: AbortSignal): Promise<AuditPage> => {
+      const params = new URLSearchParams(
+        Object.entries(query).flatMap(([k, v]) =>
+          v === undefined || v === '' ? [] : [[k, String(v)]],
+        ),
+      ).toString();
+      const page = await call<{ data: AuditEntry[]; total?: number }>(
+        'GET',
+        `/operator/audit${params ? `?${params}` : ''}`,
+        { signal },
+      );
+      return { data: page.data, total: page.total ?? page.data.length };
+    },
+    knownContentReason: (tenant: string, now = new Date()) => {
+      const given = givenReasons.get(tenant);
+      return given && Date.parse(given.expiresAt) > now.getTime() ? given.reason : undefined;
+    },
     rerunContractTests: (id: string, reason: string) =>
       call<Partial<ContractRun>>(
         'POST',
@@ -855,29 +889,19 @@ export const createApiClient = ({
       call<MatrixEstimate>('POST', '/operator/quality/matrix/estimate', {
         body: { model, current },
       }),
-    startMatrix: (model: string, current: string, confirmedCostNok: number, reason?: string) =>
+    startMatrix: (model: string, current: string, confirmedCostNok: number, reason: string) =>
       call<MatrixRun>('POST', '/operator/quality/matrix/runs', {
         body: { model, current, confirmedCostNok },
-        headers: { 'change-reason': reason ?? `Kvalitetsmatrisen for ${model} mot ${current}` },
+        headers: { 'change-reason': reason },
       }),
     matrixRun: (id: string, signal?: AbortSignal) =>
       call<MatrixRunDetail>('GET', `/operator/quality/matrix/runs/${encodeURIComponent(id)}`, {
         signal,
       }),
-    registerPlugin: (manifest: Record<string, unknown>) =>
-      call<unknown>('POST', '/operator/plugins', {
-        body: { manifest },
-        headers: {
-          'change-reason':
-            `Registrerte ekstern del ${typeof manifest.id === 'string' ? manifest.id : ''}`.trim(),
-        },
-      }),
-    releaseMatrixColumn: (kind: 'models' | 'blocks', name: string, reason?: string) =>
+    releaseMatrixColumn: (kind: 'models' | 'blocks', name: string, reason: string) =>
       call<unknown>('POST', '/operator/quality/matrix/release', {
         body: { kind, name },
-        headers: {
-          'change-reason': reason ?? `Gjort tilgjengelig fra kvalitetsmatrisen: ${name}`,
-        },
+        headers: { 'change-reason': reason },
       }),
     tenantDefinitions: async (tenant: string, signal?: AbortSignal) =>
       (
@@ -1199,11 +1223,11 @@ export const createApiClient = ({
           { signal },
         )
       ).people,
-    failedRuns: async (from: string, signal?: AbortSignal) =>
+    failedRuns: async (from: string | undefined, signal?: AbortSignal) =>
       (
         await call<{ data: FailedRun[] }>(
           'GET',
-          `/operator/failed-runs?${new URLSearchParams({ from }).toString()}`,
+          `/operator/failed-runs${from ? `?${new URLSearchParams({ from }).toString()}` : ''}`,
           { signal },
         )
       ).data,
