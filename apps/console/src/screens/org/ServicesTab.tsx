@@ -48,7 +48,8 @@ export const ServicesTab = ({ api, tenant }: { api: ApiClient; tenant: string; n
     },
     [api, tenant],
   );
-  if (state.status === 'loading') return <Loading label={t('org.loading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('org.loading')} shape="table" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const services = state.data.definitions.filter((d) => d.kind === 'Service' && !d.internal);
   const errors = new Map(

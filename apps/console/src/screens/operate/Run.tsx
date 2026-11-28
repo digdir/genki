@@ -89,7 +89,7 @@ export const Run = ({ api, tenant, task }: { api: ApiClient; tenant: string; tas
         {crumbs}
         <h1>{t('run.title', { task })}</h1>
         {state.status === 'loading' ? (
-          <Loading label={t('run.loading')} />
+          <Loading label={t('run.loading')} shape="detail" onRetry={retry} />
         ) : (
           <ErrorState error={state.error} onRetry={retry} />
         )}

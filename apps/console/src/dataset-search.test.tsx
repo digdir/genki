@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApiClient } from './api';
 import { Catalog } from './screens/Catalog';
@@ -187,7 +187,7 @@ describe('searching a dataset in the console', () => {
     expect(alert.textContent).not.toContain('Melding fra søkemotoren');
   });
 
-  it('keeps the chosen filter when the dataset list reloads', async () => {
+  it('keeps the chosen filter when the dataset tab is opened again', async () => {
     at('/catalog?tab=dataset');
     const { api, calls } = platform(platformRoutes(() => [200, answer([hit])]));
     const { rerender } = render(<Catalog api={api} tab="dataset" />);
@@ -200,14 +200,13 @@ describe('searching a dataset in the console', () => {
       target: { value: '991825827' },
     });
 
-    // Leaving the tab and coming back loads the dataset list again.
     rerender(<Catalog api={api} tab="model" />);
     rerender(<Catalog api={api} tab="dataset" />);
-    const listed = () =>
-      calls.filter((c) => c.path === '/operator/catalog/entries?kind=dataset').length;
-    await waitFor(() => expect(listed()).toBe(2));
 
     const again = await openKudos();
+    expect(calls.filter((c) => c.path === '/operator/catalog/entries?kind=dataset')).toHaveLength(
+      1,
+    );
     expect(
       (within(again).getByRole('textbox', { name: 'Søketekst' }) as HTMLInputElement).value,
     ).toBe('tilskudd');

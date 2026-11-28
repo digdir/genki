@@ -627,6 +627,146 @@ body {
   padding: var(--ds-size-6) 0;
 }
 
+.screen-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-4);
+}
+
+.state.loading {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.state.loading:empty {
+  padding: 0;
+}
+
+.loading-label {
+  margin: 0;
+  font-size: var(--ds-font-size-3);
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.loading-slow {
+  margin: 0;
+  max-width: 70ch;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.skeleton,
+.skeleton-lines,
+.skeleton-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeleton-bar {
+  display: block;
+  max-width: 100%;
+  border-radius: var(--ds-border-radius-sm);
+}
+
+.skeleton-list {
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.skeleton-list-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.skeleton-list-row > .skeleton-lines {
+  flex: 1;
+  min-width: 0;
+}
+
+.skeleton-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+}
+
+.skeleton-detail-main {
+  flex: 1 1 320px;
+  gap: 12px;
+}
+
+.skeleton-gap {
+  height: 16px;
+}
+
+.skeleton-detail-aside {
+  flex: 0 1 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.skeleton-pair {
+  display: flex;
+  gap: 12px;
+}
+
+.skeleton-form {
+  gap: 20px;
+  max-width: 420px;
+}
+
+.skeleton-table {
+  width: 100%;
+}
+
+[aria-busy='true']:is(table, ul, ol, .refreshing) {
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.navigation-progress {
+  position: fixed;
+  top: var(--header-offset, 0px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  height: 3px;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--ds-color-accent-surface-tinted);
+}
+
+.navigation-progress::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: var(--ds-color-accent-base-default);
+  animation: navigation-progress 1.2s ease-in-out infinite;
+}
+
+@keyframes navigation-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navigation-progress::before {
+    width: 100%;
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
 .state.empty {
   padding: var(--ds-size-8);
   border: 1px dashed var(--ds-color-neutral-border-default);

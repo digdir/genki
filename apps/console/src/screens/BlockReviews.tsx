@@ -110,7 +110,7 @@ const Detail = ({
       {list(review.events)}
       <Paragraph>{t('blockReviews.size', { bytes: review.bytes })}</Paragraph>
       {state.status === 'loading' ? (
-        <Loading label={t('blockReviews.loading')} />
+        <Loading label={t('blockReviews.loading')} shape="list" rows={2} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} />
       ) : (
@@ -182,7 +182,7 @@ export const BlockReviews = ({ api }: { api: ApiClient }) => {
       <PageHeader title={t('blockReviews.title')} />
       <Flash message={flash.message} />
       {state.status === 'loading' ? (
-        <Loading label={t('blockReviews.loading')} />
+        <Loading label={t('blockReviews.loading')} shape="table" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : pending.length === 0 ? (

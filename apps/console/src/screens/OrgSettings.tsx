@@ -173,7 +173,8 @@ export const SettingsTab = ({
     target.querySelector<HTMLElement>('input, select, textarea')?.focus();
   }, [ready, focus]);
 
-  if (state.status === 'loading') return <Loading label={t('supportAccess.loadingSettings')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('supportAccess.loadingSettings')} shape="form" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const renderField = (f: Field) => {
     const current = f.key in draft ? (draft[f.key] ?? '') : show(valueOf(f.key), t);

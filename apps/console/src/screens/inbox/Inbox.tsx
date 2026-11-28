@@ -51,7 +51,7 @@ export const Inbox = ({
   const f = useFormat();
   const now = new Date();
   const type = isType(typeParam) ? typeParam : undefined;
-  const [state, retry] = useAsync((signal) => api.inbox(signal), [api]);
+  const [state, retry, refreshing] = useAsync((signal) => api.inbox(signal), [api]);
   const [done, setDone] = useState<QuotaDone | undefined>();
   const choose = (next: InboxType | undefined) => {
     setDone(undefined);
@@ -120,7 +120,7 @@ export const Inbox = ({
         ))}
       </div>
       {state.status === 'loading' ? (
-        <Loading label={t('inbox.loading')} />
+        <Loading label={t('inbox.loading')} shape="table" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : shown.length === 0 ? (
@@ -129,7 +129,7 @@ export const Inbox = ({
         </EmptyState>
       ) : (
         <div tabIndex={0} role="region" aria-label={t('inbox.table')} className="org-table-wrap">
-          <table className="org-table wide">
+          <table className="org-table wide" aria-busy={refreshing || undefined}>
             <thead>
               <tr>
                 <th scope="col">{t('inbox.colType')}</th>

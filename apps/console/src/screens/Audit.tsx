@@ -436,7 +436,7 @@ export const Audit = ({ api, now = () => new Date() }: { api: ApiClient; now?: (
           <ErrorState error={state.error} onRetry={retry} />
         )
       ) : !page ? (
-        <Loading label={t('auditLog.loading')} />
+        <Loading label={t('auditLog.loading')} shape="table" onRetry={retry} />
       ) : (
         <>
           <p className="op-subtle" aria-live="polite" style={{ margin: 0 }}>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ApiClient } from '../api';
-import { navigate, useAsync } from '../hooks';
+import { useAsync } from '../hooks';
 import './platform.css';
 import { useT } from '../i18n';
 import { ErrorState, Loading } from '../states';
@@ -32,11 +32,6 @@ const useAreaData = (api: ApiClient, version: number) =>
     [api, version],
   );
 
-export const Forward = ({ to, params }: { to: string; params?: Record<string, string> }) => {
-  useEffect(() => navigate(to, params), [to, params]);
-  return null;
-};
-
 export const Models = ({ api, params }: { api: ApiClient; params: URLSearchParams }) => {
   const t = useT();
   const [version, setVersion] = useState(0);
@@ -63,7 +58,7 @@ export const Models = ({ api, params }: { api: ApiClient; params: URLSearchParam
         {state.status === 'error' ? (
           <ErrorState error={state.error} onRetry={retry} />
         ) : (
-          <Loading label={t('models.loading')} />
+          <Loading label={t('models.loading')} shape="table" onRetry={retry} />
         )}
       </>
     );

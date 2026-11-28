@@ -35,7 +35,7 @@ const problemText = (error: unknown, fallback: string) => {
 export const PlatformSecrets = ({ api }: { api: ApiClient }) => {
   const t = useT();
   const f = useFormat();
-  const [state, retry] = useAsync((signal) => api.platformSecrets(signal), [api]);
+  const [state, retry, refreshing] = useAsync((signal) => api.platformSecrets(signal), [api]);
   const flash = useFlash();
   const [editing, setEditing] = useState<Editing | undefined>();
   const [deleting, setDeleting] = useState<PlatformSecret | undefined>();
@@ -104,7 +104,7 @@ export const PlatformSecrets = ({ api }: { api: ApiClient }) => {
         </Button>
       </div>
       {state.status === 'loading' ? (
-        <Loading label={t('platformSecrets.loading')} />
+        <Loading label={t('platformSecrets.loading')} shape="table" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : state.data.length === 0 ? (
@@ -112,7 +112,7 @@ export const PlatformSecrets = ({ api }: { api: ApiClient }) => {
           <Paragraph>{t('platformSecrets.noneText')}</Paragraph>
         </EmptyState>
       ) : (
-        <TableRegion label={t('platformSecrets.tableLabel')}>
+        <TableRegion label={t('platformSecrets.tableLabel')} busy={refreshing}>
           <Table data-size="sm">
             <TableHead>
               <TableRow>

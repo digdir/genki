@@ -1,0 +1,231 @@
+import { describe, expect, it } from 'vitest';
+import { createResponseCache, markPageLoad, onRefreshed } from './response-cache';
+
+const page = () => {
+  const signal = new AbortController().signal;
+  markPageLoad(signal);
+  return signal;
+};
+
+const source = (...replies: unknown[]) => {
+  let calls = 0;
+  return {
+    fetcher: async () => replies[Math.min(calls++, replies.length - 1)],
+    calls: () => calls,
+  };
+};
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+describe('the stale-while-revalidate cache for page loads', () => {
+  it('shows the cached answer at once on the next visit and refreshes it in the background', async () => {
+    let time = 0;
+    const cache = createResponseCache({ now: () => time });
+    const api = source('old', 'new');
+
+    expect(await cache.load('k', api.fetcher, page())).toBe('old');
+    time = 60_000;
+    expect(await cache.load('k', api.fetcher, page())).toBe('old');
+    await settle();
+    expect(api.calls()).toBe(2);
+    expect(await cache.load('k', api.fetcher, page())).toBe('new');
+  });
+
+  it('still shows an answer from an hour ago at once and refreshes it in the background', async () => {
+    let time = 0;
+    const cache = createResponseCache({ now: () => time });
+    const api = source('old', 'new');
+
+    await cache.load('k', api.fetcher, page());
+    time = 60 * 60_000;
+    expect(await cache.load('k', api.fetcher, page())).toBe('old');
+    await settle();
+    expect(await cache.load('k', api.fetcher, page())).toBe('new');
+  });
+
+  it('waits for a fresh answer when the cached one is older than 12 hours', async () => {
+    let time = 0;
+    const cache = createResponseCache({ now: () => time });
+    const api = source('old', 'new');
+
+    await cache.load('k', api.fetcher, page());
+    time = 13 * 60 * 60_000;
+    expect(await cache.load('k', api.fetcher, page())).toBe('new');
+  });
+
+  it('does not refetch when a page reloads itself after a background refresh', async () => {
+    const cache = createResponseCache();
+    const api = source('a', 'b');
+    const reload = new AbortController().signal;
+    markPageLoad(reload, true);
+
+    await cache.load('k', api.fetcher, page());
+    expect(await cache.load('k', api.fetcher, reload)).toBe('a');
+
+    expect(api.calls()).toBe(1);
+  });
+
+  it('keeps a different answer per key, so another person or language never sees it', async () => {
+    const cache = createResponseCache();
+
+    await cache.load('t1|nb|/tenants/t1/x', async () => 'one', page());
+
+    expect(await cache.load('t2|nb|/tenants/t2/x', async () => 'two', page())).toBe('two');
+    expect(await cache.load('t1|en|/tenants/t1/x', async () => 'three', page())).toBe('three');
+  });
+
+  it('serves no stale data after a write: a write drops every cached answer', async () => {
+    let time = 0;
+    const cache = createResponseCache({ now: () => time });
+    const api = source('before', 'after');
+
+    await cache.load('k', api.fetcher, page());
+    cache.clear();
+    time = 60_000;
+
+    expect(await cache.load('k', api.fetcher, page())).toBe('after');
+  });
+
+  it('drops a refresh that started before a write', async () => {
+    let time = 0;
+    const cache = createResponseCache({ now: () => time });
+    let release: (value: string) => void = () => undefined;
+    await cache.load('k', async () => 'old', page());
+    time = 60_000;
+    await cache.load('k', () => new Promise<string>((r) => (release = r)), page());
+
+    cache.clear();
+    release('stale');
+    await settle();
+
+    expect(await cache.load('k', async () => 'fresh', page())).toBe('fresh');
+  });
+
+  it('tells the page that read a key when a background refresh changed it', async () => {
+    let time = 0;
+    const cache = createResponseCache({ now: () => time });
+    const api = source('old', 'new');
+    const signal = page();
+    let told = 0;
+    onRefreshed(signal, () => (told += 1));
+
+    await cache.load('k', api.fetcher, signal);
+    const first = told;
+    time = 60_000;
+    await cache.load('k', api.fetcher, signal);
+    await settle();
+
+    expect(told - first).toBe(1);
+  });
+
+  it('does not tell the page load that fetched the answer itself, so it does not load twice', async () => {
+    const cache = createResponseCache();
+    const signal = page();
+    let told = 0;
+    onRefreshed(signal, () => (told += 1));
+
+    await cache.load('k', async () => 'first', signal);
+
+    expect(told).toBe(0);
+  });
+
+  it('always fetches when the caller is not a page load, and still updates the cache', async () => {
+    const cache = createResponseCache({ now: () => 0 });
+    const api = source('a', 'b');
+
+    await cache.load('k', api.fetcher, page());
+    expect(await cache.load('k', api.fetcher)).toBe('b');
+    expect(await cache.load('k', api.fetcher, page())).toBe('b');
+  });
+
+  it('keeps the old answer when the background refresh fails', async () => {
+    let time = 0;
+    const cache = createResponseCache({ now: () => time });
+    await cache.load('k', async () => 'old', page());
+    time = 60_000;
+
+    expect(await cache.load('k', () => Promise.reject(new Error('down')), page())).toBe('old');
+    await settle();
+    expect(await cache.load('k', async () => 'x', page())).toBe('old');
+  });
+
+  it('two parts asking for the same answer at once share one request', async () => {
+    const cache = createResponseCache();
+    const api = source('one');
+
+    const [a, b] = await Promise.all([
+      cache.load('k', api.fetcher, page()),
+      cache.load('k', api.fetcher, page()),
+    ]);
+
+    expect([a, b]).toEqual(['one', 'one']);
+    expect(api.calls()).toBe(1);
+  });
+
+  it('a part that leaves does not cancel the request another part still waits for', async () => {
+    const cache = createResponseCache();
+    let aborted = false;
+    const fetcher = (signal?: AbortSignal) =>
+      new Promise<string>((resolve) => {
+        signal?.addEventListener('abort', () => (aborted = true));
+        setTimeout(() => resolve('done'), 5);
+      });
+    const leaving = new AbortController();
+    markPageLoad(leaving.signal);
+
+    const first = cache.load('k', fetcher, leaving.signal).catch(() => 'left');
+    const second = cache.load('k', fetcher, page());
+    leaving.abort();
+
+    expect(await first).toBe('left');
+    expect(await second).toBe('done');
+    expect(aborted).toBe(false);
+  });
+
+  it('cancels the request when every part that asked for it has left', async () => {
+    const cache = createResponseCache();
+    let aborted = false;
+    const fetcher = (signal?: AbortSignal) =>
+      new Promise<string>((_resolve, reject) =>
+        signal?.addEventListener('abort', () => {
+          aborted = true;
+          reject(new Error('aborted'));
+        }),
+      );
+    const leaving = new AbortController();
+    markPageLoad(leaving.signal);
+
+    const load = cache.load('k', fetcher, leaving.signal).catch(() => 'left');
+    leaving.abort();
+
+    expect(await load).toBe('left');
+    expect(aborted).toBe(true);
+  });
+
+  it('does not ask again for an answer younger than the freshness window', async () => {
+    let time = 0;
+    const cache = createResponseCache({ now: () => time, freshMs: 10_000 });
+    const api = source('a', 'b');
+
+    await cache.load('k', api.fetcher, page());
+    time = 9_000;
+    await cache.load('k', api.fetcher, page());
+    await settle();
+
+    expect(api.calls()).toBe(1);
+  });
+
+  it('a write while a request is under way starts a new request for the next reader', async () => {
+    const cache = createResponseCache();
+    let release: (value: string) => void = () => undefined;
+    const slow = () => new Promise<string>((resolve) => (release = resolve));
+    const before = cache.load('k', slow, page());
+
+    cache.clear();
+    const after = cache.load('k', async () => 'after', page());
+    release('before');
+
+    expect(await before).toBe('before');
+    expect(await after).toBe('after');
+  });
+});

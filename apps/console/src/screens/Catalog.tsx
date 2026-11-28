@@ -119,7 +119,8 @@ const TenantRegistry = ({
     async (signal) => (await api.configList(`${base}/catalog`, signal)).tenantKinds ?? [],
     [api, base],
   );
-  if (kinds.status === 'loading') return <Loading label={t('catalog.loadingKinds')} />;
+  if (kinds.status === 'loading')
+    return <Loading label={t('catalog.loadingKinds')} shape="list" onRetry={retry} />;
   if (kinds.status === 'error') return <ErrorState error={kinds.error} onRetry={retry} />;
   if (!kinds.data.includes(tab.kind))
     return (

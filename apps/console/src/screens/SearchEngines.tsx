@@ -129,7 +129,8 @@ const StoredEndpoint = (
     (signal) => api.knowledgeEndpoint(endpoint.id, signal),
     [api, endpoint.id],
   );
-  if (state.status === 'loading') return <Loading label={t('searchEngines.loadingEndpoint')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('searchEngines.loadingEndpoint')} shape="form" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   return <EndpointEditor {...props} spec={state.data.spec} />;
 };
@@ -293,8 +294,17 @@ export const SearchEngines = ({ api }: { api?: ApiClient }) => {
         <Paragraph>{t('searchEngines.comingSoon')}</Paragraph>
       </>
     );
-  if (state.status === 'loading') return <Loading label={t('searchEngines.loadingEngines')} />;
-  if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
+  if (state.status !== 'ready')
+    return (
+      <>
+        <PageHeader title={t('searchEngines.title')} intro={t('searchEngines.intro')} />
+        {state.status === 'loading' ? (
+          <Loading label={t('searchEngines.loadingEngines')} shape="table" onRetry={retry} />
+        ) : (
+          <ErrorState error={state.error} onRetry={retry} />
+        )}
+      </>
+    );
   if (!state.data) return null;
   const [engines, endpoints, secrets] = state.data;
   const initialOpen = params.get('new') ? 'new' : (params.get('endpoint') ?? undefined);

@@ -95,9 +95,9 @@ describe('Til behandling', () => {
     fireEvent.click(await screen.findByRole('button', { name: /^Kvote/ }));
     release();
 
-    const rows = await requests();
-    expect(rows).toHaveLength(1);
-    expect(within(rows[0] as HTMLElement).getByText('Kvote')).toBeTruthy();
+    await waitFor(async () => expect(await requests()).toHaveLength(1));
+    const [row] = await requests();
+    expect(within(row as HTMLElement).getByText('Kvote')).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Kvote/ }).getAttribute('aria-pressed')).toBe(
       'true',
     );

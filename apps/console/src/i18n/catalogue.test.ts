@@ -1,6 +1,6 @@
 import { catalogueProblems } from '@genai/i18n';
 import { describe, expect, it } from 'vitest';
-import { en, nb } from './index';
+import { en, nb } from './full';
 
 describe('console catalogues', () => {
   it('has a complete English catalogue', () => {

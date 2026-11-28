@@ -434,7 +434,7 @@ export const Onboarding = ({ api }: { api: ApiClient }) => {
   const t = useT();
   const tRef = useRef(t);
   tRef.current = t;
-  const [state, retry] = useAsync(
+  const [state, retry, refreshing] = useAsync(
     async (signal) => {
       const tenants = await api.listTenants(signal);
       try {
@@ -474,7 +474,7 @@ export const Onboarding = ({ api }: { api: ApiClient }) => {
       </div>
       <Flash message={flash.message} />
       {state.status === 'loading' ? (
-        <Loading label={t('onboarding.loading')} />
+        <Loading label={t('onboarding.loading')} shape="cards" rows={3} onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : !state.data.live ? (
@@ -495,7 +495,7 @@ export const Onboarding = ({ api }: { api: ApiClient }) => {
           </Paragraph>
         </EmptyState>
       ) : (
-        <div className="card-grid wide">
+        <div className="card-grid wide refreshing" aria-busy={refreshing || undefined}>
           {list.map((item) => (
             <Card key={item.org} item={item} />
           ))}

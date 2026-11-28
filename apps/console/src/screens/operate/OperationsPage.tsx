@@ -295,7 +295,8 @@ const ComponentAlert = ({ component }: { component: Component }) => {
 const ApiHealth = ({ api }: { api: ApiClient }) => {
   const t = useT();
   const [state, retry] = useAsync((signal) => api.health(signal), [api]);
-  if (state.status === 'loading') return <Loading label={t('operations.checkingApi')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('operations.checkingApi')} shape="list" rows={3} onRetry={retry} />;
   if (state.status === 'error')
     return (
       <p role="alert" className="op-banner" data-tone="danger">
@@ -438,7 +439,7 @@ const Overview = ({
         ) : failedState.status === 'error' ? (
           <ErrorState error={failedState.error} onRetry={failedRetry} />
         ) : (
-          <Loading label={t('operating.loading')} />
+          <Loading label={t('operating.loading')} shape="list" onRetry={failedRetry} />
         )}
       </section>
       {overview ? (
@@ -499,7 +500,7 @@ const Incidents = ({
         state.status === 'error' ? (
           <ErrorState error={state.error} onRetry={retry} />
         ) : (
-          <Loading label={t('operating.loadingIncidents')} />
+          <Loading label={t('operating.loadingIncidents')} shape="table" onRetry={retry} />
         )
       ) : (
         <>

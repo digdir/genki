@@ -420,7 +420,7 @@ const Loaded = ({
       {copying && needsModel && !embedding ? (
         <Paragraph data-size="sm">{t('engineSwitch.chooseModelFirst')}</Paragraph>
       ) : repricing ? (
-        <Loading label={t('engineSwitch.loadingEstimate')} />
+        <Loading label={t('engineSwitch.loadingEstimate')} shape="list" rows={2} />
       ) : offer?.available && estimate ? (
         <Paragraph data-size="sm">
           {t(copying ? 'engineSwitch.copyEstimate' : 'engineSwitch.estimate', {
@@ -437,7 +437,7 @@ const Loaded = ({
           {estimate.reingest.reason ?? t('engineSwitch.notAvailable')}
         </Alert>
       ) : (
-        <Loading label={t('engineSwitch.loadingEstimate')} />
+        <Loading label={t('engineSwitch.loadingEstimate')} shape="list" rows={2} />
       )}
       {reasonField}
       <div className="actions-row">
@@ -520,7 +520,7 @@ export const EngineSwitchSection = ({
         {t('engineSwitch.title')}
       </Heading>
       {state.status === 'loading' ? (
-        <Loading label={t('engineSwitch.loading')} />
+        <Loading label={t('engineSwitch.loading')} shape="list" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : (

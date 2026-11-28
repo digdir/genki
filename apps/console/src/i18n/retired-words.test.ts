@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { en, nb } from './index';
+import { en, nb } from './full';
 
 const word = (stem: string, endings = '') =>
   new RegExp(`(?<![\\p{L}])${stem}${endings ? `(?:${endings})?` : ''}(?![\\p{L}])`, 'iu');
