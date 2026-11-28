@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { z } from 'zod';
@@ -38,7 +38,7 @@ import {
   audioUsd,
   bestTake,
   hearingUsd,
-  isModelVoice,
+  leftUsd,
   maxClipBytes,
   modelAudio,
   modelVoiceId,
@@ -46,10 +46,37 @@ import {
   refuseOverCap,
   speechLocale,
   spendOf,
+  spokenText,
   transcriptionUrl,
+  type Respellings,
   type Spend,
+  type Spoken,
+  type TakeScore,
 } from './demo-voice.ts';
-import { maxCostCapUsd, voiceCostUsd } from '../packages/contracts/src/demo-voices.ts';
+import {
+  demoScrubbedWords,
+  demoVoiceOf,
+  demoVoiceProviders,
+  elevenLabsCharacterCap,
+  elevenLabsUsdPerCharacter,
+  maxCostCapUsd,
+  providerOf,
+  silentVoice,
+  takesOf,
+  voiceCostUsd,
+  voiceNeedsApproval,
+  type DemoVoiceProvider,
+} from '../packages/contracts/src/demo-voices.ts';
+import { secretPathIn } from '../packages/contracts/src/demo-secrets.ts';
+import {
+  colorSchemes,
+  pageProblem,
+  sceneProblem,
+  type ColorScheme,
+  type DemoScene,
+} from '../packages/contracts/src/demo-scenes.ts';
+import { elevenLabsKeyOf, elevenLabsRead } from './demo-elevenlabs.ts';
+import { musicBeds, type MusicBed, type SoundReport } from './demo-sound.ts';
 import {
   landmarkScript,
   type Card,
@@ -59,6 +86,7 @@ import {
 } from './demo-events.ts';
 import { editFilm, hearClip, makeFilm } from './demo-film.ts';
 import { writeRunFile, writeRunJson } from './demo-files.ts';
+import { exampleExists } from './demo-scenes.ts';
 
 export interface DemoStep {
   say: string;
@@ -66,6 +94,9 @@ export interface DemoStep {
   hold?: number;
   chapter?: string;
   focus?: string[];
+  spoken?: Spoken;
+  scene?: DemoScene;
+  page?: string;
 }
 
 export interface Demo {
@@ -78,6 +109,11 @@ export interface Demo {
   ready?: string;
   intro?: Card;
   outro?: Card;
+  respell?: Respellings;
+  music?: MusicBed;
+  exampleData?: boolean;
+  scrub?: string[];
+  colorScheme?: ColorScheme;
   steps: DemoStep[];
 }
 
@@ -136,6 +172,11 @@ export const languageScript = (language: string) => {
 export const darkScript =
   "(()=>{const dark=()=>{const r=document.documentElement;if(r&&r.getAttribute('data-color-scheme')!=='dark')r.setAttribute('data-color-scheme','dark')};new MutationObserver(dark).observe(document,{childList:true});new MutationObserver(dark).observe(document,{subtree:true,attributes:true,attributeFilter:['data-color-scheme']});dark()})();";
 
+export const lightScript =
+  "(()=>{const light=()=>{const r=document.documentElement;if(r&&r.getAttribute('data-color-scheme')!=='light')r.setAttribute('data-color-scheme','light')};new MutationObserver(light).observe(document,{childList:true});new MutationObserver(light).observe(document,{subtree:true,attributes:true,attributeFilter:['data-color-scheme']});light()})();";
+
+export const schemeScripts: Record<ColorScheme, string> = { dark: darkScript, light: lightScript };
+
 export interface DemoApps {
   portal: string;
   console: string;
@@ -174,15 +215,21 @@ export const apiKeyScript = (key: string, apps: DemoApps) => {
   return `(()=>{const key=${scriptLiteral(key)};const origins=${scriptLiteral(appOriginsOf(apps).map(([o]) => o))};const send=window.fetch.bind(window);window.fetch=(input,init)=>{const url=new URL(input instanceof Request?input.url:String(input),location.href);if(!origins.includes(url.origin)||!url.pathname.startsWith('/api/'))return send(input,init);const headers=new Headers(input instanceof Request?input.headers:undefined);new Headers(init&&init.headers).forEach((v,k)=>headers.set(k,v));headers.set('authorization','Bearer '+key);return send(input,{...init,headers});};})();`;
 };
 
+export const scrubScript = (words: readonly string[]) =>
+  `(()=>{const words=${scriptLiteral(words.filter((w) => w.trim()))};if(!words.length)return;const hide=()=>{const walk=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);const hits=[];while(walk.nextNode()){const n=walk.currentNode;if(words.some((w)=>(n.nodeValue||'').includes(w)))hits.push(n)}for(const n of hits){const p=n.parentElement;if(!p)continue;const el=p.closest('li li,.ds-tag,a,button,label,p,span,td,th,li,h1,h2,h3,h4');if(el)el.style.setProperty('display','none','important');else n.nodeValue=''}};let queued=false;const soon=()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;hide()})};const start=()=>{if(!document.body)return void setTimeout(start,20);hide();new MutationObserver(soon).observe(document.body,{childList:true,subtree:true,characterData:true})};start()})();`;
+
 export const browserLaunch = (
   session: string,
   dir: string,
   language: string,
   signIn?: { key: string; apps: DemoApps },
+  scrub: readonly string[] = demoScrubbedWords,
+  scheme: ColorScheme = 'dark',
 ) => {
-  const init = [join(dir, 'language.js'), join(dir, 'dark.js')];
+  const init = [join(dir, 'language.js'), join(dir, 'scheme.js'), join(dir, 'scrub.js')];
   writeFileSync(join(dir, 'language.js'), languageScript(language), { flag: 'wx', mode: 0o600 });
-  writeFileSync(join(dir, 'dark.js'), darkScript, { flag: 'wx', mode: 0o600 });
+  writeFileSync(join(dir, 'scheme.js'), schemeScripts[scheme], { flag: 'wx', mode: 0o600 });
+  writeFileSync(join(dir, 'scrub.js'), scrubScript(scrub), { flag: 'wx', mode: 0o600 });
   if (signIn) {
     const script = apiKeyScript(signIn.key, signIn.apps);
     init.push(join(dir, 'api-key.js'));
@@ -193,7 +240,7 @@ export const browserLaunch = (
     session,
     ...init.flatMap((f) => ['--init-script', f]),
     '--color-scheme',
-    'dark',
+    scheme,
     'open',
   ];
 };
@@ -273,9 +320,39 @@ export const parseDemo = (text: string, source = 'demo'): Demo => {
     'ready',
     'intro',
     'outro',
+    'respell',
+    'music',
+    'exampleData',
+    'scrub',
+    'colorScheme',
     'steps',
   ];
   for (const key of Object.keys(raw)) if (!known.includes(key)) fail(`unknown field ${key}`);
+  const secret = secretPathIn(raw);
+  if (secret)
+    fail(`${secret} looks like a key or token; keys belong in Key Vault, never in a demo`);
+  if (raw.respell !== undefined && !respellingsOk(raw.respell))
+    fail(
+      `respell must map a voice provider (${providerIds.join(', ')}) to words and how to say them`,
+    );
+  if (raw.music !== undefined && !(musicBeds as readonly unknown[]).includes(raw.music))
+    fail(`music must be one of ${musicBeds.join(', ')}`);
+  if (raw.exampleData !== undefined && typeof raw.exampleData !== 'boolean')
+    fail('exampleData must be true or false');
+  if (
+    raw.colorScheme !== undefined &&
+    !(colorSchemes as readonly unknown[]).includes(raw.colorScheme)
+  )
+    fail(`colorScheme must be ${colorSchemes.join(' or ')}`);
+  if (
+    raw.scrub !== undefined &&
+    !(
+      Array.isArray(raw.scrub) &&
+      raw.scrub.length <= 30 &&
+      raw.scrub.every((w) => typeof w === 'string' && w.trim() && w.length <= 60)
+    )
+  )
+    fail('scrub must be a list of at most 30 words to hide');
   if (typeof raw.title !== 'string' || !raw.title.trim()) fail('title is missing');
   if (typeof raw.language !== 'string' || !languageTag.test(raw.language))
     fail('language must be a tag like nb-NO');
@@ -305,8 +382,17 @@ export const parseDemo = (text: string, source = 'demo'): Demo => {
     const at = `step ${i + 1}`;
     const step = (value ?? {}) as Record<string, unknown>;
     for (const key of Object.keys(step))
-      if (!['say', 'do', 'hold', 'chapter', 'focus'].includes(key))
+      if (!['say', 'do', 'hold', 'chapter', 'focus', 'spoken', 'scene', 'page'].includes(key))
         fail(`${at}: unknown field ${key}`);
+    const scene = step.scene === undefined ? undefined : sceneProblem(step.scene);
+    if (scene) fail(`${at}: ${scene}`);
+    const code = step.scene as { template?: string; definition?: string } | undefined;
+    if (code?.template === 'code' && !exampleExists(code.definition ?? ''))
+      fail(`${at}: there is no example definition ${code.definition}`);
+    const page = step.page === undefined ? undefined : pageProblem(step.page);
+    if (page) fail(`${at}: ${page}`);
+    if (step.spoken !== undefined && !spokenOk(step.spoken))
+      fail(`${at}: spoken must map a voice provider to how the line is said`);
     if (
       step.chapter !== undefined &&
       !(typeof step.chapter === 'string' && step.chapter.trim() && step.chapter.length <= 60)
@@ -351,6 +437,34 @@ export const parseDemo = (text: string, source = 'demo'): Demo => {
   return raw as unknown as Demo;
 };
 
+const providerIds = demoVoiceProviders.map((p) => p.id as string);
+
+const isMap = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const spokenOk = (value: unknown) =>
+  isMap(value) &&
+  Object.entries(value).every(
+    ([k, v]) => providerIds.includes(k) && typeof v === 'string' && v.trim() && v.length <= 1000,
+  );
+
+const respellingsOk = (value: unknown) =>
+  isMap(value) &&
+  Object.entries(value).every(
+    ([k, words]) =>
+      providerIds.includes(k) &&
+      isMap(words) &&
+      Object.keys(words).length <= 100 &&
+      Object.entries(words).every(
+        ([w, said]) =>
+          w.trim() &&
+          w.length <= 60 &&
+          typeof said === 'string' &&
+          said.trim() &&
+          said.length <= 120,
+      ),
+  );
+
 const cardProblem = (value: unknown) => {
   if (value === undefined) return undefined;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return 'must have a title';
@@ -372,7 +486,11 @@ export const outroSeconds = 3.5;
 
 export const estimateDemo = (demo: Demo) =>
   demo.steps.reduce(
-    (sum, s) => sum + estimateSeconds(s.say) + (s.hold ?? 0.6) + (s.do?.length ?? 0) * 0.5,
+    (sum, s) =>
+      sum +
+      estimateSeconds(s.say) +
+      (s.hold ?? 0.6) +
+      ((s.do?.length ?? 0) + (s.page ? 2 : 0)) * 0.5,
     (demo.intro ? introSeconds : 0) + (demo.outro ? outroSeconds : 0),
   );
 
@@ -475,6 +593,26 @@ export const runStep = (
   }
 };
 
+export const pageUrl = (start: string, page: string) => {
+  const origin = new URL(start).origin;
+  const url = new URL(page, origin);
+  if (pageProblem(page) || url.origin !== origin)
+    throw new Error(`page ${page} is not a path on ${origin}`);
+  return url.href;
+};
+
+export const withPage = (step: DemoStep, start: string): DemoStep =>
+  step.page
+    ? {
+        ...step,
+        do: [
+          ['open', pageUrl(start, step.page)],
+          ['wait', '--load', 'networkidle', '--timeout', '15000'],
+          ...(step.do ?? []),
+        ],
+      }
+    : step;
+
 export const pickDemos = (dir: string, only?: string, files: string[] = []) => {
   if (files.length) return files;
   if (only) {
@@ -494,14 +632,29 @@ const commandTimeoutMs = 180_000;
 const run = (cmd: string, args: string[], timeout = commandTimeoutMs) =>
   execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout });
 
-const speechConfigured = (voice: string) =>
-  Boolean(
-    ((process.env.SPEECH_ENDPOINT && process.env.IDENTITY_ENDPOINT) ||
-      (process.env.SPEECH_RESOURCE &&
-        process.env.SPEECH_RESOURCE_GROUP &&
-        process.env.SPEECH_SUBSCRIPTION)) &&
-    (!isModelVoice(voice) || process.env.DEMO_AUDIO_ENDPOINT),
+export const placeholderVoiceOf = (env: NodeJS.ProcessEnv) => {
+  const voice = env.DEMO_PLACEHOLDER_VOICE;
+  if (!voice) return undefined;
+  if (!/^[A-Za-z]{2,20}$/.test(voice))
+    throw new Error('DEMO_PLACEHOLDER_VOICE must be the name of a macOS voice, such as Nora');
+  return voice;
+};
+
+export const speechConfigured = (voice: string, env: NodeJS.ProcessEnv = process.env) => {
+  if (voice === silentVoice) return false;
+  if (placeholderVoiceOf(env)) return true;
+  const provider = providerOf(voice);
+  return Boolean(
+    ((env.SPEECH_ENDPOINT && env.IDENTITY_ENDPOINT) ||
+      (env.SPEECH_RESOURCE && env.SPEECH_RESOURCE_GROUP && env.SPEECH_SUBSCRIPTION)) &&
+    (provider !== 'azure-audio' || env.DEMO_AUDIO_ENDPOINT) &&
+    (provider !== 'elevenlabs' || env.DEMO_ELEVENLABS_KEY_SECRET),
   );
+};
+
+export const canVoice = (voice: string, spend: Spend, env: NodeJS.ProcessEnv) =>
+  speechConfigured(voice, env) &&
+  (Boolean(placeholderVoiceOf(env)) || !voiceNeedsApproval(voice) || approved(spend));
 
 export const managedIdentityTokenUrl = (endpoint: string) => {
   const url = new URL(endpoint);
@@ -645,7 +798,7 @@ const transcribe = async (audio: Buffer, base: string, token: string, language: 
     ],
     { input: audio, maxBuffer: 64 * 1024 * 1024, timeout: commandTimeoutMs },
   );
-  const res = await fetch(transcriptionUrl(base, language), {
+  const res = await fetch(transcriptionUrl(base, speechLocale(language)), {
     method: 'POST',
     headers: {
       authorization: `Bearer ${token}`,
@@ -658,42 +811,120 @@ const transcribe = async (audio: Buffer, base: string, token: string, language: 
   return ((await res.json()) as { DisplayText?: string }).DisplayText ?? '';
 };
 
-async function speak(
+export interface Line {
+  say: string;
+  spoken?: Spoken;
+}
+
+type Voicing = Pick<Demo, 'voice' | 'language' | 'respell'>;
+
+const voiceKeyOf = (id: string) => {
+  const voice = demoVoiceOf(id);
+  return voice?.providerVoice || voice?.model
+    ? [id, voice.providerVoice, voice.model].join(':')
+    : id;
+};
+
+export const clipOf = (dir: string, demo: Voicing, line: Line, env = process.env) => {
+  const placeholder = placeholderVoiceOf(env);
+  return clipFile(
+    dir,
+    placeholder ? `placeholder:${placeholder}` : voiceKeyOf(demo.voice),
+    spokenText(line, demo.voice, demo.language, demo.respell),
+  );
+};
+
+const sayAloud = (text: string, voice: string) => {
+  const dir = mkdtempSync(join(tmpdir(), 'genki-say-'));
+  try {
+    writeFileSync(join(dir, 'line.txt'), text);
+    run('say', ['-v', voice, '-f', join(dir, 'line.txt'), '-o', join(dir, 'line.aiff')]);
+    run('ffmpeg', [
+      '-y',
+      '-loglevel',
+      'error',
+      '-i',
+      join(dir, 'line.aiff'),
+      join(dir, 'line.mp3'),
+    ]);
+    return readFileSync(join(dir, 'line.mp3'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+const secondsOfAudio = (audio: Buffer) =>
+  Number(
+    execFileSync(
+      'ffprobe',
+      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', 'pipe:0'],
+      { input: audio, encoding: 'utf8', timeout: commandTimeoutMs },
+    ).trim(),
+  );
+
+export const scoreFile = (clip: string) => clip.replace(/\.mp3$/, '.json');
+
+export interface LineScore extends TakeScore {
+  step: number;
+  takes: number;
+}
+
+const words = (list: string[] | undefined) => (list ?? []).slice(0, 20).map((w) => w.slice(0, 80));
+
+export const lineScoreOf = (clip: string, step: number): LineScore | undefined => {
+  try {
+    const kept = JSON.parse(readFileSync(scoreFile(clip), 'utf8')) as Partial<TakeScore> & {
+      takes?: unknown[];
+    };
+    if (typeof kept.score !== 'number') return undefined;
+    return {
+      step,
+      takes: kept.takes?.length ?? 1,
+      score: kept.score,
+      missing: words(kept.missing),
+      extra: words(kept.extra),
+      keyTermsMissing: words(kept.keyTermsMissing),
+      ...(typeof kept.wordsPerSecond === 'number'
+        ? { wordsPerSecond: Math.min(kept.wordsPerSecond, 20) }
+        : {}),
+    };
+  } catch {
+    return undefined;
+  }
+};
+
+const elevenLabsKey = elevenLabsKeyOf(process.env);
+const voicedCharacters = new WeakMap<Spend, number>();
+
+export const elevenLabsCharacters = {
+  of: (spend: Spend) => voicedCharacters.get(spend) ?? 0,
+  add: (spend: Spend, count: number) =>
+    voicedCharacters.set(spend, elevenLabsCharacters.of(spend) + count),
+};
+
+export const refuseOverCharacters = (
+  voiced: number,
   text: string,
-  demo: Pick<Demo, 'voice' | 'language'>,
-  dir: string,
-  speech: Speech,
-  spend: Spend,
-) {
-  const file = clipFile(dir, demo.voice, text);
-  if (!cached(file) && isModelVoice(demo.voice)) {
-    const model = { voice: modelVoiceId(demo.voice), language: speechLocale(demo.language) };
-    refuseOverCap(spend, voiceCostUsd([text], model.voice), `Reading «${text.slice(0, 40)}»`);
-    const { base, token } = await speech();
-    const before = { ...audioTokens };
-    let heard = 0;
-    const take = await bestTake(
-      text,
-      () => readAloud(text, model, token),
-      (audio) => {
-        heard++;
-        return transcribe(audio, base, token, model.language);
-      },
-    ).finally(() => {
-      spend.spentUsd +=
-        audioUsd(audioTokens.text - before.text, audioTokens.audio - before.audio) +
-        heard * hearingUsd(estimateSeconds(text));
-    });
-    writeRunJson(dir, basename(file).replace(/\.mp3$/, '.json'), {
-      text,
-      ...take,
-      audio: undefined,
-    });
-    keep(file, take.audio);
-    console.log(
-      `${take.takes.length} ${take.takes.length === 1 ? 'take' : 'takes'}, ${take.distance} of ${take.words} words heard differently: ${text.slice(0, 50)}`,
+  takes = 1,
+  cap = elevenLabsCharacterCap,
+) => {
+  if (voiced + text.length * takes > cap)
+    throw new OverCap(
+      `Reading «${text.slice(0, 40)}» would pass the ${cap} characters a film may voice with ElevenLabs`,
     );
-  } else if (!cached(file)) {
+};
+
+async function speak(line: Line, demo: Voicing, dir: string, speech: Speech, spend: Spend) {
+  const spoken = spokenText(line, demo.voice, demo.language, demo.respell);
+  const file = clipOf(dir, demo, line);
+  if (cached(file)) return file;
+  const placeholder = placeholderVoiceOf(process.env);
+  if (placeholder) {
+    keep(file, sayAloud(spoken, placeholder));
+    return file;
+  }
+  const provider = providerOf(demo.voice) ?? 'azure-speech';
+  if (provider === 'azure-speech') {
     const { base, token } = await speech();
     const res = await fetch(`${base}/tts/cognitiveservices/v1`, {
       method: 'POST',
@@ -703,11 +934,78 @@ async function speak(
         'x-microsoft-outputformat': 'audio-24khz-96kbitrate-mono-mp3',
         'user-agent': 'genki-demo',
       },
-      body: ssml(text, demo.voice, demo.language),
+      body: ssml(spoken, demo.voice, demo.language),
     });
     if (!res.ok) throw new Error(`Speech answered ${res.status}`);
-    keep(file, Buffer.from(await res.arrayBuffer()));
+    const audio = Buffer.from(await res.arrayBuffer());
+    const seconds = secondsOfAudio(audio);
+    if (approved(spend) && hearingUsd(seconds) <= leftUsd(spend)) {
+      spend.spentUsd += hearingUsd(seconds);
+      const take = await bestTake(
+        line.say,
+        () => Promise.resolve(audio),
+        (heard) => transcribe(heard, base, token, demo.language),
+        1,
+        () => seconds,
+      ).catch(() => undefined);
+      if (take)
+        writeRunJson(dir, basename(scoreFile(file)), {
+          text: line.say,
+          spoken,
+          ...take,
+          audio: undefined,
+        });
+    }
+    keep(file, audio);
+    return file;
   }
+  refuseOverCap(spend, voiceCostUsd([spoken], demo.voice), `Reading «${line.say.slice(0, 40)}»`);
+  const voice = demoVoiceOf(demo.voice);
+  if (!voice) throw new Error(`No voice called ${demo.voice}`);
+  if (provider === 'elevenlabs')
+    refuseOverCharacters(elevenLabsCharacters.of(spend), spoken, takesOf(demo.voice));
+  const { base, token } = await speech();
+  const before = { ...audioTokens };
+  let heard = 0;
+  let read = 0;
+  const reader =
+    provider === 'elevenlabs'
+      ? () => {
+          read++;
+          elevenLabsCharacters.add(spend, spoken.length);
+          return elevenLabsRead(spoken, voice, elevenLabsKey);
+        }
+      : () =>
+          readAloud(
+            spoken,
+            { voice: modelVoiceId(demo.voice), language: speechLocale(demo.language) },
+            token,
+          );
+  const take = await bestTake(
+    line.say,
+    reader,
+    (audio) => {
+      heard++;
+      return transcribe(audio, base, token, demo.language);
+    },
+    takesOf(demo.voice),
+    secondsOfAudio,
+  ).finally(() => {
+    spend.spentUsd +=
+      audioUsd(audioTokens.text - before.text, audioTokens.audio - before.audio) +
+      read * spoken.length * elevenLabsUsdPerCharacter +
+      heard * hearingUsd(estimateSeconds(spoken));
+  });
+  writeRunJson(dir, basename(scoreFile(file)), {
+    text: line.say,
+    spoken,
+    ...take,
+    audio: undefined,
+  });
+  keep(file, take.audio);
+  console.log(
+    `${take.takes.length} ${take.takes.length === 1 ? 'take' : 'takes'}, score ${take.score} (missing ${take.missing.join(' ') || 'none'}, extra ${take.extra.join(' ') || 'none'}${take.wordsPerSecond ? `, ${take.wordsPerSecond} words a second` : ''}): ${line.say.slice(0, 50)}`,
+  );
   return file;
 }
 
@@ -717,7 +1015,7 @@ const duration = (file: string) =>
   );
 
 export const narrationOf = (demo: Demo, dir: string, canSpeak: boolean) =>
-  canSpeak || demo.steps.every((s) => cached(clipFile(dir, demo.voice, s.say)));
+  demo.voice !== silentVoice && (canSpeak || demo.steps.every((s) => cached(clipOf(dir, demo, s))));
 
 const sleep = (ms: number) => {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.max(0, ms));
@@ -741,8 +1039,8 @@ async function voice(path: string) {
   mkdirSync(cache, { recursive: true });
   const speech = speechOnce();
   const spend = spendFromEnv(process.env);
-  for (const step of demo.steps) await voiceLine(step.say, demo, cache, speech, spend);
-  await speak(sampleLineOf(demo.language), demo, cache, speech, spend);
+  for (const step of demo.steps) await voiceLine(step, demo, cache, speech, spend);
+  await speak({ say: sampleLineOf(demo.language) }, demo, cache, speech, spend);
   console.log(`${basename(path)}: ${demo.steps.length} lines voiced`);
   reportSpend(spend);
 }
@@ -751,8 +1049,8 @@ export const spendFromEnv = (env: NodeJS.ProcessEnv) =>
   spendOf(env.DEMO_COST_CAP_USD ? Number(env.DEMO_COST_CAP_USD) : undefined);
 
 const voiceLine = async (
-  line: string,
-  demo: Pick<Demo, 'voice' | 'language'>,
+  line: Line,
+  demo: Voicing,
   cache: string,
   speech: Speech,
   spend: Spend,
@@ -776,7 +1074,8 @@ export interface QueuedNarration {
   demo: string;
   voice: string;
   language: string;
-  lines: string[];
+  respell?: Respellings;
+  lines: Line[];
   costCapUsd?: number;
 }
 
@@ -788,6 +1087,7 @@ export const queuedOf = async (
   api: string,
   key: string,
   send: typeof fetch = fetch,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<QueuedNarration[]> => {
   const base = api.replace(/\/$/, '');
   const headers = { 'x-recorder-key': key };
@@ -803,18 +1103,33 @@ export const queuedOf = async (
     }
     const stored = (await one.json()) as StoredRecording & { status?: string };
     if (stored.status !== undefined && stored.status !== 'queued') continue;
+    const problem = storedProblem(stored, env);
+    if (problem) {
+      console.error(`The recording ${id} is not voiced: ${problem}`);
+      const { voice, language } = stored.demoSpec;
+      queued.push({ id, demo: stored.demo, voice, language, lines: [] });
+      continue;
+    }
     const demo = demoOfRecording(stored, {});
     queued.push({
       id,
       demo: stored.demo,
       voice: demo.voice,
       language: demo.language,
-      lines: stored.upTo || stored.editOf ? [] : demo.steps.map((s) => s.say),
+      ...(demo.respell ? { respell: demo.respell } : {}),
+      lines:
+        stored.upTo || stored.editOf || demo.voice === silentVoice
+          ? []
+          : demo.steps.map((s) => ({ say: s.say, ...(s.spoken ? { spoken: s.spoken } : {}) })),
       ...(stored.costCapUsd !== undefined ? { costCapUsd: stored.costCapUsd } : {}),
     });
   }
   return queued;
 };
+
+const queuedProvider = z.enum(
+  demoVoiceProviders.map((p) => p.id) as [DemoVoiceProvider, ...DemoVoiceProvider[]],
+);
 
 const queuedSchema = z.array(
   z.object({
@@ -822,15 +1137,33 @@ const queuedSchema = z.array(
     demo: z.string().min(1).max(200),
     voice: z.string().regex(/^[A-Za-z0-9-]{1,100}$/),
     language: z.string().regex(languageTag),
-    lines: z.array(z.string().max(1000)).max(50),
+    respell: z
+      .partialRecord(
+        queuedProvider,
+        z
+          .record(z.string().max(60), z.string().max(120))
+          .refine((g) => Object.keys(g).length <= 100),
+      )
+      .optional(),
+    lines: z
+      .array(
+        z.strictObject({
+          say: z.string().max(1000),
+          spoken: z.partialRecord(queuedProvider, z.string().max(1000)).optional(),
+        }),
+      )
+      .max(50),
     costCapUsd: z.number().min(0).max(maxCostCapUsd).optional(),
   }),
 );
 
 export const parseQueued = (text: string): QueuedNarration[] =>
-  queuedSchema
-    .parse(JSON.parse(text))
-    .map(({ costCapUsd, ...q }) => ({ ...q, ...(costCapUsd !== undefined ? { costCapUsd } : {}) }));
+  queuedSchema.parse(JSON.parse(text)).map(({ costCapUsd, respell, lines, ...q }) => ({
+    ...q,
+    lines: lines.map(({ say, spoken }) => (spoken ? { say, spoken } : { say })),
+    ...(respell ? { respell: respell as Respellings } : {}),
+    ...(costCapUsd !== undefined ? { costCapUsd } : {}),
+  }));
 
 const readQueued = () => parseQueued(readFileSync(queuedFile(), 'utf8'));
 
@@ -845,7 +1178,7 @@ async function voiceQueued() {
     try {
       for (const line of queued.lines) await voiceLine(line, queued, cache, speech, spend);
       console.log(`${queued.demo}: ${queued.lines.length} lines voiced`);
-      await speak(sampleLineOf(queued.language), queued, cache, speech, spend);
+      await speak({ say: sampleLineOf(queued.language) }, queued, cache, speech, spend);
     } catch (error) {
       if (!(error instanceof OverCap)) failed = true;
       console.log(
@@ -853,7 +1186,7 @@ async function voiceQueued() {
       );
     } finally {
       spent[queued.id] = spend.spentUsd;
-      writeFileSync(spentFile(cache), JSON.stringify(spent));
+      writeRunJson(cache, basename(spentFile(cache)), spent);
       reportSpend(spend);
     }
   }
@@ -877,6 +1210,8 @@ export interface RecordingFinish {
   seconds?: number;
   failure?: { step: number; command?: string; message: string };
   costUsd?: number;
+  lines?: LineScore[];
+  sound?: SoundReport;
 }
 
 export interface Library {
@@ -950,6 +1285,40 @@ const libraryFromEnv = (env: NodeJS.ProcessEnv) =>
     ? libraryOf(env.DEMO_API_URL, env.DEMO_RECORDER_KEY)
     : undefined;
 
+export const exampleBases = (env: NodeJS.ProcessEnv) => ({
+  portal: env.DEMO_EXAMPLE_PORTAL_URL || 'http://portal.localhost:5173',
+  console: env.DEMO_EXAMPLE_CONSOLE_URL || 'http://console.localhost:5174',
+});
+
+const appNames = ['portal', 'console'] as const;
+
+export const onTarget = (url: string, bases: Record<(typeof appNames)[number], string>) => {
+  const parsed = new URL(url);
+  const app = appNames.find((a) => parsed.hostname.split('.')[0] === a);
+  return app
+    ? `${bases[app].replace(/\/$/, '')}${parsed.pathname}${parsed.search}${parsed.hash}`
+    : url;
+};
+
+export const withExampleData = (demo: Demo, env: NodeJS.ProcessEnv): Demo => {
+  if (!demo.exampleData) return demo;
+  const bases = exampleBases(env);
+  return {
+    ...demo,
+    start: onTarget(demo.start, bases),
+    steps: demo.steps.map((step) =>
+      step.do
+        ? {
+            ...step,
+            do: step.do.map((c) =>
+              c[0] === 'open' && c[1] ? ['open', onTarget(c[1], bases), ...c.slice(2)] : c,
+            ),
+          }
+        : step,
+    ),
+  };
+};
+
 export const appBases = (env: NodeJS.ProcessEnv) => ({
   portal: env.DEMO_PORTAL_URL || 'https://portal.genki.digdir.cloud',
   console: env.DEMO_CONSOLE_URL || 'https://console.genki.digdir.cloud',
@@ -968,6 +1337,25 @@ export interface StoredRecording {
   settings: { viewport: [number, number]; tenant: string | null };
 }
 
+export const storedProblem = (stored: StoredRecording, env: NodeJS.ProcessEnv) => {
+  const spec = stored.demoSpec;
+  if (!Object.hasOwn(appBases(env), spec.app)) return `genki has no app ${String(spec.app)}`;
+  const secret = secretPathIn(spec);
+  if (secret)
+    return `${secret} looks like a key or token; keys belong in Key Vault, never in a demo`;
+  if (spec.exampleData && env.CI === 'true' && !env.DEMO_EXAMPLE_PORTAL_URL)
+    return 'example data is recorded against the mock apps, which this run does not start';
+  for (const [i, step] of spec.steps.entries()) {
+    const scene = step.scene === undefined ? undefined : sceneProblem(step.scene);
+    if (scene) return `step ${i + 1}: ${scene}`;
+    if (step.scene?.template === 'code' && !exampleExists(step.scene.definition))
+      return `step ${i + 1}: there is no example definition ${step.scene.definition}`;
+    const page = step.page === undefined ? undefined : pageProblem(step.page);
+    if (page) return `step ${i + 1}: ${page}`;
+  }
+  return undefined;
+};
+
 export const demoOfRecording = (stored: StoredRecording, env: NodeJS.ProcessEnv): Demo => {
   const { app, path, ...rest } = stored.demoSpec;
   const steps = stored.upTo ? rest.steps.slice(0, stored.upTo) : rest.steps;
@@ -981,6 +1369,11 @@ export const demoOfRecording = (stored: StoredRecording, env: NodeJS.ProcessEnv)
     ...(rest.ready !== undefined ? { ready: rest.ready } : {}),
     ...(rest.intro ? { intro: rest.intro } : {}),
     ...(rest.outro ? { outro: rest.outro } : {}),
+    ...(rest.respell ? { respell: rest.respell } : {}),
+    ...(rest.music ? { music: rest.music } : {}),
+    ...(rest.exampleData ? { exampleData: true } : {}),
+    ...(rest.scrub ? { scrub: rest.scrub } : {}),
+    ...(rest.colorScheme ? { colorScheme: rest.colorScheme } : {}),
     steps,
   };
 };
@@ -999,6 +1392,19 @@ interface Reporting {
   recording?: string;
   tenant?: string | null;
 }
+
+export const handRunSkip = (demo: Demo, mode: string, env: NodeJS.ProcessEnv) => {
+  if (
+    mode === 'voice' &&
+    voiceNeedsApproval(demo.voice) &&
+    !placeholderVoiceOf(env) &&
+    !approved(spendFromEnv(env))
+  )
+    return 'its voice needs an approved cost cap (DEMO_COST_CAP_USD)';
+  if (mode === 'record' && demo.exampleData && env.CI === 'true' && !env.DEMO_EXAMPLE_PORTAL_URL)
+    return 'example data is recorded against the mock apps, which this run does not start';
+  return undefined;
+};
 
 async function record(path: string, silent: boolean): Promise<DemoResult> {
   const demo = parseDemo(readFileSync(path, 'utf8'), path);
@@ -1033,6 +1439,13 @@ async function recordStored(id: string, silent: boolean): Promise<DemoResult> {
       { api: env.DEMO_API_URL, key: env.DEMO_RECORDER_KEY },
       spend,
     );
+  const problem = storedProblem(stored, env);
+  if (problem) {
+    const started = await library.start(stored.demo, false, stored.id);
+    await library.finish(started, { status: 'failed', failure: { step: 0, message: problem } });
+    console.error(`${stored.demo}: failed, ${problem}`);
+    return { name: stored.demo, outcome: 'failed', reason: problem };
+  }
   return recordDemo(
     demoOfRecording(stored, env),
     stored.demo,
@@ -1128,6 +1541,7 @@ async function editStored(
       status: 'recorded',
       seconds: Math.round(seconds * 10) / 10,
       costUsd: spentUsd(spend),
+      ...(film.sound ? { sound: film.sound } : {}),
     });
     console.log(`${name}: edited, ${film.mp4}`);
     return { name, outcome: 'recorded' };
@@ -1159,7 +1573,7 @@ export async function recordDemo(
 ): Promise<DemoResult> {
   const env = process.env;
   const key = env.DEMO_API_KEY || undefined;
-  if (demo.signedIn && !key) {
+  if (demo.signedIn && !key && !demo.exampleData) {
     const why = 'needs DEMO_API_KEY to sign in';
     if (reporting?.recording) {
       const { library } = reporting;
@@ -1174,13 +1588,7 @@ export async function recordDemo(
   }
   const out = resolve('demos/out', name);
   const cache = cacheDir();
-  const narrate =
-    !silent &&
-    narrationOf(
-      demo,
-      cache,
-      speechConfigured(demo.voice) && (!isModelVoice(demo.voice) || approved(spend)),
-    );
+  const narrate = !silent && narrationOf(demo, cache, canVoice(demo.voice, spend, process.env));
   if (!narrate) console.log(`${name}: no voice, recording with subtitles only`);
   const library = reporting?.library;
   let recording: string | undefined;
@@ -1203,17 +1611,19 @@ export async function recordDemo(
   const upload = async (file: string, as: string) => {
     if (library && recording) await library.upload(recording, as, file);
   };
-  const finished = async (seconds: number) => {
+  const finished = async (seconds: number, heard: Pick<RecordingFinish, 'lines' | 'sound'>) => {
     if (library && recording)
       await library.finish(recording, {
         status: 'recorded',
         seconds: Math.round(seconds * 10) / 10,
         ...(approved(spend) ? { costUsd: spentUsd(spend) } : {}),
+        ...(heard.lines?.length ? { lines: heard.lines } : {}),
+        ...(heard.sound ? { sound: heard.sound } : {}),
       });
   };
   try {
     return await capture(
-      demo,
+      withExampleData(demo, env),
       name,
       narrate,
       key,
@@ -1327,6 +1737,25 @@ const pointerOf = (
 
 export const captureScale = 1.5;
 
+export const exampleSignInNames = ['Logg inn', 'Sign in'];
+
+export const exampleSignIn = (
+  ab: (...args: string[]) => string,
+  quietly: (...args: string[]) => void,
+) => {
+  const clicked = exampleSignInNames.some((name) => {
+    try {
+      ab('find', 'role', 'button', 'click', '--name', name, '--exact');
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  if (!clicked) throw new Error('The example data apps show no mock «Logg inn» button');
+  sleep(2500);
+  quietly('wait', '--load', 'networkidle', '--timeout', '5000');
+};
+
 const clicks = (command: string[]) =>
   command[0] === 'click' ||
   command[0] === 'dblclick' ||
@@ -1352,20 +1781,23 @@ async function capture(
   out: string,
   cache: string,
   upload: (file: string, as: string) => Promise<void>,
-  finished: (seconds: number) => Promise<void>,
+  finished: (seconds: number, heard: Pick<RecordingFinish, 'lines' | 'sound'>) => Promise<void>,
   spend: Spend,
   tenantOverride?: string | null,
 ): Promise<DemoResult> {
   const env = process.env;
   const speech = speechOnce();
   const clips: Clip[] = [];
-  for (const step of demo.steps) {
+  const lines: LineScore[] = [];
+  for (const [i, step] of demo.steps.entries()) {
     if (!narrate) {
       clips.push({ seconds: estimateSeconds(step.say) });
       continue;
     }
-    const file = await speak(step.say, demo, cache, speech, spend);
+    const file = await speak(step, demo, cache, speech, spend);
     clips.push({ file, seconds: duration(file) });
+    const score = lineScoreOf(file, i + 1);
+    if (score) lines.push(score);
   }
 
   const scripts = mkdtempSync(join(tmpdir(), 'genki-demo-'));
@@ -1383,7 +1815,7 @@ async function capture(
   const steps: StepLog[] = [];
   try {
     const signIn =
-      demo.signedIn && key
+      demo.signedIn && key && !demo.exampleData
         ? {
             key,
             apps: {
@@ -1400,10 +1832,21 @@ async function capture(
           }
         : undefined;
     quietly('close');
-    run('agent-browser', browserLaunch(session, scripts, demo.language, signIn));
+    run(
+      'agent-browser',
+      browserLaunch(
+        session,
+        scripts,
+        demo.language,
+        signIn,
+        [...demoScrubbedWords, ...(demo.scrub ?? [])],
+        demo.colorScheme,
+      ),
+    );
     if (signIn) signInBrowser(signIn.apps, Date.now(), ab);
     ab('open', demo.start);
     ab('set', 'viewport', String(w), String(h), String(captureScale));
+    if (demo.exampleData && demo.signedIn) exampleSignIn(ab, quietly);
     try {
       ab('wait', '--load', 'load');
       if (demo.ready) ab('wait', '--text', demo.ready, '--timeout', '30000');
@@ -1426,13 +1869,13 @@ async function capture(
         const seen: { page: ReturnType<typeof pageOf> } = { page: { landmarks: [] } };
         console.log(`${name}: step ${i + 1}/${demo.steps.length}`);
         try {
-          runStep(step, i, ab, undefined, undefined, undefined, {
+          runStep(withPage(step, demo.start), i, ab, undefined, undefined, undefined, {
             point: pointer.glide,
             navigate: () => {
               leftAt = clock();
             },
             cue: () => {
-              if (step.do?.length) pointer.settle();
+              if (step.do?.length || step.page) pointer.settle();
               if (step.focus) area = pointer.area(step.focus);
               seen.page = pageOf(ab);
               at = clock();
@@ -1461,6 +1904,7 @@ async function capture(
           ...pointer.journal(),
           ...(step.chapter ? { chapter: step.chapter } : {}),
           ...(step.hold !== undefined ? { hold: step.hold } : {}),
+          ...(step.scene ? { scene: step.scene } : {}),
         });
       }
     } finally {
@@ -1478,6 +1922,8 @@ async function capture(
     language: demo.language,
     ...(demo.intro ? { intro: demo.intro } : {}),
     ...(demo.outro ? { outro: demo.outro } : {}),
+    ...(demo.music ? { music: demo.music } : {}),
+    ...(demo.exampleData ? { exampleData: true } : {}),
     steps,
   };
   writeRunJson(out, 'events.json', log);
@@ -1492,9 +1938,9 @@ async function capture(
     console.log(`${name}: no still`);
   }
   if (cached(poster)) await upload(poster, 'poster.jpg');
-  const sample = clipFile(cache, demo.voice, sampleLineOf(demo.language));
+  const sample = clipOf(cache, demo, { say: sampleLineOf(demo.language) });
   if (narrate && cached(sample)) await upload(sample, 'sample.mp3');
-  await finished(duration(film.mp4));
+  await finished(duration(film.mp4), { lines, ...(film.sound ? { sound: film.sound } : {}) });
   console.log(`${name}: ${film.mp4}`);
   return { name, outcome: 'recorded' };
 }
@@ -1529,7 +1975,7 @@ async function main(argv: string[]) {
     if (!api || !key) throw new Error('Set DEMO_API_URL and DEMO_RECORDER_KEY to list the queue');
     const found = await queuedOf(api, key);
     mkdirSync(resolve('demos/out'), { recursive: true });
-    writeFileSync(queuedFile(), JSON.stringify(found, null, 2));
+    writeRunJson(dirname(queuedFile()), basename(queuedFile()), found);
     console.log(`${found.length} queued: ${found.map((q) => q.demo).join(', ') || 'none'}`);
     return;
   }
@@ -1564,6 +2010,12 @@ async function main(argv: string[]) {
         console.log(
           `${name}: ${demo.steps.length} steps, about ${Math.round(estimateDemo(demo))} s`,
         );
+        continue;
+      }
+      const skip = handRunSkip(parseDemo(readFileSync(path, 'utf8'), path), mode, process.env);
+      if (skip) {
+        console.log(`${name}: skipped, ${skip}`);
+        results.push({ name, outcome: 'skipped', reason: skip });
       } else if (mode === 'voice') await voice(path);
       else results.push(await record(path, silent));
     } catch (error) {

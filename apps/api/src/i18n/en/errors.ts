@@ -700,7 +700,30 @@ export const routeErrors = {
 } satisfies Translation<typeof source.routeErrors>;
 
 export const demoErrors = {
+  sceneTemplate: 'scene must have a template: {templates}',
+  sceneFields: 'a {template} scene takes only {fields}, not {extra}',
+  sceneTitleLength:
+    'a title scene has a title of at most 80 and a subtitle of at most 120 characters',
+  sceneLogo: 'logo must be true or false',
+  sceneTitleOrLogo: 'a title scene has a title or the logo',
+  sceneCentreBase: 'centre is at most 40 and base at most 120 characters',
+  sceneItems: 'items lists 1 to 6 short texts, each optionally with the cue word that shows it',
+  sceneScreen: 'a screen scene has a title, and a question, of at most 80 characters',
+  sceneBoardTitle: 'a board has a title of at most 80 characters',
+  sceneBoardColumns: 'a board has 1 to 3 columns',
+  sceneBoardColumn: 'a board column has a title, a mark (done, now or next) and 1 to 8 items',
+  sceneCodeLength:
+    'a code scene has a title of at most 60, an eyebrow of 60 and a text of 200 characters',
+  sceneCodeDefinition:
+    'definition names an example in packages/definitions/examples, like kunnskapsassistenten',
+  sceneCodeLines: 'lines is 3 to 14',
+  sceneClose:
+    'a close has an address of at most 60, a question of 80 and an action of 40 characters',
+  stepPage: 'page is a path on the demo app',
+  stepPageExample: 'page is a path on the demo app, like /#/developer/frontends',
+  respellLimit: 'a provider takes at most 100 respelled words',
   recordingFinished: 'the recording has finished',
+  keyLikeValue: 'this looks like a key or token; keys belong in Key Vault, never in a demo',
   demoIdSlug: 'a demo id is a lowercase slug',
   ifMatchVersion: 'if-match is a version number',
   recordingFileTooLarge: '{name} is at most {maxBytes} bytes',

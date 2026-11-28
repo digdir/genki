@@ -112,6 +112,7 @@ jobs:
           SPEECH_RESOURCE_GROUP: ${{ vars.SPEECH_RESOURCE_GROUP }}
           SPEECH_SUBSCRIPTION: ${{ vars.SPEECH_SUBSCRIPTION || vars.AZURE_REVIEW_SUBSCRIPTION_ID }}
           DEMO_AUDIO_ENDPOINT: ${{ vars.DEMO_AUDIO_ENDPOINT }}
+          DEMO_ELEVENLABS_KEY_SECRET: ${{ vars.DEMO_ELEVENLABS_KEY_SECRET }}
         run: node scripts/demo.ts voice --queued
       - if: ${{ !cancelled() && vars.SPEECH_RESOURCE != '' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -119,8 +120,7 @@ jobs:
           name: demo-voice
           path: |
             demos/out/.voice/*.mp3
-            demos/out/.voice/*.words.json
-            demos/out/.voice/spent.json
+            demos/out/.voice/*.json
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: ignore

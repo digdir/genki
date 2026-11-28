@@ -1,5 +1,6 @@
-import { voiceNeedsApproval } from '@genai/contracts';
+import { voiceNeedsApproval, type DemoScene } from '@genai/contracts';
 import type { Demo, DemoRecording, DemoSettingsView, DemoSpec } from '../../api';
+import { timelineOf } from './film';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -61,27 +62,90 @@ const media = (names: string[]) =>
 const wordsOf = (say: string) =>
   say.split(' ').map((text, i) => ({ text, at: i * 0.4, seconds: 0.35 }));
 
+const pages: Record<string, (string | undefined)[]> = {
+  'genki-walkthrough': [
+    undefined,
+    'Oversikt',
+    'Katalog',
+    undefined,
+    'Modeller',
+    undefined,
+    'Tjenester',
+    'Tilgang',
+    'Kvalitet',
+    undefined,
+  ],
+};
+
+const walkthroughScenes: (DemoScene | undefined)[] = [
+  { template: 'title', logo: true, title: 'Generativ KI, trygt og sammen' },
+  { template: 'screen', title: 'Oversikt' },
+  { template: 'screen', title: 'Katalog', question: 'Hvor behandles dataene?' },
+  undefined,
+  { template: 'screen', title: 'Modeller' },
+  undefined,
+  { template: 'screen', title: 'Ny tjeneste' },
+  { template: 'screen', title: 'Tilgang' },
+  { template: 'screen', title: 'Kvalitet' },
+  {
+    template: 'board',
+    title: 'Hvor langt vi har kommet',
+    columns: [
+      { title: 'Bygget', mark: 'done', items: ['Katalog', 'Modeller'] },
+      { title: 'I test', mark: 'now', items: ['Tilgang'] },
+      { title: 'Neste', mark: 'next', items: ['Kvalitet'] },
+    ],
+  },
+];
+
+const cameraOf = (demo: Demo) =>
+  demo.id === 'genki-walkthrough'
+    ? [
+        {
+          at: { step: 3, word: 3, text: 'tjeneste' },
+          zoom: 1.4,
+          why: 'Kolonnen Hvor data behandles',
+        },
+        { at: { step: 4, word: 0 }, zoom: 1, why: 'Tilbake til hele siden' },
+        { at: { step: 5, word: 10, text: 'koster' }, zoom: 1.6, why: 'Prisen per modell' },
+        { at: { step: 6, word: 3, text: 'Ansattporten' }, zoom: 1.3, why: 'Innloggingsvalget' },
+        { at: { step: 8, word: 3, text: 'innlogging' }, zoom: 1.6, why: 'Fanen Tilgang' },
+        { at: { step: 9, word: 7, text: 'testsettet' }, zoom: 1.4, why: 'Grafen for testsettet' },
+        { at: { step: 10, word: 0 }, zoom: 1, why: 'Tilbake til hele siden' },
+      ]
+    : [
+        { at: { step: 2, word: 0, text: 'Tjenester' }, zoom: 1.4, why: 'Listen over tjenester' },
+        { at: { step: 3, word: 2 }, zoom: 1, why: 'Tilbake til hele siden' },
+      ];
+
 const filmOf = (demo: Demo) => {
+  const titles = pages[demo.id];
   const events = {
-    steps: demo.steps.map((step, i) => ({
-      say: step.say,
-      start: i * 10,
-      ...(i > 0 ? { navigateAt: i * 10 + 0.5 } : {}),
-      cue: i * 10 + 1,
-      end: i * 10 + 9,
-      voice: { seconds: 6 },
-      words: wordsOf(step.say),
-      ...(i > 0 ? { title: step.say.split(' ')[0] } : {}),
-      moves: [],
-      clicks: [],
-      scrolls: [],
-    })),
+    steps: demo.steps.map((step, i) => {
+      const title = titles ? titles[i] : i > 0 ? step.say.split(' ')[0] : undefined;
+      return {
+        say: step.say,
+        start: i * 10,
+        ...(title ? { navigateAt: i * 10 + 0.5 } : {}),
+        cue: i * 10 + 1,
+        end: i * 10 + 9,
+        voice: { seconds: 6 },
+        words: wordsOf(step.say),
+        ...(title ? { title } : {}),
+        ...(step.chapter ? { chapter: step.chapter } : {}),
+        ...(step.scene ? { scene: step.scene } : {}),
+        moves: [],
+        clicks: [],
+        scrolls: [],
+      };
+    }),
   };
   const edl = {
     version: 1,
     fps: 60,
     captions: true,
     intro: { seconds: 3 },
+    ...(demo.outro ? { outro: { seconds: 4 } } : {}),
     steps: demo.steps.map((_, i) => ({
       step: i + 1,
       showAction: false,
@@ -90,14 +154,27 @@ const filmOf = (demo: Demo) => {
       tail: 0.5,
       cursor: 'auto',
     })),
-    camera: [
-      { at: { step: 2, word: 0, text: 'Tjenester' }, zoom: 1.4, why: 'Listen over tjenester' },
-      { at: { step: 3, word: 2 }, zoom: 1, why: 'Tilbake til hele siden' },
-    ],
+    camera: cameraOf(demo),
     callouts: [],
     chapters: [],
   };
   return { events, edl };
+};
+
+const stamp = (seconds: number) => {
+  const ms = Math.round(seconds * 1000);
+  const pad = (n: number, w = 2) => String(n).padStart(w, '0');
+  return `${pad(Math.floor(ms / 3_600_000))}:${pad(Math.floor(ms / 60_000) % 60)}:${pad(Math.floor(ms / 1000) % 60)},${pad(ms % 1000, 3)}`;
+};
+
+const captionsOf = (demo: Demo) => {
+  const film = filmOf(demo);
+  return timelineOf(film.edl as Parameters<typeof timelineOf>[0], film.events)
+    .lines.map(
+      (l, i) =>
+        `${i + 1}\n${stamp(l.from)} --> ${stamp(l.to)}\n${demo.steps[l.step - 1]?.say ?? ''}\n`,
+    )
+    .join('\n');
 };
 
 const recording = (id: string, demo: Demo, over: Partial<DemoRecording>): DemoRecording => {
@@ -175,6 +252,78 @@ export const exampleDemoData = () => {
       'Tjenesten skriver det om etter Språkrådets råd.',
     ]),
   });
+  const walkthrough = base(
+    'genki-walkthrough',
+    {
+      title: 'Plattformen på fire minutter',
+      description:
+        'Produktfilmen: hva genki er, hvordan en tjeneste bygges, og hvordan den følges opp.',
+      audience: ['internal'],
+      voice: 'cedar',
+      path: '/#/',
+      ready: 'Oversikt',
+      exampleData: true,
+      music: 'pulse',
+      intro: {
+        title: 'Plattformen på fire minutter',
+        subtitle: 'Generativ KI for offentlige virksomheter',
+      },
+      outro: { title: 'Les mer og prøv selv' },
+      steps: [
+        ['Åpning', 'Offentlige virksomheter vil bruke generativ KI, trygt og sammen.'],
+        ['Åpning', 'Plattformen samler tjenester, modeller og data på ett sted.'],
+        ['Plattformen i sin helhet', 'Katalogen viser hver tjeneste og hvor dataene behandles.'],
+        ['Plattformen i sin helhet', 'Digdir drifter grunnmuren, virksomhetene lager tjenestene.'],
+        [
+          'Plattformen i sin helhet',
+          'Under Modeller ser du hvilke modeller som er godkjent, og hva de koster.',
+        ],
+        [
+          'Plattformen i sin helhet',
+          'Innlogging skjer med Ansattporten, så bare egne ansatte slipper til.',
+        ],
+        ['Bygg en tjeneste', 'En ny tjeneste starter fra en mal.'],
+        ['Bygg en tjeneste', 'Under Tilgang slår vi på innlogging for egne ansatte.'],
+        [
+          'Kvalitet og drift',
+          'Kvalitet viser hvordan tjenesten svarer på testsettet, før og etter en endring.',
+        ],
+        ['Kvalitet og drift', 'Hver endring får en begrunnelse og havner i loggen.'],
+      ].map(([chapter, say], i, all) => ({
+        say: say ?? '',
+        ...(chapter && chapter !== all[i - 1]?.[0] ? { chapter } : {}),
+        ...(walkthroughScenes[i] ? { scene: walkthroughScenes[i] } : {}),
+        ...(i === 6 ? { page: '/#/services/new' } : {}),
+        ...(i === 3
+          ? {
+              spoken: {
+                'azure-audio': 'Digg-dir drifter grunnmuren, virksomhetene lager tjenestene.',
+              },
+            }
+          : {}),
+      })),
+    },
+    3,
+  );
+  const stills = walkthrough.steps.map((_, i) => `step-${i + 1}.png`);
+  const walkthroughFiles = media([
+    'demo.mp4',
+    'demo.srt',
+    'capture.mp4',
+    'events.json',
+    'edl.json',
+    'poster.jpg',
+    ...stills,
+  ]);
+  const lines: DemoRecording['lines'] = walkthrough.steps.map((_, i) => ({
+    step: i + 1,
+    takes: i === 5 ? 3 : 1,
+    score: i === 5 ? 2 : i === 7 ? 5 : 0,
+    missing: i === 7 ? ['ansatte'] : [],
+    extra: i === 5 ? ['porter'] : i === 7 ? ['de'] : [],
+    keyTermsMissing: [],
+    wordsPerSecond: i === 5 ? 2.8 : 2.6,
+  }));
   const failed = recording('r-tracing-2', tracing, {
     status: 'failed',
     startedAt: '2026-11-17T07:00:00.000Z',
@@ -189,6 +338,8 @@ export const exampleDemoData = () => {
   delete failed.seconds;
   const running = recording('r-klarsprak-1', plain, {
     status: 'running',
+    costCapUsd: 5,
+    costUsd: 0.9,
     startedAt: '2026-11-18T09:00:00.000Z',
     requestedBy: 'operator:Lise Dahl',
     files: media(['step-1.png']),
@@ -196,10 +347,44 @@ export const exampleDemoData = () => {
   delete running.seconds;
   delete running.finishedAt;
   const recordings: DemoRecording[] = [
+    recording('r-walk-1', walkthrough, {
+      demoVersion: 2,
+      seconds: 107,
+      costCapUsd: 25,
+      costUsd: 5.95,
+      startedAt: '2026-11-21T09:00:00.000Z',
+      finishedAt: '2026-11-21T09:09:00.000Z',
+      files: walkthroughFiles,
+    }),
+    recording('r-walk-2', walkthrough, {
+      seconds: 107,
+      costCapUsd: 25,
+      costUsd: 6.4,
+      startedAt: '2026-11-24T09:00:00.000Z',
+      finishedAt: '2026-11-24T09:04:00.000Z',
+      editOf: 'r-walk-1',
+      instruction: 'Gjør zoomen på Modeller roligere',
+      files: walkthroughFiles,
+      lines,
+      sound: { voice: -15.2, music: -36.8, mix: -15.3, peak: -1.4 },
+    }),
     recording('r-tour-1', tour, {
       seconds: 39,
       costCapUsd: 4,
       costUsd: 1.27,
+      lines: [
+        { step: 1, takes: 1, score: 0, missing: [], extra: [], keyTermsMissing: [] },
+        {
+          step: 2,
+          takes: 4,
+          score: 3,
+          missing: ['datasett'],
+          extra: ['data'],
+          keyTermsMissing: [],
+          wordsPerSecond: 3.4,
+        },
+      ],
+      sound: { voice: -15.1, music: -37, mix: -15.3, peak: -1.6 },
       finishedAt: '2026-11-17T08:01:00.000Z',
       files: media([
         'demo.mp4',
@@ -224,7 +409,7 @@ export const exampleDemoData = () => {
     failed,
     running,
   ];
-  return { demos: [tour, altinn, tracing, plain], recordings };
+  return { demos: [tour, altinn, tracing, plain, walkthrough], recordings };
 };
 
 const defaultSettings: DemoSettingsView = {
@@ -283,6 +468,7 @@ export const demosMock = (
       ...(latest ? { latest } : {}),
       ...(recorded ? { recorded } : {}),
       ...(open ? { open } : {}),
+      editions: full.filter((r) => r.status === 'recorded').length,
     };
   };
 
@@ -400,12 +586,15 @@ export const demosMock = (
         const film = filmOf(demo);
         return json(name === 'edl.json' ? film.edl : film.events);
       }
-      if (name.endsWith('.png'))
-        return new Response(screenshot(name.replace('.png', '')), {
-          headers: { 'content-type': 'image/svg+xml' },
-        });
+      if (name.endsWith('.png') || name.endsWith('.jpg'))
+        return new Response(
+          screenshot(name === 'poster.jpg' ? (demo?.title ?? '') : name.replace('.png', '')),
+          {
+            headers: { 'content-type': 'image/svg+xml' },
+          },
+        );
       if (name.endsWith('.srt'))
-        return new Response('1\n00:00:00,000 --> 00:00:04,000\nFørst.\n', {
+        return new Response(demo ? captionsOf(demo) : '', {
           headers: { 'content-type': 'application/x-subrip' },
         });
       return new Response(new Uint8Array([0]), {

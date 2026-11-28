@@ -3,7 +3,6 @@ import {
   audioRequest,
   audioUrl,
   bestTake,
-  goodEnough,
   isModelVoice,
   maxClipBytes,
   modelAudio,
@@ -13,7 +12,10 @@ import {
   speechLocale,
   spendOf,
   readerInstruction,
+  respell,
   sameWord,
+  scoreTake,
+  spokenText,
   transcriptionUrl,
   wordDistance,
   wordsOf,
@@ -70,12 +72,6 @@ describe('the model voice', () => {
     expect(wordDistance(['hund'], ['katt'])).toBe(1);
   });
 
-  it('accepts a take with at most two words off, or five percent of a long line', () => {
-    expect(goodEnough(2, 10)).toBe(true);
-    expect(goodEnough(3, 10)).toBe(false);
-    expect(goodEnough(3, 60)).toBe(true);
-  });
-
   it('reads the line again until it is heard as written, and stops there', async () => {
     const heard = ['Noe helt annet enn det', 'Dette er Genki', 'Dette er Genki'];
     let reads = 0;
@@ -99,6 +95,116 @@ describe('the model voice', () => {
     );
     expect(reads).toBe(4);
     expect(result.audio.toString()).toBe('take 2');
+  });
+
+  it('keeps the takes already heard when a later take fails, and fails when the first one does', async () => {
+    let reads = 0;
+    const result = await bestTake(
+      'Dette er Genki i dag',
+      () => (++reads === 1 ? Promise.resolve(take('take 1')) : Promise.reject(new Error('429'))),
+      () => Promise.resolve('Dette er Genki'),
+    );
+    expect(result.audio.toString()).toBe('take 1');
+    await expect(
+      bestTake(
+        'Hei',
+        () => Promise.reject(new Error('429')),
+        () => Promise.resolve('Hei'),
+      ),
+    ).rejects.toThrow('429');
+  });
+});
+
+describe('scoring a take', () => {
+  it('counts the content words it did not hear, twice, and the words it heard that were never written', () => {
+    const take = scoreTake(
+      'Loggen viser hver kjøring, med status, tid og kostnad.',
+      'Loggen viser hver kjøring med status og pris',
+    );
+    expect(take.missing).toEqual(['kostnad']);
+    expect(take.extra).toEqual(['pris']);
+    expect(take.score).toBe(3);
+  });
+
+  it('weighs a missed key term such as Ansattporten above an ordinary word', () => {
+    const plain = scoreTake('Ansatte logger inn med portalen.', 'Ansatte logger inn med');
+    const term = scoreTake('Ansatte logger inn med Ansattporten.', 'Ansatte logger inn med');
+    expect(term.keyTermsMissing).toEqual(['ansattporten']);
+    expect(term.score).toBeGreaterThan(plain.score);
+  });
+
+  it('gives a clean take with a natural pace a score of 0, and marks a rushed or dragging one', () => {
+    const text = 'Genki er Digdirs felles plattform for KI-tjenester.';
+    expect(scoreTake(text, text, 3.5)).toMatchObject({ score: 0, wordsPerSecond: 2.29 });
+    expect(scoreTake(text, text, 1.5).score).toBe(2);
+    expect(scoreTake(text, text, 8).score).toBe(2);
+  });
+
+  it('leaves the pace of a short line alone, since its clip is mostly silence', () => {
+    expect(scoreTake('Men svarer tjenesten riktig?', 'Men svarer tjenesten riktig', 3).score).toBe(
+      0,
+    );
+  });
+
+  it('ignores small words and how the speech service spells a name', () => {
+    expect(
+      scoreTake('Dette er Genki, og det er i test.', 'dette er jenki og det er i test').score,
+    ).toBe(0);
+  });
+
+  it('keeps the take with the best score, hearing each one back', async () => {
+    const heard = ['Det er Genki i test', 'Dette er Genki i test nå', 'Dette er Genki'];
+    let reads = 0;
+    const result = await bestTake(
+      'Dette er Genki i test nå',
+      () => Promise.resolve(take(`take ${++reads}`)),
+      () => Promise.resolve(heard[reads - 1] ?? ''),
+      3,
+      () => 2.5,
+    );
+    expect(reads).toBe(2);
+    expect(result.audio.toString()).toBe('take 2');
+    expect(result.takes.map((t) => t.score)).toEqual([2, 0]);
+    expect(result.wordsPerSecond).toBe(2.4);
+  });
+});
+
+describe('what the voice says', () => {
+  it('says a word the way the glossary spells it, as a whole word only', () => {
+    expect(
+      respell('Genki er Digdirs. Genkis? genki', { Genki: 'Genn-ki', Digdirs: 'Digg-dirs' }),
+    ).toBe('Genn-ki er Digg-dirs. Genkis? genki');
+    expect(
+      respell('Gå til genki.digdir.cloud.', { 'genki.digdir.cloud': 'genki punktum cloud' }),
+    ).toBe('Gå til genki punktum cloud.');
+  });
+
+  it('respells in time linear in the length of the line', () => {
+    const line = 'Genk'.repeat(50_000);
+    const started = performance.now();
+    respell(line, { Genki: 'Genn-ki', Genkk: 'x', G: 'y' });
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it('reads the platform glossary for the provider, the demo glossary over it, and the line own spoken text over both', () => {
+    const line = { say: 'Genki er Digdirs plattform.' };
+    expect(spokenText(line, 'elevenlabs-film', 'nb-NO')).toBe('Genn-ki er Digg-dirs plattform.');
+    expect(spokenText(line, 'elevenlabs-film', 'nb-NO', { elevenlabs: { Genki: 'Gjen-ki' } })).toBe(
+      'Gjen-ki er Digg-dirs plattform.',
+    );
+    expect(
+      spokenText(
+        { ...line, spoken: { elevenlabs: 'Gen-ki, Digdir.' } },
+        'elevenlabs-film',
+        'nb-NO',
+      ),
+    ).toBe('Gen-ki, Digdir.');
+  });
+
+  it('leaves the shown text alone for a provider the glossary does not name', () => {
+    const line = { say: 'Genki er Digdirs plattform.', spoken: { elevenlabs: 'Genn-ki' } };
+    expect(spokenText(line, 'nb-NO-PernilleNeural', 'nb-NO')).toBe(line.say);
+    expect(spokenText(line, 'cedar', 'nb-NO')).toBe(line.say);
   });
 });
 

@@ -41,6 +41,7 @@ import { searchEngines as enSearchEngines } from './en/searchEngines';
 import { settings as enSettings } from './en/settings';
 import { sharedServices as enSharedServices } from './en/sharedServices';
 import { stateRegister as enStateRegister } from './en/stateRegister';
+import { studio as enStudio } from './en/studio';
 import { demos as enDemos } from './en/demos';
 import { shell as enShell } from './en/shell';
 import { support as enSupport } from './en/support';
@@ -83,6 +84,7 @@ import { searchEngines } from './nb/searchEngines';
 import { settings } from './nb/settings';
 import { sharedServices } from './nb/sharedServices';
 import { stateRegister } from './nb/stateRegister';
+import { studio } from './nb/studio';
 import { demos } from './nb/demos';
 import { shell } from './nb/shell';
 import { support } from './nb/support';
@@ -127,6 +129,7 @@ export const nb = defineCatalogue({
   settings,
   sharedServices,
   stateRegister,
+  studio,
   demos,
   shell,
   support,
@@ -172,6 +175,7 @@ export const en = {
   settings: enSettings,
   sharedServices: enSharedServices,
   stateRegister: enStateRegister,
+  studio: enStudio,
   demos: enDemos,
   shell: enShell,
   support: enSupport,

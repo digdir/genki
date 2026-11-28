@@ -42,7 +42,7 @@ The demo itself is a YAML file that can be read and changed through the API, so 
 
 ### Console, Plattform → Demoer
 
-1. **Demobibliotek.** Cards with title, length, the Genki version recorded, the date, and a still. Filter by area (Portal, Arbeidsflate, Konsoll) and audience (kommune, statlig virksomhet, intern). Each card: «Spill av», «Last ned» (mp4 with subtitles), «Kopier lenke». States: Klar, Utdatert, Feilet.
+1. **Demobibliotek.** Cards with title, length, the Genki version recorded, the date, and a still. Filter by area (Portal, Konsoll) and audience (kommune, statlig virksomhet, intern). Each card: «Spill av», «Last ned» (mp4 with subtitles), «Kopier lenke». States: Klar, Utdatert, Feilet.
 2. **Demo, detail.** The video with the subtitles beside it as a clickable step list, the recording history, who published it and when, and «Ta opp på nytt».
 3. **Ny demo.** The chat with `demo-writer` on the left and the proposed steps on the right, each with its narration, its clicks and «Prøv dette steget». «Vis YAML» toggles the raw file.
 4. **Opptak pågår.** Progress per step, the current screenshot, and a cancel button. Long work runs as a job, never in the request.
@@ -71,9 +71,33 @@ States to show: an empty library, a demo being recorded, a demo marked «Utdater
 ## Phase 2 as built
 
 - The `record` job hands each recording to the library when `DEMO_RECORDER_KEY` (a secret in `genki-test`) and `SMOKE_API_URL` are set: it starts a recording, uploads a screenshot after each step (`step-<n>.png`, which the console shows as progress), the video, its subtitles, a still (`poster.jpg`) and a sample of the voice (`sample.mp3`), and finishes it as recorded or failed with the step, the command as JSON and the error. The API needs `DEMO_RECORDER_KEY_SHA256`.
-- The console has every screen above: the library with a recording in progress, the detail with the recording history and «Ta opp på nytt», the editor («Ny demo» and «Rediger») with «Prøv dette steget» and «Vis YAML», «Opptak pågår» with progress per step, the latest screenshot and cancel, «Feilet opptak» with the step, what the recorder looked for and what it found, and «Innstillinger for demoer».
+- The console has every screen above: the library of films with a recording in progress, the studio (script, film, timeline, «Egenskaper» and «Regissør», with «Ta opp på nytt» and «Lag utgave N» after an approved cost), «Stemme og lyd», the editor («Ny demo» and «Rediger») with «Prøv dette steget» and «Vis YAML», «Opptak pågår» with progress per step, the latest screenshot and cancel, «Feilet opptak» with the step, what the recorder looked for and what it found, and «Innstillinger for demoer».
+- In the studio a scene's template (Tittel, Skjerm, Tavle, Kode, Avslutning), its texts and the page a line opens are edited and saved with the script; chapter cards show on the timeline in the film look, and the menu folds to its icons. «Stemme og lyd» saves the music bed, and the editor the colours the demo is recorded in. Still waiting for an API: listening to a voice or a take, picking or re-reading a take, editing spoken text, the board's columns outside the YAML, camera targets, transitions and holds per scene, hiding a chapter card, the duck level and a second bed, the pronunciation table, and the recording's log, time left, cost breakdown and stages after the voice.
 - «Ta opp på nytt» and «Prøv dette steget» need a recorder. In genki-test the `demo-recorder` workflow is it: every five minutes it asks the API for queued recordings with the recorder key, voices their lines in `smoke-review` and records them one at a time in `genki-test`, so a recording starts within about five minutes once the recorder is free, and the console says so in «Venter på opptakeren». It needs `DEMO_RECORDER_KEY` (secret in `genki-test`) and `DEMO_RECORDER_KEY_SHA256` (variable in `test`), which are not set yet. Where no recorder is wired, the API answers `503 recorder-not-set-up`, and the console shows the workflow instead of the buttons. The chat with `demo-writer` comes with phase 3.
-- The voice is picked from a list of voices by provider (`demoVoices` and `demoVoiceProviders` in `@genai/contracts`): Azure Speech's bokmål, British and American voices and the model voice `cedar`, which needs an approved cost; ElevenLabs shows as not yet built. The demo language follows the voice. A demo file may still name any other voice, and the console then shows its id.
+- The voice is picked from a list of voices by provider (`demoVoices` and `demoVoiceProviders` in `@genai/contracts`): Azure Speech's bokmål, British and American voices, the model voice `cedar` and the ElevenLabs voice `elevenlabs-film`, which need an approved cost, and «Uten stemme». The demo language follows the voice. A demo file may still name any other voice, and the console then shows its id.
+
+## Films like the walkthrough
+
+The four-minute Genki walkthrough is the demo `genki-walkthrough`, so a product film is kept up to date like any other demo. What the recorder does for it:
+
+- Voices from ElevenLabs, with respellings per provider kept apart from the captions, each line read up to four times, heard back and scored, and the score of each line kept on the recording.
+- A generated music bed, ducked under the voice, mixed to about -15 LUFS for the voice and -37 LUFS for the music, with the measured loudness on the recording.
+- Screens from a genki on example data, with retired and internal words hidden and an «Eksempeldata» tag.
+
+Recorded locally with a placeholder voice, the demo has the film's 33 lines in the same order, and the mix measures -15 LUFS voice and -37 LUFS music, as the film does. It also has:
+
+- The film's look: drawn title, board, code and closing scenes, full-screen chapter cards, and the app in a light browser frame on the light brand background with the scene title, the section label and the mascot, in the light colour scheme. Each line can name its screen (`page`) and region (`focus`), so the clicks on the way are cut, as the film cuts them. The colours are Digdir's theme tokens and the logo is Genki's own; the film's partner mark and its burgundy are not used.
+
+In 18 frames compared with the film, one per scene, each pair has the same template, layout and screen.
+
+Not yet like the walkthrough:
+
+- Pace. The demo lasts 213 s against the film's 235 s, and its close starts 17 s before the film's; the film holds longer between lines.
+- Shots inside the frame. The film pushes in on the Formål field in Oppsett and rings the Verktøy card in Katalogen; the demo shows those screens whole, and it pushes in closer on the overview than the film does.
+- Prøveområdet shows the chat preview, where the film shows the form with its answer and sources.
+- The second hook draws a title and subtitle, without the film's five organisations building the same thing.
+- The mascot does not move its mouth with the voice, and the code excerpt is shorter than the film's.
+- The language check by Whisper and brand kits.
 
 ## Add a demo
 

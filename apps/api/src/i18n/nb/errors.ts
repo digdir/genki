@@ -706,7 +706,32 @@ export const routeErrors = defineNamespace({
 });
 
 export const demoErrors = defineNamespace({
+  sceneTemplate: 'en scene m\u00e5 ha en mal: {templates}',
+  sceneFields: 'en {template}-scene tar bare {fields}, ikke {extra}',
+  sceneTitleLength:
+    'en tittelscene har en tittel p\u00e5 h\u00f8yst 80 og en undertittel p\u00e5 h\u00f8yst 120 tegn',
+  sceneLogo: 'logo m\u00e5 v\u00e6re true eller false',
+  sceneTitleOrLogo: 'en tittelscene har en tittel eller logoen',
+  sceneCentreBase: 'centre er h\u00f8yst 40 og base h\u00f8yst 120 tegn',
+  sceneItems: 'items lister 1 til 6 korte tekster, hver med et valgfritt stikkord som viser den',
+  sceneScreen: 'en skjermscene har en tittel og et sp\u00f8rsm\u00e5l p\u00e5 h\u00f8yst 80 tegn',
+  sceneBoardTitle: 'en tavle har en tittel p\u00e5 h\u00f8yst 80 tegn',
+  sceneBoardColumns: 'en tavle har 1 til 3 kolonner',
+  sceneBoardColumn:
+    'en tavlekolonne har en tittel, et merke (done, now eller next) og 1 til 8 punkter',
+  sceneCodeLength:
+    'en kodescene har en tittel p\u00e5 h\u00f8yst 60, en overlinje p\u00e5 60 og en tekst p\u00e5 200 tegn',
+  sceneCodeDefinition:
+    'definition navngir et eksempel i packages/definitions/examples, som kunnskapsassistenten',
+  sceneCodeLines: 'lines er 3 til 14',
+  sceneClose:
+    'en avslutning har en adresse p\u00e5 h\u00f8yst 60, et sp\u00f8rsm\u00e5l p\u00e5 80 og en handling p\u00e5 40 tegn',
+  stepPage: 'page er en sti i demoappen',
+  stepPageExample: 'page er en sti i demoappen, som /#/developer/frontends',
+  respellLimit: 'en leverand\u00f8r tar h\u00f8yst 100 omskrevne ord',
   recordingFinished: 'opptaket er ferdig',
+  keyLikeValue:
+    'dette ser ut som en nøkkel eller et token; nøkler hører hjemme i Key Vault, aldri i en demo',
   demoIdSlug: 'en demo-id er en slug med små bokstaver',
   ifMatchVersion: 'if-match er et versjonsnummer',
   recordingFileTooLarge: '{name} er på høyst {maxBytes} byte',

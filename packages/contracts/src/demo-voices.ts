@@ -6,6 +6,8 @@ export interface DemoVoice {
   language: 'nb-NO' | 'en-GB' | 'en-US';
   gender: 'female' | 'male';
   provider: DemoVoiceProvider;
+  providerVoice?: string;
+  model?: string;
 }
 
 export interface DemoVoiceProviderInfo {
@@ -18,7 +20,7 @@ export interface DemoVoiceProviderInfo {
 export const demoVoiceProviders: readonly DemoVoiceProviderInfo[] = [
   { id: 'azure-speech', name: 'Azure Speech', available: true, needsApproval: false },
   { id: 'azure-audio', name: 'Azure OpenAI gpt-audio', available: true, needsApproval: true },
-  { id: 'elevenlabs', name: 'ElevenLabs', available: false, needsApproval: true },
+  { id: 'elevenlabs', name: 'ElevenLabs', available: true, needsApproval: true },
 ];
 
 export const demoVoices: readonly DemoVoice[] = [
@@ -44,6 +46,15 @@ export const demoVoices: readonly DemoVoice[] = [
     provider: 'azure-speech',
   },
   { id: 'cedar', name: 'Cedar', language: 'nb-NO', gender: 'male', provider: 'azure-audio' },
+  {
+    id: 'elevenlabs-film',
+    name: 'Film',
+    language: 'nb-NO',
+    gender: 'male',
+    provider: 'elevenlabs',
+    providerVoice: 'SAa140Q9akujSiZCBSNt',
+    model: 'eleven_v4',
+  },
   {
     id: 'en-GB-SoniaNeural',
     name: 'Sonia',
@@ -88,7 +99,50 @@ export const demoVoices: readonly DemoVoice[] = [
   },
 ];
 
+export const silentVoice = 'none';
+
 export const demoVoiceOf = (id: string) => demoVoices.find((v) => v.id === id);
+
+export const providerOf = (voice: string) => demoVoiceOf(voice)?.provider;
+
+export const demoRespellings: Partial<
+  Record<DemoVoice['language'], Partial<Record<DemoVoiceProvider, Record<string, string>>>>
+> = {
+  'nb-NO': {
+    elevenlabs: {
+      Genki: 'Genn-ki',
+      Digdir: 'Digg-dir',
+      Digdirs: 'Digg-dirs',
+      'genki.digdir.cloud': 'Genn-ki punktum Digg-dir punktum cloud',
+    },
+  },
+};
+
+export const demoKeyTerms = [
+  'genki',
+  'ki',
+  'digdir',
+  'digdirs',
+  'api',
+  'mcp',
+  'a2a',
+  'ansattporten',
+  'lovdata',
+  'los',
+  'kunnskapsassistenten',
+  'rapportassistenten',
+  'prøveområdet',
+  'katalogen',
+];
+
+export const demoScrubbedWords = [
+  'KI-arbeidsflaten',
+  'arbeidsflaten',
+  'Workspace',
+  'Typesense',
+  'Langfuse',
+  'Altinn',
+];
 
 export const voiceNeedsApproval = (id: string) => {
   const provider = demoVoiceOf(id)?.provider;
@@ -102,16 +156,26 @@ export const audioTokensPerSecond = 25;
 export const speechToTextUsdPerHour = 1;
 export const directorPrices = { input: 5, output: 30 };
 export const modelVoiceTakes = 4;
+export const elevenLabsUsdPerCharacter = 0.0003;
+export const elevenLabsCharacterCap = 7500;
 export const directorRounds = 3;
 
 const spokenSeconds = (line: string) => Math.max(1, line.trim().split(/\s+/).length / 2.5);
 
 const perMillion = (tokens: number, usd: number) => (tokens * usd) / 1_000_000;
 
+export const takesOf = (voice: string) => (voiceNeedsApproval(voice) ? modelVoiceTakes : 1);
+
 export const voiceCostUsd = (lines: readonly string[], voice: string) => {
+  if (voice === silentVoice) return 0;
   const seconds = lines.reduce((sum, line) => sum + spokenSeconds(line), 0);
   const hearing = (seconds / 3600) * speechToTextUsdPerHour;
-  if (!voiceNeedsApproval(voice)) return hearing;
+  const provider = providerOf(voice);
+  if (provider === 'elevenlabs') {
+    const characters = lines.reduce((sum, line) => sum + line.length, 0);
+    return modelVoiceTakes * (characters * elevenLabsUsdPerCharacter + hearing) + hearing;
+  }
+  if (provider !== 'azure-audio') return 2 * hearing;
   const reading =
     perMillion(seconds * audioTokensPerSecond, audioModelPrices.audioOutput) +
     perMillion(lines.length * 200, audioModelPrices.textInput);

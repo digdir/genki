@@ -5,6 +5,8 @@ import {
   demoVoices,
   filmCostUsd,
   maxCostCapUsd,
+  silentVoice,
+  takesOf,
   voiceCostUsd,
   voiceNeedsApproval,
 } from './demo-voices.js';
@@ -24,7 +26,26 @@ describe('demo voices and their cost', () => {
   it('lists every voice under a provider that is available', () => {
     const available = demoVoiceProviders.filter((p) => p.available).map((p) => p.id);
     expect(demoVoices.every((v) => available.includes(v.provider))).toBe(true);
-    expect(demoVoiceProviders.find((p) => p.id === 'elevenlabs')?.available).toBe(false);
+  });
+
+  it('offers an ElevenLabs voice that needs approval and is read up to four times', () => {
+    expect(demoVoiceProviders.find((p) => p.id === 'elevenlabs')?.available).toBe(true);
+    expect(voiceNeedsApproval('elevenlabs-film')).toBe(true);
+    expect(takesOf('elevenlabs-film')).toBe(4);
+    expect(takesOf('nb-NO-PernilleNeural')).toBe(1);
+  });
+
+  it('prices a film without a voice at nothing and asks no approval for it', () => {
+    expect(voiceCostUsd(lines, silentVoice)).toBe(0);
+    expect(voiceNeedsApproval(silentVoice)).toBe(false);
+  });
+
+  it('prices ElevenLabs by the character, and the four-minute walkthrough under the platform cap', () => {
+    const walkthrough = Array.from({ length: 30 }, () => 'x'.repeat(160));
+    expect(voiceCostUsd(['x'.repeat(2000)], 'elevenlabs-film')).toBeGreaterThan(
+      voiceCostUsd(['x'.repeat(1000)], 'elevenlabs-film'),
+    );
+    expect(filmCostUsd(walkthrough, 'elevenlabs-film')).toBeLessThan(maxCostCapUsd);
   });
 
   it('prices a model voice above Azure Speech, and a full film of 19 lines under the platform cap', () => {

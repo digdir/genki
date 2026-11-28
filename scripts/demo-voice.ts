@@ -1,12 +1,16 @@
 // The model voice for demos: gpt-audio reads each line, and Azure Speech hears it back until it matches.
 import {
   audioModelPrices,
-  demoVoiceOf,
+  demoKeyTerms,
+  demoRespellings,
   demoVoices,
+  providerOf,
   speechToTextUsdPerHour,
+  type DemoVoice,
+  type DemoVoiceProvider,
 } from '../packages/contracts/src/demo-voices.ts';
 
-export const isModelVoice = (voice: string) => demoVoiceOf(voice)?.provider === 'azure-audio';
+export const isModelVoice = (voice: string) => providerOf(voice) === 'azure-audio';
 
 export const modelVoiceId = (voice: string) => {
   const known = demoVoices.find((v) => v.id === voice && v.provider === 'azure-audio');
@@ -25,14 +29,19 @@ export const speechLocale = (language: string) => {
 
 export const maxClipBytes = 2 * 1024 * 1024;
 
+export const mp3Clip = (audio: Buffer, from: string) => {
+  if (audio.byteLength > maxClipBytes)
+    throw new Error(`${from} answered with more than ${maxClipBytes} bytes`);
+  const id3 = audio.subarray(0, 3).toString('latin1') === 'ID3';
+  const frame = audio[0] === 0xff && ((audio[1] ?? 0) & 0xe0) === 0xe0;
+  if (!id3 && !frame) throw new Error(`${from} answered with something other than mp3`);
+  return audio;
+};
+
 export const modelAudio = (base64: string) => {
   if (base64.length > Math.ceil(maxClipBytes / 3) * 4)
     throw new Error(`The audio model answered with more than ${maxClipBytes} bytes`);
-  const audio = Buffer.from(base64, 'base64');
-  const id3 = audio.subarray(0, 3).toString('latin1') === 'ID3';
-  const frame = audio[0] === 0xff && ((audio[1] ?? 0) & 0xe0) === 0xe0;
-  if (!id3 && !frame) throw new Error('The audio model answered with something other than mp3');
-  return audio;
+  return mp3Clip(Buffer.from(base64, 'base64'), 'The audio model');
 };
 
 export interface Spend {
@@ -147,10 +156,55 @@ export const wordDistance = (said: string[], heard: string[]) => {
   return row[heard.length] ?? 0;
 };
 
-export const goodEnough = (distance: number, words: number) =>
-  distance <= Math.max(2, Math.floor(words * 0.05));
+const stopWords = new Set(
+  'og i på en et er det som med for av til den de dere du å om når men fra har kan blir ble hva hvor her alt seg sine sin egne egen eget the a an and of to in is it on for with'.split(
+    ' ',
+  ),
+);
 
-export interface Take {
+export const paceWordsPerSecond: [number, number] = [1.6, 3.2];
+export const paceFromWords = 8;
+
+const keyTerms = new Set(demoKeyTerms);
+
+const contentWords = (words: string[]) =>
+  words.filter((w) => !stopWords.has(w) && (w.length >= 4 || keyTerms.has(w)));
+
+const near = (a: string, b: string) =>
+  a === b || (2 * commonLength(a, b)) / (a.length + b.length) >= 0.85;
+
+export interface TakeScore {
+  score: number;
+  missing: string[];
+  extra: string[];
+  keyTermsMissing: string[];
+  wordsPerSecond?: number;
+}
+
+export const scoreTake = (text: string, heard: string, seconds?: number): TakeScore => {
+  const said = wordsOf(text);
+  const ears = wordsOf(heard);
+  const missing = contentWords(said).filter((w) => !ears.some((h) => near(w, h)));
+  const extra = ears.filter(
+    (h) => !stopWords.has(h) && h.length >= 4 && !said.some((w) => near(h, w)),
+  );
+  const keyTermsMissing = missing.filter((w) => keyTerms.has(w));
+  const wordsPerSecond =
+    seconds && seconds > 0 ? Math.round((said.length / seconds) * 100) / 100 : undefined;
+  const offPace =
+    wordsPerSecond !== undefined &&
+    said.length >= paceFromWords &&
+    (wordsPerSecond < paceWordsPerSecond[0] || wordsPerSecond > paceWordsPerSecond[1]);
+  return {
+    score: 2 * missing.length + keyTermsMissing.length + extra.length + (offPace ? 2 : 0),
+    missing,
+    extra,
+    keyTermsMissing,
+    ...(wordsPerSecond !== undefined ? { wordsPerSecond } : {}),
+  };
+};
+
+export interface Take extends TakeScore {
   audio: Buffer;
   heard: string;
   distance: number;
@@ -161,17 +215,66 @@ export const bestTake = async (
   read: () => Promise<Buffer>,
   hear: (audio: Buffer) => Promise<string>,
   tries = 4,
+  secondsOf?: (audio: Buffer) => number,
 ) => {
   const said = wordsOf(text);
   let best: Take | undefined;
   const takes: Omit<Take, 'audio'>[] = [];
   for (let i = 0; i < tries; i++) {
-    const audio = await read();
-    const heard = await hear(audio);
+    let audio: Buffer;
+    let heard: string;
+    try {
+      audio = await read();
+      heard = await hear(audio);
+    } catch (error) {
+      if (best) break;
+      throw error;
+    }
     const distance = wordDistance(said, wordsOf(heard));
-    takes.push({ heard, distance });
-    if (!best || distance < best.distance) best = { audio, heard, distance };
-    if (goodEnough(distance, said.length)) break;
+    const take = { heard, distance, ...scoreTake(text, heard, secondsOf?.(audio)) };
+    takes.push(take);
+    if (!best || take.score < best.score || (take.score === best.score && distance < best.distance))
+      best = { audio, ...take };
+    if (take.score === 0) break;
   }
   return { ...(best as Take), takes, words: said.length };
+};
+
+export const respell = (text: string, glossary: Readonly<Record<string, string>>) => {
+  const keys = Object.keys(glossary)
+    .filter((k) => k.length > 0)
+    .sort((a, b) => b.length - a.length);
+  if (!keys.length) return text;
+  const wordChar = (c: string | undefined) => c !== undefined && /[\p{L}\p{N}]/u.test(c);
+  let out = '';
+  for (let i = 0; i < text.length;) {
+    const hit = wordChar(text[i - 1])
+      ? undefined
+      : keys.find((k) => text.startsWith(k, i) && !wordChar(text[i + k.length]));
+    if (hit) {
+      out += glossary[hit];
+      i += hit.length;
+    } else {
+      out += text[i];
+      i++;
+    }
+  }
+  return out;
+};
+
+export type Spoken = Partial<Record<DemoVoiceProvider, string>>;
+export type Respellings = Partial<Record<DemoVoiceProvider, Record<string, string>>>;
+
+export const spokenText = (
+  line: { say: string; spoken?: Spoken },
+  voice: string,
+  language: string,
+  respellings: Respellings = {},
+) => {
+  const provider = providerOf(voice);
+  if (!provider) return line.say;
+  const own = line.spoken?.[provider];
+  if (own) return own;
+  const platform = demoRespellings[language as DemoVoice['language']]?.[provider] ?? {};
+  return respell(line.say, { ...platform, ...(respellings[provider] ?? {}) });
 };

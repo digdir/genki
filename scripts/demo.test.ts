@@ -15,6 +15,21 @@ import { runInNewContext } from 'node:vm';
 import {
   apiKeyScript,
   browserLaunch,
+  clipOf,
+  exampleBases,
+  exampleSignIn,
+  handRunSkip,
+  canVoice,
+  elevenLabsCharacters,
+  lineScoreOf,
+  narrationOf,
+  onTarget,
+  placeholderVoiceOf,
+  refuseOverCharacters,
+  scoreFile,
+  scrubScript,
+  speechConfigured,
+  withExampleData,
   cached,
   Cancelled,
   demoOfRecording,
@@ -27,11 +42,15 @@ import {
   keep,
   darkScript,
   languageScript,
+  lightScript,
+  pageUrl,
+  withPage,
   parseArgs,
   parseDemo,
   parseQueued,
   pickDemos,
   queuedOf,
+  storedProblem,
   spendFromEnv,
   spentFile,
   voiceSpentOf,
@@ -111,6 +130,96 @@ describe('demo recordings', () => {
     expect(scheme.get('data-color-scheme')).toBe('dark');
   });
 
+  it('records in the colour scheme the demo asks for, and dark when it asks for none', () => {
+    const scheme = new Map([['data-color-scheme', 'dark']]);
+    class Observer {
+      observe() {}
+    }
+    runInNewContext(lightScript, {
+      document: {
+        documentElement: {
+          getAttribute: (name: string) => scheme.get(name) ?? null,
+          setAttribute: (name: string, value: string) => scheme.set(name, value),
+        },
+      },
+      MutationObserver: Observer,
+    });
+    expect(scheme.get('data-color-scheme')).toBe('light');
+    const light = mkdtempSync(join(tmpdir(), 'demo-launch-'));
+    const args = browserLaunch('demo', light, 'nb-NO', undefined, [], 'light');
+    expect(args.join(' ')).toContain('--color-scheme light');
+    expect(readFileSync(join(light, 'scheme.js'), 'utf8')).toBe(lightScript);
+    const dark = mkdtempSync(join(tmpdir(), 'demo-launch-'));
+    expect(browserLaunch('demo', dark, 'nb-NO').join(' ')).toContain('--color-scheme dark');
+    expect(readFileSync(join(dark, 'scheme.js'), 'utf8')).toBe(darkScript);
+  });
+
+  it("opens a step's page on the demo's own app before the step's commands", () => {
+    const step = withPage(
+      { say: 'Integrasjoner', page: '/#/developer/frontends', do: [['scroll', 'down']] },
+      'http://portal.localhost:5173/#/overview',
+    );
+    expect(step.do).toEqual([
+      ['open', 'http://portal.localhost:5173/#/developer/frontends'],
+      ['wait', '--load', 'networkidle', '--timeout', '15000'],
+      ['scroll', 'down'],
+    ]);
+    expect(withPage({ say: 'Uten side' }, 'http://portal.localhost:5173/')).toEqual({
+      say: 'Uten side',
+    });
+  });
+
+  it("refuses a page that would leave the demo's app", () => {
+    expect(() => pageUrl('https://portal.genki.digdir.cloud/', '//evil.example/x')).toThrow(
+      /not a path/,
+    );
+    expect(() => pageUrl('https://portal.genki.digdir.cloud/', 'https://evil.example/')).toThrow(
+      /not a path/,
+    );
+    expect(() =>
+      parseDemo(
+        `title: T\nlanguage: nb-NO\nvoice: nb-NO-PernilleNeural\nstart: https://portal.genki.digdir.cloud/\nsteps:\n  - say: Hei\n    page: /\\evil.example/\n`,
+      ),
+    ).toThrow(/page is a path/);
+  });
+
+  it('refuses a demo whose scene, page or colour scheme is not one it can film', () => {
+    const base = `title: T\nlanguage: nb-NO\nvoice: nb-NO-PernilleNeural\nstart: https://portal.genki.digdir.cloud/\n`;
+    expect(() =>
+      parseDemo(`${base}steps:\n  - say: Hei\n    scene: { template: screen }\n`),
+    ).toThrow(/screen scene has a title/);
+    expect(() => parseDemo(`${base}steps:\n  - say: Hei\n    page: //evil.example/\n`)).toThrow(
+      /page is a path/,
+    );
+    expect(() => parseDemo(`${base}colorScheme: sepia\nsteps:\n  - say: Hei\n`)).toThrow(
+      /colorScheme must be light or dark/,
+    );
+    expect(
+      parseDemo(
+        `${base}colorScheme: light\nsteps:\n  - say: Hei\n    page: /#/services\n    scene: { template: screen, title: Tjenester }\n`,
+      ).steps[0]?.scene,
+    ).toEqual({ template: 'screen', title: 'Tjenester' });
+  });
+
+  it('refuses a code scene naming an example definition that is not in the repository', () => {
+    const base = `title: T\nlanguage: nb-NO\nvoice: nb-NO-PernilleNeural\nstart: https://portal.genki.digdir.cloud/\n`;
+    const code = (id: string) =>
+      `${base}steps:\n  - say: Hei\n    scene: { template: code, title: KA, definition: ${id} }\n`;
+    expect(() => parseDemo(code('finnes-ikke'))).toThrow(/no example definition finnes-ikke/);
+    expect(parseDemo(code('kunnskapsassistenten')).steps).toHaveLength(1);
+  });
+
+  it('counts the opening of a step page in the length estimate', () => {
+    const demo = parseDemo(
+      `title: T\nlanguage: nb-NO\nvoice: nb-NO-PernilleNeural\nstart: https://portal.genki.digdir.cloud/\nsteps:\n  - say: Hei\n`,
+    );
+    const step = demo.steps[0] as (typeof demo.steps)[number];
+    expect(estimateDemo({ ...demo, steps: [{ ...step, page: '/#/log' }] })).toBeCloseTo(
+      estimateDemo(demo) + 1,
+      5,
+    );
+  });
+
   it('refuses a language that is not a language tag, so it cannot become browser code', () => {
     expect(() => languageScript("nb'});alert(1);//")).toThrow(/language must be a tag/);
     expect(() => languageScript('nb-NO\n')).toThrow(/language must be a tag/);
@@ -137,7 +246,9 @@ describe('demo recordings', () => {
   });
 
   it('every demo in demos/ is valid and lasts about one to two minutes', () => {
-    const files = pickDemos(demosDir).filter((f) => !f.endsWith('portal-tour.yaml'));
+    const files = pickDemos(demosDir).filter(
+      (f) => !f.endsWith('portal-tour.yaml') && !f.endsWith('genki-walkthrough.yaml'),
+    );
     expect(files.length).toBeGreaterThanOrEqual(3);
     for (const file of files) {
       const demo = parseDemo(readFileSync(file, 'utf8'), file);
@@ -148,6 +259,51 @@ describe('demo recordings', () => {
         dashes: false,
       });
     }
+  });
+
+  it('the walkthrough film is a valid demo of example data that lasts about four minutes', () => {
+    const file = join(demosDir, 'genki-walkthrough.yaml');
+    const demo = parseDemo(readFileSync(file, 'utf8'), file);
+    expect(demo.exampleData).toBe(true);
+    expect(demo.music).toBe('pulse');
+    expect(estimateDemo(demo)).toBeGreaterThan(180);
+    expect(estimateDemo(demo)).toBeLessThan(300);
+    expect(/[\u2013\u2014]/.test(readFileSync(file, 'utf8'))).toBe(false);
+  });
+
+  it('reads respellings, spoken lines, music, example data and words to hide from a demo', () => {
+    const demo = parseDemo(
+      minimal('  - say: Genki er her.\n    spoken:\n      elevenlabs: Genn-ki er her.\n').replace(
+        'steps:',
+        'respell:\n  elevenlabs:\n    Digdir: Digg-dir\nmusic: pulse\nexampleData: true\nscrub: [Intern]\nsteps:',
+      ),
+    );
+    expect(demo).toMatchObject({
+      respell: { elevenlabs: { Digdir: 'Digg-dir' } },
+      music: 'pulse',
+      exampleData: true,
+      scrub: ['Intern'],
+    });
+    expect(demo.steps[0]?.spoken).toEqual({ elevenlabs: 'Genn-ki er her.' });
+  });
+
+  it('refuses a respelling for a provider it does not know, music it cannot make and a spoken line that is not text', () => {
+    expect(() =>
+      parseDemo(
+        minimal('  - say: Hei\n    spoken:\n      polly: Hei\n').replace(
+          'steps:',
+          'respell:\n  polly:\n    a: b\nmusic: jazz\nsteps:',
+        ),
+      ),
+    ).toThrow(/respell must map[\s\S]*music must be one of pulse[\s\S]*step 1: spoken must map/);
+  });
+
+  it('refuses a demo with a key-like value, so no key is ever stored in a demo', () => {
+    expect(() =>
+      parseDemo(
+        minimal('  - say: Nøkkelen er sk_0123456789abcdef0123456789abcdef0123456789abcdef\n'),
+      ),
+    ).toThrow(/steps\.0\.say looks like a key or token/);
   });
 
   it('names every problem in a demo file at once', () => {
@@ -587,6 +743,176 @@ describe('demo recordings', () => {
   });
 });
 
+describe('voicing and example data', () => {
+  it('keeps one clip per voice and spoken text, so a respelled line is voiced again', () => {
+    const dir = '/voices';
+    const demo = { voice: 'elevenlabs-film', language: 'nb-NO' };
+    const plain = clipOf(dir, demo, { say: 'Genki er her.' }, {});
+    expect(clipOf(dir, demo, { say: 'Genki er her.' }, {})).toBe(plain);
+    expect(
+      clipOf(dir, { ...demo, respell: { elevenlabs: { er: 'ær' } } }, { say: 'Genki er her.' }, {}),
+    ).not.toBe(plain);
+    expect(
+      clipOf(dir, demo, { say: 'Genki er her.' }, { DEMO_PLACEHOLDER_VOICE: 'Nora' }),
+    ).not.toBe(plain);
+  });
+
+  it('reads with a placeholder voice only by a plain macOS voice name', () => {
+    expect(placeholderVoiceOf({})).toBeUndefined();
+    expect(placeholderVoiceOf({ DEMO_PLACEHOLDER_VOICE: 'Nora' })).toBe('Nora');
+    expect(() => placeholderVoiceOf({ DEMO_PLACEHOLDER_VOICE: 'Nora; rm -rf' })).toThrow(
+      /macOS voice/,
+    );
+  });
+
+  it('voices ElevenLabs only with speech to hear it back and the name of its Key Vault secret', () => {
+    const speech = { SPEECH_RESOURCE: 'r', SPEECH_RESOURCE_GROUP: 'g', SPEECH_SUBSCRIPTION: 's' };
+    expect(speechConfigured('elevenlabs-film', speech)).toBe(false);
+    expect(
+      speechConfigured('elevenlabs-film', {
+        ...speech,
+        DEMO_ELEVENLABS_KEY_SECRET: 'https://kv.vault.azure.net/secrets/k',
+      }),
+    ).toBe(true);
+    expect(speechConfigured('nb-NO-PernilleNeural', speech)).toBe(true);
+    expect(speechConfigured('none', { ...speech, DEMO_PLACEHOLDER_VOICE: 'Nora' })).toBe(false);
+  });
+
+  it('records a demo without a voice with captions only, whatever clips are saved', () => {
+    const demo = parseDemo(minimal('  - say: Hei\n').replace('nb-NO-PernilleNeural', 'none'));
+    expect(narrationOf(demo, '/nowhere', true)).toBe(false);
+  });
+
+  it('stops before ElevenLabs reads more characters than a film may use', () => {
+    expect(() => refuseOverCharacters(7000, 'x'.repeat(100), 4, 7500)).not.toThrow();
+    expect(() => refuseOverCharacters(7200, 'x'.repeat(100), 4, 7500)).toThrow(/7500 characters/);
+  });
+
+  it('skips in the hand-run workflow a demo it cannot make there, instead of failing the run', () => {
+    const film = parseDemo(
+      minimal('  - say: Hei\n')
+        .replace('nb-NO-PernilleNeural', 'elevenlabs-film')
+        .replace('steps:', 'exampleData: true\nsteps:'),
+    );
+    expect(handRunSkip(film, 'voice', {})).toMatch(/approved cost cap/);
+    expect(handRunSkip(film, 'voice', { DEMO_COST_CAP_USD: '5' })).toBeUndefined();
+    expect(handRunSkip(film, 'voice', { DEMO_PLACEHOLDER_VOICE: 'Nora' })).toBeUndefined();
+    expect(handRunSkip(film, 'record', { CI: 'true' })).toMatch(/mock apps/);
+    expect(handRunSkip(film, 'record', {})).toBeUndefined();
+    expect(
+      handRunSkip(parseDemo(minimal('  - say: Hei\n')), 'record', { CI: 'true' }),
+    ).toBeUndefined();
+  });
+
+  it('reads a voice that needs approval with the free placeholder voice, and never with the real one without a cap', () => {
+    const none = spendFromEnv({});
+    expect(canVoice('elevenlabs-film', none, { DEMO_PLACEHOLDER_VOICE: 'Nora' })).toBe(true);
+    expect(
+      canVoice('elevenlabs-film', none, {
+        SPEECH_RESOURCE: 'r',
+        SPEECH_RESOURCE_GROUP: 'g',
+        SPEECH_SUBSCRIPTION: 's',
+        DEMO_ELEVENLABS_KEY_SECRET: 'https://kv.vault.azure.net/secrets/k',
+      }),
+    ).toBe(false);
+  });
+
+  it('counts ElevenLabs characters per film, so the next queued film starts from zero', () => {
+    const first = spendFromEnv({ DEMO_COST_CAP_USD: '5' });
+    const second = spendFromEnv({ DEMO_COST_CAP_USD: '5' });
+    elevenLabsCharacters.add(first, 7000);
+    expect(elevenLabsCharacters.of(first)).toBe(7000);
+    expect(elevenLabsCharacters.of(second)).toBe(0);
+  });
+
+  it('signs in to the example data apps with the mock login in either language, and fails without it', () => {
+    const clicked: string[] = [];
+    const english = (...args: string[]) => {
+      const name = args[args.indexOf('--name') + 1] ?? '';
+      if (name !== 'Sign in') throw new Error('not found');
+      clicked.push(name);
+      return '';
+    };
+    exampleSignIn(english, () => undefined);
+    expect(clicked).toEqual(['Sign in']);
+    expect(() =>
+      exampleSignIn(
+        () => {
+          throw new Error('not found');
+        },
+        () => undefined,
+      ),
+    ).toThrow(/mock «Logg inn»/);
+  });
+
+  it('reads the score of a voiced line kept beside its clip, and nothing from a clip without one', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'genki-score-'));
+    const clip = join(dir, '0123456789abcdef.mp3');
+    expect(lineScoreOf(clip, 1)).toBeUndefined();
+    writeFileSync(
+      scoreFile(clip),
+      JSON.stringify({
+        text: 'Hei',
+        score: 3,
+        missing: ['kostnad'],
+        extra: ['pris'],
+        keyTermsMissing: [],
+        wordsPerSecond: 2.1,
+        takes: [{}, {}, {}, {}],
+      }),
+    );
+    expect(lineScoreOf(clip, 4)).toEqual({
+      step: 4,
+      takes: 4,
+      score: 3,
+      missing: ['kostnad'],
+      extra: ['pris'],
+      keyTermsMissing: [],
+      wordsPerSecond: 2.1,
+    });
+  });
+
+  it('keeps each heard word within what the library takes, so a long word never stops the film finishing', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'genki-score-'));
+    const clip = join(dir, '0123456789abcdef.mp3');
+    writeFileSync(
+      scoreFile(clip),
+      JSON.stringify({ text: 'Hei', score: 2, extra: ['a'.repeat(200)], missing: [] }),
+    );
+    expect(lineScoreOf(clip, 1)?.extra).toEqual(['a'.repeat(80)]);
+  });
+
+  it('records a demo of example data against the local mock apps, start page and opened pages alike', () => {
+    const demo = parseDemo(
+      minimal(
+        '  - say: Hei\n    do:\n      - [open, "https://console.genki-test.digdir.cloud/#/demos"]\n',
+      ).replace('steps:', 'exampleData: true\nsteps:'),
+    );
+    const local = withExampleData(
+      { ...demo, start: 'https://portal.genki-test.digdir.cloud/#/overview' },
+      {},
+    );
+    expect(local.start).toBe('http://portal.localhost:5173/#/overview');
+    expect(local.steps[0]?.do?.[0]).toEqual(['open', 'http://console.localhost:5174/#/demos']);
+    expect(exampleBases({ DEMO_EXAMPLE_PORTAL_URL: 'http://localhost:5391' }).portal).toBe(
+      'http://localhost:5391',
+    );
+    expect(onTarget('https://example.org/x', exampleBases({}))).toBe('https://example.org/x');
+    const real = parseDemo(minimal('  - say: Hei\n'));
+    expect(withExampleData(real, {})).toBe(real);
+  });
+
+  it('hides retired and internal words in the page, with the words kept as data in the script', () => {
+    const script = scrubScript(['Workspace', '</script><b>']);
+    expect(script).toContain('"Workspace"');
+    expect(script).not.toContain('</script>');
+    const dir = mkdtempSync(join(tmpdir(), 'demo-launch-'));
+    const args = browserLaunch('demo', dir, 'nb-NO', undefined, ['Typesense']);
+    expect(args).toContain(join(dir, 'scrub.js'));
+    expect(readFileSync(join(dir, 'scrub.js'), 'utf8')).toContain('"Typesense"');
+  });
+});
+
 describe('reporting to the demo library', () => {
   const fake = () => {
     const calls: {
@@ -718,7 +1044,7 @@ describe('reporting to the demo library', () => {
     });
   });
 
-  it('builds the demo of a queued recording from its app, path and the first steps of a trial', () => {
+  it('builds the demo of a queued recording from its app, path, colour scheme and the first steps of a trial', () => {
     const demo = demoOfRecording(
       {
         id: 'r1',
@@ -730,6 +1056,7 @@ describe('reporting to the demo library', () => {
           voice: 'nb-NO-PernilleNeural',
           app: 'console',
           path: '/#/demos',
+          colorScheme: 'light',
           steps: [{ say: 'En.' }, { say: 'To.' }],
         },
         settings: { viewport: [1440, 900], tenant: null },
@@ -740,6 +1067,7 @@ describe('reporting to the demo library', () => {
     expect(demo).toMatchObject({
       start: 'https://console.example/#/demos',
       viewport: [1440, 900],
+      colorScheme: 'light',
       steps: [{ say: 'En.' }],
     });
   });
@@ -785,7 +1113,7 @@ describe('reporting to the demo library', () => {
         demo: 'tour',
         voice: 'en-GB-SoniaNeural',
         language: 'en-GB',
-        lines: ['One.', 'Two.'],
+        lines: [{ say: 'One.' }, { say: 'Two.' }],
       },
       { id: trial, demo: 'try', voice: 'en-GB-SoniaNeural', language: 'en-GB', lines: [] },
     ]);
@@ -849,6 +1177,56 @@ describe('reporting to the demo library', () => {
     }
   });
 
+  it('voices and records nothing of a queued demo the recorder would refuse, and says why', async () => {
+    const stored = (steps: unknown[], extra: Record<string, unknown> = {}) =>
+      ({
+        id: 'x',
+        demo: 'tour',
+        demoSpec: {
+          title: 'T',
+          language: 'nb-NO',
+          voice: 'cedar',
+          app: 'portal',
+          path: '/',
+          steps,
+          ...extra,
+        },
+        settings: { viewport: [1280, 720], tenant: null },
+      }) as unknown as Parameters<typeof storedProblem>[0];
+    const code = { template: 'code', title: 'Kode', definition: 'finnes-ikke' };
+
+    expect(storedProblem(stored([{ say: 'En.', scene: code }]), {})).toMatch(
+      /step 1: there is no example definition finnes-ikke/,
+    );
+    expect(storedProblem(stored([{ say: 'En.', page: '//evil.example' }]), {})).toMatch(
+      /^step 1: page/,
+    );
+    expect(storedProblem(stored([{ say: 'En.' }], { app: 'workspace' }), {})).toBe(
+      'genki has no app workspace',
+    );
+    expect(storedProblem(stored([{ say: 'En.' }], { exampleData: true }), { CI: 'true' })).toMatch(
+      /mock apps/,
+    );
+    expect(storedProblem(stored([{ say: 'En.' }], { exampleData: true }), {})).toBeUndefined();
+    expect(storedProblem(stored([{ say: 'xi_9Fq2LmZ7tR4vB8nK1wP6sD3h' }]), {})).toMatch(
+      /^steps\.0\.say looks like a key/,
+    );
+
+    const id = '77777777-7777-4777-8777-777777777777';
+    const send = (async (input: string | URL | Request) =>
+      String(input).endsWith('?status=queued')
+        ? Response.json({ data: [{ id, demo: 'tour' }] })
+        : Response.json({
+            ...stored([{ say: 'En.', scene: code }]),
+            id,
+            costCapUsd: 3,
+          })) as typeof fetch;
+
+    const queued = await queuedOf('https://api.example', 'k', send, {});
+
+    expect(queued).toEqual([{ id, demo: 'tour', voice: 'cedar', language: 'nb-NO', lines: [] }]);
+  });
+
   it('reads the voice sample in the language of the voice', () => {
     expect(sampleLineOf('en-GB')).toMatch(/^Hi!/);
     expect(sampleLineOf('nb-NO')).toMatch(/^Hei!/);
@@ -889,7 +1267,7 @@ describe('reporting to the demo library', () => {
 
     expect(queued.map((q) => [q.id, q.lines, q.costCapUsd])).toEqual([
       [edit, [], 3],
-      [cedar, ['En.'], 3],
+      [cedar, [{ say: 'En.' }], 3],
     ]);
   });
 
@@ -1017,7 +1395,8 @@ describe('reporting to the demo library', () => {
       demo: 'portal',
       voice: 'cedar',
       language: 'nb-NO',
-      lines: ['Hei'],
+      respell: { elevenlabs: { Genki: 'Genn-ki' } },
+      lines: [{ say: 'Hei' }, { say: 'Genki', spoken: { elevenlabs: 'Genn-ki' } }],
       costCapUsd: 2,
     };
     expect(parseQueued(JSON.stringify([one]))).toEqual([one]);
@@ -1025,8 +1404,10 @@ describe('reporting to the demo library', () => {
       { ...one, id: '../x' },
       { ...one, voice: 'cedar"}' },
       { ...one, language: 'nb-NO&x=1' },
-      { ...one, lines: ['x'.repeat(1001)] },
-      { ...one, lines: Array(51).fill('x') },
+      { ...one, lines: [{ say: 'x'.repeat(1001) }] },
+      { ...one, lines: Array(51).fill({ say: 'x' }) },
+      { ...one, lines: [{ say: 'x', spoken: { unknown: 'x' } }] },
+      { ...one, respell: { elevenlabs: { x: 'y'.repeat(121) } } },
       { ...one, costCapUsd: 1000 },
     ])
       expect(() => parseQueued(JSON.stringify([bad]))).toThrow();

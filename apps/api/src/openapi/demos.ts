@@ -1,7 +1,10 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
 import {
+  demoFields,
   demoSettings,
   demoSpec,
+  lineScore,
+  soundReport,
   recordingFailure,
   recordingRequest,
   recordingFinish,
@@ -82,6 +85,17 @@ const Recording = z
         'The most the recorder may spend on models for this recording, approved by the requester',
       ),
     costUsd: z.number().optional().describe('What the recorder spent on models'),
+    lines: z
+      .array(lineScore)
+      .optional()
+      .describe(
+        'How each voiced line was heard back: takes read, score (0 is clean), missing and extra words, key terms missed and pace',
+      ),
+    sound: soundReport
+      .optional()
+      .describe(
+        'Integrated loudness in LUFS of the voice, the music and the mix, and the peak in dBFS',
+      ),
   })
   .openapi('DemoRecording');
 
@@ -104,7 +118,7 @@ const Settings = demoSettings
   })
   .openapi('DemoSettings');
 
-const Demo = demoSpec
+const Demo = demoFields
   .extend({
     id: z.string(),
     version: z.number().int(),
@@ -119,6 +133,10 @@ const DemoInLibrary = Demo.extend({
   ),
   recorded: Recording.optional().describe('The newest full recording that finished'),
   open: Recording.optional().describe('A recording that is queued or running'),
+  editions: z
+    .number()
+    .int()
+    .describe('How many full recordings finished as recorded, edits of a film included'),
 });
 
 const genkiVersion = z
