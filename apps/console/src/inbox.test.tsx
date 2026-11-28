@@ -148,7 +148,7 @@ describe('Til behandling', () => {
         reason: 'Godkjent etter forespørsel',
       },
     ]);
-    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   it('rejects a quota request with a reason', async () => {
