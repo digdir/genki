@@ -9,8 +9,6 @@ import type {
 import {
   apisFor,
   beforeProduction,
-  filterModels,
-  allModels,
   firstOpenStep,
   modelsInUse,
   originOf,
@@ -86,15 +84,6 @@ describe('the models area', () => {
     const responses = exampleApis.find((a) => a.id === 'openai/responses@1') as ModelApi;
     expect(originOf(decide, [review, { ...review, id: decide.id }])).toBe('built-in-described');
     expect(originOf(responses, [])).toBe('built-in');
-  });
-
-  it('the model list filters by text, connection, kind and confirmation together', () => {
-    const names = (filter: Partial<typeof allModels>) =>
-      filterModels(exampleModels, { ...allModels, ...filter }).map((m) => m.deployment);
-    expect(names({ text: 'GPT-4' })).toEqual(['gpt-4o-2M-tps', 'gpt-4.1']);
-    expect(names({ kind: 'decide' })).toEqual(['gpt-4.1']);
-    expect(names({ confirmed: 'unconfirmed' })).toEqual(['gpt-4o-2M-tps']);
-    expect(names({ connection: 'local-model' })).toEqual([]);
   });
 
   it('the guided path starts at the first step that is not done', () => {

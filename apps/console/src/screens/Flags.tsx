@@ -1,257 +1,523 @@
-import {
-  Button,
-  Fieldset,
-  Heading,
-  Paragraph,
-  Radio,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeaderCell,
-  TableRow,
-  Tag,
-  Textfield,
-} from '@digdir/designsystemet-react';
+import { Paragraph } from '@digdir/designsystemet-react';
+import type { Format } from '@genai/i18n';
+import { intlLocale } from '@genai/i18n';
 import { useFormat } from '@genai/i18n/react';
-import { useId, useState } from 'react';
+import { useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react';
 import { ApiError, type ApiClient } from '../api';
 import { useAsync } from '../hooks';
-import { useT } from '../i18n';
+import { ReasonField } from '../components/ReasonField';
+import { useT, type PlainKey } from '../i18n';
+import { minimumReasonLength } from '../reason';
 import { EmptyState, ErrorState, Loading } from '../states';
-import type { FlagChange, OperatorFlag } from '../types';
-import { DialogError, Flash, PageHeader, ReasonDialog, TableRegion, useFlash } from '../ui';
+import type { OperatorFlag, Tenant } from '../types';
+import { DialogError, Flash, ReasonDialog, useFlash } from '../ui';
+import './platform.css';
 
-type Choice = 'on' | 'off' | 'clear';
+type Row = OperatorFlag['rows'][number];
 
-const orgPattern = /^\d{9}$/;
+const flagNames: Record<string, PlainKey> = { blockStudio: 'flags.nameBlockStudio' };
 
 const failedText = (error: unknown, fallback: string) =>
   error instanceof ApiError && error.problem?.title ? error.problem.title : fallback;
 
-const pastRemoveBy = (removeBy: string, now: Date) =>
-  new Date(`${removeBy}T23:59:59Z`).getTime() < now.getTime();
+const osloOffset = (date: string) =>
+  new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Oslo', timeZoneName: 'longOffset' })
+    .formatToParts(new Date(`${date}T12:00:00Z`))
+    .find((p) => p.type === 'timeZoneName')
+    ?.value.replace('GMT', '') || '+00:00';
 
-export const Flags = ({ api, now = () => new Date() }: { api: ApiClient; now?: () => Date }) => {
+export const endOfDay = (date: string) =>
+  new Date(`${date}T23:59:59${osloOffset(date)}`).toISOString();
+
+const osloDay = (date: Date) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Oslo' }).format(date);
+
+const pastRemoveBy = (removeBy: string, now: Date) => removeBy < osloDay(now);
+
+const shortDay = (iso: string, f: Format) =>
+  new Intl.DateTimeFormat(intlLocale(f.locale), {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'Europe/Oslo',
+  }).format(new Date(iso));
+
+const rowKey = (row: Row) =>
+  `${row.tenant}/${row.person?.issuer ?? ''}/${row.person?.subject ?? ''}`;
+
+interface Draft {
+  query: string;
+  tenant: Tenant | undefined;
+  issuer: string;
+  subject: string;
+  on: boolean;
+  expires: string;
+  reason: string;
+}
+
+const emptyDraft: Draft = {
+  query: '',
+  tenant: undefined,
+  issuer: '',
+  subject: '',
+  on: true,
+  expires: '',
+  reason: '',
+};
+
+const TenantPicker = ({
+  id,
+  tenants,
+  draft,
+  invalid,
+  failed,
+  onQuery,
+  onPick,
+}: {
+  id: string;
+  tenants: Tenant[] | undefined;
+  draft: Draft;
+  invalid: boolean;
+  failed: boolean;
+  onQuery: (query: string) => void;
+  onPick: (tenant: Tenant) => void;
+}) => {
+  const t = useT();
+  const [active, setActive] = useState(0);
+  const q = draft.query.trim().toLowerCase();
+  const matches =
+    q && !draft.tenant
+      ? (tenants ?? [])
+          .filter((x) => x.name.toLowerCase().includes(q) || x.orgNumber.includes(q))
+          .slice(0, 8)
+      : [];
+  const open = matches.length > 0;
+  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (!open) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      setActive((a) => (a + step + matches.length) % matches.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const picked = matches[active];
+      if (picked) onPick(picked);
+    } else if (e.key === 'Escape') {
+      onQuery('');
+    }
+  };
+  return (
+    <div className="pf-field">
+      <label htmlFor={`${id}-org`}>{t('flags.tenant')}</label>
+      <input
+        id={`${id}-org`}
+        type="text"
+        role="combobox"
+        autoComplete="off"
+        aria-expanded={open}
+        aria-controls={`${id}-orgs`}
+        aria-autocomplete="list"
+        aria-invalid={invalid || undefined}
+        aria-describedby={invalid ? `${id}-org-error` : failed ? `${id}-org-hint` : undefined}
+        {...(open ? { 'aria-activedescendant': `${id}-org-${active}` } : {})}
+        value={draft.query}
+        onChange={(e) => {
+          setActive(0);
+          onQuery(e.target.value);
+        }}
+        onKeyDown={onKey}
+      />
+      {invalid ? (
+        <span id={`${id}-org-error`} className="pf-error">
+          {t('flags.tenantMissing')}
+        </span>
+      ) : null}
+      {failed ? (
+        <span id={`${id}-org-hint`} className="pf-meta">
+          {t('flags.tenantsFailed')}
+        </span>
+      ) : null}
+      {open ? (
+        <ul id={`${id}-orgs`} role="listbox" aria-label={t('flags.tenants')} className="pf-options">
+          {matches.map((x, i) => (
+            <li
+              key={x.orgNumber}
+              id={`${id}-org-${i}`}
+              role="option"
+              aria-selected={i === active}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => onPick(x)}
+            >
+              {x.name}{' '}
+              <span className="pf-meta">
+                {x.status === 'paused'
+                  ? t('flags.orgPaused', { orgNumber: x.orgNumber })
+                  : x.orgNumber}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+};
+
+const FlagCard = ({
+  api,
+  flag,
+  tenants,
+  tenantsFailed,
+  now,
+  onSaved,
+  onClear,
+}: {
+  api: ApiClient;
+  flag: OperatorFlag;
+  tenants: Tenant[] | undefined;
+  tenantsFailed: boolean;
+  now: () => Date;
+  onSaved: (message: string) => void;
+  onClear: (row: Row) => void;
+}) => {
   const t = useT();
   const f = useFormat();
-  const choiceName = useId();
-  const [state, retry] = useAsync((signal) => api.flags(signal), [api]);
-  const flash = useFlash();
-  const [editing, setEditing] = useState<OperatorFlag | undefined>();
-  const [clearing, setClearing] = useState<
-    { flag: OperatorFlag; row: OperatorFlag['rows'][number] } | undefined
-  >();
-  const [tenant, setTenant] = useState('');
-  const [issuer, setIssuer] = useState('');
-  const [subject, setSubject] = useState('');
-  const [choice, setChoice] = useState<Choice>('on');
+  const id = useId();
+  const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [errors, setErrors] = useState<
+    Partial<Record<'tenant' | 'person' | 'expires' | 'reason' | 'save', string>>
+  >({});
+  const [busy, setBusy] = useState(false);
+  const name = flagNames[flag.key] ? t(flagNames[flag.key] as PlainKey) : flag.key;
+  const set = (change: Partial<Draft>) => setDraft((d) => ({ ...d, ...change }));
 
-  const open = (flag: OperatorFlag) => {
-    flash.clear();
-    setTenant('');
-    setIssuer('');
-    setSubject('');
-    setChoice('on');
-    setEditing(flag);
-  };
-
-  const send = async (key: string, change: FlagChange, reason: string) => {
-    try {
-      await api.setFlag(key, change, reason);
-    } catch (error) {
-      throw new DialogError(failedText(error, t('flags.saveFailed')));
-    }
-    flash.show(t('flags.saved', { key }));
-    retry();
-  };
-
-  const save = async (reason: string) => {
-    if (!editing) return;
-    if (!orgPattern.test(tenant.trim())) throw new DialogError(t('flags.tenantInvalid'));
-    if (Boolean(issuer.trim()) !== Boolean(subject.trim()))
-      throw new DialogError(t('flags.personIncomplete'));
-    await send(
-      editing.key,
-      {
-        tenant: tenant.trim(),
-        ...(issuer.trim() ? { person: { issuer: issuer.trim(), subject: subject.trim() } } : {}),
-        on: choice === 'clear' ? null : choice === 'on',
-      },
-      reason,
-    );
-  };
-
-  const clear = async (reason: string) => {
-    if (!clearing) return;
-    await send(
-      clearing.flag.key,
-      {
-        tenant: clearing.row.tenant,
-        ...(clearing.row.person ? { person: clearing.row.person } : {}),
-        on: null,
-      },
-      reason,
-    );
-  };
-
-  const whereOf = (row: OperatorFlag['rows'][number]) => {
-    const organisation = row.tenantName ? `${row.tenantName} (${row.tenant})` : row.tenant;
-    if (!row.person) return organisation;
+  const whereOf = (row: Row) => {
+    if (!row.person) return row.tenantName ?? row.tenant;
     return t('flags.personIn', {
       person: row.personName ?? `${row.person.issuer}:${row.person.subject}`,
-      organisation,
+      organisation: row.tenantName ?? row.tenant,
     });
   };
 
+  const save = async () => {
+    if (busy) return;
+    const issuer = draft.issuer.trim();
+    const subject = draft.subject.trim();
+    const found: typeof errors = {};
+    const typed = draft.query.trim();
+    const orgNumber = draft.tenant?.orgNumber ?? (/^\d{9}$/.test(typed) ? typed : undefined);
+    if (!orgNumber) found.tenant = t('flags.tenantMissing');
+    if (Boolean(issuer) !== Boolean(subject)) found.person = t('flags.personIncomplete');
+    if (draft.expires && draft.expires <= osloDay(now())) found.expires = t('flags.expiryPast');
+    if (draft.reason.trim().length < minimumReasonLength)
+      found.reason = t('common.reasonTooShortAudited', { min: minimumReasonLength });
+    setErrors(found);
+    if (!orgNumber || Object.keys(found).length) return;
+    setBusy(true);
+    try {
+      await api.setFlag(
+        flag.key,
+        {
+          tenant: orgNumber,
+          ...(issuer ? { person: { issuer, subject } } : {}),
+          on: draft.on,
+          ...(draft.expires ? { expiresAt: endOfDay(draft.expires) } : {}),
+        },
+        draft.reason.trim(),
+      );
+      setDraft(emptyDraft);
+      onSaved(t('flags.saved', { key: name }));
+    } catch (error) {
+      setErrors({ save: failedText(error, t('flags.saveFailed')) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="pf-card" aria-labelledby={`${id}-h`}>
+      <div className="pf-card-head">
+        <h2 className="pf-h2" id={`${id}-h`}>
+          {name}
+        </h2>
+        <span className="pf-chip">
+          {t(flag.selfService ? 'flags.selfService' : 'flags.operatorOnly')}
+        </span>
+        {pastRemoveBy(flag.removeBy, now()) ? (
+          <span className="pf-chip" data-tone="danger">
+            {t('flags.overdue')}
+          </span>
+        ) : null}
+        <span className="pf-meta">
+          {t('flags.facts', {
+            owner: flag.owner,
+            removeBy: f.date(new Date(`${flag.removeBy}T12:00:00Z`), 'long'),
+          })}
+        </span>
+      </div>
+      {flag.rows.length === 0 ? (
+        <Paragraph data-size="sm">{t('flags.offEverywhere')}</Paragraph>
+      ) : (
+        <div
+          className="pf-region"
+          tabIndex={0}
+          role="region"
+          aria-label={t('flags.tableLabel', { key: name })}
+        >
+          <table className="pf-table">
+            <thead>
+              <tr>
+                <th scope="col">{t('flags.colWhere')}</th>
+                <th scope="col">{t('flags.colState')}</th>
+                <th scope="col">{t('flags.colExpires')}</th>
+                <th scope="col">{t('flags.colBy')}</th>
+                <th scope="col">{t('flags.colReason')}</th>
+                <th scope="col">
+                  <span className="visually-hidden">{t('flags.colAction')}</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {flag.rows.map((row) => (
+                <tr key={rowKey(row)}>
+                  <td>
+                    {row.person ? (
+                      whereOf(row)
+                    ) : (
+                      <a
+                        className="action"
+                        href={`#/support-access?tenant=${encodeURIComponent(row.tenant)}`}
+                      >
+                        {whereOf(row)}
+                      </a>
+                    )}
+                  </td>
+                  <td>
+                    <span className="pf-chip" {...(row.on ? { 'data-tone': 'ok' } : {})}>
+                      {t(row.on ? 'flags.on' : 'flags.off')}
+                    </span>
+                  </td>
+                  <td>
+                    {!row.expiresAt
+                      ? t('flags.noExpiry')
+                      : row.expired
+                        ? t('flags.expiredOn', { date: shortDay(row.expiresAt, f) })
+                        : shortDay(row.expiresAt, f)}
+                  </td>
+                  <td>{t('flags.byAt', { by: row.byName ?? row.by, at: shortDay(row.at, f) })}</td>
+                  <td>{row.reason}</td>
+                  <td className="end">
+                    <button
+                      type="button"
+                      className="pf-link"
+                      aria-label={t('flags.clearLabel', {
+                        where: row.personName ?? row.tenantName ?? row.tenant,
+                      })}
+                      onClick={() => onClear(row)}
+                    >
+                      {t('flags.clear')}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="pf-form">
+        <h3 className="pf-form-title">{t('flags.switch')}</h3>
+        <TenantPicker
+          id={id}
+          tenants={tenants}
+          draft={draft}
+          invalid={Boolean(errors.tenant)}
+          failed={tenantsFailed}
+          onQuery={(query) => set({ query, tenant: undefined })}
+          onPick={(tenant) => {
+            set({ query: tenant.name, tenant });
+            setErrors(({ tenant: _, ...rest }) => rest);
+          }}
+        />
+        <fieldset className="pf-group">
+          <legend>
+            {t('flags.person')} <span className="pf-optional">{t('flags.optional')}</span>
+          </legend>
+          <div className="pf-row">
+            <div className="pf-field">
+              <label htmlFor={`${id}-issuer`}>{t('flags.issuer')}</label>
+              <input
+                id={`${id}-issuer`}
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                value={draft.issuer}
+                aria-invalid={Boolean(errors.person) || undefined}
+                aria-describedby={errors.person ? `${id}-person-error` : undefined}
+                onChange={(e) => set({ issuer: e.target.value })}
+              />
+            </div>
+            <div className="pf-field">
+              <label htmlFor={`${id}-subject`}>{t('flags.subject')}</label>
+              <input
+                id={`${id}-subject`}
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                value={draft.subject}
+                aria-invalid={Boolean(errors.person) || undefined}
+                aria-describedby={errors.person ? `${id}-person-error` : undefined}
+                onChange={(e) => set({ subject: e.target.value })}
+              />
+            </div>
+          </div>
+          {errors.person ? (
+            <span id={`${id}-person-error`} className="pf-error">
+              {errors.person}
+            </span>
+          ) : null}
+        </fieldset>
+        <div className="pf-row">
+          <fieldset className="pf-choice">
+            <legend>{t('flags.choice')}</legend>
+            <label>
+              <input
+                type="radio"
+                name={`${id}-on`}
+                checked={draft.on}
+                onChange={() => set({ on: true })}
+              />{' '}
+              {t('flags.turnOn')}
+            </label>
+            <label>
+              <input
+                type="radio"
+                name={`${id}-on`}
+                checked={!draft.on}
+                onChange={() => set({ on: false })}
+              />{' '}
+              {t('flags.turnOff')}
+            </label>
+          </fieldset>
+          <div className="pf-field pf-date">
+            <label htmlFor={`${id}-exp`}>
+              {t('flags.colExpires')} <span className="pf-optional">{t('flags.optional')}</span>
+            </label>
+            <input
+              id={`${id}-exp`}
+              type="date"
+              value={draft.expires}
+              aria-invalid={Boolean(errors.expires) || undefined}
+              aria-describedby={errors.expires ? `${id}-exp-error` : undefined}
+              onChange={(e) => set({ expires: e.target.value })}
+            />
+            {errors.expires ? (
+              <span id={`${id}-exp-error`} className="pf-error">
+                {errors.expires}
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <ReasonField
+          single
+          id={`${id}-why`}
+          label={t('flags.colReason')}
+          value={draft.reason}
+          error={errors.reason}
+          onChange={(reason) => set({ reason })}
+        />
+        {errors.save ? (
+          <span className="pf-error" role="alert">
+            {errors.save}
+          </span>
+        ) : null}
+        <div>
+          <button
+            type="button"
+            className="pf-button primary"
+            aria-disabled={busy || undefined}
+            onClick={() => void save()}
+          >
+            {t('flags.save')}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+export const Flags = ({ api, now = () => new Date() }: { api: ApiClient; now?: () => Date }) => {
+  const t = useT();
+  const [state, retry] = useAsync((signal) => api.flags(signal), [api]);
+  const [tenantState] = useAsync((signal) => api.listTenants(signal), [api]);
+  const [flags, setFlags] = useState<OperatorFlag[] | undefined>();
+  const flash = useFlash();
+  const [clearing, setClearing] = useState<{ flag: OperatorFlag; row: Row } | undefined>();
+  const tenants = useMemo(
+    () => (tenantState.status === 'ready' ? tenantState.data : undefined),
+    [tenantState],
+  );
+
+  useEffect(() => {
+    if (state.status === 'ready') setFlags(state.data);
+  }, [state]);
+
+  const clear = async (reason: string) => {
+    if (!clearing) return;
+    try {
+      await api.setFlag(
+        clearing.flag.key,
+        {
+          tenant: clearing.row.tenant,
+          ...(clearing.row.person ? { person: clearing.row.person } : {}),
+          on: null,
+        },
+        reason,
+      );
+    } catch (error) {
+      throw new DialogError(failedText(error, t('flags.saveFailed')));
+    }
+    flash.show(t('flags.cleared'));
+    retry();
+  };
+
+  const clearingWhere = clearing
+    ? (clearing.row.personName ?? clearing.row.tenantName ?? clearing.row.tenant)
+    : '';
+
   return (
     <>
-      <PageHeader
-        eyebrow={t('shell.groupPlatform')}
-        title={t('flags.title')}
-        intro={t('flags.intro')}
-      />
+      <h1 className="pf-title">{t('flags.title')}</h1>
       <Flash message={flash.message} />
-      {state.status === 'loading' ? (
-        <Loading label={t('flags.loading')} />
-      ) : state.status === 'error' ? (
+      {!flags && state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
-      ) : state.data.length === 0 ? (
+      ) : !flags ? (
+        <Loading label={t('flags.loading')} />
+      ) : flags.length === 0 ? (
         <EmptyState title={t('flags.noneTitle')}>
           <Paragraph>{t('flags.noneText')}</Paragraph>
         </EmptyState>
       ) : (
-        state.data.map((flag) => (
-          <section key={flag.key} className="stack-sm" aria-labelledby={`flag-${flag.key}`}>
-            <div className="actions-row">
-              <Heading level={2} data-size="xs" id={`flag-${flag.key}`}>
-                <code>{flag.key}</code>
-              </Heading>
-              <Tag data-size="sm" data-color={flag.selfService ? 'info' : 'neutral'}>
-                {t(flag.selfService ? 'flags.selfService' : 'flags.operatorOnly')}
-              </Tag>
-              {pastRemoveBy(flag.removeBy, now()) ? (
-                <Tag data-size="sm" data-color="danger">
-                  {t('flags.overdue')}
-                </Tag>
-              ) : null}
-            </div>
-            <Paragraph data-size="sm" lang="en">
-              {flag.description}
-            </Paragraph>
-            <Paragraph data-size="sm" className="meta">
-              {t('flags.facts', {
-                owner: flag.owner,
-                removeBy: f.date(new Date(`${flag.removeBy}T12:00:00Z`), 'medium'),
-              })}
-            </Paragraph>
-            <div className="actions-row">
-              <Button data-size="sm" variant="secondary" onClick={() => open(flag)}>
-                {t('flags.switch')}
-              </Button>
-            </div>
-            {flag.rows.length === 0 ? (
-              <Paragraph data-size="sm">{t('flags.offEverywhere')}</Paragraph>
-            ) : (
-              <TableRegion label={t('flags.tableLabel', { key: flag.key })}>
-                <Table data-size="sm">
-                  <TableHead>
-                    <TableRow>
-                      <TableHeaderCell scope="col">{t('flags.colWhere')}</TableHeaderCell>
-                      <TableHeaderCell scope="col">{t('flags.colState')}</TableHeaderCell>
-                      <TableHeaderCell scope="col">{t('flags.colBy')}</TableHeaderCell>
-                      <TableHeaderCell scope="col">{t('flags.colReason')}</TableHeaderCell>
-                      <TableHeaderCell scope="col">{t('flags.colAction')}</TableHeaderCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {flag.rows.map((row) => (
-                      <TableRow
-                        key={`${row.tenant}/${row.person?.issuer ?? ''}/${row.person?.subject ?? ''}`}
-                      >
-                        <TableCell>{whereOf(row)}</TableCell>
-                        <TableCell>
-                          <Tag data-size="sm" data-color={row.on ? 'success' : 'neutral'}>
-                            {t(row.on ? 'flags.on' : 'flags.off')}
-                          </Tag>
-                        </TableCell>
-                        <TableCell>
-                          {t('flags.byAt', {
-                            by: row.byName ?? row.by,
-                            at: f.dateTime(new Date(row.at), 'medium'),
-                          })}
-                        </TableCell>
-                        <TableCell>{row.reason}</TableCell>
-                        <TableCell>
-                          <Button
-                            data-size="sm"
-                            variant="tertiary"
-                            aria-label={t('flags.clearLabel', { where: whereOf(row) })}
-                            onClick={() => {
-                              flash.clear();
-                              setClearing({ flag, row });
-                            }}
-                          >
-                            {t('flags.clear')}
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableRegion>
-            )}
-          </section>
+        flags.map((flag) => (
+          <FlagCard
+            key={flag.key}
+            api={api}
+            flag={flag}
+            tenants={tenants}
+            tenantsFailed={tenantState.status === 'error'}
+            now={now}
+            onSaved={(message) => {
+              flash.show(message);
+              retry();
+            }}
+            onClear={(row) => {
+              flash.clear();
+              setClearing({ flag, row });
+            }}
+          />
         ))
       )}
       <ReasonDialog
-        open={editing !== undefined}
-        title={editing ? t('flags.switchTitle', { key: editing.key }) : ''}
-        text={t('flags.switchText')}
-        confirmLabel={t('flags.save')}
-        onClose={() => setEditing(undefined)}
-        onConfirm={save}
-      >
-        <Textfield
-          label={t('flags.tenant')}
-          value={tenant}
-          inputMode="numeric"
-          autoComplete="off"
-          onChange={(e) => setTenant(e.target.value)}
-        />
-        <Textfield
-          label={t('flags.issuer')}
-          description={t('flags.personDescription')}
-          value={issuer}
-          autoComplete="off"
-          spellCheck={false}
-          onChange={(e) => setIssuer(e.target.value)}
-        />
-        <Textfield
-          label={t('flags.subject')}
-          value={subject}
-          autoComplete="off"
-          spellCheck={false}
-          onChange={(e) => setSubject(e.target.value)}
-        />
-        <Fieldset data-size="sm">
-          <Fieldset.Legend>{t('flags.choice')}</Fieldset.Legend>
-          {(['on', 'off', 'clear'] as const).map((c) => (
-            <Radio
-              key={c}
-              name={choiceName}
-              value={c}
-              label={t(c === 'on' ? 'flags.turnOn' : c === 'off' ? 'flags.turnOff' : 'flags.clear')}
-              checked={choice === c}
-              onChange={() => setChoice(c)}
-            />
-          ))}
-        </Fieldset>
-      </ReasonDialog>
-      <ReasonDialog
         open={clearing !== undefined}
-        title={clearing ? t('flags.clearTitle', { key: clearing.flag.key }) : ''}
-        text={clearing ? t('flags.clearText', { where: whereOf(clearing.row) }) : ''}
+        title={t('flags.clearLabel', { where: clearingWhere })}
+        text={clearing ? t('flags.clearText', { where: clearingWhere }) : ''}
         confirmLabel={t('flags.clear')}
         onClose={() => setClearing(undefined)}
         onConfirm={clear}

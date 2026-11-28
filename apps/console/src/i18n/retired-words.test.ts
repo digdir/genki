@@ -23,6 +23,7 @@ const retiredNb: Record<string, RegExp> = {
   Datasett: /datasett/iu,
   Tråder: word('tråd(?:er|ene)'),
   Organisasjonsnummer: /organisasjonsnummer/iu,
+  Revisjon: word('revisjon'),
 };
 
 const retiredEn: Record<string, RegExp> = {

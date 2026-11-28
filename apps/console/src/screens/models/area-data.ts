@@ -35,7 +35,7 @@ export const modelsHref = (params: Record<string, string> = {}) => {
 export type ModelsTab = 'connections' | 'models' | 'apis';
 
 export const tabOf = (value: string | null | undefined): ModelsTab =>
-  value === 'models' || value === 'apis' ? value : 'connections';
+  value === 'connections' || value === 'apis' ? value : 'models';
 
 export interface ConnectionSpec {
   baseURL?: string;
@@ -125,29 +125,7 @@ export const kindMaturity = (
   return found.builtIn ? 'built-in' : found.maturity;
 };
 
-export interface ModelFilter {
-  text: string;
-  connection: string;
-  kind: string;
-  confirmed: 'all' | 'confirmed' | 'unconfirmed';
-}
-
-export const allModels: ModelFilter = { text: '', connection: '', kind: '', confirmed: 'all' };
-
-const unconfirmed = (m: OperatorModel) => m.origin === 'discovered' && !m.classified;
-
-export const filterModels = (models: OperatorModel[], filter: ModelFilter) => {
-  const text = filter.text.trim().toLowerCase();
-  return models.filter(
-    (m) =>
-      (!text || [m.id, m.deployment, m.family ?? ''].some((v) => v.toLowerCase().includes(text))) &&
-      (!filter.connection || m.endpoint === filter.connection) &&
-      (!filter.kind || Boolean(boundOf(m)[filter.kind])) &&
-      (filter.confirmed === 'all' || (filter.confirmed === 'unconfirmed') === unconfirmed(m)),
-  );
-};
-
-export const isUnconfirmed = unconfirmed;
+export const isUnconfirmed = (m: OperatorModel) => m.origin === 'discovered' && !m.classified;
 
 export type GuideStep = 'upload' | 'try' | 'record' | 'approve' | 'bind' | 'production';
 

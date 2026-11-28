@@ -73,7 +73,6 @@ export const org = defineNamespace({
   saveFailed: 'Fikk ikke lagret endringen.',
   numberInvalid: 'Skriv et helt tall som er 0 eller større.',
   periodLabel: 'Periode',
-  periodThisMonth: '{month}',
   periodLast30: 'Siste 30 dager',
   periodChosen: 'Velg periode',
   periodFrom: 'Fra og med',

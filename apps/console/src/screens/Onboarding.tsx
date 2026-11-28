@@ -19,6 +19,7 @@ import type { AccessRequest, Tenant, ValidationProblem } from '../types';
 import { Flash, formatWhen, isMissing, NotDecided, PageHeader, useFlash } from '../ui';
 import { formatOrgNumber } from './Tenants';
 import { minimumReasonLength, reasonProblem } from '../reason';
+import { ReasonField } from '../components/ReasonField';
 
 const weights = [3, 2, 7, 6, 5, 4, 3, 2];
 
@@ -124,12 +125,13 @@ export const RegisterTenant = ({
         onChange={(e) => setName(e.target.value)}
         error={tried ? errors.navn : undefined}
       />
-      <Textfield
+      <ReasonField
+        single
         id="reg-begrunnelse"
         label={t('onboarding.reason')}
         description={t('onboarding.reasonSaved')}
         value={reason}
-        onChange={(e) => setReason(e.target.value)}
+        onChange={setReason}
         error={tried ? errors.begrunnelse : undefined}
       />
       <div>
@@ -395,14 +397,13 @@ const RegisterDialog = ({
             onChange={(e) => setName(e.target.value)}
             error={tried ? errors.navn : undefined}
           />
-          <Textfield
+          <ReasonField
             id="reg-begrunnelse"
             label={t('onboarding.reason')}
             description={t('onboarding.reasonHint')}
-            multiline
             rows={3}
             value={reason}
-            onChange={(e) => setReason(e.target.value)}
+            onChange={setReason}
             error={tried ? errors.begrunnelse : undefined}
           />
           <Details>

@@ -1,16 +1,8 @@
-import {
-  Alert,
-  Button,
-  Dialog,
-  Heading,
-  Label,
-  Paragraph,
-  Textarea,
-  ValidationMessage,
-} from '@digdir/designsystemet-react';
+import { Alert, Button, Dialog, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { ApiError } from './api';
 import { ApiCall } from './api-call';
+import { ReasonField } from './components/ReasonField';
 import { useT, type T } from './i18n';
 import { minimumReasonLength } from './reason';
 
@@ -94,24 +86,15 @@ export const SupportDialog = ({
           </Heading>
           {children}
           {lead ? <Paragraph>{lead}</Paragraph> : null}
-          <div className="field">
-            <Label htmlFor={`${id}-reason`}>{t('common.reason')}</Label>
-            <Paragraph data-size="sm" className="meta" id={`${id}-hint`}>
-              {hint}
-            </Paragraph>
-            <Textarea
-              id={`${id}-reason`}
-              rows={2}
-              value={reason}
-              aria-describedby={`${id}-hint`}
-              aria-invalid={error ? true : undefined}
-              onChange={(e) => {
-                setReason(e.target.value);
-                setError(undefined);
-              }}
-            />
-            {error ? <ValidationMessage>{error}</ValidationMessage> : null}
-          </div>
+          <ReasonField
+            description={hint}
+            value={reason}
+            error={error}
+            onChange={(value) => {
+              setReason(value);
+              setError(undefined);
+            }}
+          />
           <p className="info-note">{sees}</p>
           <ApiCall
             method={api.method}

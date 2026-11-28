@@ -50,7 +50,7 @@ export const onboarding = defineNamespace({
   title: 'Oppstart',
   loading: 'Henter virksomheter i oppstart',
   registeredFlash: '{name} er registrert og vises under Virksomheter.',
-  registeredLogged: '{name} er registrert. Beslutningen er logget i Logg.',
+  registeredLogged: '{name} er registrert. Beslutningen står i Logg.',
   emptyTitle: 'Ingen virksomheter i oppstart',
   emptyText:
     'Når Digdir godkjenner en tilgangsforespørsel i <link>Til behandling</link>, vises virksomheten her til den er i gang.',

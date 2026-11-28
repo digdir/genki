@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { useAsync } from './hooks';
+import { parseRoute, redirectFrom, useAsync } from './hooks';
 
 afterEach(cleanup);
 
@@ -68,5 +68,21 @@ describe('useAsync', () => {
 
     expect(seen).not.toContain('loading');
     expect(seen.at(-1)).toBe('ready 2');
+  });
+});
+
+describe('redirectFrom', () => {
+  it('moves an old address on to its new one', () => {
+    window.location.hash = '#/services/x/settings';
+    redirectFrom(parseRoute(window.location.hash), '#/services/x/advanced/limits');
+    expect(window.location.hash).toBe('#/services/x/advanced/limits');
+  });
+
+  it('leaves a newer address alone when the person moved on before the redirect ran', () => {
+    window.location.hash = '#/services/x/settings';
+    const from = parseRoute(window.location.hash);
+    window.location.hash = '#/services/x/log';
+    redirectFrom(from, '#/services/x/advanced/limits');
+    expect(window.location.hash).toBe('#/services/x/log');
   });
 });

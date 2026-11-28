@@ -74,7 +74,6 @@ export const org = {
   saveFailed: 'Could not save the change.',
   numberInvalid: 'Enter a whole number, 0 or more.',
   periodLabel: 'Period',
-  periodThisMonth: '{month}',
   periodLast30: 'Last 30 days',
   periodChosen: 'Choose period',
   periodFrom: 'From',

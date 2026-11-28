@@ -36,8 +36,8 @@ describe('organisation access and audit in English', () => {
     await open('#/audit');
     expect(await screen.findByRole('heading', { name: 'Log' })).toBeTruthy();
     expect(await screen.findByLabelText('Organisation')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Export (CSV)' })).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'Log' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Export' })).toBeTruthy();
+    expect(await screen.findByRole('region', { name: 'Log' })).toBeTruthy();
   });
 
   it('asks for a reason to see content with English copy and a reason rule', async () => {
@@ -46,16 +46,16 @@ describe('organisation access and audit in English', () => {
       target: { value: 'opg_7f2kq9d1' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Reason to see content' });
-    expect(within(dialog).getByText(/content may contain personal data/)).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'See content' }));
+    const dialog = await screen.findByRole('dialog', { name: /^View content from / });
+    expect(within(dialog).getByText(/May contain personal data/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'View the content' }));
     expect(
       await within(dialog).findByText(/Write a reason of at least 10 characters/),
     ).toBeTruthy();
     fireEvent.change(within(dialog).getByRole('textbox', { name: /Reason/ }), {
       target: { value: 'The customer reports a wrong answer, case DIG-4420' },
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'See content' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'View the content' }));
     expect(await screen.findByRole('heading', { name: 'opg_7f2kq9d1' })).toBeTruthy();
   });
 

@@ -330,25 +330,29 @@ body {
   list-style: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 24px;
+  gap: 4px;
   border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
 }
 
 .section-tabs a {
-  display: block;
-  padding: 8px 0 10px;
-  color: var(--ds-color-neutral-text-subtle);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 14px;
+  color: var(--ds-color-neutral-text-default);
   text-decoration: none;
   border-bottom: 3px solid transparent;
   margin-bottom: -1px;
 }
 
 .section-tabs a:hover {
-  color: var(--ds-color-neutral-text-default);
+  border-bottom-color: var(--ds-color-neutral-border-default);
 }
 
 .section-tabs a.active {
-  color: var(--ds-color-neutral-text-default);
+  color: var(--ds-color-accent-text-default);
   font-weight: 600;
   border-bottom-color: var(--ds-color-accent-base-default);
 }

@@ -107,6 +107,13 @@ export const navigate = (path: string) => {
   window.location.hash = path;
 };
 
+/** Replaces the address only while it is still the route the target was worked out from. */
+export const redirectFrom = (route: Route, hash: string) => {
+  const now = parseRoute(window.location.hash);
+  if (now.path === route.path && now.query.toString() === route.query.toString())
+    window.location.replace(hash);
+};
+
 const scrollPositions = new Map<number, number>();
 let highestEntry = 0;
 let restoring: number | undefined;

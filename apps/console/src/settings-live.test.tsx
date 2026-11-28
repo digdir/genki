@@ -91,26 +91,28 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('live platform settings', () => {
-  it('shows the current default, tenant and service values with Norwegian names', async () => {
+  it('shows the current default and the organisations with their own value, by Norwegian name', async () => {
     await open(platform().fetch);
 
-    const label = await screen.findByRole('button', { name: 'Treff som hentes (top-k)' });
-    const row = label.closest('tr') as HTMLElement;
-    expect(within(row).getAllByText('20').length).toBeGreaterThan(0);
-    expect((screen.getByRole('combobox', { name: 'Virksomhet' }) as HTMLSelectElement).value).toBe(
-      '991825827',
+    const table = await screen.findByRole('region', { name: 'Standardverdier' });
+    const row = within(table).getByText('Treff som hentes (top-k)').closest('tr') as HTMLElement;
+    expect(within(row).getByText('80')).toBeTruthy();
+    fireEvent.click(
+      within(row).getByRole('button', {
+        name: '1 virksomhet har egen verdi for treff som hentes (top-k)',
+      }),
     );
-    expect(screen.queryByText(/viser bare plattformstandardene/)).toBeNull();
+    expect(await screen.findByRole('dialog', { name: 'Treff som hentes (top-k)' })).toBeTruthy();
   });
 
   it('changes a default with a reason and shows the changelog', async () => {
     const { calls, fetch } = platform();
     await open(fetch);
-    fireEvent.click(await screen.findByRole('button', { name: 'Treff som hentes (top-k)' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre treff som hentes (top-k)' }));
 
     expect(await screen.findByText('Færre treff gir raskere svar')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Verdi'), { target: { value: '60' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Forhåndsvis endring' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sjekk endringen' }));
     await screen.findByText('Lagres i revisjonsloggen.');
     const saved = () =>
       calls.find(
@@ -171,9 +173,9 @@ describe('live platform settings', () => {
     window.location.hash = '#/settings';
     render(inEnglish(<App auth={auth} fetch={fetch} />));
 
-    fireEvent.click(await screen.findByRole('button', { name: /Tokens per month/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Change tokens per month/i }));
     fireEvent.change(await screen.findByLabelText('Value'), { target: { value: '150000000' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Preview the change' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Check the change' }));
 
     await waitFor(() => expect(document.getElementById('grunn')).toBeTruthy());
     expect(screen.queryByText(/Write a reason of at least/)).toBeNull();
@@ -213,11 +215,13 @@ describe('live platform settings', () => {
       return base(input, init);
     };
     await open(fetch);
-    fireEvent.click(await screen.findByRole('button', { name: 'Husstil for svar på bokmål' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Endre husstil for svar på bokmål' }),
+    );
 
     const field = await screen.findByLabelText('Verdi');
     expect(field.tagName).toBe('TEXTAREA');
-    fireEvent.click(await screen.findByRole('button', { name: 'Målform i svar' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre målform i svar' }));
     expect((await screen.findByLabelText('Verdi')).tagName).toBe('INPUT');
   });
 
@@ -257,9 +261,9 @@ describe('live platform settings', () => {
       return base(input, init);
     };
     await open(fetch);
-    fireEvent.click(await screen.findByRole('button', { name: 'Treff som hentes (top-k)' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre treff som hentes (top-k)' }));
     fireEvent.change(screen.getByLabelText('Verdi'), { target: { value: '60' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Forhåndsvis endring' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sjekk endringen' }));
 
     expect(await screen.findByText('rapportassistenten · Testetaten')).toBeTruthy();
     expect(screen.getByText('kunnskapsassistenten · Digdir: 20')).toBeTruthy();

@@ -1,5 +1,11 @@
 import { flags } from '@genai/contracts/flags';
-import type { FlagRowView, InboxItem, TenantOverview, UsageNumbers } from '../../operator-types';
+import type {
+  FailedRun,
+  FlagRowView,
+  InboxItem,
+  TenantOverview,
+  UsageNumbers,
+} from '../../operator-types';
 import type { AuditEntry, OperatorFlag, QuotaRequestRow, Tenant } from '../../types';
 
 type FlagRow = OperatorFlag['rows'][number] & { key: string; expiresAt?: string };
@@ -151,35 +157,83 @@ export const orgMock = (
       (a, b) => a.at.localeCompare(b.at),
     );
 
-  const failedRuns = (now: Date) => [
-    {
-      task: 't-091',
-      tenant: sample,
-      tenantName: tenantName(sample),
-      service: 'hoeringsanalyse',
-      serviceName: 'Høringsanalyse',
-      at: ago(now, 0, 1),
-      failure: { code: 'timeout', reason: 'Tidsavbrudd mot Borealis-27B 2.1' },
-    },
-    {
-      task: 't-084',
-      tenant: sample,
-      tenantName: tenantName(sample),
-      service: 'hoeringsanalyse',
-      serviceName: 'Høringsanalyse',
-      at: ago(now, 2, 3),
-      failure: { code: 'timeout', reason: 'Tidsavbrudd mot Borealis-27B 2.1' },
-    },
-    {
-      task: 't-077',
-      tenant: sample,
-      tenantName: tenantName(sample),
-      service: 'regelverk',
-      serviceName: 'Spør regelverket',
-      at: ago(now, 6, 1),
-      failure: { code: 'retrieval', reason: 'Fant ingen kilder i dokumentsamlingen' },
-    },
-  ];
+  const startOfDay = (now: Date) => {
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+  const today = (now: Date, minutes: number) =>
+    new Date(
+      Math.max(
+        now.getTime() - minutes * 60_000,
+        startOfDay(now).getTime() + (600 - minutes) * 1000,
+      ),
+    ).toISOString();
+  const failedRun = (
+    task: string,
+    tenant: string,
+    service: string,
+    serviceName: string,
+    at: string,
+    code: string,
+    reason: string,
+  ): FailedRun => ({
+    task,
+    tenant,
+    tenantName: tenantName(tenant),
+    service,
+    serviceName,
+    at,
+    failure: { code, reason },
+  });
+  const failedRuns = (now: Date) =>
+    [
+      failedRun(
+        't-091',
+        sample,
+        'hoeringsanalyse',
+        'Høringsanalyse',
+        today(now, 60),
+        'timeout',
+        'Tidsavbrudd mot Borealis-27B 2.1',
+      ),
+      failedRun(
+        't-088',
+        '999888777',
+        'rapportassistenten',
+        'Rapportassistenten',
+        today(now, 75),
+        'tool',
+        'Verktøyet svarte 502',
+      ),
+      failedRun(
+        't-074',
+        '983555666',
+        'klagesaker',
+        'Klagesaker',
+        today(now, 160),
+        'retrieval',
+        'Fant ingen kilder i dokumentsamlingen',
+      ),
+      failedRun(
+        't-084',
+        sample,
+        'hoeringsanalyse',
+        'Høringsanalyse',
+        ago(now, 2, 3),
+        'timeout',
+        'Tidsavbrudd mot Borealis-27B 2.1',
+      ),
+      failedRun(
+        't-077',
+        sample,
+        'regelverk',
+        'Spør regelverket',
+        ago(now, 6, 1),
+        'retrieval',
+        'Fant ingen kilder i dokumentsamlingen',
+      ),
+    ].sort((a, b) => b.at.localeCompare(a.at));
 
   const quotaNow = (org: string) => {
     const tenant = ctx.tenants().find((t) => t.orgNumber === org);
@@ -464,7 +518,7 @@ export const orgMock = (
       publishedByName: 'Bjørn Aas',
     }));
 
-  return (
+  const handle = (
     path: string,
     method: string,
     search: URLSearchParams,
@@ -474,7 +528,7 @@ export const orgMock = (
     const now = ctx.now();
     if (path === '/operator/inbox' && method === 'GET') return json({ data: inbox(now) });
     if (path === '/operator/failed-runs' && method === 'GET') {
-      const from = search.get('from') ?? ago(now, 0);
+      const from = search.get('from') ?? startOfDay(now).toISOString();
       return json({ from, data: failedRuns(now).filter((r) => r.at >= from) });
     }
     const flagPut = /^\/operator\/flags\/([^/]+)$/.exec(path);
@@ -574,4 +628,5 @@ export const orgMock = (
     }
     return undefined;
   };
+  return Object.assign(handle, { failedRuns });
 };

@@ -36,7 +36,7 @@ const operationActions = [
 
 describe('audit labels', () => {
   it.each(['nb', 'en'] as const)(
-    'Revisjon names every ADR 0047 and ADR 0048 action in plain words in %s',
+    'Logg names every ADR 0047 and ADR 0048 action in plain words in %s',
     (locale) => {
       const t = translator(locale);
       const labels = operationActions.map(([action, target]) => labelOf(entry(action, target), t));
@@ -46,14 +46,14 @@ describe('audit labels', () => {
     },
   );
 
-  it('Revisjon names moving an organisation’s data in plain words in bokmål and English', () => {
+  it('Logg names moving an organisation’s data in plain words in bokmål and English', () => {
     const moved = entry('platform.tenant.move', 'tenant:991825827');
     expect(labelOf(moved, translator('nb'))).toBe('Flyttet virksomhetens data hit');
     expect(labelOf(moved, translator('en'))).toBe("Moved the organisation's data here");
   });
 
   it.each(['nb', 'en'] as const)(
-    'Revisjon names adding, removing, promoting and rolling back a service environment in %s',
+    'Logg names adding, removing, promoting and rolling back a service environment in %s',
     (locale) => {
       const t = translator(locale);
       const labels = ['add', 'remove', 'promote', 'rollback'].map((step) =>
@@ -91,7 +91,7 @@ describe('audit labels', () => {
   });
 
   it.each(['nb', 'en'] as const)(
-    'Revisjon names revoking an approved tool, apart from approving one, in %s',
+    'Logg names revoking an approved tool, apart from approving one, in %s',
     (locale) => {
       const t = translator(locale);
       const revoke = labelOf(entry('platform.tools.revoke', 'tool-connection:arkiv'), t);

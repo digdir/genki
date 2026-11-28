@@ -12,7 +12,7 @@ import {
 import { applySpec, asServiceDefinition, forTenant } from '../data/service-definition';
 import { channelKeys, channelOn, jobOf } from '../data/service-form';
 import { usePortalFormat } from '../format';
-import { navigate, useAsync } from '../hooks';
+import { navigate, redirectFrom, useAsync } from '../hooks';
 import { useT, type PlainKey } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { rightLabel, useRights } from '../Shell';
@@ -163,8 +163,8 @@ const useLocation = (id: string, route: ScreenProps['route'], isNew: boolean) =>
   );
   const { redirect } = location;
   useEffect(() => {
-    if (redirect) window.location.replace(`#${redirect}`);
-  }, [redirect]);
+    if (redirect) redirectFrom(route, `#${redirect}`);
+  }, [redirect, route]);
   return location;
 };
 
@@ -230,7 +230,7 @@ const BuilderScreen = (
   );
   const settledRedirect = state.status === 'ready' ? settled.redirect : undefined;
   useEffect(() => {
-    if (settledRedirect) window.location.replace(`#${settledRedirect}`);
+    if (settledRedirect) redirectFrom(route, `#${settledRedirect}`);
   }, [settledRedirect, route]);
   if (state.status === 'loading' || otherEdition)
     return (

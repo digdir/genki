@@ -52,7 +52,7 @@ export const onboarding = {
   title: 'Onboarding',
   loading: 'Loading organisations in onboarding',
   registeredFlash: '{name} has been registered and is shown under Organisations.',
-  registeredLogged: '{name} has been registered. The decision is logged in Log.',
+  registeredLogged: '{name} has been registered. The decision is in Log.',
   emptyTitle: 'No organisations in onboarding',
   emptyText:
     'When Digdir approves an access request in <link>For processing</link>, the organisation appears here until it is under way.',

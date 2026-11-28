@@ -28,6 +28,7 @@ import type { ConfigEntry, Tenant, ValidationProblem } from '../../types';
 import { Flash, formatWhen, TableRegion, useFlash } from '../../ui';
 import { formatOrgNumber } from '../Tenants';
 import { reasonProblem } from '../../reason';
+import { ReasonField } from '../../components/ReasonField';
 
 export interface RegistryPaths {
   list: string;
@@ -330,11 +331,11 @@ const Editor = ({
         />
       ) : null}
       {readOnly ? null : (
-        <Textfield
-          label={t('common.reason')}
+        <ReasonField
+          single
           description={t('config.reasonHint')}
           value={reason}
-          onChange={(e) => setReason(e.target.value)}
+          onChange={setReason}
           error={errors.reason}
         />
       )}

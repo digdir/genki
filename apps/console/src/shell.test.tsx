@@ -9,6 +9,7 @@ import { translator } from './i18n';
 import { mockFetch } from './mock';
 import type { SearchSource } from './search';
 import { environmentLabel, Shell } from './Shell';
+import { PageTabs } from './page-tabs';
 import type { Tenant, TenantDefinition } from './types';
 
 document.getAnimations ??= () => [];
@@ -117,7 +118,7 @@ describe('console menu', () => {
     expect(
       within(menu()).getByRole('link', { name: 'Kvalitet' }).getAttribute('aria-current'),
     ).toBe('page');
-    const pages = screen.getByRole('navigation', { name: 'Sider i Kvalitet' });
+    const pages = await screen.findByRole('navigation', { name: 'Sider i Kvalitet' });
     expect(
       within(pages)
         .getAllByRole('link')
@@ -129,6 +130,26 @@ describe('console menu', () => {
     expect(within(pages).getByRole('link', { name: 'Sporing' }).getAttribute('href')).toBe(
       '#/tracing',
     );
+  });
+
+  it('offers the connections list as a Modeller tab and marks it current there', async () => {
+    await open('#/models?tab=connections');
+
+    const pages = await screen.findByRole('navigation', { name: 'Sider i Modeller' });
+    const tab = within(pages).getByRole('link', { name: 'Tilkoblinger' });
+    expect(tab.getAttribute('href')).toBe('#/models?tab=connections');
+    expect(tab.getAttribute('aria-current')).toBe('page');
+    expect(
+      within(pages).getByRole('link', { name: 'Modeller' }).getAttribute('aria-current'),
+    ).toBeNull();
+  });
+
+  it('puts the page tabs under the page heading', async () => {
+    await open('#/quality');
+
+    const pages = await screen.findByRole('navigation', { name: 'Sider i Kvalitet' });
+    const heading = screen.getByRole('heading', { level: 1, name: 'Kvalitet' });
+    expect(heading.compareDocumentPosition(pages) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('keeps an organisation page under Virksomheter without sibling tabs', async () => {
@@ -426,6 +447,7 @@ describe('in English', () => {
           search={noSearch}
         >
           <h1>Page</h1>
+          <PageTabs />
         </Shell>,
       ),
     );

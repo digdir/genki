@@ -7,6 +7,7 @@ import { useFlagStates } from './flags';
 import { menu, menuItemFor, type MenuItem, type MenuPage } from './menu';
 import { SearchDialog, type SearchSource } from './search';
 import type { Health, OperatorSession } from './types';
+import { PageTabsContext } from './page-tabs';
 
 const configuredEnvironment: string | undefined = setting('ENVIRONMENT');
 
@@ -19,6 +20,7 @@ interface ShellProps {
   session: OperatorSession;
   onLogout: () => void;
   path: string;
+  tab?: string | undefined;
   badges?: NavBadges;
   search: SearchSource;
   health?: (signal?: AbortSignal) => Promise<Health>;
@@ -85,13 +87,20 @@ const Icon = ({ d, size = 18 }: { d: string; size?: number }) => (
 
 const searchIcon = 'M8 13.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11zM12 12l4 4';
 
-const SectionTab = ({ page, path }: { page: MenuPage; path: string }) => {
+const pageHref = (page: MenuPage) => `#${page.path}${page.tab ? `?tab=${page.tab}` : ''}`;
+
+const isCurrent = (page: MenuPage, pages: MenuPage[], path: string, tab: string | undefined) =>
+  page.path === path &&
+  (page.tab
+    ? page.tab === tab
+    : !pages.some((p) => p.path === path && p.tab !== undefined && p.tab === tab));
+
+const SectionTab = ({ page, current }: { page: MenuPage; current: boolean }) => {
   const t = useT();
-  const current = page.path === path;
   return (
     <li>
       <a
-        href={`#${page.path}`}
+        href={pageHref(page)}
         aria-current={current ? 'page' : undefined}
         className={current ? 'active' : undefined}
       >
@@ -101,7 +110,15 @@ const SectionTab = ({ page, path }: { page: MenuPage; path: string }) => {
   );
 };
 
-const SectionTabs = ({ item, path }: { item: MenuItem; path: string }) => {
+const SectionTabs = ({
+  item,
+  path,
+  tab,
+}: {
+  item: MenuItem;
+  path: string;
+  tab?: string | undefined;
+}) => {
   const t = useT();
   const flags = useFlagStates();
   const pages = (item.pages ?? []).filter(
@@ -112,7 +129,11 @@ const SectionTabs = ({ item, path }: { item: MenuItem; path: string }) => {
     <nav className="section-tabs" aria-label={t('frame.sectionPages', { section: t(item.label) })}>
       <ul>
         {pages.map((page) => (
-          <SectionTab key={page.path} page={page} path={path} />
+          <SectionTab
+            key={pageHref(page)}
+            page={page}
+            current={isCurrent(page, pages, path, tab)}
+          />
         ))}
       </ul>
     </nav>
@@ -258,6 +279,7 @@ export const Shell = ({
   session,
   onLogout,
   path,
+  tab,
   badges = {},
   search,
   health,
@@ -390,8 +412,11 @@ export const Shell = ({
           {health && readOnlyInLockdown ? (
             <LockdownBanner health={health} readOnlyInLockdown={readOnlyInLockdown} />
           ) : null}
-          {active ? <SectionTabs item={active} path={path} /> : null}
-          {children}
+          <PageTabsContext.Provider
+            value={active ? <SectionTabs item={active} path={path} tab={tab} /> : null}
+          >
+            {children}
+          </PageTabsContext.Provider>
         </main>
       </div>
       <SearchDialog source={search} open={searching} onClose={closeSearch} />
